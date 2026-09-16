@@ -386,7 +386,7 @@ VERSION_VISUAL_TYPE: dict[str, str] = {
     "photo": "image",
 }
 # 지시서 생성 모델(엔진 기본 sonnet, 엣지함수 기본 gemini). id 가 'gemini' 면 Gemini 라우팅.
-MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", "gemini-2.5-flash")
+MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", "gemini-2.5-pro")
 
 # 총길이 예산(DV6). 1분 기준이되 내용에 따라 유연(실제 길이는 나레이션 실측을 따른다).
 TARGET_TOTAL_SEC: int = _get_int("TARGET_TOTAL_SEC", 60)
@@ -2736,7 +2736,7 @@ MODEL_REPORT_SCORING: str = os.getenv("MODEL_REPORT_SCORING", "gemini-2.5-flash"
 
 # ─ PF1 초안 파이프라인 모델 (논문 MODEL_FACTSHEET/SCRIPT/SELFCHECK 대응) ─
 MODEL_REPORT_FACTSHEET: str = os.getenv("MODEL_REPORT_FACTSHEET", "gemini-2.5-flash")
-MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-2.5-flash")   # 대본 합성
+MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-2.5-pro")     # 대본 합성
 MODEL_REPORT_SELFCHECK: str = os.getenv("MODEL_REPORT_SELFCHECK", "gemini-2.5-flash")
 MODEL_REPORT_COMPLIANCE: str = os.getenv("MODEL_REPORT_COMPLIANCE", "gemini-2.5-flash")
 
