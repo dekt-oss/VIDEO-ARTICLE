@@ -8,7 +8,7 @@ import { queueWriter } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   // 공개 저장소 대비(2026-09-15): 쓰기 라우트는 전부 운영자 게이트를 맨 앞에서 통과한다.
-  const denied = requireOperator();
+  const denied = await requireOperator();
   if (denied) return denied;
   const supabase = queueWriter(createClient());
 
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   // 게이트는 reject(=재렌더 → Veo/Gemini 재과금)에만. publish 는 published 행 기록뿐이라
   // 비용·외부 발행이 없어 그대로 열어둔다(매일 쓰는 흐름에 마찰을 만들지 않는다).
   if (body.action === "reject") {
-    const denied = requireOperator();
+    const denied = await requireOperator();
     if (denied) return denied;
   }
 

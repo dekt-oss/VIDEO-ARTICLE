@@ -20,13 +20,13 @@ import type { PendingStatus } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function ReportReviewDetailPage({
-  params,
-  searchParams,
-}: {
-  params: { reportId: string };
-  searchParams: { step?: string; v?: string };
+export default async function ReportReviewDetailPage(props: {
+  params: Promise<{ reportId: string }>;
+  searchParams: Promise<{ step?: string; v?: string }>;
 }) {
+  // ★ Next 15: params·searchParams 가 Promise 다. 본문을 건드리지 않으려고
+  //   props 로 받아 맨 앞에서 await 해 같은 이름에 다시 묶는다.
+  const [params, searchParams] = await Promise.all([props.params, props.searchParams]);
   const supabase = createClient();
   const reportId = params.reportId;
 

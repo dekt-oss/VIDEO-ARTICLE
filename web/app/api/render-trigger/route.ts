@@ -6,7 +6,7 @@ import { requireOperator } from "@/lib/apiGuard";
 
 export async function POST() {
   // 비용·발행 라우트 — 운영자 키 게이트(web/lib/apiGuard.ts).
-  const denied = requireOperator();
+  const denied = await requireOperator();
   if (denied) return denied;
 
   const trig = await triggerRender();

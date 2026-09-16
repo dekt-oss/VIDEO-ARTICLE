@@ -15,7 +15,7 @@ const UNLOCK_FAIL_DELAY_MS = 1500;
 
 export async function GET() {
   return NextResponse.json({
-    unlocked: isOperator(),
+    unlocked: await isOperator(),
     enabled: !!process.env.OPERATOR_KEY,
   });
 }

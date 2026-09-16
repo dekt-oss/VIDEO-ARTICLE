@@ -23,9 +23,31 @@ def test_every_write_route_is_operator_gated_first():
         for m in HANDLER.finditer(src):
             body = [l.strip() for l in src[m.end():m.end() + 600].splitlines()
                     if l.strip() and not l.strip().startswith("//")]
-            if not body or "requireOperator()" not in body[0]:
+            # ★ Next 15(2026-09-16): cookies() 가 async 라 게이트도 async 다.
+            #   `await` 를 빠뜨리면 반환값이 Promise(항상 truthy)라 라우트가 통째로 막히고,
+            #   더 나쁜 쪽으로는 isOperator() 를 await 없이 쓰면 **항상 통과**한다.
+            if not body or "await requireOperator()" not in body[0]:
                 missing.append(f"{f.parent.name}:{m.group(1)}")
-    assert not missing, f"쓰기 라우트 맨 앞에 requireOperator() 가 없다: {missing}"
+    assert not missing, f"쓰기 라우트 맨 앞에 `await requireOperator()` 가 없다: {missing}"
+
+
+def test_operator_checks_are_always_awaited():
+    """`isOperator()` / `requireOperator()` 를 await 없이 부르는 곳이 없어야 한다.
+
+    await 를 빠뜨린 `isOperator()` 는 Promise 라 언제나 truthy 다 — 게이트가 조용히
+    **전부 통과**로 뒤집힌다. 타입검사는 잡아주지 못하는 형태(조건식에 Promise 를 쓰는 것은
+    TS 가 허용한다)라 소스 형태로 못박는다.
+    """
+    web = ROOT / "web"
+    bad = []
+    for f in sorted(list(web.rglob("*.ts")) + list(web.rglob("*.tsx"))):
+        if "node_modules" in f.parts or f.name == "apiGuard.ts":
+            continue
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            for call in ("isOperator()", "requireOperator()"):
+                if call in line and f"await {call}" not in line:
+                    bad.append(f"{f.relative_to(web)}:{i}: {line.strip()}")
+    assert not bad, "await 없는 운영자 검사(게이트가 항상 통과로 뒤집힌다):\n" + "\n".join(bad)
 
 
 def test_every_write_route_writes_with_the_service_client():
@@ -58,13 +80,16 @@ def test_middleware_matcher_does_not_exempt_the_image_optimizer():
     matcher = re.search(r"matcher:\s*\[(.*?)\]", src, re.S).group(1)
     assert "_next/image" not in matcher, "이미지 최적화 엔드포인트가 게이트 밖에 있다"
 
+    # `next/image` 를 **import 하는** 곳만 센다. next-env.d.ts 의
+    # `types="next/image-types/global"` 은 Next 가 만드는 줄이라 사용처가 아니다.
     web = ROOT / "web"
+    imports = re.compile(r"""["']next/image["']""")
     users = sorted(
         str(f.relative_to(web)).replace("\\", "/")
         for f in list(web.rglob("*.tsx")) + list(web.rglob("*.ts"))
         if "node_modules" not in f.parts
         and f.name != "middleware.ts"
-        and "next/image" in f.read_text(encoding="utf-8")
+        and imports.search(f.read_text(encoding="utf-8"))
     )
     assert not users, f"next/image 사용처가 생겼다 — 게이트 예외 여부를 다시 판단할 것: {users}"
 

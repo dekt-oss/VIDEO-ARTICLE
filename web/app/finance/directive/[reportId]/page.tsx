@@ -5,13 +5,13 @@
 // 계속 남는다.
 import { redirect } from "next/navigation";
 
-export default function FinanceDirectiveRedirect({
-  params,
-  searchParams,
-}: {
-  params: { reportId: string };
-  searchParams: { v?: string };
+export default async function FinanceDirectiveRedirect(props: {
+  params: Promise<{ reportId: string }>;
+  searchParams: Promise<{ v?: string }>;
 }) {
+  // ★ Next 15: params·searchParams 가 Promise 다. 본문을 건드리지 않으려고
+  //   props 로 받아 맨 앞에서 await 해 같은 이름에 다시 묶는다.
+  const [params, searchParams] = await Promise.all([props.params, props.searchParams]);
   const v = searchParams.v ? `&v=${encodeURIComponent(searchParams.v)}` : "";
   redirect(`/finance/review/${params.reportId}?step=5${v}`);
 }

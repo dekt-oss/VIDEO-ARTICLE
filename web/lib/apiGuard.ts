@@ -36,26 +36,36 @@ export function operatorToken(key: string): string {
   return createHash("sha256").update(`${OPERATOR_TOKEN_PREFIX}${key}`).digest("hex");
 }
 
-/** 현재 요청이 운영자 잠금해제 상태인지. */
-export function isOperator(): boolean {
+/**
+ * 현재 요청이 운영자 잠금해제 상태인지.
+ *
+ * ★ Next 15 (2026-09-16): `cookies()` 가 async 라 이 함수도 async 가 됐다.
+ *   호출부(라우트 24곳)는 전부 async 핸들러라 `await` 한 단어만 붙는다.
+ *   **await 를 빠뜨리면 Promise 가 truthy 라 게이트가 항상 통과한다** —
+ *   그래서 tests/test_public_repo_guards.py 가 `await requireOperator()` 형태를 강제한다.
+ */
+export async function isOperator(): Promise<boolean> {
   const key = process.env.OPERATOR_KEY;
   // ★ 공개 저장소 대비(2026-09-15): 미설정이면 **막는다**(middleware.ts 와 같은 fail-closed).
   //   로컬 개발만 예외다. 종전엔 미설정 = 통과였고 middleware 와 반대라 한쪽이 빠지면 열렸다.
   if (!key) return process.env.NODE_ENV === "development";
-  const got = cookies().get(OPERATOR_COOKIE)?.value ?? "";
+  const got = (await cookies()).get(OPERATOR_COOKIE)?.value ?? "";
   return got.length > 0 && safeEqual(got, operatorToken(key));
 }
 
 /**
  * 비용·발행 라우트 맨 앞에서 호출한다. 통과면 null, 막히면 그대로 반환할 401 응답.
  *
- *   const denied = requireOperator();
+ *   const denied = await requireOperator();
  *   if (denied) return denied;
  *
  * error 는 한국어 문장으로 준다 — 기존 호출부가 `e?.error` 를 토스트에 그대로 띄우므로
  * 클라이언트를 고치지 않아도 사용자가 다음 행동을 알 수 있다. code 는 UI 분기용.
+ *
+ * ★ `await` 필수(Next 15). 빠뜨리면 Promise 객체가 truthy 라 "항상 막힘"으로 보이고,
+ *   반대로 isOperator() 를 await 없이 쓰면 "항상 통과"가 된다. 테스트가 형태를 감시한다.
  */
-export function requireOperator(): NextResponse | null {
+export async function requireOperator(): Promise<NextResponse | null> {
   if (!process.env.OPERATOR_KEY) {
     if (process.env.NODE_ENV === "development") return null;
     console.error("[apiGuard] OPERATOR_KEY 미설정 — 쓰기·비용·발행 라우트를 전부 막습니다(fail-closed).");
@@ -64,7 +74,7 @@ export function requireOperator(): NextResponse | null {
       { status: 503 }
     );
   }
-  if (isOperator()) return null;
+  if (await isOperator()) return null;
   return NextResponse.json(
     {
       error: "잠금 해제가 필요합니다 — /unlock 에서 운영자 키를 한 번 입력하세요(기기당 1회).",

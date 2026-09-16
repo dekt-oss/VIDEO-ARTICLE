@@ -5,18 +5,30 @@ import { cookies } from "next/headers";
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
+/**
+ * ★ Next 15 (2026-09-16): `cookies()` 가 **async** 로 바뀌었다.
+ *
+ *   그대로 옮기면 `createClient()` 도 async 가 되고 **호출부 50여 곳**이 전부
+ *   `await createClient()` 로 번진다. 대신 쿠키 어댑터 쪽을 async 로 만들었다 —
+ *   @supabase/ssr 의 `getAll`/`setAll` 은 Promise 반환을 허용한다
+ *   (`node_modules/@supabase/ssr/.../types.d.ts` 의 GetAllCookies/SetAllCookies).
+ *   그래서 `createClient()` 는 계속 동기이고 호출부는 한 줄도 안 바뀐다.
+ *
+ *   달라지는 점 하나: 예전엔 요청 컨텍스트 밖에서 부르면 **생성 시점**에 터졌는데,
+ *   이제는 첫 질의 시점에 터진다. 이 저장소에는 모듈 최상위에서 만드는 곳이 없다.
+ */
 export function createClient() {
-  const cookieStore = cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return cookieStore.getAll();
+        async getAll() {
+          return (await cookies()).getAll();
         },
-        setAll(cookiesToSet: CookieToSet[]) {
+        async setAll(cookiesToSet: CookieToSet[]) {
           try {
+            const cookieStore = await cookies();
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             );

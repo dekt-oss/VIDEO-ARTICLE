@@ -17,7 +17,7 @@ const ACTIVE = RENDER_STATUS_ACTIVE;   // ★ lib/renderStatus 가 정본
 
 export async function POST(request: Request) {
   // 재렌더는 이미지·클립·TTS 를 다시 만들 수 있다 = 돈이 나간다. 비용 라우트 게이트.
-  const denied = requireOperator();
+  const denied = await requireOperator();
   if (denied) return denied;
 
   const supabase = queueWriter(createClient());
