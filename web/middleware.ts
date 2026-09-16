@@ -83,5 +83,10 @@ export const config = {
   //   (`/review/[paperId]` 등)가 `/review/x.png` 로 들어오면 게이트를 건너뛰었다. 이 앱에는
   //   public/ 폴더가 없어 확장자로 서빙할 정적 파일이 없다 — CSS·폰트는 전부 _next/static 이다.
   //   제외 항목은 경로 경계까지 고정한다(`favicon.icoX` 같은 접두 우회 방지).
-  matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$|robots\\.txt$).*)"],
+  // ★ Next 취약점 대비(2026-09-16): `_next/image` 제외도 뺐다. GHSA-2xp9-vwfh-vxw4 는
+  //   Image Optimization API 의 미인증 RCE 이고 14.2.x 가 대상이다. 그 경로가 게이트
+  //   밖에 있어서 **비로그인으로 도달 가능한 유일한 실행 표면**이었다(실측 HTTP 400 = 살아 있음).
+  //   이 앱은 next/image 를 쓰지 않으므로(grep 0건) 막아도 잃는 기능이 없다.
+  //   업그레이드와 별개로 유지한다 — 안 쓰는 표면은 계속 닫아 둔다.
+  matcher: ["/((?!_next/static/|favicon\\.ico$|robots\\.txt$).*)"],
 };

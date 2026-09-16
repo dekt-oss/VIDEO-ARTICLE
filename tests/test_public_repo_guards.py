@@ -46,6 +46,29 @@ def test_middleware_matcher_has_no_extension_bypass():
     assert "png" not in matcher and "jpg" not in matcher, "확장자 제외는 동적 페이지 게이트 우회였다"
 
 
+def test_middleware_matcher_does_not_exempt_the_image_optimizer():
+    """`_next/image` 도 게이트를 지나야 한다 (2026-09-16).
+
+    GHSA-2xp9-vwfh-vxw4 는 Image Optimization API 의 미인증 RCE 다(next < 15.5.24).
+    그 경로가 matcher 예외로 남아 있으면 사이트 전체가 잠겨 있어도 **비로그인으로 닿는
+    실행 표면**이 하나 남는다. 이 앱은 next/image 를 쓰지 않으므로 잠가도 잃는 기능이
+    없고, 쓰기 시작하면 아래 두 번째 단언이 먼저 깨져 다시 판단하게 만든다.
+    """
+    src = (ROOT / "web" / "middleware.ts").read_text(encoding="utf-8")
+    matcher = re.search(r"matcher:\s*\[(.*?)\]", src, re.S).group(1)
+    assert "_next/image" not in matcher, "이미지 최적화 엔드포인트가 게이트 밖에 있다"
+
+    web = ROOT / "web"
+    users = sorted(
+        str(f.relative_to(web)).replace("\\", "/")
+        for f in list(web.rglob("*.tsx")) + list(web.rglob("*.ts"))
+        if "node_modules" not in f.parts
+        and f.name != "middleware.ts"
+        and "next/image" in f.read_text(encoding="utf-8")
+    )
+    assert not users, f"next/image 사용처가 생겼다 — 게이트 예외 여부를 다시 판단할 것: {users}"
+
+
 def test_every_edge_function_requires_the_invoke_secret():
     for f in sorted((ROOT / "supabase" / "functions").glob("*/index.ts")):
         src = f.read_text(encoding="utf-8")
