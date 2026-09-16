@@ -1,0 +1,30 @@
+{
+  "note": "실제 ARIA get_signal(id) 응답 캡처 (2026-07-16). 키 = signal_id(str). channel = 출처 채널, raw_content = 원문(저장 안 함, Fact Sheet 추출 재료), source_url = 원문 링크.",
+  "2871": {
+    "id": 2871,
+    "matched_at_kst": "2026-07-15 18:04",
+    "theme_name": "메모리반도체",
+    "threshold": 4,
+    "signal_level": "HIGH",
+    "total_score": 10,
+    "is_risk": false,
+    "matched_keywords": {"SK하이닉스": 3, "메모리 슈퍼사이클": 5},
+    "triggered_rules": ["RULE_4_SEMI_BONUS"],
+    "channel": "[주식] 증권사 리포트",
+    "raw_content": "[투자] [Quant Comment] 국내외 주간 이익 동향 체크 핵심 투자포인트 - 삼성전자 잠정실적(영업이익 89.4조원, YoY +1,810%) 발표로 메모리 슈퍼사이클 컨센서스 추가 상향, 반도체 섹터 전반의 실적 재추정 촉발 - 코스피 3Q26F 영업이익 278조원, 2026E 971조원(YoY +223%) - 외국인 순매수 -4조원(대형주 매도, 중소형주·가치주·코스닥 매수)",
+    "extracted_content": null,
+    "source_url": "https://stockinfo7.com/stock/report/url/133334"
+  },
+  "2923": {
+    "id": 2923,
+    "matched_at_kst": "2026-07-16 07:33",
+    "theme_name": "로봇",
+    "signal_level": "HIGH",
+    "total_score": 8,
+    "is_risk": false,
+    "channel": "신한 자동차/철강금속",
+    "raw_content": "현대차 보스턴다이나믹스, 로봇개 '스팟' 주택가 택배 배송 투입 추진. 사족보행 로봇 '스팟'을 배송차량에서 주택 현관까지 배송하는 라스트마일 기술 시연. 주 5일간 하루 200개 택배 배송 실증 사업 추진.",
+    "extracted_content": null,
+    "source_url": null
+  }
+}

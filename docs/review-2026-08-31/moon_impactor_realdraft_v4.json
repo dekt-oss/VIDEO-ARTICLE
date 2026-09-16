@@ -1,0 +1,1848 @@
+{
+  "version_type": "photo",
+  "header": {
+    "version_type": "photo",
+    "aspect_ratio": "9:16",
+    "global_style": "High-fidelity photorealistic space and lunar landscapes, with detailed spacecraft models and scientific instrumentation. Cinematic, realistic lighting.",
+    "hook_ko": "2026년, 인류가 쏘아 올린 로켓이 달에 충돌합니다. 그런데 이 로켓, 관측 중 갑자기 회전 속도를 바꿨습니다. 왜일까요?",
+    "hook_en": "In 2026, a human-launched rocket will crash into the Moon. But during observation, this rocket suddenly changed its rotation speed. Why?",
+    "cta_ko": "달 충돌 미스터리, 더 궁금하다면 이 영상을 저장하고 친구에게 공유하세요!",
+    "cta_en": "Curious about this lunar impact mystery? Save this video and share it with a friend!",
+    "bgm": {
+      "mood": "긴장",
+      "track_ref": ""
+    },
+    "media_policy": "image_preferred",
+    "total_estimated_sec": 62,
+    "hook_type": "H3",
+    "hook_reframe_angle": "scientific_wonder",
+    "hook_promise_check": {
+      "pass": true,
+      "promise": "로켓의 회전 속도 변화 원인",
+      "payoff_cut_no": [
+        10
+      ],
+      "reason": "컷 9에서 회전 속도 변화를 제시하고, 컷 10에서 그 원인이 아직 명확히 밝혀지지 않았다고 설명하며 미스터리를 해소합니다."
+    },
+    "science_reliability": {
+      "claim_type": "measured_result",
+      "evidence_strength": "high",
+      "generalization_risk": "low",
+      "required_caveat": ""
+    },
+    "cta_type": "save_prompt",
+    "loop_match": true,
+    "series_id": "",
+    "content_mode": "series_split",
+    "primary_claim_id": "C01",
+    "supporting_claim_ids": [
+      "C02",
+      "C03",
+      "C04",
+      "C05",
+      "C06"
+    ],
+    "essential_evidence_units": [
+      "E1",
+      "E2",
+      "E3",
+      "E4",
+      "E7",
+      "E8"
+    ],
+    "target_duration_min_sec": 45,
+    "target_duration_max_sec": 90,
+    "duration_reason": "핵심 결과, 정체 확인 방법, 미스터리한 현상, 충돌 규모, 연구의 의의까지 전달하려면 standard 모드가 필요합니다.",
+    "retention_plan": {
+      "novelty_interval_max_sec": 7,
+      "payoff_start_ratio": 0.72,
+      "open_loop": "이 로켓의 예상치 못한 회전 속도 변화는 무엇 때문일까요?",
+      "pattern_interrupt_cut_nos": [
+        4,
+        8
+      ]
+    },
+    "evidence_coverage": {
+      "required_claim_ids": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06"
+      ],
+      "spoken_claim_ids": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06"
+      ],
+      "visual_claim_ids": [],
+      "missing_claim_ids": [],
+      "primary_claim_covered": true,
+      "scope_present": false,
+      "method_present": true,
+      "magnitude_present": true,
+      "caveat_present": true
+    },
+    "mode_warnings": [
+      "forced_series_split_multiple_main_claims",
+      "mode_overridden:standard->series_split",
+      "motion_gate_would_demote#2",
+      "photo_mechanism_structured:3",
+      "photo_mechanism_structured:4",
+      "photo_mechanism_structured:6",
+      "too_many_spoken_numbers",
+      "video_budget_not_enforced_by_demotion",
+      "vseq_cut_claim_mismatch:SEQ1/S1_IMPACT_PREVIEW#2",
+      "vseq_cut_claim_mismatch:SEQ1/S2_ORBIT_TRACE#4",
+      "vseq_cut_claim_mismatch:SEQ1/S2_ORBIT_TRACE#5",
+      "vseq_cut_claim_mismatch:SEQ1/S3_SPECTROSCOPY_ANALYSIS#6",
+      "vseq_cut_claim_mismatch:SEQ1/S3_SPECTROSCOPY_ANALYSIS#7",
+      "vseq_cut_claim_mismatch:SEQ1/S4_ROTATION_ANOMALY#10",
+      "vseq_cut_claim_mismatch:SEQ1/S4_ROTATION_ANOMALY#8",
+      "vseq_cut_claim_mismatch:SEQ1/S4_ROTATION_ANOMALY#9",
+      "vseq_cut_claim_mismatch:SEQ1/S5_IMPACT_PREDICTION#11",
+      "vseq_cut_claim_mismatch:SEQ1/S5_IMPACT_PREDICTION#12",
+      "vseq_invalid_return_snapshot:SEQ1/S6_BENCHMARK_IMPLICATION",
+      "vseq_route_contract_conflict:1#REALITY/MECHANISM_SEQUENCE",
+      "vseq_route_contract_conflict:10#REALITY/MECHANISM_SEQUENCE",
+      "vseq_route_contract_conflict:12#REALITY/MECHANISM_SEQUENCE",
+      "vseq_route_contract_conflict:13#REALITY/MECHANISM_SEQUENCE"
+    ],
+    "visual_routing": {
+      "treatments": {
+        "MECHANISM_SEQUENCE": 8,
+        "CODE_VIZ": 0,
+        "REALITY": 3,
+        "OVERLAY": 2
+      },
+      "precision_layer_count": 3,
+      "in_sequence": 8,
+      "connective_in_world": 5,
+      "cut_claim_mismatch": 5,
+      "detail_restricted": 0,
+      "source_depth": "full_body"
+    },
+    "visual_sequences": [
+      {
+        "sequence_id": "SEQ1",
+        "sequence_role": "FRAMING",
+        "world": {
+          "world_id": "LUNAR_IMPACT_SCENE",
+          "style": "Photorealistic, high-resolution imagery of the Moon's surface and orbit. Detailed spacecraft models.",
+          "lighting": "Dramatic, high-contrast lighting from a distant sun, casting long shadows on the lunar surface.",
+          "background": "Deep space with distant stars, the Earth visible in some shots.",
+          "camera_base": "elevated_three_quarter",
+          "identity_lock": true
+        },
+        "entities": [
+          {
+            "entity_id": "MOON",
+            "entity_type": "object",
+            "visual_identity": "Detailed, cratered lunar surface, showing both illuminated and shadowed regions.",
+            "continuity": "locked"
+          },
+          {
+            "entity_id": "FALCON9_UPPERSTAGE",
+            "entity_type": "object",
+            "visual_identity": "Realistic model of a Falcon 9 upper stage rocket, cylindrical with engine nozzle, showing some wear and tear.",
+            "continuity": "locked"
+          }
+        ],
+        "stages": [
+          {
+            "stage_id": "S1_IMPACT_PREVIEW",
+            "cut_refs": [
+              1,
+              2
+            ],
+            "representation_mode": "LITERAL_OBSERVATION",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "FALCON9_UPPERSTAGE",
+                "property": "position",
+                "operation": "MOVE",
+                "visible_change": true,
+                "result_state": "Approaching the far side of the Moon, small but clearly visible against the lunar surface.",
+                "claim_ids": [
+                  "C01"
+                ]
+              }
+            ],
+            "operation": "REVEAL",
+            "camera_operation": "DOLLY_IN",
+            "continuity_mode": "NEW_WORLD",
+            "continuity_from": "",
+            "entity_refs": [
+              "MOON",
+              "FALCON9_UPPERSTAGE"
+            ],
+            "state_before": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage in deep space, far from the Moon."
+            },
+            "state_after": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage approaching the Moon's far side."
+            },
+            "observable_change": "Falcon 9 upper stage rocket appears and moves closer to the Moon's far side.",
+            "claim_ids": [
+              "C01"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage in deep space, far from the Moon."
+            },
+            "state_after_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Approaching the far side of the Moon, small but clearly visible against the lunar surface."
+            }
+          },
+          {
+            "stage_id": "S2_ORBIT_TRACE",
+            "cut_refs": [
+              3,
+              4,
+              5
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "FALCON9_UPPERSTAGE",
+                "property": "trajectory",
+                "operation": "REVERSE_TRACE",
+                "visible_change": true,
+                "result_state": "A glowing, transparent line traces backward from the Falcon 9 upper stage, showing its orbital path away from the Moon and into deep space, indicating its origin.",
+                "claim_ids": [
+                  "C02"
+                ]
+              }
+            ],
+            "operation": "FLOW",
+            "camera_operation": "ORBIT",
+            "continuity_mode": "CONTINUE_WORLD",
+            "continuity_from": "S1_IMPACT_PREVIEW",
+            "entity_refs": [
+              "MOON",
+              "FALCON9_UPPERSTAGE"
+            ],
+            "state_before": {
+              "MOON": "Moon's far side.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage in lunar orbit."
+            },
+            "state_after": {
+              "MOON": "Moon's far side.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage with a glowing trajectory line tracing its past orbit."
+            },
+            "observable_change": "A glowing line appears, tracing the rocket's orbit backward from the Moon into space.",
+            "claim_ids": [
+              "C02"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Approaching the far side of the Moon, small but clearly visible against the lunar surface."
+            },
+            "state_after_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "A glowing, transparent line traces backward from the Falcon 9 upper stage, showing its orbital path away from the Moon and into deep space, indicating its origin."
+            }
+          },
+          {
+            "stage_id": "S3_SPECTROSCOPY_ANALYSIS",
+            "cut_refs": [
+              6,
+              7
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "FALCON9_UPPERSTAGE",
+                "property": "material_composition",
+                "operation": "HIGHLIGHT",
+                "visible_change": true,
+                "result_state": "Close-up of the Falcon 9 upper stage, with specific sections glowing faintly, representing areas analyzed by spectroscopy. The glow is distinct from natural rock.",
+                "claim_ids": [
+                  "C03"
+                ]
+              }
+            ],
+            "operation": "ISOLATE",
+            "camera_operation": "DOLLY_IN",
+            "continuity_mode": "MUTATE_STATE",
+            "continuity_from": "S2_ORBIT_TRACE",
+            "entity_refs": [
+              "FALCON9_UPPERSTAGE"
+            ],
+            "state_before": {
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage in space."
+            },
+            "state_after": {
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage with highlighted sections indicating material analysis."
+            },
+            "observable_change": "Sections of the rocket glow faintly, indicating material analysis, contrasting with a natural rock next to it.",
+            "claim_ids": [
+              "C03"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "A glowing, transparent line traces backward from the Falcon 9 upper stage, showing its orbital path away from the Moon and into deep space, indicating its origin."
+            },
+            "state_after_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Close-up of the Falcon 9 upper stage, with specific sections glowing faintly, representing areas analyzed by spectroscopy. The glow is distinct from natural rock."
+            }
+          },
+          {
+            "stage_id": "S4_ROTATION_ANOMALY",
+            "cut_refs": [
+              8,
+              9,
+              10
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "FALCON9_UPPERSTAGE",
+                "property": "rotation_speed",
+                "operation": "IMPACT",
+                "visible_change": true,
+                "result_state": "The Falcon 9 upper stage rotates smoothly, then visibly stutters and changes its rotation speed, indicated by a subtle, brief visual distortion around it.",
+                "claim_ids": [
+                  "C04"
+                ]
+              }
+            ],
+            "operation": "TRANSFORM",
+            "camera_operation": "ORBIT",
+            "continuity_mode": "CONTINUE_WORLD",
+            "continuity_from": "S3_SPECTROSCOPY_ANALYSIS",
+            "entity_refs": [
+              "FALCON9_UPPERSTAGE"
+            ],
+            "state_before": {
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage rotating smoothly at a consistent speed."
+            },
+            "state_after": {
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage rotating at a slightly different, irregular speed, with a subtle visual stutter."
+            },
+            "observable_change": "The rocket's rotation visibly changes speed, with a brief, subtle visual stutter.",
+            "claim_ids": [
+              "C04"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Close-up of the Falcon 9 upper stage, with specific sections glowing faintly, representing areas analyzed by spectroscopy. The glow is distinct from natural rock."
+            },
+            "state_after_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "The Falcon 9 upper stage rotates smoothly, then visibly stutters and changes its rotation speed, indicated by a subtle, brief visual distortion around it."
+            }
+          },
+          {
+            "stage_id": "S5_IMPACT_PREDICTION",
+            "cut_refs": [
+              11,
+              12
+            ],
+            "representation_mode": "LITERAL_OBSERVATION",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "FALCON9_UPPERSTAGE",
+                "property": "impact_event",
+                "operation": "IMPACT",
+                "visible_change": true,
+                "result_state": "The Falcon 9 upper stage collides with the Moon's surface, creating a large, realistic impact crater with ejecta spreading outwards.",
+                "claim_ids": [
+                  "C05"
+                ]
+              }
+            ],
+            "operation": "REVEAL",
+            "camera_operation": "DOLLY_IN",
+            "continuity_mode": "CONTINUE_WORLD",
+            "continuity_from": "S4_ROTATION_ANOMALY",
+            "entity_refs": [
+              "MOON",
+              "FALCON9_UPPERSTAGE"
+            ],
+            "state_before": {
+              "MOON": "Moon's far side, pristine.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage rapidly approaching the Moon."
+            },
+            "state_after": {
+              "MOON": "Moon's far side with a newly formed, large impact crater.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage has impacted and is no longer visible, replaced by a crater."
+            },
+            "observable_change": "The rocket impacts the Moon, creating a large crater.",
+            "claim_ids": [
+              "C05"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "The Falcon 9 upper stage rotates smoothly, then visibly stutters and changes its rotation speed, indicated by a subtle, brief visual distortion around it."
+            },
+            "state_after_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "The Falcon 9 upper stage collides with the Moon's surface, creating a large, realistic impact crater with ejecta spreading outwards."
+            }
+          },
+          {
+            "stage_id": "S6_BENCHMARK_IMPLICATION",
+            "cut_refs": [
+              13,
+              14,
+              15
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "FALCON9_UPPERSTAGE",
+                "property": "status",
+                "operation": "TRANSFORM",
+                "visible_change": true,
+                "result_state": "The Falcon 9 upper stage, now a benchmark, glows with a soft, analytical light, surrounded by faint, transparent representations of other unidentified cislunar objects, implying its role as a reference.",
+                "claim_ids": [
+                  "C06"
+                ]
+              }
+            ],
+            "operation": "ACCUMULATE",
+            "camera_operation": "ORBIT",
+            "continuity_mode": "RETURN_WORLD",
+            "continuity_from": "S1_IMPACT_PREVIEW",
+            "entity_refs": [
+              "MOON",
+              "FALCON9_UPPERSTAGE"
+            ],
+            "state_before": {
+              "MOON": "Moon's far side.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage in space, before impact."
+            },
+            "state_after": {
+              "MOON": "Moon's far side.",
+              "FALCON9_UPPERSTAGE": "Falcon 9 upper stage glowing as a benchmark, surrounded by other cislunar objects."
+            },
+            "observable_change": "The Falcon 9 upper stage glows as a 'benchmark' for other cislunar objects, which appear as faint outlines around it.",
+            "claim_ids": [
+              "C06"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "Approaching the far side of the Moon, small but clearly visible against the lunar surface."
+            },
+            "state_after_computed": {
+              "MOON": "Moon's far side, vast and desolate.",
+              "FALCON9_UPPERSTAGE": "The Falcon 9 upper stage, now a benchmark, glows with a soft, analytical light, surrounded by faint, transparent representations of other unidentified cislunar objects, implying its role as a reference."
+            }
+          }
+        ]
+      }
+    ],
+    "visual_sequence_gate": {
+      "block_reasons": [],
+      "warnings": [
+        "vseq_cut_claim_mismatch:SEQ1/S1_IMPACT_PREVIEW#2",
+        "vseq_cut_claim_mismatch:SEQ1/S2_ORBIT_TRACE#4",
+        "vseq_cut_claim_mismatch:SEQ1/S2_ORBIT_TRACE#5",
+        "vseq_cut_claim_mismatch:SEQ1/S3_SPECTROSCOPY_ANALYSIS#6",
+        "vseq_cut_claim_mismatch:SEQ1/S3_SPECTROSCOPY_ANALYSIS#7",
+        "vseq_cut_claim_mismatch:SEQ1/S4_ROTATION_ANOMALY#10",
+        "vseq_cut_claim_mismatch:SEQ1/S4_ROTATION_ANOMALY#8",
+        "vseq_cut_claim_mismatch:SEQ1/S4_ROTATION_ANOMALY#9",
+        "vseq_cut_claim_mismatch:SEQ1/S5_IMPACT_PREDICTION#11",
+        "vseq_cut_claim_mismatch:SEQ1/S5_IMPACT_PREDICTION#12",
+        "vseq_invalid_return_snapshot:SEQ1/S6_BENCHMARK_IMPLICATION",
+        "vseq_route_contract_conflict:1#REALITY/MECHANISM_SEQUENCE",
+        "vseq_route_contract_conflict:10#REALITY/MECHANISM_SEQUENCE",
+        "vseq_route_contract_conflict:12#REALITY/MECHANISM_SEQUENCE",
+        "vseq_route_contract_conflict:13#REALITY/MECHANISM_SEQUENCE"
+      ],
+      "metrics": {
+        "sequence_count": 1,
+        "stage_count": 6,
+        "avg_stages_per_sequence": 6.0,
+        "world_reset_rate": 0.167,
+        "continuity_rate": 0.833,
+        "declared_entity_lock_ratio": 1.0,
+        "stage_entity_resolution_rate": 1.0,
+        "mechanism_sequences": 1,
+        "declared_mechanism_role": 0
+      }
+    },
+    "cost_plan": {
+      "content_mode": "series_split",
+      "max_unique_assets": 10,
+      "max_video_clips": 8,
+      "max_video_generated_sec": 110,
+      "max_video_cost_usd": 5.5,
+      "preferred_code_viz_count": 0,
+      "asset_reuse_target": 0.0,
+      "cost_priority": "evidence_over_motion",
+      "unique_asset_count": 8,
+      "reuse_count": 5,
+      "asset_reuse_ratio": 0.385,
+      "code_viz_count": 3,
+      "video_clip_count": 8,
+      "video_generated_sec": 48,
+      "estimated_image_cost_usd": 0.441,
+      "image_models": [
+        "gemini-2.5-flash-image",
+        "gemini-3-pro-image"
+      ],
+      "video_model": "veo-3.1-lite-generate-preview",
+      "estimated_video_cost_usd": 2.4,
+      "estimated_total_generation_cost_usd": 2.841,
+      "sequences": [
+        {
+          "sequence_id": "SEQ1",
+          "role": "FRAMING",
+          "tier": "standard",
+          "cuts": 8,
+          "clips": 8,
+          "video_sec": 48,
+          "candidates": 1,
+          "tier_defaulted_count": 0,
+          "est_usd": 2.4
+        }
+      ],
+      "tiers": {
+        "invest": 0,
+        "standard": 13,
+        "economy": 0
+      },
+      "tier_defaulted": 0
+    },
+    "photo_gate": {
+      "block_reasons": [
+        "photo_forbidden_screen_request:6"
+      ],
+      "warnings": [
+        "photo_mechanism_structured:3",
+        "photo_mechanism_structured:4",
+        "photo_mechanism_structured:6"
+      ],
+      "stats": {
+        "cuts": 13,
+        "mechanism": 4,
+        "reality": 9,
+        "video_cuts": 8,
+        "total_sec": 62,
+        "target_cut_range": [
+          12,
+          21
+        ]
+      }
+    },
+    "block_reasons": [
+      "photo_forbidden_screen_request:6"
+    ],
+    "approval_blocked": true,
+    "contract_retry": {
+      "attempted": true,
+      "first_block_reasons": [
+        "photo_forbidden_screen_request:6,7",
+        "vseq_state_lineage_mismatch:SEQ_METHOD_ANALYSIS/S4_SPECTRAL_ANALYSIS",
+        "vseq_too_few_stages:SEQ_IMPACT_PREDICTION",
+        "vseq_too_few_stages:SEQ_ROTATION_ANOMALY"
+      ],
+      "retry_block_reasons": [
+        "photo_forbidden_screen_request:6"
+      ],
+      "new_violations": []
+    }
+  },
+  "cuts": [
+    {
+      "cut_no": 1,
+      "scene_kind": "broll_stock",
+      "narration_ko": "2026년 8월 5일, 인류가 쏘아 올린 로켓이 달 뒷면에 충돌합니다.",
+      "narration_en": "On August 5th, 2026, a rocket launched by humans will crash into the far side of the Moon.",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "A realistic view of the Moon's far side, showing its cratered surface. A small, distant rocket, identifiable as a Falcon 9 upper stage, is visible on a collision course. No on-screen text.",
+      "motion_prompt": "Slow dolly-in towards the Moon's far side, with the Falcon 9 upper stage subtly moving closer into view. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "start_strong",
+      "source_facts": [
+        "what_found[0]",
+        "numbers[0]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C01"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "primary_result",
+      "novelty_event": "달 뒷면 로켓 충돌 예고",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "number_punch",
+          "text": "2026년 8월 5일",
+          "claim_ids": [
+            "C01"
+          ],
+          "start_sec": 0.5,
+          "duration_sec": 2.5,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 3.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "MOVE",
+          "camera": "DOLLY_IN"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 1,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "CODE_OVERLAY",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S1_IMPACT_PREVIEW",
+        "claim_refs": [
+          "C01"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence",
+          "number_needs_precision_layer"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "position",
+          "operation": "MOVE",
+          "visible_change": true,
+          "result_state": "Approaching the far side of the Moon, small but clearly visible against the lunar surface.",
+          "claim_ids": [
+            "C01"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence",
+        "number_needs_precision_layer"
+      ]
+    },
+    {
+      "cut_no": 2,
+      "scene_kind": "broll_stock",
+      "narration_ko": "이 물체의 정체는 스페이스X의 팰컨 9 로켓 상단부입니다.",
+      "narration_en": "This object is the upper stage of a SpaceX Falcon 9 rocket.",
+      "estimated_sec": 5,
+      "visual_type": "image",
+      "visual_prompt": "A closer, still realistic view of the Falcon 9 upper stage rocket against the Moon's far side, clearly identifiable. No on-screen text.",
+      "motion_prompt": "Continue slow dolly-in, slightly orbiting the Falcon 9 upper stage to reveal more detail. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "Cut 1",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "what_found[0]",
+        "source"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "connective",
+      "novelty_event": "로켓의 정체 공개",
+      "beat": "SCOPE",
+      "beat_declared": true,
+      "motion_value": "medium",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G01",
+      "base_asset_ref": "1",
+      "state_change": "The Falcon 9 upper stage is now more clearly visible, slightly larger in the frame, confirming its identity.",
+      "crop": {
+        "cx": 0.5,
+        "cy": 0.5,
+        "scale": 1.2
+      },
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "source_card",
+          "text": "arXiv 연구 (2026)",
+          "claim_ids": [
+            "source"
+          ],
+          "start_sec": 0.5,
+          "duration_sec": 2.5,
+          "priority": "supporting"
+        }
+      ],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 5.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "MOVE",
+          "camera": "ORBIT"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 2,
+        "beat": "SCOPE",
+        "beat_declared": true,
+        "base": "OVERLAY",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S1_IMPACT_PREVIEW",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "OVERLAY"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "position",
+          "operation": "MOVE",
+          "visible_change": true,
+          "result_state": "Approaching the far side of the Moon, small but clearly visible against the lunar surface.",
+          "claim_ids": [
+            "C01"
+          ]
+        }
+      ],
+      "visual_treatment": "OVERLAY",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 3,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "연구진은 궤도를 거꾸로 추적해 특정 발사체와 연결했죠.",
+      "narration_en": "Researchers traced its orbit backward to link it to a specific launch.",
+      "estimated_sec": 4,
+      "visual_type": "image",
+      "visual_prompt": "A 3D schematic view of the Moon and the Falcon 9 upper stage in orbit. A glowing, transparent line extends backward from the rocket, illustrating its orbital path being traced in reverse. No on-screen text.",
+      "motion_prompt": "Camera slowly orbits the Moon, revealing the Falcon 9 upper stage. A glowing line emerges from the rocket, tracing its path backward into space. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "how[1]",
+        "claims[1]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C02"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "method",
+      "novelty_event": "궤도 역추적 방법 설명",
+      "beat": "EXPERIMENT_SETUP",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "MECHANISM",
+      "mechanism": {
+        "subject": "궤도 역추적",
+        "components": [
+          "FALCON9_UPPERSTAGE",
+          "MOON",
+          "ORBITAL_PATH"
+        ],
+        "relationship": "로켓의 현재 위치에서 과거 궤도를 역으로 추적하여 발사 지점과 연결한다.",
+        "initial_state": "Falcon 9 upper stage orbiting the Moon.",
+        "transformation": "A glowing line appears from the rocket and extends backward, tracing its path away from the Moon.",
+        "final_state": "Falcon 9 upper stage with a glowing line showing its past trajectory, connecting it to a distant point in space (representing its launch origin).",
+        "highlighted_element": "ORBITAL_PATH",
+        "claim_ids": [
+          "C02"
+        ]
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 4.0,
+          "entity_id": "ORBITAL_PATH",
+          "mutation": "APPEAR",
+          "camera": "ORBIT"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 3,
+        "beat": "EXPERIMENT_SETUP",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S2_ORBIT_TRACE",
+        "claim_refs": [
+          "C02"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "trajectory",
+          "operation": "REVERSE_TRACE",
+          "visible_change": true,
+          "result_state": "A glowing, transparent line traces backward from the Falcon 9 upper stage, showing its orbital path away from the Moon and into deep space, indicating its origin.",
+          "claim_ids": [
+            "C02"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence"
+      ]
+    },
+    {
+      "cut_no": 4,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "또 분광 분석을 통해 자연물이 아닌, 우주선 단열재와 일치하는 물질임을 확인했습니다.",
+      "narration_en": "They also used spectroscopy to confirm it wasn't a natural object, but a material consistent with spacecraft thermal insulation.",
+      "estimated_sec": 6,
+      "visual_type": "image",
+      "visual_prompt": "A 3D schematic of the Falcon 9 upper stage and a lunar rock sample floating in space. A light beam hits both objects. Specific sections of the rocket glow with a distinct pattern, visually different from the glow of the natural rock sample. No on-screen text.",
+      "motion_prompt": "A light beam sweeps across the Falcon 9 upper stage and a natural rock sample. The rocket's surface then emits a specific, distinct glow, while the rock emits a different glow. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "tension_build",
+      "source_facts": [
+        "what_found[2]",
+        "how[2]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C03"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "method",
+      "novelty_event": "분광 분석 결과 제시",
+      "beat": "MEASUREMENT",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "MECHANISM",
+      "mechanism": {
+        "subject": "분광 분석",
+        "components": [
+          "FALCON9_UPPERSTAGE",
+          "SPECTROSCOPE_BEAM",
+          "NATURAL_ROCK_SAMPLE"
+        ],
+        "relationship": "분광 분석 빔이 로켓과 자연물에 조사되어 물질 구성 차이를 보여준다.",
+        "initial_state": "Falcon 9 upper stage and a natural rock sample floating side-by-side in space.",
+        "transformation": "A beam of light hits both objects, and then specific areas on the rocket glow, indicating absorption bands matching spacecraft insulation, while the natural rock shows a different, distinct glow.",
+        "final_state": "Falcon 9 upper stage with glowing sections (matching insulation) and a natural rock sample with a different glow (matching natural material), clearly showing a distinction.",
+        "highlighted_element": "FALCON9_UPPERSTAGE",
+        "claim_ids": [
+          "C03"
+        ]
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 2.0,
+          "entity_id": "SPECTROSCOPE_BEAM",
+          "mutation": "APPEAR",
+          "camera": "HOLD"
+        },
+        {
+          "beat": 2,
+          "t0": 2.0,
+          "t1": 6.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "HIGHLIGHT",
+          "camera": "HOLD"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 4,
+        "beat": "MEASUREMENT",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S2_ORBIT_TRACE",
+        "claim_refs": [
+          "C03"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence",
+          "cut_claim_not_in_stage"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "trajectory",
+          "operation": "REVERSE_TRACE",
+          "visible_change": true,
+          "result_state": "A glowing, transparent line traces backward from the Falcon 9 upper stage, showing its orbital path away from the Moon and into deep space, indicating its origin.",
+          "claim_ids": [
+            "C02"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence",
+        "cut_claim_not_in_stage"
+      ]
+    },
+    {
+      "cut_no": 5,
+      "scene_kind": "kinetic_typography",
+      "narration_ko": "그런데 이상한 점이 발견됐습니다.",
+      "narration_en": "But something strange was discovered.",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "A dark, empty space with subtle, swirling cosmic dust. No on-screen text.",
+      "motion_prompt": "",
+      "loop_safe": false,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "tension_peak",
+      "source_facts": [],
+      "render_notes": "",
+      "motion_source": "still",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "connective",
+      "novelty_event": "미스터리 제시",
+      "beat": "QUESTION",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "text_only_transition",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 5,
+        "beat": "QUESTION",
+        "beat_declared": true,
+        "base": "REALITY",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S2_ORBIT_TRACE",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "REALITY"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "trajectory",
+          "operation": "REVERSE_TRACE",
+          "visible_change": true,
+          "result_state": "A glowing, transparent line traces backward from the Falcon 9 upper stage, showing its orbital path away from the Moon and into deep space, indicating its origin.",
+          "claim_ids": [
+            "C02"
+          ]
+        }
+      ],
+      "visual_treatment": "REALITY",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 6,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "약 7분 주기로 돌던 이 로켓의 회전 속도가 관측 중 8초 넘게 변한 겁니다.",
+      "narration_en": "The rocket's rotation period, which was about 7 minutes, changed by more than 8 seconds during observation.",
+      "estimated_sec": 8,
+      "visual_type": "image",
+      "visual_prompt": "A 3D schematic of the Falcon 9 upper stage rotating in space. Initially, it rotates smoothly. Then, its rotation visibly stutters and changes speed. A subtle visual indicator, like a glowing ring around its axis, changes its pulsation frequency to reflect the speed change. No on-screen text.",
+      "motion_prompt": "The Falcon 9 upper stage rotates steadily, then visibly stutters and changes its rotation speed. The camera slowly orbits the rocket. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "what_found[3]",
+        "numbers[1]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C04"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "primary_result",
+      "novelty_event": "회전 속도 변화 발견",
+      "beat": "RESULT",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "number_punch",
+          "text": "7분 주기 → 8초 이상 변화",
+          "claim_ids": [
+            "C04",
+            "numbers[1]"
+          ],
+          "start_sec": 3.0,
+          "duration_sec": 4.0,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "MECHANISM",
+      "mechanism": {
+        "subject": "로켓 회전 속도 변화",
+        "components": [
+          "FALCON9_UPPERSTAGE",
+          "ROTATION_INDICATOR"
+        ],
+        "relationship": "로켓이 일정한 속도로 회전하다가 갑자기 속도가 변하는 것을 시각적으로 보여준다.",
+        "initial_state": "Falcon 9 upper stage rotating smoothly at a consistent speed, with a visual indicator of its rotation period (e.g., a subtle, consistent glow or line).",
+        "transformation": "The rotation visibly stutters and then proceeds at a slightly different speed. The rotation indicator also changes to reflect this new speed.",
+        "final_state": "Falcon 9 upper stage rotating at a new, slightly altered speed, with the rotation indicator showing the changed period.",
+        "highlighted_element": "ROTATION_INDICATOR",
+        "claim_ids": [
+          "C04"
+        ]
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 4.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "ROTATE",
+          "camera": "ORBIT"
+        },
+        {
+          "beat": 2,
+          "t0": 4.0,
+          "t1": 8.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "TRANSFORM",
+          "camera": "ORBIT"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 6,
+        "beat": "RESULT",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "CODE_OVERLAY",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S3_SPECTROSCOPY_ANALYSIS",
+        "claim_refs": [
+          "C04"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence",
+          "cut_claim_not_in_stage",
+          "number_needs_precision_layer"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "material_composition",
+          "operation": "HIGHLIGHT",
+          "visible_change": true,
+          "result_state": "Close-up of the Falcon 9 upper stage, with specific sections glowing faintly, representing areas analyzed by spectroscopy. The glow is distinct from natural rock.",
+          "claim_ids": [
+            "C03"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence",
+        "cut_claim_not_in_stage",
+        "number_needs_precision_layer"
+      ]
+    },
+    {
+      "cut_no": 7,
+      "scene_kind": "kinetic_typography",
+      "narration_ko": "이 변화의 원인은 아직 명확히 밝혀지지 않았습니다.",
+      "narration_en": "The reason for this change is not yet clear.",
+      "estimated_sec": 5,
+      "visual_type": "image",
+      "visual_prompt": "A dark, empty space with subtle, swirling cosmic dust. No on-screen text.",
+      "motion_prompt": "",
+      "loop_safe": false,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "tension_release",
+      "source_facts": [
+        "limitations[0]"
+      ],
+      "render_notes": "",
+      "motion_source": "still",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "caveat",
+      "novelty_event": "원인 미규명",
+      "beat": "LIMITATION",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "text_only_transition",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 7,
+        "beat": "LIMITATION",
+        "beat_declared": true,
+        "base": "OVERLAY",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S3_SPECTROSCOPY_ANALYSIS",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "OVERLAY"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "material_composition",
+          "operation": "HIGHLIGHT",
+          "visible_change": true,
+          "result_state": "Close-up of the Falcon 9 upper stage, with specific sections glowing faintly, representing areas analyzed by spectroscopy. The glow is distinct from natural rock.",
+          "claim_ids": [
+            "C03"
+          ]
+        }
+      ],
+      "visual_treatment": "OVERLAY",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 8,
+      "scene_kind": "broll_stock",
+      "narration_ko": "하지만 충돌은 예정대로 진행될 것으로 보입니다.",
+      "narration_en": "However, the impact is expected to proceed as scheduled.",
+      "estimated_sec": 5,
+      "visual_type": "image",
+      "visual_prompt": "A close-up, realistic view of the Falcon 9 upper stage rapidly approaching the Moon's surface. The Moon's surface is visible in the foreground, getting larger. No on-screen text.",
+      "motion_prompt": "Rapid dolly-in towards the Moon's surface, with the Falcon 9 upper stage appearing to accelerate towards it. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "Cut 2",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "what_found[4]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "connective",
+      "novelty_event": "충돌 예정",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G01",
+      "base_asset_ref": "2",
+      "state_change": "The Falcon 9 upper stage is now much closer to the Moon, clearly on a collision course, emphasizing the inevitability of impact.",
+      "crop": {
+        "cx": 0.5,
+        "cy": 0.5,
+        "scale": 1.5
+      },
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 5.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "MOVE",
+          "camera": "DOLLY_IN"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 8,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "REALITY",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S4_ROTATION_ANOMALY",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "REALITY"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "rotation_speed",
+          "operation": "IMPACT",
+          "visible_change": true,
+          "result_state": "The Falcon 9 upper stage rotates smoothly, then visibly stutters and changes its rotation speed, indicated by a subtle, brief visual distortion around it.",
+          "claim_ids": [
+            "C04"
+          ]
+        }
+      ],
+      "visual_treatment": "REALITY",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 9,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "초속 약 2.4km 속도로 부딪혀 지름 약 40미터의 분화구를 만들 것으로 예측됩니다.",
+      "narration_en": "It's predicted to hit at about 2.4 kilometers per second, creating a crater about 40 meters in diameter.",
+      "estimated_sec": 8,
+      "visual_type": "image",
+      "visual_prompt": "A realistic 3D animation of the Falcon 9 upper stage impacting the Moon's surface. The impact creates a large, detailed crater with ejecta spreading outwards. No on-screen text.",
+      "motion_prompt": "The Falcon 9 upper stage impacts the Moon's surface, creating a large crater. The camera pulls back slightly to show the full scale of the impact. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "impact_sound",
+      "source_facts": [
+        "what_found[4]",
+        "numbers[2]",
+        "numbers[3]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C05"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "magnitude",
+      "novelty_event": "충돌 속도와 분화구 크기 예측",
+      "beat": "RESULT",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "The rocket impacts the Moon's surface, creating a large, realistic crater.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "number_punch",
+          "text": "속도: 2.4km/s",
+          "claim_ids": [
+            "C05",
+            "numbers[2]"
+          ],
+          "start_sec": 2.0,
+          "duration_sec": 3.0,
+          "priority": "primary"
+        },
+        {
+          "type": "evidence_card",
+          "text": "분화구: 지름 40m",
+          "claim_ids": [
+            "C05",
+            "numbers[3]"
+          ],
+          "start_sec": 5.0,
+          "duration_sec": 3.0,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "MECHANISM",
+      "mechanism": {
+        "subject": "충돌 분화구 형성",
+        "components": [
+          "FALCON9_UPPERSTAGE",
+          "MOON_SURFACE",
+          "IMPACT_CRATER"
+        ],
+        "relationship": "로켓이 달 표면에 충돌하여 분화구를 형성하는 과정을 보여준다.",
+        "initial_state": "Falcon 9 upper stage milliseconds before impact with the Moon's surface.",
+        "transformation": "The rocket impacts the surface, generating a shockwave and ejecta, rapidly forming a crater.",
+        "final_state": "A newly formed, large impact crater on the Moon's surface, with the rocket no longer visible.",
+        "highlighted_element": "IMPACT_CRATER",
+        "claim_ids": [
+          "C05"
+        ]
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 3.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "IMPACT",
+          "camera": "DOLLY_IN"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 9,
+        "beat": "RESULT",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "CODE_OVERLAY",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S4_ROTATION_ANOMALY",
+        "claim_refs": [
+          "C05"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence",
+          "cut_claim_not_in_stage",
+          "number_needs_precision_layer"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "rotation_speed",
+          "operation": "IMPACT",
+          "visible_change": true,
+          "result_state": "The Falcon 9 upper stage rotates smoothly, then visibly stutters and changes its rotation speed, indicated by a subtle, brief visual distortion around it.",
+          "claim_ids": [
+            "C04"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence",
+        "cut_claim_not_in_stage",
+        "number_needs_precision_layer"
+      ]
+    },
+    {
+      "cut_no": 10,
+      "scene_kind": "broll_stock",
+      "narration_ko": "이처럼 출처가 확인된 충돌체는, 앞으로 달 주변의 정체불명 물체를 추적하고 분석하는 중요한 기준이 될 겁니다.",
+      "narration_en": "An impactor with a known origin like this will serve as a crucial benchmark for tracking and analyzing unidentified objects around the Moon in the future.",
+      "estimated_sec": 5,
+      "visual_type": "image",
+      "visual_prompt": "A realistic view of the Moon's orbit, with the Earth visible in the background. Several faint, transparent outlines of unidentified cislunar objects are subtly orbiting. A single, clearly defined Falcon 9 upper stage (representing the benchmark) orbits prominently among them. No on-screen text.",
+      "motion_prompt": "The camera slowly orbits the Moon, revealing several faint, transparent cislunar objects. The Falcon 9 upper stage, distinct and clear, orbits among them as a central reference. Loop-safe.",
+      "loop_safe": true,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "end_fade",
+      "source_facts": [
+        "claims[5]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C06"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "implication",
+      "novelty_event": "미래 연구의 기준점 제시",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 5.0,
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "mutation": "HIGHLIGHT",
+          "camera": "ORBIT"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 10,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S4_ROTATION_ANOMALY",
+        "claim_refs": [
+          "C06"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence",
+          "cut_claim_not_in_stage"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "rotation_speed",
+          "operation": "IMPACT",
+          "visible_change": true,
+          "result_state": "The Falcon 9 upper stage rotates smoothly, then visibly stutters and changes its rotation speed, indicated by a subtle, brief visual distortion around it.",
+          "claim_ids": [
+            "C04"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence",
+        "cut_claim_not_in_stage"
+      ]
+    },
+    {
+      "cut_no": 11,
+      "scene_kind": "broll_stock",
+      "narration_ko": "이처럼 출처가 확인된 충돌체는",
+      "narration_en": "An impactor with a known origin like this",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "A closer view of the Falcon 9 upper stage orbiting the Moon, with other faint cislunar objects in the background. No on-screen text.",
+      "motion_prompt": "",
+      "loop_safe": true,
+      "style_anchor_ref": "Cut 10",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "claims[5]"
+      ],
+      "render_notes": "",
+      "motion_source": "still",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "connective",
+      "novelty_event": "결론 연결",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "reuse_crop",
+      "visual_reuse_group": "G02",
+      "base_asset_ref": "10",
+      "state_change": "The Falcon 9 upper stage is slightly more prominent, emphasizing its role.",
+      "crop": {
+        "cx": 0.5,
+        "cy": 0.5,
+        "scale": 1.2
+      },
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 11,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "REALITY",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S5_IMPACT_PREDICTION",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "REALITY"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "impact_event",
+          "operation": "IMPACT",
+          "visible_change": true,
+          "result_state": "The Falcon 9 upper stage collides with the Moon's surface, creating a large, realistic impact crater with ejecta spreading outwards.",
+          "claim_ids": [
+            "C05"
+          ]
+        }
+      ],
+      "visual_treatment": "REALITY",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 12,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "앞으로 달 주변의 정체불명 물체를 추적하고",
+      "narration_en": "will serve as a crucial benchmark for tracking and analyzing unidentified objects around the Moon",
+      "estimated_sec": 4,
+      "visual_type": "image",
+      "visual_prompt": "The Falcon 9 upper stage orbiting the Moon, with the faint cislunar objects now appearing with subtle, glowing lines tracing their paths, indicating tracking. No on-screen text.",
+      "motion_prompt": "",
+      "loop_safe": true,
+      "style_anchor_ref": "Cut 11",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "claims[5]"
+      ],
+      "render_notes": "",
+      "motion_source": "still",
+      "claim_ids": [
+        "C06"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "implication",
+      "novelty_event": "미확인 물체 추적",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G02",
+      "base_asset_ref": "11",
+      "state_change": "The Falcon 9 upper stage remains prominent, and the faint outlines of other cislunar objects become slightly more defined, as if being 'tracked'.",
+      "crop": {
+        "cx": 0.5,
+        "cy": 0.5,
+        "scale": 1.1
+      },
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 12,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S5_IMPACT_PREDICTION",
+        "claim_refs": [
+          "C06"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence",
+          "cut_claim_not_in_stage"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "impact_event",
+          "operation": "IMPACT",
+          "visible_change": true,
+          "result_state": "The Falcon 9 upper stage collides with the Moon's surface, creating a large, realistic impact crater with ejecta spreading outwards.",
+          "claim_ids": [
+            "C05"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence",
+        "cut_claim_not_in_stage"
+      ]
+    },
+    {
+      "cut_no": 13,
+      "scene_kind": "broll_stock",
+      "narration_ko": "분석하는 중요한 기준이 될 겁니다.",
+      "narration_en": "and analyzing unidentified objects around the Moon in the future.",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "The Falcon 9 upper stage orbiting the Moon, glowing brightly as a benchmark. The other cislunar objects now have subtle, transparent analytical overlays on them, indicating they are being compared and analyzed. No on-screen text.",
+      "motion_prompt": "",
+      "loop_safe": true,
+      "style_anchor_ref": "Cut 12",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "end_loop",
+      "source_facts": [
+        "claims[5]"
+      ],
+      "render_notes": "",
+      "motion_source": "still",
+      "claim_ids": [
+        "C06"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "implication",
+      "novelty_event": "분석 기준 확립",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G02",
+      "base_asset_ref": "12",
+      "state_change": "The Falcon 9 upper stage glows more brightly as a 'benchmark', and the other cislunar objects now have subtle analytical overlays, indicating they are being 'analyzed' against the benchmark.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 13,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1",
+        "world_ref": "LUNAR_IMPACT_SCENE",
+        "stage_ref": "S6_BENCHMARK_IMPLICATION",
+        "claim_refs": [
+          "C06"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "FALCON9_UPPERSTAGE",
+          "property": "status",
+          "operation": "TRANSFORM",
+          "visible_change": true,
+          "result_state": "The Falcon 9 upper stage, now a benchmark, glows with a soft, analytical light, surrounded by faint, transparent representations of other unidentified cislunar objects, implying its role as a reference.",
+          "claim_ids": [
+            "C06"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence"
+      ]
+    }
+  ]
+}

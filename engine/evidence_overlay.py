@@ -1,0 +1,207 @@
+"""근거 오버레이 — 말하지 않고 화면으로 증명하는 레이어 (수정명세 §11 / M-E3).
+
+명세의 핵심 주장은 "모든 근거를 말하지 말고 나머지는 화면으로 증명하라"인데, 이 저장소에는
+그 렌더 경로가 **없었다**. `overlay_plan` 이 미구현인 정도가 아니라 기존 `text_overlay:<문구>`
+이펙트조차 `assemble.effect_filter` 가 켄번스/팬만 해석해 조용히 버려지고 있었다.
+
+★ 판단: 새 렌더 바이너리는 필요 없다. `engine/subtitles.py:build_ass` 가 이미 이름 있는 Style
+  여러 개 + 독립 Dialogue 이벤트를 지원하고, `Footer` 스타일이 "값이 있을 때만 정의 → 기존 출력
+  바이트 불변"이라는 정확히 필요한 추가 패턴을 보여준다. ASS 는 언어별로 생성되므로 언어 독립
+  에셋 불변식(I1)도 자동으로 지켜진다 — 이미지·영상에 글자를 굽지 않는다.
+
+★ 순수 모듈: 파일·네트워크·ffmpeg 를 모른다. (컷, 시작시각) → ASS 이벤트 튜플만 만든다.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from . import config
+
+# 오버레이 유형 → ASS 스타일 이름. 스타일 정의는 subtitles.build_ass 가 만든다.
+_STYLE_BY_TYPE: dict[str, str] = {
+    "source_card": "Evidence",
+    "evidence_card": "Evidence",
+    "scope_tag": "Evidence",
+    "number_punch": "NumberPunch",
+    "caveat_tag": "Caveat",
+}
+_DEFAULT_STYLE = "Evidence"
+
+
+@dataclass(frozen=True)
+class OverlayCue:
+    """ASS 로 굽기 직전의 오버레이 1건. (start, end) 는 영상 전체 타임라인 기준."""
+
+    start: float
+    end: float
+    text: str
+    style: str
+
+    def as_tuple(self) -> tuple[float, float, str, str]:
+        return (self.start, self.end, self.text, self.style)
+
+
+def sanitize_overlay_type(v: Any) -> str:
+    tok = str(v or "").strip().lower()
+    return tok if tok in config.OVERLAY_TYPES else "evidence_card"
+
+
+def _payload_text(item: dict[str, Any]) -> str:
+    """오버레이 표시 문구. `text` 가 있으면 그대로, 없으면 payload 를 사람이 읽는 한 줄로."""
+    text = str(item.get("text") or "").strip()
+    if text:
+        return text
+    payload = item.get("payload")
+    if not isinstance(payload, dict):
+        return ""
+    parts = [f"{k}: {v}" for k, v in payload.items() if str(v or "").strip()]
+    return " · ".join(parts)
+
+
+def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
+    """지시서 컷의 `overlay_plan` 정규화 (수정명세 §11-2).
+
+    ★ 코드가 강제하는 것(§11-4): 유형 enum · 최소 노출 2초 · 컷당 최대 2개 ·
+      한 화면 핵심 숫자 1개(number_punch 는 컷당 1건만 살린다).
+    """
+    items = v if isinstance(v, list) else []
+    out: list[dict[str, Any]] = []
+    number_used = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        otype = sanitize_overlay_type(item.get("type"))
+        text = _payload_text(item)
+        if not text:
+            continue
+        if otype == "number_punch":
+            if number_used:
+                # §11-4 한 화면에 핵심 숫자는 1개. 두 번째부터는 보조 카드로 강등한다.
+                otype = "evidence_card"
+            else:
+                number_used = True
+        try:
+            start = max(0.0, float(item.get("start_sec") or 0.0))
+        except (TypeError, ValueError):
+            start = 0.0
+        try:
+            dur = float(item.get("duration_sec") or config.OVERLAY_MIN_SEC)
+        except (TypeError, ValueError):
+            dur = config.OVERLAY_MIN_SEC
+        claim_ids = item.get("claim_ids") or []
+        if isinstance(claim_ids, str):
+            claim_ids = [claim_ids]
+        out.append({
+            "type": otype,
+            "text": text,
+            "claim_ids": [str(c).strip() for c in claim_ids if str(c).strip()],
+            "start_sec": start,
+            # 2초 미만으로 지나가는 카드는 읽히지 않는다 — 최소 노출을 코드가 보장한다.
+            "duration_sec": max(config.OVERLAY_MIN_SEC, dur),
+            "priority": (str(item.get("priority") or "").strip().lower()
+                         if str(item.get("priority") or "").strip().lower()
+                         in config.OVERLAY_PRIORITIES else config.DEFAULT_OVERLAY_PRIORITY),
+        })
+        if len(out) >= config.OVERLAY_MAX_PER_CUT:
+            break
+    return out
+
+
+def _legacy_text_overlays(cut: dict[str, Any]) -> list[dict[str, Any]]:
+    """`effects` 의 `text_overlay:<문구>` 토큰을 오버레이로 승계한다.
+
+    이 토큰은 지금까지 정규화는 통과하지만 렌더에서 버려졌다. 지시서 프롬프트가 "세부 수치는
+    text_overlay 가 담당"이라고 시켜 왔으므로, 그 지시를 이제야 실제로 이행하는 셈이다.
+    """
+    out: list[dict[str, Any]] = []
+    for eff in (cut.get("effects") or []):
+        tok = str(eff)
+        if not tok.startswith("text_overlay:"):
+            continue
+        text = tok.split(":", 1)[1].strip()
+        if text:
+            out.append({"type": "evidence_card", "text": text,
+                        "start_sec": 0.0, "duration_sec": config.OVERLAY_MIN_SEC})
+    return out
+
+
+def build_overlay_cues(
+    cuts: list[dict[str, Any]], starts: list[float], durations: list[float],
+    skip_cut_nos: set[Any] | None = None,
+) -> list[tuple[float, float, str, str]]:
+    """컷별 overlay_plan → 영상 전체 타임라인의 ASS 이벤트.
+
+    `starts[i]`·`durations[i]` 는 렌더가 실측한 컷 시작시각·화면시간이다(나레이션 실측 기준).
+    오버레이는 자기 컷 밖으로 나가지 않도록 컷 끝에서 잘린다 — 다음 컷 화면에 남으면 근거가
+    엉뚱한 장면에 붙는다.
+
+    skip_cut_nos: 이 컷들은 오버레이를 내보내지 않는다. 설명판형 코드 보드가 그 텍스트를 화면에
+      **직접 그리기 때문**이다 — 둘 다 내면 같은 문장이 두 번 뜨고 자막 위에 겹친다(실측).
+      기본 None = 기존 동작 그대로(논문 라인 출력 불변).
+    """
+    skip = skip_cut_nos or set()
+    cues: list[tuple[float, float, str, str]] = []
+    for i, cut in enumerate(cuts):
+        if i >= len(starts) or i >= len(durations):
+            break
+        if cut.get("cut_no") in skip:
+            continue
+        plan = normalize_overlay_plan(cut.get("overlay_plan"))
+        if not plan:
+            plan = normalize_overlay_plan(_legacy_text_overlays(cut))
+        cut_start, cut_dur = starts[i], durations[i]
+        for item in plan:
+            start = cut_start + min(item["start_sec"], max(0.0, cut_dur - 0.1))
+            end = min(cut_start + cut_dur, start + item["duration_sec"])
+            if end - start <= 0:
+                continue
+            cues.append((start, end, item["text"],
+                         _STYLE_BY_TYPE.get(item["type"], _DEFAULT_STYLE)))
+    return cues
+
+
+def overlay_warnings(cuts: list[dict[str, Any]]) -> list[str]:
+    """승인 화면용 경고 — 화면으로 증명하라고 했는데 카드가 하나도 없는 근거 컷 등."""
+    out: list[str] = []
+    for cut in cuts:
+        plan = cut.get("overlay_plan")
+        if isinstance(plan, list) and len(plan) > config.OVERLAY_MAX_PER_CUT:
+            out.append(f"too_many_overlays#{cut.get('cut_no')}")
+    return out
+
+
+def cue_visibility_warnings(
+    cues: list[tuple[float, float, str, str]],
+    min_sec: float | None = None,
+) -> list[str]:
+    """Q4 출처 가시성(§9) — **실제로 화면에 떠 있던 시간**이 계약보다 짧은 큐.
+
+    ★★ 무엇이 비어 있었나(2026-09-03): `OVERLAY_MIN_SEC`(2.0초, §11-4 "2초 미만으로
+      지나가는 복잡한 카드 금지")를 `normalize_overlay_plan` 이 **선언 단계에서** 강제한다
+      (`max(config.OVERLAY_MIN_SEC, dur)`). 그런데 `build_overlay_cues` 가 큐를 컷 경계에서
+      **잘라낸다**:
+
+          end = min(cut_start + cut_dur, start + item["duration_sec"])
+
+      즉 컷 끝에 붙은 출처 카드는 0.1초까지 줄어들 수 있고, 유일한 방어가
+      `if end - start <= 0: continue` 였다. **계약을 선언한 곳과 어기는 곳이 달라서**
+      아무도 몰랐다 — 이 저장소가 반복해 겪은 "만들어 놓고 한쪽만 연결"이다.
+
+    ★ 판정이 아니라 **경고**다. 컷이 짧아서 잘린 것은 대본·타이밍 문제라 렌더를 죽여서
+      풀리지 않는다. 운영자가 ⑥ 화면에서 보고 대본을 줄이거나 컷을 늘린다.
+
+    ★ 출처(Evidence 스타일)를 먼저 적는다 — 귀속이 안 읽히면 근거 없는 화면이 된다.
+    """
+    floor = config.OVERLAY_MIN_SEC if min_sec is None else float(min_sec)
+    out: list[str] = []
+    for start, end, text, style in cues or []:
+        shown = float(end) - float(start)
+        if shown + 1e-6 >= floor:
+            continue
+        label = (text or "").strip().replace("\n", " ")[:18]
+        out.append(f"overlay_too_brief:{style}:{shown:.1f}s<{floor:.1f}s:'{label}'")
+    # 출처가 먼저 보이게 정렬한다(사유가 많을 때 잘려도 중요한 것이 남는다).
+    out.sort(key=lambda r: (0 if ":Evidence:" in r else 1, r))
+    return out

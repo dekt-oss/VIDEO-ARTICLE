@@ -1,0 +1,158 @@
+# 영상 렌더 워커 (P-V1, DV1) — 승인된 지시서를 mp4 로 렌더.
+# 클라우드 층(Edge/Vercel)에서는 ffmpeg 렌더가 불가하므로 GitHub Actions 러너에서 실행한다.
+#
+# 트리거:
+#  - workflow_dispatch: 수동/대시보드 승인 후 즉시(대시보드는 GITHUB_DISPATCH_TOKEN 으로 트리거).
+#    mode=poll 이면 render_jobs 큐 소비, demo=버전2 관통, demo-anim=버전3(Manim) 관통.
+#  - schedule(하루 3번): 토큰 미설정·트리거 실패 대비 안전망. 큐가 비었으면 무거운 설치 없이 즉시 종료.
+#    → 승인만 하면(토큰 없어도) 다음 안전망 시각에 자동 렌더. 정체된 잡도 watchdog 로 재큐.
+#    ★ 주기를 */15 에서 하루 3번으로 낮췄다(2026-08-12, 비용). 근거: 실측 8/11 스케줄 실행 22회가
+#      전부 10~24초 "큐 비었음" 이었고 실제 작업은 0건인데, GitHub 은 잡당 1분으로 올림 과금한다.
+#      워커 5개 합계로 하루 약 100분이 빈 폴링에 나갔다. GITHUB_DISPATCH_TOKEN 이 설정돼 있어
+#      대시보드 버튼은 즉시 실행되므로 크론은 순수 안전망이다.
+#    ★ 대가: 토큰이 실패한 경우 승인→렌더 대기가 최대 15분에서 낮 최대 6시간·야간 최대 12시간으로
+#      늘어난다. 정체 잡 watchdog 재큐도 같은 주기로 늦어진다. 급하면 Actions 탭에서 수동 실행한다.
+#
+# 필요한 Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY, (P-V1) GEMINI_API_KEY / ELEVENLABS_API_KEY.
+name: render
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "poll(큐 소비) | demo(버전2 mp4) | demo-anim(버전3 Manim mp4) | demo-both(한/영 2본)"
+        required: false
+        default: "poll"
+  schedule:
+    # 안전망 주기 — 하루 3번(UTC 00/06/12 = KST 09:00/15:00/21:00).
+    # 대시보드 버튼은 GITHUB_DISPATCH_TOKEN 으로 즉시 실행되므로 이 크론은 토큰 실패 시 보험이다.
+    - cron: "0 0,6,12 * * *"
+
+# 동시에 두 워커가 같은 잡을 처리하지 않도록 직렬화(원자적 클레임과 함께 중복 렌더 방지).
+concurrency:
+  group: render-worker
+  cancel-in-progress: false
+
+# ★ 공개 저장소 대비(2026-09-15): GITHUB_TOKEN 최소 권한. 쓰기가 필요한 잡만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    # ★ 30 → 60 (2026-09-02). 실측: 과거 수동 렌더 30건의 소요가 8~21분(최장 1,269초)이었고
+    #   상한이 30분이었다 — 여유가 9분이다. 그 30건은 **등급제 이전** 파이프라인이고,
+    #   지금은 invest 컷을 8초 × 후보 2발로 **직렬** 생성한다(429 방지, engine/render.py).
+    #   영상 생성 호출이 늘어난 만큼 30분을 넘길 여지가 실재한다.
+    #   ★★ 타임아웃으로 죽으면 이미 지불한 클립 값까지 함께 잃는다 — 생성은 이미 끝났는데
+    #     조립 전에 잘리기 때문이다. 상한을 올리는 비용은 "실패했을 때만" 발생하고
+    #     (성공하면 실제 소요만큼만 과금된다), 잃는 비용은 매번 발생한다.
+    timeout-minutes: 60
+    env:
+      MODE: ${{ github.event.inputs.mode || 'poll' }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      # poll 모드: 큐에 할 일(queued 또는 정체된 in-progress)이 있을 때만 아래 무거운 설치를 한다.
+      # 빈 큐면 여기서 has_work=false 로 끝 → 안전망 크론이 러너 시간을 거의 안 쓴다.
+      - name: Check render queue
+        id: check
+        if: ${{ env.MODE == 'poll' }}
+        run: |
+          cutoff=$(date -u -d '20 minutes ago' '+%Y-%m-%dT%H:%M:%S')
+          q="or=(status.eq.queued,and(status.in.(assets,tts,assembling),updated_at.lt.${cutoff}))"
+          body=$(curl -s "${SUPABASE_URL}/rest/v1/render_jobs?select=id&${q}&limit=1" \
+            -H "apikey: ${SUPABASE_SERVICE_KEY}" -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}")
+          if [ -z "$body" ] || [ "$body" = "[]" ]; then
+            echo "has_work=false" >> "$GITHUB_OUTPUT"
+            echo "처리할 렌더 잡 없음 — 설치/폴 건너뜀"
+          else
+            echo "has_work=true" >> "$GITHUB_OUTPUT"
+            echo "처리할 렌더 잡 있음 → 렌더 진행"
+          fi
+
+      - name: Install ffmpeg + 한글 폰트 + Manim 시스템 라이브러리
+        if: ${{ env.MODE != 'poll' || steps.check.outputs.has_work == 'true' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-nanum libcairo2-dev libpango1.0-dev pkg-config
+
+      - name: Install engine deps
+        if: ${{ env.MODE != 'poll' || steps.check.outputs.has_work == 'true' }}
+        run: |
+          python -m pip install --upgrade pip
+          # 렌더에 필요한 의존성만(무거운 langdetect/feedparser 는 렌더에 불필요).
+          pip install python-dotenv tenacity anthropic httpx supabase Pillow edge-tts manim
+
+      - name: Demo pass-through (버전2 이미지나열식 mp4)
+        if: ${{ env.MODE == 'demo' }}
+        env:
+          TTS_PROVIDER: edge   # 실제 나레이션(무료 Edge TTS) — 자막 싱크·더킹 확인용
+        run: |
+          python -m engine.render --demo demo.mp4
+          ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 demo.mp4
+
+      - name: Demo pass-through (버전3 애니 Manim mp4)
+        if: ${{ env.MODE == 'demo-anim' }}
+        env:
+          TTS_PROVIDER: edge
+        run: |
+          python -m engine.render --demo-anim demo.mp4
+          ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 demo.mp4
+
+      - name: Demo pass-through (한/영 이중언어 2본 — 규격 v2 ⑤)
+        if: ${{ env.MODE == 'demo-both' }}
+        env:
+          TTS_PROVIDER: edge   # ko-KR-Hyunsu / en-US-Aria 실제 보이스
+        run: |
+          python -m engine.render --demo-both demo
+          for f in demo_ko.mp4 demo_en.mp4; do
+            echo "== $f =="
+            ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$f"
+            ffprobe -v error -show_entries format=duration -of csv=p=0 "$f"
+          done
+
+      - name: Upload demo artifact
+        if: ${{ env.MODE == 'demo' || env.MODE == 'demo-anim' || env.MODE == 'demo-both' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: demo-render
+          path: demo*.mp4
+          retention-days: 3   # 공개 저장소에선 아티팩트를 누구나 받는다 — 짧게 둔다(2026-09-15)
+
+      # 작업 A(이미지 Batch, §7): render_jobs 를 소비하기 전에 먼저 (1) 최근 승인된 지시서에 대해
+      # 미캐시 컷을 Batch 로 제출하고 (2) 대기 중인 Batch 잡을 폴링해 완료분을 render_assets 캐시에
+      # 적재한다. render.py 의 Realtime 경로는 무수정 — 캐시가 아직 없으면(방금 승인해 Batch 가 끝나기
+      # 전인 "첫 렌더") 그대로 Realtime 이 채운다. 절감은 주로 재렌더(2번째 언어·재시도)에서 실현.
+      # ★ continue-on-error: 이 스텝은 선택적 비용 절감 레이어일 뿐이다(§5.2/§8 "전체 중단 없음"
+      # 불변식과 동일 원칙). 이 스텝이 실패해도(API 계약 문제·일시 장애 등) 아래 "Poll render queue"
+      # 는 반드시 실행돼야 한다 — 안 그러면 Batch 하나 삐끗한 걸로 렌더 파이프라인 전체가 멈춘다.
+      - name: Image Batch 제출·폴링 (작업 A)
+        if: ${{ env.MODE == 'poll' && steps.check.outputs.has_work == 'true' }}
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER || 'gemini' }}
+          IMAGE_GENERATION_MODE: ${{ vars.IMAGE_GENERATION_MODE || 'batch' }}
+        run: python -m engine.image_batch
+
+      - name: Poll render queue
+        # ★ 위 Batch 스텝이 continue-on-error 라도, 명시 if 조건은 기본적으로 success() 와 AND 되므로
+        # !cancelled() 로 "실패했지만 취소는 아님" 상태에서도 반드시 이 스텝이 돌게 한다.
+        if: ${{ !cancelled() && env.MODE == 'poll' && steps.check.outputs.has_work == 'true' }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          # 이미지=Gemini(nano banana, 기존 GEMINI_API_KEY 재사용), TTS=무료 Edge TTS(러너는 프록시 없음).
+          # 버전3 지시서는 ANIMATION_ENGINE=manim(기본)으로 자동 Manim 도해 렌더.
+          # hybrid 영상 컷(I2V)=Veo(GEMINI_API_KEY 재사용). Veo 접근/키 미비 시 컷별로 안전하게 스틸 폴백.
+          IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER || 'gemini' }}
+          TTS_PROVIDER: ${{ vars.TTS_PROVIDER || 'edge' }}
+          VIDEO_PROVIDER: ${{ vars.VIDEO_PROVIDER || 'veo' }}
+        run: python -m engine.render

@@ -1,0 +1,21 @@
+{
+  "note": "실제 ARIA broker_targets(query='SK하이닉스', days=30) 응답 캡처 (2026-07-16). 종목별 목표가·투자의견 컨센서스. target_price 단위 편차(330 vs 3,300,000)는 원 데이터 노이즈 그대로 — 수집 단계에서 정규화하지 않고 사실 인용용으로만 부착한다.",
+  "count": 1,
+  "groups": [
+    {
+      "stock_name": "SK하이닉스",
+      "stock_code": "000660",
+      "count": 17,
+      "avg": 3473548.8,
+      "min": 330.0,
+      "max": 4300000.0,
+      "items": [
+        {"stock_name": "SK하이닉스", "stock_code": "000660", "target_price": 4200000.0, "opinion": "매수", "source_channel": "미래에셋증권", "report_date": "2026-07-14"},
+        {"stock_name": "SK하이닉스", "stock_code": "000660", "target_price": 3900000.0, "opinion": "BUY", "source_channel": "대신증권", "report_date": "2026-07-07"},
+        {"stock_name": "SK하이닉스", "stock_code": "000660", "target_price": 4000000.0, "opinion": "매수", "source_channel": "IBK투자증권", "report_date": "2026-07-02"},
+        {"stock_name": "SK하이닉스", "stock_code": "000660", "target_price": 3600000.0, "opinion": "BUY", "source_channel": "하나증권", "report_date": "2026-06-30"},
+        {"stock_name": "SK하이닉스", "stock_code": "000660", "target_price": 4300000.0, "opinion": "Buy (유지)", "source_channel": "한화투자증권", "report_date": "2026-06-22"}
+      ]
+    }
+  ]
+}

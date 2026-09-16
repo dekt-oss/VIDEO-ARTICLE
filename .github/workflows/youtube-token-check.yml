@@ -1,0 +1,48 @@
+# 유튜브 자격증명 점검 — 영상을 올리지 않고 토큰만 확인한다(읽기 전용).
+#
+# 왜: GitHub Secret 은 저장하면 다시 볼 수 없다. "토큰을 제대로 넣었나"를 확인하려면 실제로
+#     인증을 시켜보는 수밖에 없는데, 확인하자고 채널에 영상을 올릴 수는 없다.
+#     이 워크플로는 토큰 갱신(refresh)까지만 하고 끝난다. 업로드·수정 없음.
+#
+# 언제 돌리나:
+#   - 클라이언트 비밀번호를 회전한 직후 (3채널이 동시에 죽는 사고를 즉시 잡는다)
+#   - 새 채널 토큰을 등록한 직후
+#   - 업로드가 실패하는데 원인이 토큰인지 알고 싶을 때
+#
+# 트리거: 수동(workflow_dispatch)만. 크론 없음 — 확인이 필요할 때만 돈다.
+#   + 부트스트랩: 이 브랜치에 이 파일이 푸시되면 1회 실행(머지 전에도 확인할 수 있게).
+#     머지 후에는 main 에서 Actions 탭 → youtube-token-check → Run workflow.
+#
+# 필요한 Secrets: YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET,
+#   YOUTUBE_REFRESH_TOKEN_KO, YOUTUBE_REFRESH_TOKEN_EN
+#   (채널 통합으로 리포트도 KO 토큰을 쓴다 — 2026-07-30)
+# ★ 스크립트는 토큰 값을 출력하지 않는다(로그에 시크릿이 남지 않게).
+name: youtube-token-check
+
+on:
+  # ★ 공개 저장소 대비(2026-09-15): 옛 작업 브랜치 push 트리거를 뺐다(그 브랜치는 이미 없고,
+  #   push 트리거는 쓰기 권한자가 브랜치 코드로 시크릿을 읽는 통로가 된다). 수동 실행만 남긴다.
+  workflow_dispatch:
+
+# ★ 공개 저장소 대비(2026-09-15): GITHUB_TOKEN 최소 권한. 쓰기가 필요한 잡만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      # 의존성 설치 없음 — 스크립트가 표준 라이브러리만 쓴다.
+      - name: Check YouTube credentials
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_KO: ${{ secrets.YOUTUBE_REFRESH_TOKEN_KO }}
+          YOUTUBE_REFRESH_TOKEN_EN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_EN }}
+        run: python scripts/check_youtube_tokens.py

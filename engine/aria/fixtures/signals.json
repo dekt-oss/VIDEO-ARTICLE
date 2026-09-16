@@ -1,0 +1,90 @@
+{
+  "count": 8,
+  "note": "실제 ARIA list_signals(limit=8, pass_only=true) 응답을 캡처한 fixture (2026-07-16). ARIA_BASE 미설정 시 로컬/테스트에서 이 데이터로 리포트 수집을 돌린다.",
+  "items": [
+    {
+      "id": 2923,
+      "matched_at_kst": "2026-07-16 07:33",
+      "theme_name": "로봇",
+      "threshold": 5,
+      "signal_level": "HIGH",
+      "total_score": 8,
+      "is_risk": false,
+      "matched_keywords": {"로봇": 3, "휴머노이드": 5},
+      "triggered_rules": ["RULE_HUMANOID"],
+      "message_text": "**[신한 자동차/철강금속 박광래]** 신한 자동차 뉴스 (260716) ▶️ 현대차 보스턴다이나믹스, 로봇개 '스팟' 주택가 택배 배송 투입 추진 (뉴시스) : 보스턴다이나믹스가 사족보행 로봇 '스팟'을 배송차량에서 주택 현관까지 배송하는 라스트마일 기술 시연 : 스팟 시제품은 상자 2개(가로 16인치, 세로 12인치, 높이 10인치)를 실을 수 있어 일반 적재 물량의 최소 60% 소화 가능 : 미국 물류기업들과 협력해 주 5일간 하루 200개 택배를 배송하는 실증 사업 추진 : 장기적으로 차량 내 자동 적재 로봇 팔 도입 및 복수의 스팟을 운반하는 자율주행 차량 연동 검토"
+    },
+    {
+      "id": 2871,
+      "matched_at_kst": "2026-07-15 18:04",
+      "theme_name": "메모리반도체",
+      "threshold": 4,
+      "signal_level": "HIGH",
+      "total_score": 10,
+      "is_risk": false,
+      "matched_keywords": {"SK하이닉스": 3, "메모리 슈퍼사이클": 5},
+      "triggered_rules": ["RULE_4_SEMI_BONUS"],
+      "message_text": "[투자] [Quant Comment] 국내외 주간 이익 동향 체크 핵심 투자포인트 - 삼성전자 잠정실적(영업이익 89.4조원, YoY +1,810%) 발표로 메모리 슈퍼사이클 컨센서스 추가 상향, 반도체 섹터 전반의 실적 재추정 촉발 - 반도체·기술하드웨어·자본시장 중심으로 글로벌 실적 상향 지속 - 메타 급등(주간 +15%)으로 AI CAPEX ROI 불안에서 'AI 비용 개선 확인'으로 내러티브 전환, 기술주 랠리 신호 포착"
+    },
+    {
+      "id": 2829,
+      "matched_at_kst": "2026-07-15 18:04",
+      "theme_name": "시황",
+      "threshold": 6,
+      "signal_level": "HIGH",
+      "total_score": 23,
+      "is_risk": true,
+      "matched_keywords": {"CPI": 1, "FOMC": 1, "S&P500": 1, "금리": 1, "수급": 2, "시황": 2, "연준": 1, "나스닥": 1, "코스닥": 2, "코스피": 2, "가이던스": 2, "사이드카": 2, "써킷브레이커": 2},
+      "triggered_rules": ["RULE_CIRCUIT_BREAKER", "RULE_FOREIGN_FLOW", "RULE_MARKET_INDEX", "RULE_EARNINGS_SHOCK", "RULE_GUIDANCE_CUT"],
+      "message_text": "[국내주식 마감시황] 국가 지수 PER 5배는 너무했긴 하지 (7/15) 유안타 [시황 이재원] KOSPI 7,284pt (+6.2%), KOSDAQ 829pt (+5.8%) ① 해외 시황: 물가 착륙, 반도체 이륙 - 전일 미국 주식시장 상승(S&P500 +0.4%, 나스닥 +0.9%, 필라델피아 반도체지수 +2.5%). 美 6월 CPI가 전년비 +3.5%, 전월비 -0.4%로 모두 예상치 하회하며 연준 추가 금리 인상 우려 대폭 완화(FedWatch 기준 7월 FOMC 동결확률 58% -> 83%)"
+    },
+    {
+      "id": 2861,
+      "matched_at_kst": "2026-07-15 18:04",
+      "theme_name": "메모리반도체",
+      "threshold": 4,
+      "signal_level": "HIGH",
+      "total_score": 13,
+      "is_risk": false,
+      "matched_keywords": {"DDR5": 2, "마이크론": 2, "삼성전자": 1, "SK하이닉스": 3, "메모리 가격": 3},
+      "triggered_rules": ["RULE_4_SEMI_BONUS"],
+      "message_text": "[신한투자증권 반도체/글로벌IT 김형태, 송혜수] IT 속보; 반도체/전기전자 주가 코멘트 ▶️ 단기 주가 변동성 확대에도 반도체 호황은 현재진행형 - 차주부터 본격화될 빅테크 실적발표에서 CapEx 둔화 우려 해소 기대 - 역대 최대 호황으로 회자될 AI Cycle. 메모리 업황 고점 논란은 시기상조 ▶️ 밸류에이션 갭 축소 기대 12MF PER 삼성전자 4.8배, SK하이닉스 4.4배, 마이크론 6.9배"
+    },
+    {
+      "id": 2870,
+      "matched_at_kst": "2026-07-15 18:04",
+      "theme_name": "시황",
+      "threshold": 6,
+      "signal_level": "HIGH",
+      "total_score": 11,
+      "is_risk": false,
+      "matched_keywords": {"증시": 2, "코스닥": 2, "코스피": 2, "외국인 순매수": 2},
+      "triggered_rules": ["RULE_FOREIGN_FLOW", "RULE_MARKET_INDEX"],
+      "message_text": "[투자] [Quant Comment] 국내외 주간 이익 동향 체크 - 삼성전자 잠정실적(영업이익 89.4조원, YoY +1,810%) 발표로 메모리 슈퍼사이클 컨센서스 추가 상향 - 외국인 순매수 지속, 코스피·코스닥 동반 강세"
+    },
+    {
+      "id": 2830,
+      "matched_at_kst": "2026-07-15 18:04",
+      "theme_name": "메모리반도체",
+      "threshold": 4,
+      "signal_level": "HIGH",
+      "total_score": 14,
+      "is_risk": false,
+      "matched_keywords": {"마이크론": 2, "삼성전자": 1, "엔비디아": 3, "SK하이닉스": 3},
+      "triggered_rules": ["RULE_4_SEMI_BONUS", "RULE_5_NV_SUPPLY"],
+      "message_text": "[국내주식 마감시황] 국가 지수 PER 5배는 너무했긴 하지 (7/15) 유안타 [시황 이재원] KOSPI 7,284pt (+6.2%). 전일 급락했던 메모리 반도체 중심으로 반등(SK하이닉스 ADR +27.3%, 엔비디아 +4.1%, 마이크론 +4.9%)"
+    },
+    {
+      "id": 2862,
+      "matched_at_kst": "2026-07-15 18:04",
+      "theme_name": "금융",
+      "threshold": 5,
+      "signal_level": "HIGH",
+      "total_score": 4,
+      "is_risk": false,
+      "matched_keywords": {"주주환원": 4},
+      "triggered_rules": ["RULE_BUYBACK_CANCEL"],
+      "message_text": "[신한투자증권 반도체/글로벌IT 김형태, 송혜수] IT 속보 ▶️ 조기 주주환원정책 발표 가능성 부각 - 7/29 SK하이닉스 실적 발표 시 자사주 매입·소각 등 주주환원 확대 기대"
+    }
+  ]
+}

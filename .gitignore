@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Secrets
+.env
+.env.local
+*.env
+!.env.example
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+web/.vercel/
+web/next-env.d.ts
+*.tsbuildinfo
+
+# Logs / scratch
+*.log
+.DS_Store
+out/
+
+# Supabase CLI 로컬 작업 파일 (버전 캐시·링크 정보). 사람마다 달라 커밋하면 계속 충돌한다.
+supabase/.temp/
+
+# 로컬 단건 렌더 산출물(engine.render <directive_id>) — 저장소에 넣지 않는다.
+render_out.mp4
+render_out_*.mp4
+docs/발주_*/입력/*.png
+docs/발주_*/입력/*.mp4
+docs/발주_*/완성_*.mp4
+docs/실측_품질/*/입력/*.mp4
+docs/실측_품질/*/입력/*.png
+
+# 초안 덮어쓰기 전 로컬 백업(예약 실행이 만든다) — 데이터라 커밋하지 않는다.
+backup_draft_*.json
+
+# OAuth 클라이언트 비밀 파일 — 절대 커밋하지 않는다(2026-09-14)
+client_secret*.json

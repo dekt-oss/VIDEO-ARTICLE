@@ -1,0 +1,105 @@
+name: tests
+
+# 테스트 게이트 — PR 과 main 푸시에서 pytest · node --test · tsc · lint 를 돌린다.
+#
+# ★ 왜 이제야 생기나: 작업지시서 v3 §11-1 이 "재발 시 **CI 실패**로 막는다"를 재발 방지의
+#   핵심 장치로 지정했는데, 정작 워크플로 12개 중 테스트를 돌리는 것이 **하나도 없었다**
+#   (`grep -rl pytest .github/workflows/` → 0건). 941개 테스트가 로컬에서만 돌고 있었고,
+#   그래서 "조용히 빠질 수 없다"는 §11-1 의 약속이 실제로는 성립하지 않았다.
+#
+# ★ 여기서 도는 것들이 지키는 계약(전부 실측 사고에서 나온 것들이다):
+#   · PY/TS 쌍둥이 동기화 — 프롬프트·순수함수·상태 어휘가 갈리면 한쪽만 고쳐진다
+#   · 전문 주입 가드(§11-1) — 원문이 프롬프트에서 조용히 빠지는 것을 막는다
+#   · 골든 해시 — 화면이 의도 없이 바뀌는 것을 막는다
+#   · 상태 어휘/워치독 — 승인 대기 잡이 재큐돼 승인이 지워지는 것을 막는다
+#
+# ★ 비용 0 — LLM·이미지·TTS 를 부르지 않는 순수 로직 테스트만 돈다. 시크릿도 안 쓴다.
+
+on:
+  # ★ 문서만 고친 커밋에는 돌지 않는다(2026-09-06, docs/진단_액션분_video-article.md §3-①).
+  #   최근 60커밋 중 30%가 docs·md 전용인데 python+web 두 잡(약 4분)이 매번 돌았다.
+  #   월 936분의 30% = 약 280분이 여기서 나갔다.
+  #   ★ .github/workflows/** 는 **일부러 빼지 않았다** — 워크플로를 고치면 검사해야 한다.
+  #   ★ YAML anchor(&/*)로 묶고 싶지만 GitHub Actions 는 anchor 를 지원하지 않는다.
+  #     쓰면 워크플로가 조용히 무효가 되므로 두 곳에 그대로 적는다. 고칠 때 같이 고칠 것.
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".claude/**"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".claude/**"
+  workflow_dispatch:
+
+# 같은 브랜치에 새 푸시가 오면 앞선 실행을 취소한다(러너 시간 낭비 방지).
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+# ★ 공개 저장소 대비(2026-09-15): GITHUB_TOKEN 최소 권한. 쓰기가 필요한 잡만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20   # 기본값 360분 방지(2026-09-06)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install engine deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r engine/requirements.txt
+      # ★ 폰트는 assets/fonts/ 에 커밋돼 있어 따로 설치할 것이 없다(Pretendard 4종 + Anton).
+      #   이게 중요한 이유: 폰트가 없으면 보드 렌더 테스트가 needs_fonts 가드로 **조용히
+      #   skip 된다** — 골든 해시 대조가 CI 에서 안 도는 것이 가장 아깝다. 아래 단계가
+      #   skip 개수를 확인해 그 사고를 막는다.
+      - name: pytest
+        run: |
+          set -o pipefail          # tee 를 거쳐도 pytest 실패가 잡히게
+          python -m pytest -q | tee /tmp/pytest.out
+      # ★ 초록인데 사실은 대부분 건너뛴 상태를 막는다. 로컬 기준 skip 은 8건이고, 그보다
+      #   많이 건너뛰었다면 폰트·의존성이 빠져 검사가 헐거워진 것이다.
+      #   (위 pytest 출력을 재사용한다 — 두 번 돌리면 CI 시간이 배가 된다.)
+      - name: Guard against silently skipped tests
+        run: |
+          skipped=$(grep -oE '[0-9]+ skipped' /tmp/pytest.out | grep -oE '^[0-9]+' | tail -1)
+          echo "건너뛴 테스트: ${skipped:-0}건"
+          if [ "${skipped:-0}" -gt 12 ]; then
+            echo "::error::건너뛴 테스트가 ${skipped}건이다(기준 12). 폰트·의존성 누락으로 검사가 헐거워졌다."
+            exit 1
+          fi
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20   # 기본값 360분 방지(2026-09-06)
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # 순수 모듈 테스트. Next 빌드 없이 node 가 직접 돈다.
+      # ★ lib/*.test.ts 를 빠뜨리면 안 된다 — 처음엔 lib/work/*.test.ts 만 돌려서
+      #   orderCost·renderError·versions 3개 파일(21개 단언)이 CI 에서 **한 번도 안 돌았다**.
+      #   비용 산정·렌더 오류 분류·버전 라우팅이라 tsc·lint 로는 동작이 검사되지 않는다.
+      #   새 테스트 파일이 다른 폴더에 생기면 여기도 함께 넓힌다.
+      - name: node --test
+        run: node --test lib/*.test.ts lib/work/*.test.ts
+      - name: tsc --noEmit
+        run: npx tsc --noEmit
+      - name: lint
+        run: npm run lint

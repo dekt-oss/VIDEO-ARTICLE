@@ -1,0 +1,157 @@
+# 큐 통합 워커 — 안전망 크론이 깨우는 폴링을 **한 잡**으로 모은다.
+#
+# ★ 왜 만들었나 (2026-09-06, docs/진단_액션분_video-article.md §3-②)
+#   GitHub 은 **잡 단위로 1분씩 올림** 청구한다. 실행(run) 단위가 아니다.
+#   publish·report-draft·report-video·report-publish 4개가 각자 하루 3회 크론을 돌아
+#   전부 "큐 비었음"으로 몇 초 만에 끝나는데도 **매번 4분**이 청구됐다.
+#     하루 3회 × 4잡 × 1분(올림) = 하루 12분 = 월 360분  (실측 청구 324분)
+#   한 잡에서 4개 큐를 순차로 훑으면 하루 3분 = 월 90분이 된다. **월 234분 절감.**
+#
+# ★ 기존 4개 워크플로는 지우지 않는다. `schedule` 만 떼고 `workflow_dispatch` 는 남겼다.
+#   대시보드 버튼이 그 워크플로들을 **이름으로 직접 깨우기** 때문이다
+#   (web/lib/trigger-render.ts · trigger-publish.ts). 지우면 발주 버튼이 죽는다.
+#   즉 역할이 갈린다 — 버튼=개별 워크플로(즉시), 크론=이 통합본(안전망).
+#
+# ★ 중복 실행: 이 통합본과 개별 워크플로는 concurrency 그룹이 달라 동시에 돌 수 있다.
+#   그래도 같은 잡을 두 번 처리하지는 않는다 — 엔진이 큐를 **원자적으로 클레임**한다
+#   (각 개별 워크플로 주석의 "원자적 클레임과 함께 중복 방지"와 같은 근거).
+#   크론은 하루 3회 고정 시각이고 버튼은 사람이 누를 때라 겹칠 일 자체가 드물다.
+#
+# ★ 트레이드오프: 한 잡이라 큐가 **직렬**로 처리된다. 리포트 렌더가 돌면 그 뒤 큐가
+#   최대 30분 기다린다. 큐가 대부분 비어 있고 크론은 안전망일 뿐이라 수용한다.
+#   렌더를 자주 돌리게 되면 report-video 를 이 통합본에서 다시 떼면 된다.
+name: queues
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # KST 09:00 / 15:00 / 21:00 — 기존 4개와 같은 주기(2026-08-12 결정, docs/deviation-cron-cost.md)
+    - cron: "0 0,6,12 * * *"
+
+concurrency:
+  group: queues-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    # 리포트 렌더가 걸리면 길어진다. 개별 워크플로 중 가장 큰 값(30분)에 여유를 더한다.
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ARIA_MCP_URL: ${{ secrets.ARIA_MCP_URL }}
+      ARIA_BASE: ${{ secrets.ARIA_BASE }}
+      ARIA_API_KEY: ${{ secrets.ARIA_API_KEY }}
+      TIMEZONE: "Asia/Seoul"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      # ★ 필수 시크릿이 비면 여기서 멈춘다. 빈 URL 로 curl 을 돌리면 전부 "큐 없음"으로
+      #   보여서 **일이 밀리는데도 초록불**이 된다(2026-08 한도 소진 때 겪은 조용한 실패와 같은 종류).
+      - name: Preflight — 필수 시크릿 확인
+        run: |
+          missing=""
+          [ -z "${SUPABASE_URL}" ] && missing="${missing} SUPABASE_URL"
+          [ -z "${SUPABASE_SERVICE_KEY}" ] && missing="${missing} SUPABASE_SERVICE_KEY"
+          if [ -n "${missing}" ]; then
+            echo "::error::필수 시크릿이 비어 있습니다:${missing}"
+            exit 1
+          fi
+          echo "필수 시크릿 확인됨"
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # 큐 5종을 한 번에 확인한다. 여기까지는 몇 초라 빈 날에도 1분 안에 끝난다.
+      - name: 큐 확인
+        id: check
+        run: |
+          q() {  # $1=table, $2=filter
+            curl -s "${SUPABASE_URL}/rest/v1/$1?select=id&$2&limit=1" \
+              -H "apikey: ${SUPABASE_SERVICE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}"
+          }
+          has() { [ -n "$1" ] && [ "$1" != "[]" ] && echo true || echo false; }
+
+          # 렌더 잡은 stale(20분 넘게 진행 중) 도 되살린다 — report-video.yml 과 같은 규칙
+          cutoff=$(date -u -d '20 minutes ago' '+%Y-%m-%dT%H:%M:%S')
+          rq="or=(status.eq.queued,and(status.in.(assets,tts,assembling),updated_at.lt.${cutoff}))"
+
+          up=$(q upload_requests "status=eq.queued")
+          rd=$(q report_draft_requests "status=eq.queued")
+          rdir=$(q report_directive_requests "status=eq.queued")
+          rj=$(q report_render_jobs "${rq}")
+          rup=$(q report_upload_requests "status=eq.queued")
+
+          echo "has_upload=$(has "$up")"        >> "$GITHUB_OUTPUT"
+          echo "has_rdraft=$(has "$rd")"        >> "$GITHUB_OUTPUT"
+          echo "has_rdirective=$(has "$rdir")"  >> "$GITHUB_OUTPUT"
+          echo "has_rrender=$(has "$rj")"       >> "$GITHUB_OUTPUT"
+          echo "has_rupload=$(has "$rup")"      >> "$GITHUB_OUTPUT"
+
+          any=false
+          for v in "$up" "$rd" "$rdir" "$rj" "$rup"; do
+            if [ -n "$v" ] && [ "$v" != "[]" ]; then any=true; fi
+          done
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+          echo "업로드=$(has "$up") 리포트초안=$(has "$rd") 리포트지시서=$(has "$rdir") 리포트렌더=$(has "$rj") 리포트업로드=$(has "$rup")"
+
+      # 일이 하나도 없으면 설치조차 하지 않는다 — 빈 날의 청구를 1분으로 묶는 핵심.
+      - name: 의존성 설치
+        if: ${{ steps.check.outputs.any == 'true' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r engine/requirements.txt
+          pip install google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+
+      - name: ffmpeg + 한글 폰트 (리포트 렌더가 있을 때만)
+        if: ${{ steps.check.outputs.has_rrender == 'true' }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-noto-cjk
+
+      # ── 큐 처리 ────────────────────────────────────────────────────────────
+      # ★ 각 단계에 `!cancelled()` 를 건다. 앞 큐가 실패해도 뒤 큐는 처리된다
+      #   (잡을 나눴을 때의 독립성을 유지하면서 1분 올림은 한 번만 낸다).
+
+      - name: 유튜브 업로드 큐
+        if: ${{ !cancelled() && steps.check.outputs.has_upload == 'true' }}
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_KO: ${{ secrets.YOUTUBE_REFRESH_TOKEN_KO }}
+          YOUTUBE_REFRESH_TOKEN_EN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_EN }}
+        run: python -m engine.publish
+
+      - name: 리포트 초안 큐
+        if: ${{ !cancelled() && steps.check.outputs.has_rdraft == 'true' }}
+        env:
+          MODEL_FACTSHEET: "gemini-2.5-flash"
+          MODEL_SCRIPT: "gemini-2.5-pro"
+          MODEL_SELFCHECK: "gemini-2.5-flash"
+          MODEL_COMPLIANCE: "gemini-2.5-flash"
+        run: python -m engine.report_draft
+
+      - name: 리포트 지시서 큐
+        if: ${{ !cancelled() && steps.check.outputs.has_rdirective == 'true' }}
+        run: python -m engine.report_directive
+
+      - name: 리포트 렌더 큐
+        if: ${{ !cancelled() && steps.check.outputs.has_rrender == 'true' }}
+        run: python -m engine.report_render
+
+      - name: 리포트 업로드 큐
+        if: ${{ !cancelled() && steps.check.outputs.has_rupload == 'true' }}
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_KO: ${{ secrets.YOUTUBE_REFRESH_TOKEN_KO }}
+        run: python -m engine.report_publish

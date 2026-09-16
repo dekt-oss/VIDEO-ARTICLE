@@ -1,0 +1,1179 @@
+{
+ "version_type": "photo",
+ "header": {
+  "version_type": "photo",
+  "aspect_ratio": "9:16",
+  "global_style": "Modern Korean webtoon/comic style with bold clean ink outlines, soft cel shading, and a flat muted pastel palette. Consistent character design across all scenes.",
+  "hook_ko": "불신 가득한 남성, 호르몬으로 15% 더 믿게 된다고?",
+  "hook_en": "Can a hormone make distrustful men 15% more trusting?",
+  "cta_ko": "옥시토신, 당신의 생각은 어떤가요? 댓글로 알려주세요!",
+  "cta_en": "What are your thoughts on oxytocin's effects? Let us know in the comments!",
+  "bgm": {
+   "mood": "차분",
+   "track_ref": ""
+  },
+  "media_policy": "image_preferred",
+  "total_estimated_sec": 73,
+  "hook_type": "H1",
+  "hook_reframe_angle": "counterintuition",
+  "hook_promise_check": {
+   "pass": true,
+   "promise": "타인을 잘 못 믿는 남성에게 호르몬 하나를 투여했더니 신뢰 행동이 15% 올라갔다는 주장",
+   "payoff_cut_no": [
+    5,
+    6,
+    10
+   ],
+   "reason": "컷 5와 6에서 핵심 결과인 15% 및 16.9% 증가 수치를 제시하고, 컷 10에서 최종 결론으로 옥시토신이 불신이 강한 남성의 신뢰 행동을 높였다고 명확히 언급하여 훅의 약속을 지불합니다."
+  },
+  "science_reliability": {
+   "claim_type": "measured_result",
+   "evidence_strength": "high",
+   "generalization_risk": "medium",
+   "required_caveat": "낮은 신뢰 성향을 가진 남성에게만 해당하며, 여성이나 높은 신뢰 성향자에게는 일반화 불가"
+  },
+  "cta_type": "comment_question",
+  "loop_match": true,
+  "series_id": "",
+  "content_mode": "series_split",
+  "primary_claim_id": "C01",
+  "supporting_claim_ids": [
+   "C02",
+   "C03",
+   "C04",
+   "C05"
+  ],
+  "essential_evidence_units": [
+   "E1",
+   "E2",
+   "E3",
+   "E4",
+   "E7"
+  ],
+  "target_duration_min_sec": 45,
+  "target_duration_max_sec": 90,
+  "duration_reason": "핵심 결과(E1)·표본 범위(E2)·실험 설계(E3)·15% 수치(E4)·일반화 한계(E7)가 모두 필요하지만, 조절효과(C03)는 한 문장으로 처리 가능해 standard 범위 안에서 충분히 전달된다.",
+  "retention_plan": {
+   "novelty_interval_max_sec": 7,
+   "payoff_start_ratio": 0.72,
+   "open_loop": "옥시토신이 과연 모든 사람의 신뢰를 높일 수 있을까?",
+   "pattern_interrupt_cut_nos": [
+    7,
+    8
+   ]
+  },
+  "evidence_coverage": {
+   "required_claim_ids": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05"
+   ],
+   "spoken_claim_ids": [
+    "C01",
+    "C05",
+    "C02",
+    "C04",
+    "C03"
+   ],
+   "visual_claim_ids": [],
+   "missing_claim_ids": [],
+   "primary_claim_covered": true,
+   "scope_present": true,
+   "method_present": true,
+   "magnitude_present": true,
+   "caveat_present": true
+  },
+  "cost_plan": {
+   "content_mode": "series_split",
+   "max_unique_assets": 9,
+   "max_video_clips": 8,
+   "max_video_generated_sec": 48,
+   "max_video_cost_usd": 2.4,
+   "preferred_code_viz_count": 0,
+   "asset_reuse_target": 0.0,
+   "cost_priority": "evidence_over_motion",
+   "unique_asset_count": 8,
+   "reuse_count": 3,
+   "asset_reuse_ratio": 0.273,
+   "code_viz_count": 0,
+   "video_clip_count": 6,
+   "video_generated_sec": 46,
+   "estimated_image_cost_usd": 0.3935,
+   "image_models": [
+    "gemini-2.5-flash-image",
+    "gemini-3-pro-image"
+   ],
+   "video_model": "veo-3.1-lite-generate-preview",
+   "estimated_video_cost_usd": 2.3,
+   "estimated_total_generation_cost_usd": 2.6935
+  },
+  "mode_warnings": [
+   "bold_hook_on_weak_evidence",
+   "forced_series_split_multiple_main_claims",
+   "mode_overridden:standard->series_split",
+   "photo_mechanism_thin:1",
+   "photo_mechanism_thin:4",
+   "photo_mechanism_thin:5",
+   "photo_mechanism_thin:6",
+   "photo_mechanism_thin:8",
+   "photo_role_balance_off:8/11",
+   "too_many_spoken_numbers"
+  ],
+  "visual_sequences": [
+   {
+    "sequence_id": "SEQ1_TrustMechanism",
+    "sequence_role": "MECHANISM_SEQUENCE",
+    "world": {
+     "world_id": "TrustGameWorld",
+     "style": "Clean, minimal, comic-panel aesthetic with soft cel shading. Focus on clear, symbolic representation of actions and states.",
+     "lighting": "Soft, even overhead lighting with subtle rim lights to define forms.",
+     "background": "Pale, desaturated blue-grey academic setting with subtle texture.",
+     "camera_base": "eye_level_front",
+     "identity_lock": true
+    },
+    "entities": [
+     {
+      "entity_id": "MALE_CHARACTER_A",
+      "entity_type": "person",
+      "visual_identity": "Webtoon style male character, short dark hair, simple casual clothes, distinct facial features conveying emotion.",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "MALE_CHARACTER_B",
+      "entity_type": "person",
+      "visual_identity": "Webtoon style male character, short light hair, simple casual clothes, distinct facial features conveying emotion.",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "OXYTOCIN_VIAL",
+      "entity_type": "object",
+      "visual_identity": "Small, clear glass vial with a simple hexagonal label, glowing softly.",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "COIN_STACK_A",
+      "entity_type": "object",
+      "visual_identity": "Stack of stylized gold coins.",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "COIN_STACK_B",
+      "entity_type": "object",
+      "visual_identity": "Stack of stylized gold coins.",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "BARRIER",
+      "entity_type": "structure",
+      "visual_identity": "Translucent, dotted screen acting as an anonymizing barrier.",
+      "continuity": "locked"
+     }
+    ],
+    "stages": [
+     {
+      "stage_id": "S1_InitialDistrust",
+      "cut_refs": [
+       1
+      ],
+      "operation": "REVEAL",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "NEW_WORLD",
+      "continuity_from": "",
+      "entity_refs": [
+       "MALE_CHARACTER_A"
+      ],
+      "state_before": {
+       "MALE_CHARACTER_A": "arms crossed, suspicious expression"
+      },
+      "state_after": {
+       "MALE_CHARACTER_A": "open posture, calm gaze"
+      },
+      "observable_change": "Male character's posture and facial expression change from distrustful to trusting.",
+      "claim_ids": [
+       "C01"
+      ],
+      "visual_prompt": ""
+     },
+     {
+      "stage_id": "S2_ExperimentSetup",
+      "cut_refs": [
+       4
+      ],
+      "operation": "ASSEMBLE",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "NEW_WORLD",
+      "continuity_from": "",
+      "entity_refs": [
+       "MALE_CHARACTER_A",
+       "MALE_CHARACTER_B",
+       "BARRIER",
+       "OXYTOCIN_VIAL"
+      ],
+      "state_before": {
+       "MALE_CHARACTER_A": "isolated",
+       "MALE_CHARACTER_B": "isolated"
+      },
+      "state_after": {
+       "MALE_CHARACTER_A": "seated at desk, with oxytocin vial",
+       "MALE_CHARACTER_B": "seated at desk, without oxytocin vial",
+       "BARRIER": "between them"
+      },
+      "observable_change": "Two male characters are introduced, seated at desks with a barrier, one holding an oxytocin vial.",
+      "claim_ids": [
+       "C05"
+      ],
+      "visual_prompt": ""
+     },
+     {
+      "stage_id": "S3_TrustGameOutcome",
+      "cut_refs": [
+       5
+      ],
+      "operation": "FLOW",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "CONTINUE_WORLD",
+      "continuity_from": "S2_ExperimentSetup",
+      "entity_refs": [
+       "MALE_CHARACTER_A",
+       "MALE_CHARACTER_B",
+       "BARRIER",
+       "COIN_STACK_A",
+       "COIN_STACK_B"
+      ],
+      "state_before": {
+       "COIN_STACK_A": "small stack",
+       "COIN_STACK_B": "small stack"
+      },
+      "state_after": {
+       "COIN_STACK_A": "small stack",
+       "COIN_STACK_B": "larger stack, 15% taller"
+      },
+      "observable_change": "The stack of coins for the oxytocin-treated character grows visibly taller by 15% compared to the control.",
+      "claim_ids": [
+       "C01"
+      ],
+      "visual_prompt": ""
+     },
+     {
+      "stage_id": "S4_PooledAnalysis",
+      "cut_refs": [
+       6
+      ],
+      "operation": "ACCUMULATE",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "MUTATE_STATE",
+      "continuity_from": "S3_TrustGameOutcome",
+      "entity_refs": [
+       "MALE_CHARACTER_A",
+       "MALE_CHARACTER_B",
+       "BARRIER",
+       "COIN_STACK_A",
+       "COIN_STACK_B"
+      ],
+      "state_before": {
+       "COIN_STACK_A": "small stack",
+       "COIN_STACK_B": "15% taller stack"
+      },
+      "state_after": {
+       "COIN_STACK_A": "slightly larger stack",
+       "COIN_STACK_B": "16.9% taller stack"
+      },
+      "observable_change": "More small character icons merge into both coin stacks, and both stacks grow slightly, with the oxytocin stack becoming 16.9% taller.",
+      "claim_ids": [
+       "C02"
+      ],
+      "visual_prompt": ""
+     },
+     {
+      "stage_id": "S5_LimitationScope",
+      "cut_refs": [
+       8,
+       9
+      ],
+      "operation": "ISOLATE",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "RETURN_WORLD",
+      "continuity_from": "S1_InitialDistrust",
+      "entity_refs": [
+       "MALE_CHARACTER_A",
+       "MALE_CHARACTER_B"
+      ],
+      "state_before": {
+       "MALE_CHARACTER_A": "clear, in focus",
+       "MALE_CHARACTER_B": "not present"
+      },
+      "state_after": {
+       "MALE_CHARACTER_A": "clear, in focus, with checkmark",
+       "FEMALE_CHARACTER_SILHOUETTE": "desaturated, with question mark",
+       "HIGH_TRUST_MALE_SILHOUETTE": "desaturated, with question mark"
+      },
+      "observable_change": "The male character from the study remains clear, while silhouettes of a female and a high-trust male appear desaturated with question marks, separated by a clear dividing line.",
+      "claim_ids": [
+       "C04"
+      ],
+      "visual_prompt": ""
+     },
+     {
+      "stage_id": "S6_FinalConclusion",
+      "cut_refs": [
+       10,
+       11
+      ],
+      "operation": "REVEAL",
+      "camera_operation": "DOLLY_OUT",
+      "continuity_mode": "RETURN_WORLD",
+      "continuity_from": "S1_InitialDistrust",
+      "entity_refs": [
+       "MALE_CHARACTER_A",
+       "OXYTOCIN_MOLECULE_BADGE",
+       "LOW_TRUST_SPECTRUM_BAR"
+      ],
+      "state_before": {
+       "MALE_CHARACTER_A": "distrustful",
+       "OXYTOCIN_MOLECULE_BADGE": "not present",
+       "LOW_TRUST_SPECTRUM_BAR": "not present"
+      },
+      "state_after": {
+       "MALE_CHARACTER_A": "calm, open expression",
+       "OXYTOCIN_MOLECULE_BADGE": "glowing on chest",
+       "LOW_TRUST_SPECTRUM_BAR": "illuminated behind him"
+      },
+      "observable_change": "The male character stands with a calm expression, an oxytocin badge glows on his chest, and a spectrum bar illuminates behind him.",
+      "claim_ids": [
+       "C01",
+       "C03"
+      ],
+      "visual_prompt": ""
+     }
+    ]
+   }
+  ],
+  "visual_sequence_gate": {
+   "block_reasons": [
+    "vseq_missing_entity:SEQ1_TrustMechanism/S6_FinalConclusion",
+    "vseq_quantitative_visual:SEQ1_TrustMechanism/S3_TrustGameOutcome",
+    "vseq_quantitative_visual:SEQ1_TrustMechanism/S4_PooledAnalysis"
+   ],
+   "warnings": [],
+   "metrics": {
+    "sequence_count": 1,
+    "stage_count": 6,
+    "avg_stages_per_sequence": 6.0,
+    "world_reset_rate": 0.333,
+    "continuity_rate": 0.667,
+    "persistent_entity_ratio": 1.0,
+    "mechanism_sequences": 1
+   }
+  },
+  "visual_routing": {
+   "treatments": {
+    "MECHANISM_SEQUENCE": 0,
+    "CODE_VIZ": 4,
+    "REALITY": 4,
+    "OVERLAY": 3
+   },
+   "mechanism_blocked_by_depth": 4,
+   "number_routed_to_code": 4,
+   "in_sequence": 8,
+   "source_depth": "abstract_only"
+  },
+  "photo_gate": {
+   "block_reasons": [
+    "photo_cut_count_low:11<15",
+    "photo_forbidden_screen_request:5,6,7",
+    "photo_mechanism_decorative:10",
+    "photo_mechanism_decorative:11",
+    "photo_mechanism_decorative:9"
+   ],
+   "warnings": [
+    "photo_mechanism_thin:1",
+    "photo_mechanism_thin:4",
+    "photo_mechanism_thin:5",
+    "photo_mechanism_thin:6",
+    "photo_mechanism_thin:8",
+    "photo_role_balance_off:8/11"
+   ],
+   "stats": {
+    "cuts": 11,
+    "mechanism": 8,
+    "reality": 3,
+    "video_cuts": 6,
+    "total_sec": 73,
+    "target_cut_range": [
+     15,
+     24
+    ]
+   }
+  },
+  "block_reasons": [
+   "photo_cut_count_low:11<15",
+   "photo_forbidden_screen_request:5,6,7",
+   "photo_mechanism_decorative:10",
+   "photo_mechanism_decorative:11",
+   "photo_mechanism_decorative:9",
+   "series_split_required",
+   "vseq_missing_entity:SEQ1_TrustMechanism/S6_FinalConclusion",
+   "vseq_quantitative_visual:SEQ1_TrustMechanism/S3_TrustGameOutcome",
+   "vseq_quantitative_visual:SEQ1_TrustMechanism/S4_PooledAnalysis"
+  ],
+  "approval_blocked": true,
+  "contract_retry": {
+   "attempted": true,
+   "first_block_reasons": [
+    "photo_forbidden_screen_request:5,6",
+    "photo_hook_missing",
+    "photo_mechanism_decorative:10",
+    "photo_mechanism_decorative:4",
+    "photo_mechanism_decorative:5",
+    "photo_number_without_overlay:1"
+   ],
+   "retry_block_reasons": [
+    "photo_cut_count_low:11<15",
+    "photo_forbidden_screen_request:5,6,7",
+    "photo_mechanism_decorative:10",
+    "photo_mechanism_decorative:11",
+    "photo_mechanism_decorative:9"
+   ],
+   "new_violations": [
+    "photo_cut_count_low"
+   ]
+  }
+ },
+ "cuts": [
+  {
+   "cut_no": 1,
+   "scene_kind": "comic_panel",
+   "narration_ko": "타인을 잘 못 믿는 남성에게 호르몬 하나를 투여했더니 신뢰 행동이 15% 올라갔다고요?",
+   "narration_en": "A hormone injection made distrustful men trust 15% more?",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "Split panel showing a male character's transformation: left side shows him with arms crossed and a suspicious squinting expression, right side shows the same male character with an open posture and a calm gaze. No on-screen text.",
+   "motion_prompt": "Rapid push-in dolly on the split panel, left character subtly recoils slightly while right character's posture opens up with a gentle exhale motion, camera lands centered between the two panels after 1 second then holds.",
+   "loop_safe": false,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "시작",
+   "source_facts": [
+    "what_found[0]",
+    "numbers[1]"
+   ],
+   "render_notes": "[primary_result] 훅 문장으로, 가장 핵심적인 결과를 먼저 제시하여 시청자의 흥미를 유발합니다.",
+   "motion_source": "video",
+   "claim_ids": [
+    "C01"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "connective",
+   "novelty_event": "충격적인 연구 결과 선공개",
+   "beat": "QUESTION",
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G01_MaleTrust",
+   "base_asset_ref": "",
+   "state_change": "Male character's posture and facial expression change from distrustful to trusting, split panel reveals before and after.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "number_punch",
+     "text": "15% 증가",
+     "claim_ids": [
+      "C01"
+     ],
+     "start_sec": 6.0,
+     "duration_sec": 3.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "신뢰 행동의 변화",
+    "components": [
+     "불신하는 남성",
+     "신뢰하는 남성"
+    ],
+    "relationship": "동일 인물의 전후 변화",
+    "initial_state": "불신하는 자세와 표정",
+    "transformation": "호르몬 투여 후 신뢰 행동 증가",
+    "final_state": "신뢰하는 자세와 표정",
+    "highlighted_element": "남성 캐릭터의 표정 변화",
+    "claim_ids": [
+     "C01"
+    ]
+   },
+   "visual_treatment": "CODE_VIZ",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "number_needs_code_viz"
+   ]
+  },
+  {
+   "cut_no": 2,
+   "scene_kind": "kinetic_typography",
+   "narration_ko": "마그데부르크 대학, 앤트워프 대학,",
+   "narration_en": "University of Magdeburg, University of Antwerp,",
+   "estimated_sec": 3,
+   "visual_type": "image",
+   "visual_prompt": "Clean, minimalist typography animation revealing university names sequentially. No on-screen text.",
+   "motion_prompt": "Text for each university name animates in with a smooth, quick fade and slight scale-up, then holds.",
+   "loop_safe": true,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "source.institutions[0]",
+    "source.institutions[1]"
+   ],
+   "render_notes": "[scope] 연구 기관을 순차적으로 보여주며 신뢰도를 높입니다.",
+   "motion_source": "still",
+   "claim_ids": [],
+   "reasoning_id": "",
+   "evidence_role": "scope",
+   "novelty_event": "연구 기관 소개",
+   "beat": "SCOPE",
+   "motion_value": "medium",
+   "asset_strategy": "text_only_transition",
+   "visual_reuse_group": "",
+   "base_asset_ref": "",
+   "state_change": "",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [],
+   "visual_role": "REALITY",
+   "mechanism": {
+    "subject": "",
+    "components": [],
+    "relationship": "",
+    "initial_state": "",
+    "transformation": "",
+    "final_state": "",
+    "highlighted_element": "",
+    "claim_ids": []
+   },
+   "visual_treatment": "OVERLAY",
+   "routing_reasons": []
+  },
+  {
+   "cut_no": 3,
+   "scene_kind": "kinetic_typography",
+   "narration_ko": "취리히 대학 공동 연구팀이 PNAS에 발표한 실험입니다.",
+   "narration_en": "and University of Zurich research teams published this experiment in PNAS.",
+   "estimated_sec": 6,
+   "visual_type": "image",
+   "visual_prompt": "Clean, minimalist typography animation revealing the remaining university name and journal. No on-screen text.",
+   "motion_prompt": "Text for the last university and journal animates in with a smooth, quick fade and slight scale-up, then holds.",
+   "loop_safe": true,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "source.institutions[2]",
+    "source.venue"
+   ],
+   "render_notes": "[scope] 연구 기관과 발표 저널을 명시하여 연구의 신뢰성을 강조합니다.",
+   "motion_source": "still",
+   "claim_ids": [
+    "C05"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "scope",
+   "novelty_event": "연구 기관 및 발표처 소개",
+   "beat": "SCOPE",
+   "motion_value": "medium",
+   "asset_strategy": "text_only_transition",
+   "visual_reuse_group": "",
+   "base_asset_ref": "",
+   "state_change": "",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "source_card",
+     "text": "PNAS (Proceedings of the National Academy of Sciences)",
+     "claim_ids": [
+      "C05"
+     ],
+     "start_sec": 2.0,
+     "duration_sec": 4.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "REALITY",
+   "mechanism": {
+    "subject": "",
+    "components": [],
+    "relationship": "",
+    "initial_state": "",
+    "transformation": "",
+    "final_state": "",
+    "highlighted_element": "",
+    "claim_ids": []
+   },
+   "visual_treatment": "OVERLAY",
+   "routing_reasons": []
+  },
+  {
+   "cut_no": 4,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "낮은 신뢰 성향을 가진 남성 359명을 대상으로 사전 등록된 무작위 실험을 진행했어요.",
+   "narration_en": "They conducted a preregistered randomized trial with 359 men low in dispositional trust.",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "A cluster of 359 simplified male silhouette icons, then they split into two equal groups, with a stylized 'random' symbol appearing between them. A document icon with a 'preregistered' stamp appears in the background. No on-screen text.",
+   "motion_prompt": "The cluster of silhouettes smoothly divides into two groups, the random symbol animates in with a quick flash, and the document icon subtly glows. Camera slowly pans across the splitting groups.",
+   "loop_safe": false,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "how[0]",
+    "numbers[0]"
+   ],
+   "render_notes": "[method] 연구의 핵심 방법론인 사전 등록 무작위 실험과 대상자 수를 시각적으로 보여줍니다.",
+   "motion_source": "video",
+   "claim_ids": [
+    "C05"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "method",
+   "novelty_event": "연구 대상 및 설계 방법 소개",
+   "beat": "EXPERIMENT_SETUP",
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G02_ExperimentSetup",
+   "base_asset_ref": "",
+   "state_change": "359 male silhouettes split into two groups, a randomized assignment symbol appears, and a preregistered document icon is highlighted.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "scope_tag",
+     "text": "대상: 낮은 신뢰 성향 남성",
+     "claim_ids": [
+      "C05"
+     ],
+     "start_sec": 0.0,
+     "duration_sec": 4.0,
+     "priority": "primary"
+    },
+    {
+     "type": "number_punch",
+     "text": "359명",
+     "claim_ids": [
+      "numbers[0]"
+     ],
+     "start_sec": 4.0,
+     "duration_sec": 3.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "실험 대상자 모집 및 설계",
+    "components": [
+     "남성 실루엣 아이콘",
+     "무작위 배정 기호",
+     "사전 등록 문서 아이콘"
+    ],
+    "relationship": "359명의 남성 대상자가 무작위로 배정되고 사전 등록된 설계에 따라 실험이 진행됨",
+    "initial_state": "359명의 남성 실루엣이 한데 모여 있음",
+    "transformation": "실루엣들이 두 그룹으로 나뉘어 무작위 배정되고, 사전 등록 문서가 강조됨",
+    "final_state": "두 그룹으로 나뉜 남성 실루엣과 강조된 사전 등록 문서",
+    "highlighted_element": "359명의 남성 실루엣이 두 그룹으로 나뉘는 과정",
+    "claim_ids": [
+     "C05"
+    ]
+   },
+   "visual_treatment": "CODE_VIZ",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "number_needs_code_viz"
+   ]
+  },
+  {
+   "cut_no": 5,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "옥시토신을 투여한 집단은 통제 집단보다 익명 신뢰 게임에서 신뢰 행동이 약 15% 더 높게 나타났습니다.",
+   "narration_en": "The oxytocin group showed roughly 15% more trusting behavior than the control group in an anonymous trust game.",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "Two identical stylized male figures facing each other, separated by a dotted anonymizing barrier. The figure on the left (control) has a small stack of coins in front of him. The figure on the right (oxytocin group) has a stack of coins that is visibly 15% taller. No on-screen text.",
+   "motion_prompt": "The coin stack for the oxytocin group grows smoothly upward to its 15% increased height over 2 seconds. Camera slowly zooms in on the height difference between the two stacks.",
+   "loop_safe": false,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "강조",
+   "source_facts": [
+    "what_found[1]",
+    "numbers[1]"
+   ],
+   "render_notes": "[primary_result] 옥시토신 투여 그룹의 신뢰 행동 증가를 시각적으로 명확하게 보여줍니다.",
+   "motion_source": "video",
+   "claim_ids": [
+    "C01"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "primary_result",
+   "novelty_event": "핵심 결과 수치 제시 (15%)",
+   "beat": "RESULT",
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G03_TrustGameResult",
+   "base_asset_ref": "",
+   "state_change": "A stack of coins representing trust behavior for the oxytocin group grows visibly taller by 15% compared to the control group's stack.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "evidence_card",
+     "text": "익명 신뢰 게임",
+     "claim_ids": [
+      "how[1]"
+     ],
+     "start_sec": 0.0,
+     "duration_sec": 4.0,
+     "priority": "supporting"
+    },
+    {
+     "type": "number_punch",
+     "text": "약 15% 증가",
+     "claim_ids": [
+      "C01",
+      "numbers[1]"
+     ],
+     "start_sec": 6.0,
+     "duration_sec": 5.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "신뢰 게임 결과 비교",
+    "components": [
+     "옥시토신 투여 그룹",
+     "통제 그룹",
+     "신뢰 행동을 나타내는 코인 스택"
+    ],
+    "relationship": "두 그룹 간 신뢰 행동의 양적 차이",
+    "initial_state": "두 그룹의 코인 스택이 동일한 높이",
+    "transformation": "옥시토신 그룹의 코인 스택이 통제 그룹보다 15% 더 높아짐",
+    "final_state": "두 그룹의 코인 스택 높이 차이 (15%)",
+    "highlighted_element": "옥시토신 그룹의 코인 스택 증가",
+    "claim_ids": [
+     "C01"
+    ]
+   },
+   "visual_treatment": "CODE_VIZ",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "number_needs_code_viz"
+   ]
+  },
+  {
+   "cut_no": 6,
+   "scene_kind": "kinetic_typography",
+   "narration_ko": "그리고 이전에 모집한 219명을 합쳐 분석했더니 16.9% 증가로 결과가 더 선명해졌어요.",
+   "narration_en": "And when they pooled an earlier sample of 219 more participants, the effect sharpened to a 16.9% increase.",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "The two stylized male figures and their coin stacks from the previous scene. Small character icons representing additional participants stream in from the left and right edges and merge into the base of both coin stacks. The oxytocin group's coin stack grows slightly taller, now visibly 16.9% higher than the control group's stack. No on-screen text.",
+   "motion_prompt": "Small character icons stream in from left and right edges and merge into the bar chart columns, new taller bar pair rises beside the original with a smooth grow-up animation, parallax push inward toward the new bars.",
+   "loop_safe": false,
+   "style_anchor_ref": "Cut 5",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "what_found[2]",
+    "numbers[2]"
+   ],
+   "render_notes": "[magnitude] 풀링 분석을 통해 강화된 결과를 시각적으로 보여주며, 이전 컷과의 연속성을 유지합니다.",
+   "motion_source": "video",
+   "claim_ids": [
+    "C02"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "magnitude",
+   "novelty_event": "풀링 분석 결과 수치 제시 (16.9%)",
+   "beat": "COMPARISON",
+   "motion_value": "high",
+   "asset_strategy": "reuse_with_state_change",
+   "visual_reuse_group": "G03_TrustGameResult",
+   "base_asset_ref": "5",
+   "state_change": "More small character icons stream in from the sides and merge into both coin stacks, and the oxytocin stack grows further to a 16.9% increase, while the control stack also slightly increases to maintain context.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "number_punch",
+     "text": "총 578명 (359 + 219)",
+     "claim_ids": [
+      "numbers[0]",
+      "numbers[2]"
+     ],
+     "start_sec": 0.0,
+     "duration_sec": 4.0,
+     "priority": "supporting"
+    },
+    {
+     "type": "evidence_card",
+     "text": "16.9% 증가",
+     "claim_ids": [
+      "C02",
+      "numbers[2]"
+     ],
+     "start_sec": 4.0,
+     "duration_sec": 5.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "풀링 분석을 통한 결과 강화",
+    "components": [
+     "기존 두 그룹의 코인 스택",
+     "추가된 참가자 아이콘"
+    ],
+    "relationship": "추가된 참가자들이 합쳐지면서 두 그룹의 코인 스택 높이 차이가 더 커짐",
+    "initial_state": "기존 15% 차이의 코인 스택",
+    "transformation": "추가 참가자 아이콘들이 두 그룹에 합류하고, 옥시토신 그룹의 코인 스택이 16.9%로 더 높아짐",
+    "final_state": "더 커진 16.9% 차이의 코인 스택",
+    "highlighted_element": "추가 참가자 아이콘들의 합류와 옥시토신 그룹 코인 스택의 추가 증가",
+    "claim_ids": [
+     "C02"
+    ]
+   },
+   "visual_treatment": "CODE_VIZ",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "number_needs_code_viz"
+   ]
+  },
+  {
+   "cut_no": 7,
+   "scene_kind": "kinetic_typography",
+   "narration_ko": "그런데 여기서 중요한 부분이 있습니다.",
+   "narration_en": "But there's a crucial detail here.",
+   "estimated_sec": 4,
+   "visual_type": "image",
+   "visual_prompt": "Minimalist text overlay: 'Crucial Detail' with a subtle underline effect. No on-screen text.",
+   "motion_prompt": "The text animates in with a quick, sharp reveal, then holds. A subtle, quick zoom-in on the text.",
+   "loop_safe": true,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "긴장",
+   "source_facts": [],
+   "render_notes": "[connective] 결과의 한계점으로 넘어가는 전환점 역할을 합니다.",
+   "motion_source": "still",
+   "claim_ids": [],
+   "reasoning_id": "",
+   "evidence_role": "connective",
+   "novelty_event": "전환점 제시",
+   "beat": "LIMITATION",
+   "motion_value": "medium",
+   "asset_strategy": "text_only_transition",
+   "visual_reuse_group": "",
+   "base_asset_ref": "",
+   "state_change": "",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [],
+   "visual_role": "REALITY",
+   "mechanism": {
+    "subject": "",
+    "components": [],
+    "relationship": "",
+    "initial_state": "",
+    "transformation": "",
+    "final_state": "",
+    "highlighted_element": "",
+    "claim_ids": []
+   },
+   "visual_treatment": "OVERLAY",
+   "routing_reasons": []
+  },
+  {
+   "cut_no": 8,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "이 효과는 낮은 신뢰 성향을 가진 남성에게서만 확인된 거예요.",
+   "narration_en": "This effect was only confirmed in men with low dispositional trust.",
+   "estimated_sec": 6,
+   "visual_type": "image",
+   "visual_prompt": "Split panel: left side shows a clear, well-defined male character with a 'check' icon (representing low-trust men). Right side shows desaturated, blurred silhouettes of a female character and another male character with a 'question mark' icon (representing other populations). A clear vertical dividing line separates the two sides. No on-screen text.",
+   "motion_prompt": "The left side (low trust men) brightens slightly with a gentle pulse on the checkmark. The right side figures fade further into desaturation, and the question marks subtly drift upward. Camera slowly pans from the highlighted left side to the blurred right side.",
+   "loop_safe": false,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "limitations[0]"
+   ],
+   "render_notes": "[caveat] 연구 결과의 한계점을 시각적으로 명확히 구분하여 보여줍니다.",
+   "motion_source": "video",
+   "claim_ids": [
+    "C04"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "caveat",
+   "novelty_event": "연구 결과의 한계점 제시 (대상 한정)",
+   "beat": "LIMITATION",
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G01_MaleTrust",
+   "base_asset_ref": "",
+   "state_change": "A male character representing 'low trust men' is highlighted and clear, while other figures (female, high-trust male) appear as desaturated silhouettes with question marks.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "caveat_tag",
+     "text": "대상: 낮은 신뢰 성향 남성 한정",
+     "claim_ids": [
+      "C04"
+     ],
+     "start_sec": 0.0,
+     "duration_sec": 6.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "효과 범위의 한정",
+    "components": [
+     "낮은 신뢰 성향 남성",
+     "다른 집단(여성, 높은 신뢰 성향 남성)"
+    ],
+    "relationship": "효과가 특정 집단에만 적용됨을 시각적으로 구분",
+    "initial_state": "모든 집단이 동일하게 표현됨",
+    "transformation": "낮은 신뢰 성향 남성만 강조되고 다른 집단은 흐려지거나 물음표로 표시됨",
+    "final_state": "강조된 낮은 신뢰 성향 남성과 흐려진 다른 집단",
+    "highlighted_element": "낮은 신뢰 성향 남성 캐릭터",
+    "claim_ids": [
+     "C04"
+    ]
+   },
+   "visual_treatment": "REALITY",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "depth_blocks_mechanism:abstract_only/LIMITATION"
+   ]
+  },
+  {
+   "cut_no": 9,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "여성이나 원래 신뢰 수준이 높은 사람에게 같은 결과가 나타날지는 이 연구에서 알 수 없습니다.",
+   "narration_en": "This study cannot determine if the same results apply to women or individuals with high baseline trust.",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "Close-up on the right side of the split panel from Cut 8, showing desaturated silhouettes of a female character and a male character with a high-trust expression. Large, pulsing question marks float above their heads. No on-screen text.",
+   "motion_prompt": "Slow dolly-in focusing on the right panel, the question marks above the silhouettes grow slightly larger and pulse more intensely, while the silhouettes remain desaturated and slightly blurred. Subtle particle effects around the question marks.",
+   "loop_safe": false,
+   "style_anchor_ref": "Cut 8",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "limitations[0]",
+    "limitations[1]"
+   ],
+   "render_notes": "[caveat] 일반화의 한계를 시각적으로 강조하여 연구의 적용 범위를 명확히 합니다.",
+   "motion_source": "video",
+   "claim_ids": [
+    "C04"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "caveat",
+   "novelty_event": "연구 결과의 한계점 심화 (일반화 불가)",
+   "beat": "LIMITATION",
+   "motion_value": "high",
+   "asset_strategy": "reuse_with_state_change",
+   "visual_reuse_group": "G01_MaleTrust",
+   "base_asset_ref": "8",
+   "state_change": "The right side of the split panel from cut 8 is zoomed in, focusing on the desaturated female and high-trust male silhouettes. The question marks above them become more prominent and pulse softly, emphasizing uncertainty.",
+   "crop": {
+    "cx": 0.75,
+    "cy": 0.5,
+    "scale": 1.5
+   },
+   "tone_grade": "desaturate",
+   "overlay_plan": [
+    {
+     "type": "caveat_tag",
+     "text": "일반화 한계: 여성, 높은 신뢰 성향자 제외",
+     "claim_ids": [
+      "C04"
+     ],
+     "start_sec": 0.0,
+     "duration_sec": 9.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "일반화의 한계",
+    "components": [
+     "여성 실루엣",
+     "높은 신뢰 성향 남성 실루엣",
+     "물음표"
+    ],
+    "relationship": "이들 집단에 대한 효과는 불확실함을 표현",
+    "initial_state": "흐려진 여성 및 높은 신뢰 성향 남성 실루엣",
+    "transformation": "여성 및 높은 신뢰 성향 남성 실루엣이 더 강조되고 물음표가 커지며 불확실성을 시각화",
+    "final_state": "강조된 물음표와 불확실한 집단",
+    "highlighted_element": "물음표와 흐려진 인물들",
+    "claim_ids": [
+     "C04"
+    ]
+   },
+   "visual_treatment": "REALITY",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "depth_blocks_mechanism:abstract_only/LIMITATION"
+   ]
+  },
+  {
+   "cut_no": 10,
+   "scene_kind": "kinetic_typography",
+   "narration_ko": "결론은 이렇습니다 — 옥시토신은 가장 불신이 강한 남성에서 신뢰 행동을 실험적으로 높였고",
+   "narration_en": "The conclusion is this: oxytocin experimentally increased trusting behavior in men with the lowest trust,",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "The male character from Cut 1, now with a calm, open expression, standing upright. A simple, glowing hexagonal oxytocin molecule badge is on his chest. In front of him, a stack of gold coins grows taller. No on-screen text.",
+   "motion_prompt": "The character's posture settles into a relaxed stance with a gentle exhale bounce. The oxytocin badge pulses with a soft warm glow once. The coin stack grows smoothly upward. Camera slowly zooms out to reveal the full character.",
+   "loop_safe": false,
+   "style_anchor_ref": "Cut 1",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "해결",
+   "source_facts": [
+    "what_found[0]"
+   ],
+   "render_notes": "[implication] 훅에서 던진 질문에 대한 결론을 시각적으로 명확하게 제시합니다.",
+   "motion_source": "still",
+   "claim_ids": [
+    "C01"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "implication",
+   "novelty_event": "최종 결론 제시 (옥시토신의 효과)",
+   "beat": "CONCLUSION",
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G01_MaleTrust",
+   "base_asset_ref": "",
+   "state_change": "The male character from the initial hook (Cut 1) is shown with a calm, open expression. A stylized oxytocin molecule badge glows softly on his chest, and a stack of coins in front of him grows visibly.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "evidence_card",
+     "text": "불신이 강한 남성에게 효과",
+     "claim_ids": [
+      "C01"
+     ],
+     "start_sec": 0.0,
+     "duration_sec": 9.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "옥시토신의 신뢰 증진 효과",
+    "components": [
+     "불신하는 남성 캐릭터",
+     "옥시토신 분자 아이콘",
+     "신뢰 행동을 나타내는 코인 스택"
+    ],
+    "relationship": "옥시토신이 불신하는 남성의 신뢰 행동을 증가시킴",
+    "initial_state": "불신하는 남성 캐릭터와 작은 코인 스택",
+    "transformation": "옥시토신 분자 아이콘이 남성에게 투여되고, 코인 스택이 커짐",
+    "final_state": "신뢰하는 남성 캐릭터와 커진 코인 스택",
+    "highlighted_element": "옥시토신 분자 아이콘과 코인 스택의 변화",
+    "claim_ids": [
+     "C01"
+    ]
+   },
+   "visual_treatment": "REALITY",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "depth_blocks_mechanism:abstract_only/CONCLUSION"
+   ]
+  },
+  {
+   "cut_no": 11,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "그 효과는 낮은 신뢰 스펙트럼 전반에서 고르게 나타났습니다.",
+   "narration_en": "and that effect held uniformly across the low-trust spectrum.",
+   "estimated_sec": 6,
+   "visual_type": "image",
+   "visual_prompt": "The male character from Cut 10, still with a calm expression and the glowing oxytocin badge. Behind him, a subtle horizontal spectrum gradient bar from dark blue on the left to lighter blue on the right. No on-screen text.",
+   "motion_prompt": "The spectrum bar behind the character illuminates left to right in a slow sweep, emphasizing the uniform effect. Camera holds steady on the character and the illuminating bar.",
+   "loop_safe": true,
+   "style_anchor_ref": "Cut 10",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "마무리",
+   "source_facts": [
+    "what_found[3]"
+   ],
+   "render_notes": "[implication] 옥시토신 효과의 균일성을 시각적으로 표현하여 결론을 강화하고 마무리합니다.",
+   "motion_source": "still",
+   "claim_ids": [
+    "C03"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "implication",
+   "novelty_event": "최종 결론 심화 (효과의 균일성)",
+   "beat": "CONCLUSION",
+   "motion_value": "high",
+   "asset_strategy": "reuse_with_state_change",
+   "visual_reuse_group": "G01_MaleTrust",
+   "base_asset_ref": "10",
+   "state_change": "The horizontal spectrum gradient bar behind the character illuminates from left to right in a slow sweep, indicating uniform effect across the low-trust spectrum.",
+   "crop": null,
+   "tone_grade": "warm",
+   "overlay_plan": [
+    {
+     "type": "evidence_card",
+     "text": "낮은 신뢰 스펙트럼 전반에 걸쳐 균일한 효과",
+     "claim_ids": [
+      "C03"
+     ],
+     "start_sec": 0.0,
+     "duration_sec": 6.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "효과의 균일성",
+    "components": [
+     "남성 캐릭터",
+     "낮은 신뢰 스펙트럼 바"
+    ],
+    "relationship": "효과가 낮은 신뢰 스펙트럼 전반에 걸쳐 고르게 나타남",
+    "initial_state": "남성 캐릭터 뒤에 스펙트럼 바가 어둡게 표현됨",
+    "transformation": "스펙트럼 바가 왼쪽에서 오른쪽으로 밝게 빛나며 균일한 효과를 시각화",
+    "final_state": "전체 스펙트럼 바가 밝게 빛남",
+    "highlighted_element": "스펙트럼 바의 점진적인 발광",
+    "claim_ids": [
+     "C03"
+    ]
+   },
+   "visual_treatment": "REALITY",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "depth_blocks_mechanism:abstract_only/CONCLUSION"
+   ]
+  }
+ ]
+}

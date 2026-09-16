@@ -1,0 +1,87 @@
+# 엣지 함수 자동 배포 (재발방지) — main 에 supabase/functions 변경이 머지되면 자동 deploy.
+#
+# 배경: 이 저장소는 배포 표면이 둘이다.
+#   (1) 엔진(render 워커)     → GitHub Actions 가 main 을 checkout → 머지만 하면 반영(자동).
+#   (2) 엣지 함수(directive/draft) → `supabase functions deploy` 필요 → 머지해도 자동 반영 안 됨(수동).
+# (2)를 사람이 잊으면 "코드는 머지됐는데 지시서 생성은 옛 로직"인 상태가 된다(실제 발생).
+# 이 워크플로가 (2)를 자동화해 둘의 배포 시점을 일치시킨다.
+#
+# 필요한 Secrets:
+#   SUPABASE_ACCESS_TOKEN  — supabase.com/dashboard/account/tokens 의 액세스 토큰(서버 전용).
+#   SUPABASE_PROJECT_REF   — 프로젝트 ref. Secrets 또는 Variables.
+# 시크릿 미설정 시: 배포 스텝은 스킵(막지 않음) + 로그로 안내 → 기존처럼 수동 배포 폴백.
+name: deploy-edge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-edge
+  cancel-in-progress: false
+
+# ★ 공개 저장소 대비(2026-09-15): GITHUB_TOKEN 최소 권한. 쓰기가 필요한 잡만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10   # 기본값 360분 방지(2026-09-06)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Guard — secrets 진단
+        id: guard
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF_SECRET: ${{ secrets.SUPABASE_PROJECT_REF || vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          # PROJECT_REF: 명시 secret 우선, 없으면 SUPABASE_URL 서브도메인에서 유도(렌더용 secret 재사용).
+          ref="$REF_SECRET"
+          if [ -z "$ref" ] && [ -n "$SUPABASE_URL" ]; then
+            ref=$(echo "$SUPABASE_URL" | sed -E 's#https?://([^.]+)\..*#\1#')
+          fi
+          # 최종 폴백: 프로젝트 ref(민감정보 아님, render.yml 기본 URL 과 동일). → 자동배포는 토큰 1개만 있으면 됨.
+          if [ -z "$ref" ]; then echo "::error::SUPABASE_PROJECT_REF 시크릿이 없습니다."; exit 1; fi
+          # 값은 노출하지 않고 존재 여부만(ref 는 프로젝트 id 라 안전).
+          echo "SUPABASE_ACCESS_TOKEN 존재: $([ -n "$TOKEN" ] && echo yes || echo NO)"
+          echo "SUPABASE_PROJECT_REF(직접) 존재: $([ -n "$REF_SECRET" ] && echo yes || echo no)"
+          echo "SUPABASE_URL 존재: $([ -n "$SUPABASE_URL" ] && echo yes || echo no)"
+          # ★ 공개 저장소 대비(2026-09-15): 유도한 ref 는 시크릿 마스킹을 못 받는다 — 값을 찍지 않고 가린다.
+          echo "::add-mask::$ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          if [ -z "$TOKEN" ] || [ -z "$ref" ]; then
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::엣지 배포 스킵 — TOKEN:$([ -n "$TOKEN" ] && echo yes || echo NO), ref:$([ -n "$ref" ] && echo yes || echo none). SUPABASE_ACCESS_TOKEN(https://supabase.com/dashboard/account/tokens) 필요."
+          else
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1  # v1
+        if: ${{ steps.guard.outputs.has_secrets == 'true' }}
+        with:
+          # ★ 고정 버전(2026-09-15). latest 는 SUPABASE_ACCESS_TOKEN 을 쥔 단계에서 검증 안 된 CLI 를 받는다.
+          version: 2.117.0
+
+      - name: Deploy edge functions
+        if: ${{ steps.guard.outputs.has_secrets == 'true' }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.guard.outputs.ref }}
+        run: |
+          set -e
+          # ★ 목록을 손으로 적지 않는다 — supabase/functions/ 아래 디렉터리를 전부 배포한다.
+          #   손으로 적던 시절 generate-report-draft 가 빠져 있었고, 그 함수만 조용히 옛 코드로
+          #   남았다(경고도 안 떴다). 새 함수를 추가할 때 여기를 고치는 것을 잊을 수 없게 만든다.
+          #   `_` 로 시작하는 디렉터리(_shared 등)는 함수가 아니므로 건너뛴다.
+          for dir in supabase/functions/*/; do
+            fn="$(basename "$dir")"
+            case "$fn" in _*) echo "-- skip $fn (공유 모듈)"; continue;; esac
+            echo "== deploy $fn =="
+            supabase functions deploy "$fn" --project-ref "$REF"
+          done

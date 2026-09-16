@@ -1,0 +1,34 @@
+[
+ {
+  "measured": true,
+  "freeze_sec": 0.0,
+  "scene_changes": 0,
+  "world_drift": 0.802,
+  "motion_median": 0.00107,
+  "clip_sec": 10.006,
+  "score": 0.4314,
+  "freeze_ratio": 0.0,
+  "motion_score": 0.2892,
+  "arm": "A_4s",
+  "label": "4초",
+  "requested_sec": 4,
+  "actual_sec": 10.006,
+  "length_not_controlled": true
+ },
+ {
+  "measured": true,
+  "freeze_sec": 0.0,
+  "scene_changes": 1,
+  "world_drift": 1.0,
+  "motion_median": 0.00175,
+  "clip_sec": 10.006,
+  "score": 0.5784,
+  "freeze_ratio": 0.0,
+  "motion_score": 0.473,
+  "arm": "B_8s",
+  "label": "8초",
+  "requested_sec": 8,
+  "actual_sec": 10.006,
+  "length_not_controlled": true
+ }
+]

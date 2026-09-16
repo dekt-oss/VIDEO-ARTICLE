@@ -1,0 +1,84 @@
+# 유튜브 업로드 워커 (P-V2 승인 이탈) — 렌더 완료 mp4 를 유튜브에 업로드.
+# 대시보드 "유튜브 업로드" 버튼 → upload_requests 큐 적재 → 이 워크플로가 소비(engine.publish).
+# 클라우드 층(Edge/Vercel)에서 대용량 mp4 업로드/OAuth 를 돌리기 번거로워 GitHub Actions 러너에서 실행.
+#
+# 트리거:
+#  - workflow_dispatch: 대시보드가 업로드 요청 시 GITHUB_DISPATCH_TOKEN 으로 즉시 트리거.
+#  - schedule(하루 3번, KST 09/15/21): 토큰 미설정·트리거 실패 대비 안전망. 큐가 비었으면 즉시 종료.
+#    ★ */15 에서 낮췄다(2026-08-12, 비용) — 빈 폴링이 잡당 1분으로 과금됐다. 상세는 render.yml 헤더.
+#
+# 필요한 Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY,
+#   YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN_KO, YOUTUBE_REFRESH_TOKEN_EN.
+# ★ 업로드는 되돌리기 어려운 외부 행위라 정체 잡 자동 재큐(watchdog)를 하지 않는다(중복 영상 방지).
+name: publish
+
+on:
+  workflow_dispatch:
+  # ★ schedule 은 .github/workflows/queues.yml 로 옮겼다(2026-09-06).
+  #   잡 단위 1분 올림 때문에 4개가 각자 크론을 돌면 빈 날에도 월 324분이 나갔다.
+  #   workflow_dispatch 는 **반드시 남긴다** — 대시보드 발주 버튼이 이 워크플로를
+  #   이름으로 직접 깨운다(web/lib/trigger-render.ts · trigger-publish.ts).
+
+# 동시에 두 워커가 같은 업로드 요청을 처리하지 않도록 직렬화(원자적 클레임과 함께 중복 업로드 방지).
+concurrency:
+  group: publish-worker
+  cancel-in-progress: false
+
+# ★ 공개 저장소 대비(2026-09-15): GITHUB_TOKEN 최소 권한. 쓰기가 필요한 잡만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      # 큐에 대기('queued')가 있을 때만 아래 설치·업로드를 한다. 빈 큐면 러너 시간을 거의 안 쓴다.
+      - name: Check upload queue
+        id: check
+        run: |
+          body=$(curl -s "${SUPABASE_URL}/rest/v1/upload_requests?select=id&status=eq.queued&limit=1" \
+            -H "apikey: ${SUPABASE_SERVICE_KEY}" -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}")
+          if [ -z "$body" ] || [ "$body" = "[]" ]; then
+            echo "has_work=false" >> "$GITHUB_OUTPUT"
+            echo "대기 중인 업로드 없음 — 설치/폴 건너뜀"
+          else
+            echo "has_work=true" >> "$GITHUB_OUTPUT"
+            echo "대기 중인 업로드 있음 → 업로드 진행"
+          fi
+
+      - name: Install engine deps
+        if: ${{ steps.check.outputs.has_work == 'true' }}
+        run: |
+          python -m pip install --upgrade pip
+          # 업로드에 필요한 최소 의존성만(ffmpeg/manim/langdetect 불필요).
+          pip install python-dotenv tenacity httpx supabase google-api-python-client google-auth
+
+      - name: Poll upload queue
+        if: ${{ steps.check.outputs.has_work == 'true' }}
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN_KO: ${{ secrets.YOUTUBE_REFRESH_TOKEN_KO }}
+          YOUTUBE_REFRESH_TOKEN_EN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_EN }}
+        run: python -m engine.publish
+
+      # ★ 저장소 정리(2026-08-24 신설). 업로드 직후가 가장 자연스러운 자리다 —
+      #   방금 유튜브로 나간 편이 곧 회수 대상이기 때문이다.
+      #   업로드가 없던 회차에도 돌려 휴지통(7일 경과)·묵은 캐시를 훑는다(그래서 if 조건이 없다).
+      #   실패해도 워크플로를 세우지 않는다: 정리는 부수 작업이고 다음 회차가 다시 잡는다.
+      #   근거: docs/deviation-storage-quota-lockout.md
+      - name: Sweep storage (retention)
+        continue-on-error: true
+        run: |
+          python -m pip install --quiet python-dotenv httpx supabase
+          python -m engine.storage_gc --apply

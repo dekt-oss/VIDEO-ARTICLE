@@ -1,0 +1,17 @@
+{
+ "experiment": "G4",
+ "tag": "B",
+ "cut_no": 5,
+ "arms": [
+  {
+   "key": "A_take1",
+   "clip_sec": 8,
+   "label": "1번째"
+  },
+  {
+   "key": "B_take2",
+   "clip_sec": 8,
+   "label": "2번째(같은 프롬프트 재생성)"
+  }
+ ]
+}

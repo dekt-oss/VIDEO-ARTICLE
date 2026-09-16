@@ -1,0 +1,1968 @@
+{
+  "version_type": "photo",
+  "header": {
+    "version_type": "photo",
+    "aspect_ratio": "9:16",
+    "global_style": "Modern office environment, clean and professional, with a focus on human-AI interaction.",
+    "hook_ko": "외향적인 당신과 성실한 AI가 만나면, 최악의 팀이 될 수도 있다는 사실, 아셨나요?",
+    "hook_en": "Did you know that an extraverted person paired with a conscientious AI could form the worst possible team?",
+    "cta_ko": "AI와 최고의 팀워크를 만드는 비결, 친구에게도 알려주세요!",
+    "cta_en": "Share this with a friend to help them build the best AI team!",
+    "bgm": {
+      "mood": "긴장감 있는",
+      "track_ref": ""
+    },
+    "media_policy": "image_preferred",
+    "total_estimated_sec": 71,
+    "hook_type": "H2",
+    "hook_reframe_angle": "personal_cost",
+    "hook_promise_check": {
+      "pass": true,
+      "promise": "외향적인 사람과 성실한 AI의 조합이 최악의 팀이 될 수 있다는 것",
+      "payoff_cut_no": [
+        8
+      ],
+      "reason": "8번 컷에서 외향적인 사람과 성실한 AI의 조합이 가장 낮은 품질의 광고를 만들었다는 핵심 결과를 직접적으로 제시하여 훅의 약속을 지불합니다."
+    },
+    "science_reliability": {
+      "claim_type": "measured_result",
+      "evidence_strength": "high",
+      "generalization_risk": "low",
+      "required_caveat": ""
+    },
+    "cta_type": "save_prompt",
+    "loop_match": true,
+    "series_id": "",
+    "content_mode": "series_split",
+    "primary_claim_id": "C02",
+    "supporting_claim_ids": [
+      "C03",
+      "C06",
+      "C07"
+    ],
+    "essential_evidence_units": [
+      "E1",
+      "E2",
+      "E3",
+      "E6",
+      "E7",
+      "E8"
+    ],
+    "target_duration_min_sec": 45,
+    "target_duration_max_sec": 90,
+    "duration_reason": "핵심 결과, 최악의 조합이라는 구체적 예시(반전), 그리고 실제 필드 실험 결과를 모두 담으려면 최소 35초 이상이 필요합니다.",
+    "retention_plan": {
+      "novelty_interval_max_sec": 7,
+      "payoff_start_ratio": 0.72,
+      "open_loop": "AI와의 협업에서 최고의 결과를 내기 위한 AI의 '성격'은 무엇일까요?",
+      "pattern_interrupt_cut_nos": [
+        1,
+        6,
+        9
+      ]
+    },
+    "evidence_coverage": {
+      "required_claim_ids": [
+        "C02",
+        "C03",
+        "C06",
+        "C07"
+      ],
+      "spoken_claim_ids": [
+        "C03",
+        "C09",
+        "C10",
+        "C02",
+        "C06",
+        "C12",
+        "C07"
+      ],
+      "visual_claim_ids": [],
+      "missing_claim_ids": [],
+      "primary_claim_covered": true,
+      "scope_present": true,
+      "method_present": false,
+      "magnitude_present": true,
+      "caveat_present": false
+    },
+    "mode_warnings": [
+      "forced_series_split_multiple_main_claims",
+      "mode_overridden:standard->series_split",
+      "motion_gate_would_demote#1",
+      "motion_gate_would_demote#10",
+      "motion_gate_would_demote#12",
+      "motion_gate_would_demote#13",
+      "motion_gate_would_demote#2",
+      "motion_gate_would_demote#3",
+      "motion_gate_would_demote#4",
+      "motion_gate_would_demote#6",
+      "motion_gate_would_demote#7",
+      "motion_gate_would_demote#9",
+      "outside_mode_duration_range",
+      "photo_mechanism_structured:5",
+      "photo_mechanism_structured:8",
+      "photo_role_balance_off:3/13",
+      "photo_video_cut_count_off:13",
+      "video_budget_not_enforced_by_demotion",
+      "video_cap_exceeded#10",
+      "video_cap_exceeded#11",
+      "video_cap_exceeded#12",
+      "video_cap_exceeded#13",
+      "video_cap_exceeded#9",
+      "vseq_claim_unlinked:SEQ1_ExperimentSetup/S1_InitialSetup",
+      "vseq_claim_unlinked:SEQ2_AdQualityComparison/S4_HighlightWorst",
+      "vseq_route_contract_conflict:1#REALITY/MECHANISM_SEQUENCE",
+      "vseq_route_contract_conflict:10#REALITY/MECHANISM_SEQUENCE",
+      "vseq_route_contract_conflict:4#REALITY/MECHANISM_SEQUENCE",
+      "vseq_route_contract_conflict:6#REALITY/MECHANISM_SEQUENCE",
+      "vseq_route_contract_conflict:7#REALITY/MECHANISM_SEQUENCE",
+      "vseq_world_reset_high:0.667"
+    ],
+    "visual_routing": {
+      "treatments": {
+        "MECHANISM_SEQUENCE": 7,
+        "CODE_VIZ": 3,
+        "REALITY": 2,
+        "OVERLAY": 1
+      },
+      "precision_layer_count": 1,
+      "in_sequence": 6,
+      "connective_in_world": 3,
+      "cut_claim_mismatch": 0,
+      "detail_restricted": 0,
+      "source_depth": "full_body"
+    },
+    "visual_sequences": [
+      {
+        "sequence_id": "SEQ1_ExperimentSetup",
+        "sequence_role": "FRAMING",
+        "world": {
+          "world_id": "MODERN_OFFICE",
+          "style": "clean, professional, modern office interior with glass partitions and ergonomic desks",
+          "lighting": "bright, natural light from large windows, soft overhead lighting",
+          "background": "blurred office activity, hints of other workstations",
+          "camera_base": "eye_level_front",
+          "identity_lock": true
+        },
+        "entities": [
+          {
+            "entity_id": "HUMAN_PARTICIPANT",
+            "entity_type": "person",
+            "visual_identity": "a diverse group of young to middle-aged professionals, casually dressed, focused on computer screens",
+            "continuity": "locked"
+          },
+          {
+            "entity_id": "AI_AGENT_SCREEN",
+            "entity_type": "object",
+            "visual_identity": "a sleek, modern computer monitor displaying a simple, non-textual interface",
+            "continuity": "locked"
+          },
+          {
+            "entity_id": "AD_DRAFT",
+            "entity_type": "object",
+            "visual_identity": "a digital display ad draft on a screen, showing a placeholder image and layout, no text",
+            "continuity": "locked"
+          }
+        ],
+        "stages": [
+          {
+            "stage_id": "S1_InitialSetup",
+            "cut_refs": [
+              1,
+              2,
+              3
+            ],
+            "representation_mode": "LITERAL_OBSERVATION",
+            "allow_connective": true,
+            "mutations": [
+              {
+                "entity_id": "HUMAN_PARTICIPANT",
+                "operation": "APPEAR",
+                "property": "presence",
+                "visible_change": "참가자가 책상 앞에 앉은 모습으로 화면에 들어온다"
+              },
+              {
+                "entity_id": "AI_AGENT_SCREEN",
+                "operation": "APPEAR",
+                "property": "presence",
+                "visible_change": "책상 위 AI 화면이 켜지며 나타난다"
+              }
+            ],
+            "operation": "REVEAL",
+            "camera_operation": "HOLD",
+            "continuity_mode": "NEW_WORLD",
+            "continuity_from": "",
+            "entity_refs": [
+              "HUMAN_PARTICIPANT",
+              "AI_AGENT_SCREEN"
+            ],
+            "state_before": {},
+            "state_after": {
+              "HUMAN_PARTICIPANT": "sitting at a desk, looking at a screen",
+              "AI_AGENT_SCREEN": "on the desk, displaying a neutral interface"
+            },
+            "observable_change": "A human participant and an AI agent screen are introduced in a modern office setting.",
+            "claim_ids": [],
+            "visual_prompt": "",
+            "state_before_computed": {},
+            "state_after_computed": {
+              "HUMAN_PARTICIPANT": "sitting at a desk, looking at a screen",
+              "AI_AGENT_SCREEN": "on the desk, displaying a neutral interface"
+            }
+          },
+          {
+            "stage_id": "S2_PairingAndCreation",
+            "cut_refs": [
+              4,
+              5
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "HUMAN_PARTICIPANT",
+                "property": "interaction_state",
+                "operation": "TRANSFORM",
+                "visible_change": true,
+                "result_state": "actively collaborating with the AI agent, gesturing towards the screen",
+                "claim_ids": [
+                  "C09",
+                  "C10"
+                ]
+              },
+              {
+                "entity_id": "AD_DRAFT",
+                "property": "visibility",
+                "operation": "APPEAR",
+                "visible_change": true,
+                "result_state": "a new ad draft appears on the AI agent screen, gradually forming",
+                "claim_ids": [
+                  "C10"
+                ]
+              }
+            ],
+            "operation": "ASSEMBLE",
+            "camera_operation": "DOLLY_IN",
+            "continuity_mode": "CONTINUE_WORLD",
+            "continuity_from": "S1_InitialSetup",
+            "entity_refs": [
+              "HUMAN_PARTICIPANT",
+              "AI_AGENT_SCREEN",
+              "AD_DRAFT"
+            ],
+            "state_before": {
+              "HUMAN_PARTICIPANT": "sitting at a desk, looking at a screen",
+              "AI_AGENT_SCREEN": "on the desk, displaying a neutral interface"
+            },
+            "state_after": {
+              "HUMAN_PARTICIPANT": "actively collaborating with the AI agent, gesturing towards the screen",
+              "AI_AGENT_SCREEN": "displaying a partially formed ad draft",
+              "AD_DRAFT": "visible on the screen"
+            },
+            "observable_change": "The human participant begins collaborating with the AI, and an ad draft starts to form on the screen.",
+            "claim_ids": [
+              "C09",
+              "C10"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "HUMAN_PARTICIPANT": "sitting at a desk, looking at a screen",
+              "AI_AGENT_SCREEN": "on the desk, displaying a neutral interface"
+            },
+            "state_after_computed": {
+              "HUMAN_PARTICIPANT": "actively collaborating with the AI agent, gesturing towards the screen",
+              "AI_AGENT_SCREEN": "on the desk, displaying a neutral interface",
+              "AD_DRAFT": "a new ad draft appears on the AI agent screen, gradually forming"
+            }
+          }
+        ]
+      },
+      {
+        "sequence_id": "SEQ2_AdQualityComparison",
+        "sequence_role": "RESULT_SEQUENCE",
+        "world": {
+          "world_id": "AD_REVIEW_STATION",
+          "style": "a clean, minimalist desk with two distinct piles of physical ad printouts",
+          "lighting": "soft, even studio lighting",
+          "background": "a blurred, professional-looking office background",
+          "camera_base": "top_down",
+          "identity_lock": true
+        },
+        "entities": [
+          {
+            "entity_id": "AD_STACK_LOW",
+            "entity_type": "object",
+            "visual_identity": "a short, messy stack of printed ad mockups, some crumpled or slightly misaligned",
+            "continuity": "locked"
+          },
+          {
+            "entity_id": "AD_STACK_HIGH",
+            "entity_type": "object",
+            "visual_identity": "a tall, neatly organized stack of printed ad mockups, perfectly aligned",
+            "continuity": "locked"
+          },
+          {
+            "entity_id": "HAND_HIGHLIGHT",
+            "entity_type": "person",
+            "visual_identity": "a human hand, with a professional but not overly formal appearance",
+            "continuity": "locked"
+          }
+        ],
+        "stages": [
+          {
+            "stage_id": "S3_InitialComparison",
+            "cut_refs": [
+              6,
+              7,
+              8
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": true,
+            "mutations": [
+              {
+                "entity_id": "AD_STACK_LOW",
+                "property": "visibility",
+                "operation": "APPEAR",
+                "visible_change": true,
+                "result_state": "a short, messy stack of ads appears on the left",
+                "claim_ids": []
+              },
+              {
+                "entity_id": "AD_STACK_HIGH",
+                "property": "visibility",
+                "operation": "APPEAR",
+                "visible_change": true,
+                "result_state": "a tall, neat stack of ads appears on the right",
+                "claim_ids": []
+              }
+            ],
+            "operation": "SPLIT",
+            "camera_operation": "HOLD",
+            "continuity_mode": "NEW_WORLD",
+            "continuity_from": "",
+            "entity_refs": [
+              "AD_STACK_LOW",
+              "AD_STACK_HIGH"
+            ],
+            "state_before": {},
+            "state_after": {
+              "AD_STACK_LOW": "a short, messy stack of ads",
+              "AD_STACK_HIGH": "a tall, neat stack of ads"
+            },
+            "observable_change": "Two stacks of ads, one short and messy, one tall and neat, appear side-by-side.",
+            "claim_ids": [
+              "C02",
+              "C03"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {},
+            "state_after_computed": {
+              "AD_STACK_LOW": "a short, messy stack of ads appears on the left",
+              "AD_STACK_HIGH": "a tall, neat stack of ads appears on the right"
+            }
+          },
+          {
+            "stage_id": "S4_HighlightWorst",
+            "cut_refs": [
+              9
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": true,
+            "mutations": [
+              {
+                "entity_id": "HAND_HIGHLIGHT",
+                "property": "position",
+                "operation": "APPEAR",
+                "visible_change": true,
+                "result_state": "a hand points to the short, messy stack of ads",
+                "claim_ids": []
+              }
+            ],
+            "operation": "REVEAL",
+            "camera_operation": "DOLLY_IN",
+            "continuity_mode": "CONTINUE_WORLD",
+            "continuity_from": "S3_InitialComparison",
+            "entity_refs": [
+              "AD_STACK_LOW",
+              "AD_STACK_HIGH",
+              "HAND_HIGHLIGHT"
+            ],
+            "state_before": {
+              "AD_STACK_LOW": "a short, messy stack of ads",
+              "AD_STACK_HIGH": "a tall, neat stack of ads"
+            },
+            "state_after": {
+              "AD_STACK_LOW": "a short, messy stack of ads, highlighted",
+              "AD_STACK_HIGH": "a tall, neat stack of ads",
+              "HAND_HIGHLIGHT": "pointing to the short stack"
+            },
+            "observable_change": "A hand points to and highlights the short, messy stack of ads.",
+            "claim_ids": [],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "AD_STACK_LOW": "a short, messy stack of ads appears on the left",
+              "AD_STACK_HIGH": "a tall, neat stack of ads appears on the right"
+            },
+            "state_after_computed": {
+              "AD_STACK_LOW": "a short, messy stack of ads appears on the left",
+              "AD_STACK_HIGH": "a tall, neat stack of ads appears on the right",
+              "HAND_HIGHLIGHT": "a hand points to the short, messy stack of ads"
+            }
+          }
+        ]
+      },
+      {
+        "sequence_id": "SEQ3_FieldExperiment",
+        "sequence_role": "REALITY_ANCHOR",
+        "world": {
+          "world_id": "SOCIAL_MEDIA_USER",
+          "style": "a person holding a smartphone, scrolling through a social media feed in a casual setting",
+          "lighting": "soft, ambient indoor lighting",
+          "background": "blurred background of a cafe or living room",
+          "camera_base": "side_profile",
+          "identity_lock": true
+        },
+        "entities": [
+          {
+            "entity_id": "SMARTPHONE",
+            "entity_type": "object",
+            "visual_identity": "a modern smartphone displaying a social media feed with various ad placements, no discernible text",
+            "continuity": "locked"
+          },
+          {
+            "entity_id": "USER_HANDS",
+            "entity_type": "person",
+            "visual_identity": "human hands holding and interacting with the smartphone",
+            "continuity": "locked"
+          }
+        ],
+        "stages": [
+          {
+            "stage_id": "S5_AdImpression",
+            "cut_refs": [
+              10,
+              11
+            ],
+            "representation_mode": "LITERAL_OBSERVATION",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "SMARTPHONE",
+                "property": "screen_content",
+                "operation": "TRANSFORM",
+                "visible_change": true,
+                "result_state": "social media feed scrolls, showing different ads, some appearing more engaging than others",
+                "claim_ids": [
+                  "C06",
+                  "C12"
+                ]
+              }
+            ],
+            "operation": "FLOW",
+            "camera_operation": "DOLLY_IN",
+            "continuity_mode": "NEW_WORLD",
+            "continuity_from": "",
+            "entity_refs": [
+              "SMARTPHONE",
+              "USER_HANDS"
+            ],
+            "state_before": {
+              "SMARTPHONE": "displaying a static social media feed"
+            },
+            "state_after": {
+              "SMARTPHONE": "displaying a scrolling social media feed with dynamic ad content"
+            },
+            "observable_change": "A smartphone screen scrolls through a social media feed, showcasing various ads.",
+            "claim_ids": [
+              "C06",
+              "C12"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {
+              "SMARTPHONE": "displaying a static social media feed"
+            },
+            "state_after_computed": {
+              "SMARTPHONE": "social media feed scrolls, showing different ads, some appearing more engaging than others"
+            }
+          }
+        ]
+      },
+      {
+        "sequence_id": "SEQ4_Conclusion",
+        "sequence_role": "FRAMING",
+        "world": {
+          "world_id": "MODERN_OFFICE_CONFERENCE",
+          "style": "a bright, modern conference room with a large table and a few professionals discussing",
+          "lighting": "bright, professional office lighting",
+          "background": "blurred office environment through glass walls",
+          "camera_base": "eye_level_front",
+          "identity_lock": true
+        },
+        "entities": [
+          {
+            "entity_id": "RESEARCHER_GROUP",
+            "entity_type": "person",
+            "visual_identity": "a small group of diverse researchers, engaged in discussion around a table",
+            "continuity": "locked"
+          },
+          {
+            "entity_id": "REPORT_DOCUMENTS",
+            "entity_type": "object",
+            "visual_identity": "neatly stacked research reports and documents on the conference table",
+            "continuity": "locked"
+          }
+        ],
+        "stages": [
+          {
+            "stage_id": "S6_DiscussionAndConclusion",
+            "cut_refs": [
+              12,
+              13
+            ],
+            "representation_mode": "SCHEMATIC_PRINCIPLE",
+            "allow_connective": false,
+            "mutations": [
+              {
+                "entity_id": "REPORT_DOCUMENTS",
+                "property": "visibility",
+                "operation": "APPEAR",
+                "visible_change": true,
+                "result_state": "a stack of reports appears on the table, symbolizing accumulated knowledge",
+                "claim_ids": [
+                  "C07"
+                ]
+              }
+            ],
+            "operation": "ACCUMULATE",
+            "camera_operation": "HOLD",
+            "continuity_mode": "NEW_WORLD",
+            "continuity_from": "",
+            "entity_refs": [
+              "RESEARCHER_GROUP",
+              "REPORT_DOCUMENTS"
+            ],
+            "state_before": {},
+            "state_after": {
+              "RESEARCHER_GROUP": "discussing around a table",
+              "REPORT_DOCUMENTS": "a stack of reports on the table"
+            },
+            "observable_change": "A group of researchers discusses around a table, with research reports visible.",
+            "claim_ids": [
+              "C07"
+            ],
+            "visual_prompt": "",
+            "state_before_computed": {},
+            "state_after_computed": {
+              "REPORT_DOCUMENTS": "a stack of reports appears on the table, symbolizing accumulated knowledge",
+              "RESEARCHER_GROUP": "discussing around a table"
+            }
+          }
+        ]
+      }
+    ],
+    "visual_sequence_gate": {
+      "block_reasons": [
+        "vseq_no_actual_mutation:SEQ1_ExperimentSetup/S1_InitialSetup"
+      ],
+      "warnings": [
+        "vseq_claim_unlinked:SEQ1_ExperimentSetup/S1_InitialSetup",
+        "vseq_claim_unlinked:SEQ2_AdQualityComparison/S4_HighlightWorst",
+        "vseq_route_contract_conflict:1#REALITY/MECHANISM_SEQUENCE",
+        "vseq_route_contract_conflict:10#REALITY/MECHANISM_SEQUENCE",
+        "vseq_route_contract_conflict:4#REALITY/MECHANISM_SEQUENCE",
+        "vseq_route_contract_conflict:6#REALITY/MECHANISM_SEQUENCE",
+        "vseq_route_contract_conflict:7#REALITY/MECHANISM_SEQUENCE",
+        "vseq_world_reset_high:0.667"
+      ],
+      "metrics": {
+        "sequence_count": 4,
+        "stage_count": 6,
+        "avg_stages_per_sequence": 1.5,
+        "world_reset_rate": 0.667,
+        "continuity_rate": 0.333,
+        "declared_entity_lock_ratio": 1.0,
+        "stage_entity_resolution_rate": 1.0,
+        "mechanism_sequences": 2,
+        "declared_mechanism_role": 0
+      }
+    },
+    "cost_plan": {
+      "content_mode": "series_split",
+      "max_unique_assets": 10,
+      "max_video_clips": 8,
+      "max_video_generated_sec": 110,
+      "max_video_cost_usd": 5.5,
+      "preferred_code_viz_count": 0,
+      "asset_reuse_target": 0.0,
+      "cost_priority": "evidence_over_motion",
+      "unique_asset_count": 9,
+      "reuse_count": 4,
+      "asset_reuse_ratio": 0.308,
+      "code_viz_count": 2,
+      "video_clip_count": 13,
+      "video_generated_sec": 94,
+      "estimated_image_cost_usd": 0.508,
+      "image_models": [
+        "gemini-2.5-flash-image",
+        "gemini-3-pro-image"
+      ],
+      "video_model": "veo-3.1-lite-generate-preview",
+      "estimated_video_cost_usd": 4.7,
+      "estimated_total_generation_cost_usd": 5.208,
+      "sequences": [
+        {
+          "sequence_id": "SEQ1_ExperimentSetup",
+          "role": "FRAMING",
+          "tier": "invest",
+          "cuts": 5,
+          "clips": 6,
+          "video_sec": 36,
+          "candidates": 1,
+          "tier_defaulted_count": 0,
+          "est_usd": 1.8
+        },
+        {
+          "sequence_id": "SEQ2_AdQualityComparison",
+          "role": "RESULT_SEQUENCE",
+          "tier": "invest",
+          "cuts": 4,
+          "clips": 5,
+          "video_sec": 30,
+          "candidates": 1,
+          "tier_defaulted_count": 0,
+          "est_usd": 1.5
+        },
+        {
+          "sequence_id": "SEQ4_Conclusion",
+          "role": "FRAMING",
+          "tier": "standard",
+          "cuts": 2,
+          "clips": 2,
+          "video_sec": 16,
+          "candidates": 1,
+          "tier_defaulted_count": 0,
+          "est_usd": 0.8
+        },
+        {
+          "sequence_id": "SEQ3_FieldExperiment",
+          "role": "REALITY_ANCHOR",
+          "tier": "standard",
+          "cuts": 2,
+          "clips": 2,
+          "video_sec": 12,
+          "candidates": 1,
+          "tier_defaulted_count": 0,
+          "est_usd": 0.6
+        }
+      ],
+      "tiers": {
+        "invest": 2,
+        "standard": 11,
+        "economy": 0
+      },
+      "tier_defaulted": 0
+    },
+    "photo_gate": {
+      "block_reasons": [
+        "photo_forbidden_screen_request:9"
+      ],
+      "warnings": [
+        "photo_mechanism_structured:5",
+        "photo_mechanism_structured:8",
+        "photo_role_balance_off:3/13",
+        "photo_video_cut_count_off:13"
+      ],
+      "stats": {
+        "cuts": 13,
+        "mechanism": 3,
+        "reality": 10,
+        "video_cuts": 13,
+        "total_sec": 71,
+        "target_cut_range": [
+          11,
+          19
+        ]
+      }
+    },
+    "block_reasons": [
+      "photo_forbidden_screen_request:9",
+      "vseq_no_actual_mutation:SEQ1_ExperimentSetup/S1_InitialSetup"
+    ],
+    "approval_blocked": true,
+    "contract_retry": {
+      "attempted": true,
+      "first_block_reasons": [
+        "vseq_no_actual_mutation:SEQ_INTRO/S2_CONNECTIVE",
+        "vseq_state_lineage_mismatch:SEQ_CONCLUSION/S8_IMPLICATION",
+        "vseq_state_lineage_mismatch:SEQ_EXPERIMENT_SETUP/S4_AD_CREATION"
+      ],
+      "retry_block_reasons": [
+        "photo_forbidden_screen_request:9",
+        "vseq_no_actual_mutation:SEQ1_ExperimentSetup/S1_InitialSetup"
+      ],
+      "first_tier_shortfall": [
+        1,
+        4,
+        5,
+        8,
+        10,
+        11
+      ],
+      "retry_tier_shortfall": [
+        1,
+        4,
+        6,
+        7
+      ],
+      "new_violations": [
+        "photo_forbidden_screen_request"
+      ]
+    }
+  },
+  "cuts": [
+    {
+      "cut_no": 1,
+      "scene_kind": "broll_stock",
+      "narration_ko": "외향적인 사람과 성실한 AI가 만나면 최악의 팀이 된다고요?",
+      "narration_en": "What if an extraverted person and a conscientious AI make the worst possible team?",
+      "estimated_sec": 6,
+      "visual_type": "image",
+      "visual_prompt": "A diverse group of office workers, one extraverted person (smiling, gesturing) is trying to collaborate with a very focused, serious-looking person (representing conscientious AI) in a modern office. The interaction seems slightly awkward or mismatched.",
+      "motion_prompt": "slow zoom out from the extraverted person to reveal the awkward interaction with the serious person, subtle background movement of other office workers",
+      "loop_safe": false,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "build_tension",
+      "source_facts": [
+        "claims[2]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C03"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "moderator",
+      "novelty_event": "상식 반전 질문",
+      "beat": "QUESTION",
+      "beat_declared": true,
+      "motion_value": "medium",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 1,
+        "beat": "QUESTION",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ1_ExperimentSetup",
+        "world_ref": "MODERN_OFFICE",
+        "stage_ref": "S1_InitialSetup",
+        "claim_refs": [
+          "C03"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence"
+      ]
+    },
+    {
+      "cut_no": 2,
+      "scene_kind": "broll_stock",
+      "narration_ko": "이건 그냥 하는 말이 아니라,",
+      "narration_en": "This isn't just a random guess;",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "A slightly wider shot of the modern office, showing multiple workstations and a general atmosphere of work. No specific individuals are highlighted.",
+      "motion_prompt": "slow pan left across the office, maintaining eye-level perspective",
+      "loop_safe": true,
+      "style_anchor_ref": "Continues the modern office setting from cut 1.",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "connective",
+      "novelty_event": "연구의 신뢰성 강조",
+      "beat": "RESULT",
+      "beat_declared": false,
+      "motion_value": "low",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G01_OfficeSetting",
+      "base_asset_ref": "1",
+      "state_change": "The camera slightly pans to another part of the office, showing a more general view of productivity, but still maintaining the modern office aesthetic.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 2,
+        "beat": "RESULT",
+        "beat_declared": false,
+        "base": "CODE_VIZ",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ1_ExperimentSetup",
+        "world_ref": "MODERN_OFFICE",
+        "stage_ref": "S1_InitialSetup",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "CODE_VIZ"
+      },
+      "stage_mutations": [],
+      "visual_treatment": "CODE_VIZ",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 3,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "존스 홉킨스와 MIT 공동 연구진이 밝혀낸 사실입니다.",
+      "narration_en": "it's a finding from a joint research team at Johns Hopkins and MIT.",
+      "estimated_sec": 5,
+      "visual_type": "image",
+      "visual_prompt": "A group of diverse researchers, dressed in smart casual, discussing around a large interactive screen in a modern, well-lit collaborative office space. The screen shows abstract data patterns, no text.",
+      "motion_prompt": "subtle zoom in on the group of researchers, maintaining a steady eye-level shot",
+      "loop_safe": true,
+      "style_anchor_ref": "Continues the modern office setting from cut 2, shifting focus to researchers.",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "source"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "connective",
+      "novelty_event": "연구 출처 공개",
+      "beat": "SCOPE",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G01_OfficeSetting",
+      "base_asset_ref": "2",
+      "state_change": "The camera focuses on a group of diverse researchers (not the same as cut 1) in a modern, collaborative workspace, looking at a large screen or whiteboard, implying intellectual work.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "source_card",
+          "text": "Johns Hopkins & MIT 공동 연구",
+          "claim_ids": [],
+          "start_sec": 0.5,
+          "duration_sec": 4.0,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 3,
+        "beat": "SCOPE",
+        "beat_declared": true,
+        "base": "OVERLAY",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ1_ExperimentSetup",
+        "world_ref": "MODERN_OFFICE",
+        "stage_ref": "S1_InitialSetup",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "OVERLAY"
+      },
+      "stage_mutations": [],
+      "visual_treatment": "OVERLAY",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 4,
+      "scene_kind": "broll_stock",
+      "narration_ko": "연구진은 1,258명의 사람과",
+      "narration_en": "The researchers paired 1,258 people with",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "A diverse group of people, representing the participants, sitting at individual workstations in a large, modern open-plan office. They are focused on their computer screens, appearing engaged in a task. The camera is at eye level, showing a wide view of the office.",
+      "motion_prompt": "slow tracking shot across the rows of participants, highlighting the scale of the experiment",
+      "loop_safe": false,
+      "style_anchor_ref": "Consistent modern office environment.",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "how[1]",
+        "numbers[0]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C09"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "scope",
+      "novelty_event": "연구 규모 제시 (참가자 수)",
+      "beat": "EXPERIMENT_SETUP",
+      "beat_declared": true,
+      "motion_value": "medium",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "G02_ExperimentParticipants",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "number_punch",
+          "text": "1,258명",
+          "claim_ids": [
+            "C09"
+          ],
+          "start_sec": 0.5,
+          "duration_sec": 2.0,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 3.0,
+          "entity_id": "HUMAN_PARTICIPANT",
+          "mutation": "APPEAR",
+          "camera": "TRACK"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 4,
+        "beat": "EXPERIMENT_SETUP",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "CODE_OVERLAY",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1_ExperimentSetup",
+        "world_ref": "MODERN_OFFICE",
+        "stage_ref": "S2_PairingAndCreation",
+        "claim_refs": [
+          "C09"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence",
+          "number_needs_precision_layer"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "HUMAN_PARTICIPANT",
+          "property": "interaction_state",
+          "operation": "TRANSFORM",
+          "visible_change": true,
+          "result_state": "actively collaborating with the AI agent, gesturing towards the screen",
+          "claim_ids": [
+            "C09",
+            "C10"
+          ]
+        },
+        {
+          "entity_id": "AD_DRAFT",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a new ad draft appears on the AI agent screen, gradually forming",
+          "claim_ids": [
+            "C10"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence",
+        "number_needs_precision_layer"
+      ]
+    },
+    {
+      "cut_no": 5,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "각기 다른 성격을 부여받은 AI를 짝지어 7천 개가 넘는 광고를 만들게 했는데요.",
+      "narration_en": "AIs programmed with different personalities to create over 7,000 ads.",
+      "estimated_sec": 8,
+      "visual_type": "image",
+      "visual_prompt": "A series of workstations, each with a human participant and an AI agent screen. Above each AI screen, a subtle, abstract glow or color indicates a different 'personality' type (no text). The humans are interacting with the screens, and multiple ad drafts (placeholder images, no text) are rapidly generated and displayed on the screens, accumulating into a large number.",
+      "motion_prompt": "dynamic sequence: camera rapidly cuts between multiple human-AI teams, each showing a different AI personality glow, then a fast-forward sequence of ad drafts appearing on screens, finally dollying out to show many screens with finished ads",
+      "loop_safe": false,
+      "style_anchor_ref": "Consistent modern office environment and participant representation.",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "accelerate",
+      "source_facts": [
+        "how[1]",
+        "how[2]",
+        "numbers[0]",
+        "numbers[1]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C09",
+        "C10"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "scope",
+      "novelty_event": "AI 성격 부여와 광고 생성 과정",
+      "beat": "EXPERIMENT_SETUP",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "Multiple human-AI pairs are shown, each with a different 'personality' icon above the AI screen, and then multiple ad drafts rapidly appear on their screens.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "number_punch",
+          "text": "7,266개 광고",
+          "claim_ids": [
+            "C10"
+          ],
+          "start_sec": 5.0,
+          "duration_sec": 4.0,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "MECHANISM",
+      "mechanism": {
+        "subject": "인간-AI 팀의 광고 생성 과정",
+        "components": [
+          "HUMAN_PARTICIPANT",
+          "AI_AGENT_SCREEN",
+          "AD_DRAFT"
+        ],
+        "relationship": "인간과 AI가 협력하여 광고를 생성",
+        "initial_state": "인간과 AI가 각자의 자리에서 준비된 상태",
+        "transformation": "인간과 AI가 상호작용하며 광고 초안을 생성하고, 다양한 성격 조합에 따라 여러 광고가 생성됨",
+        "final_state": "7,000개 이상의 광고가 생성된 상태",
+        "highlighted_element": "AD_DRAFT",
+        "claim_ids": [
+          "C09",
+          "C10"
+        ]
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 3.0,
+          "entity_id": "HUMAN_PARTICIPANT",
+          "mutation": "APPEAR",
+          "camera": "HOLD"
+        },
+        {
+          "beat": 2,
+          "t0": 3.0,
+          "t1": 7.0,
+          "entity_id": "AD_DRAFT",
+          "mutation": "APPEAR",
+          "camera": "DOLLY_OUT"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 5,
+        "beat": "EXPERIMENT_SETUP",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ1_ExperimentSetup",
+        "world_ref": "MODERN_OFFICE",
+        "stage_ref": "S2_PairingAndCreation",
+        "claim_refs": [
+          "C09",
+          "C10"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "HUMAN_PARTICIPANT",
+          "property": "interaction_state",
+          "operation": "TRANSFORM",
+          "visible_change": true,
+          "result_state": "actively collaborating with the AI agent, gesturing towards the screen",
+          "claim_ids": [
+            "C09",
+            "C10"
+          ]
+        },
+        {
+          "entity_id": "AD_DRAFT",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a new ad draft appears on the AI agent screen, gradually forming",
+          "claim_ids": [
+            "C10"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence"
+      ]
+    },
+    {
+      "cut_no": 6,
+      "scene_kind": "broll_stock",
+      "narration_ko": "그 결과 정말로 인간과 AI의 성격 '조합'이 광고",
+      "narration_en": "The results really showed that human-AI personality 'pairings' directly influenced ad",
+      "estimated_sec": 5,
+      "visual_type": "image",
+      "visual_prompt": "Two distinct piles of printed ad mockups on a clean, minimalist desk. One pile is noticeably taller and neater, while the other is shorter and slightly disheveled. The camera is positioned overhead, looking down at the two piles.",
+      "motion_prompt": "slow dolly out from the two piles of ads, emphasizing their difference in height and neatness",
+      "loop_safe": true,
+      "style_anchor_ref": "Clean, minimalist desk setting.",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "shift_to_discovery",
+      "source_facts": [
+        "what_found[1]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C02"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "primary_result",
+      "novelty_event": "성격 조합의 영향력",
+      "beat": "RESULT",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "G03_AdQualityComparison",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 6,
+        "beat": "RESULT",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ2_AdQualityComparison",
+        "world_ref": "AD_REVIEW_STATION",
+        "stage_ref": "S3_InitialComparison",
+        "claim_refs": [
+          "C02"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "AD_STACK_LOW",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a short, messy stack of ads appears on the left",
+          "claim_ids": []
+        },
+        {
+          "entity_id": "AD_STACK_HIGH",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a tall, neat stack of ads appears on the right",
+          "claim_ids": []
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence"
+      ]
+    },
+    {
+      "cut_no": 7,
+      "scene_kind": "broll_stock",
+      "narration_ko": "품질에 직접적인 영향을 미쳤습니다.",
+      "narration_en": "quality.",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "A human hand gently touches the taller, neater pile of ad mockups on the desk, while the other pile remains untouched. Overhead shot.",
+      "motion_prompt": "subtle movement of a hand touching the tall stack, camera remains static",
+      "loop_safe": true,
+      "style_anchor_ref": "Continues the minimalist desk setting and ad piles from cut 6.",
+      "effects": [
+        "highlight"
+      ],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "what_found[1]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C02"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "primary_result",
+      "novelty_event": "결과의 직접적인 영향",
+      "beat": "RESULT",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G03_AdQualityComparison",
+      "base_asset_ref": "6",
+      "state_change": "A human hand gently touches the taller, neater pile of ads, highlighting its quality.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 7,
+        "beat": "RESULT",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ2_AdQualityComparison",
+        "world_ref": "AD_REVIEW_STATION",
+        "stage_ref": "S3_InitialComparison",
+        "claim_refs": [
+          "C02"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "AD_STACK_LOW",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a short, messy stack of ads appears on the left",
+          "claim_ids": []
+        },
+        {
+          "entity_id": "AD_STACK_HIGH",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a tall, neat stack of ads appears on the right",
+          "claim_ids": []
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence"
+      ]
+    },
+    {
+      "cut_no": 8,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "특히 외향적인 사람과 너무 성실하기만 한 AI의 조합은 가장 낮은 품질의 광고를 만들었죠.",
+      "narration_en": "Specifically, the combination of an extraverted person and a hyper-conscientious AI produced the lowest quality ads.",
+      "estimated_sec": 8,
+      "visual_type": "image",
+      "visual_prompt": "Two stylized, but not abstract, figures. One represents an extraverted human (dynamic pose, open gesture), the other a conscientious AI (focused, precise posture). They are positioned as if collaborating. Between them, a small, messy stack of digital ad mockups materializes, highlighted with a subtle red glow, indicating low quality. The background is a clean, minimalist 3D space.",
+      "motion_prompt": "dynamic sequence: the two figures appear, then the ad stack forms and is highlighted with a pulsing red glow, camera slowly orbits around the highlighted stack",
+      "loop_safe": false,
+      "style_anchor_ref": "",
+      "effects": [
+        "highlight"
+      ],
+      "transition": "cut",
+      "bgm_cue": "tension_peak",
+      "source_facts": [
+        "claims[2]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C03"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "primary_result",
+      "novelty_event": "최악의 조합 구체적 예시",
+      "beat": "COMPARISON",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "Two distinct figures (representing an extraverted human and a conscientious AI) are shown, and then a small, messy stack of ads appears between them, highlighted in red.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "group_compare",
+          "text": "외향적 인간 + 성실 AI = 최저 품질",
+          "claim_ids": [
+            "C03"
+          ],
+          "start_sec": 1.0,
+          "duration_sec": 7.0,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "MECHANISM",
+      "mechanism": {
+        "subject": "인간-AI 성격 조합에 따른 광고 품질",
+        "components": [
+          "EXTROVERT_HUMAN_ICON",
+          "CONSCIENTIOUS_AI_ICON",
+          "LOW_QUALITY_AD_STACK"
+        ],
+        "relationship": "특정 성격 조합이 낮은 품질의 결과물로 이어짐",
+        "initial_state": "외향적인 인간과 성실한 AI가 짝을 이룸",
+        "transformation": "두 성격이 결합하여 상호작용하고, 그 결과로 낮은 품질의 광고 더미가 생성됨",
+        "final_state": "가장 낮은 품질의 광고 더미가 강조된 상태",
+        "highlighted_element": "LOW_QUALITY_AD_STACK",
+        "claim_ids": [
+          "C03"
+        ]
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 3.0,
+          "entity_id": "EXTROVERT_HUMAN_ICON",
+          "mutation": "APPEAR",
+          "camera": "HOLD"
+        },
+        {
+          "beat": 2,
+          "t0": 3.0,
+          "t1": 6.0,
+          "entity_id": "CONSCIENTIOUS_AI_ICON",
+          "mutation": "APPEAR",
+          "camera": "HOLD"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 8,
+        "beat": "COMPARISON",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ2_AdQualityComparison",
+        "world_ref": "AD_REVIEW_STATION",
+        "stage_ref": "S3_InitialComparison",
+        "claim_refs": [
+          "C03"
+        ],
+        "detail_restrictions": [],
+        "reasons": [
+          "in_visual_sequence"
+        ],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "AD_STACK_LOW",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a short, messy stack of ads appears on the left",
+          "claim_ids": []
+        },
+        {
+          "entity_id": "AD_STACK_HIGH",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a tall, neat stack of ads appears on the right",
+          "claim_ids": []
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": [
+        "in_visual_sequence"
+      ]
+    },
+    {
+      "cut_no": 9,
+      "scene_kind": "broll_stock",
+      "narration_ko": "이건 그냥 점수놀이가 아니었습니다.",
+      "narration_en": "This wasn't just about scores.",
+      "estimated_sec": 3,
+      "visual_type": "image",
+      "visual_prompt": "A close-up of a researcher's hands turning the pages of a thick printed report on a desk. Dense blocks of small body text fill the pages as texture; the paper edge shows the report is thick. Shallow depth of field, warm desk lamp light, other bound reports stacked beside it.",
+      "motion_prompt": "hands turn a page, then the camera pushes in slightly on the stacked reports beside them; static tripod otherwise",
+      "loop_safe": true,
+      "style_anchor_ref": "Professional, clean aesthetic.",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "soft_transition",
+      "source_facts": [],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "connective",
+      "novelty_event": "결과의 실제적 중요성 강조",
+      "beat": "RESULT",
+      "beat_declared": false,
+      "motion_value": "low",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [],
+      "resolved_visual_plan": {
+        "cut_no": 9,
+        "beat": "RESULT",
+        "beat_declared": false,
+        "base": "CODE_VIZ",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ2_AdQualityComparison",
+        "world_ref": "AD_REVIEW_STATION",
+        "stage_ref": "S4_HighlightWorst",
+        "claim_refs": [],
+        "detail_restrictions": [],
+        "reasons": [
+          "connective_in_world"
+        ],
+        "treatment": "CODE_VIZ"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "HAND_HIGHLIGHT",
+          "property": "position",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a hand points to the short, messy stack of ads",
+          "claim_ids": []
+        }
+      ],
+      "visual_treatment": "CODE_VIZ",
+      "routing_reasons": [
+        "connective_in_world"
+      ]
+    },
+    {
+      "cut_no": 10,
+      "scene_kind": "broll_stock",
+      "narration_ko": "실제 소셜미디어에 이 광고들을 집행했더니",
+      "narration_en": "When these ads were run on a real social media platform,",
+      "estimated_sec": 4,
+      "visual_type": "image",
+      "visual_prompt": "A person's hands holding a smartphone, scrolling through a social media feed. The feed displays various ads (placeholder images, no text) interspersed with content. The background is a blurred, casual setting like a cafe.",
+      "motion_prompt": "slow scroll of the social media feed on the smartphone, subtle movement of the user's thumbs",
+      "loop_safe": false,
+      "style_anchor_ref": "",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "",
+      "source_facts": [
+        "how[4]",
+        "numbers[3]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C06",
+        "C12"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "magnitude",
+      "novelty_event": "실제 소셜미디어 집행",
+      "beat": "INTERVENTION",
+      "beat_declared": true,
+      "motion_value": "medium",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "G04_SocialMediaImpact",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 4.0,
+          "entity_id": "SMARTPHONE",
+          "mutation": "TRANSFORM",
+          "camera": "DOLLY_IN"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 10,
+        "beat": "INTERVENTION",
+        "beat_declared": true,
+        "base": "MECHANISM_SEQUENCE",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ3_FieldExperiment",
+        "world_ref": "SOCIAL_MEDIA_USER",
+        "stage_ref": "S5_AdImpression",
+        "claim_refs": [
+          "C06",
+          "C12"
+        ],
+        "detail_restrictions": [],
+        "reasons": [],
+        "treatment": "MECHANISM_SEQUENCE"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "SMARTPHONE",
+          "property": "screen_content",
+          "operation": "TRANSFORM",
+          "visible_change": true,
+          "result_state": "social media feed scrolls, showing different ads, some appearing more engaging than others",
+          "claim_ids": [
+            "C06",
+            "C12"
+          ]
+        }
+      ],
+      "visual_treatment": "MECHANISM_SEQUENCE",
+      "routing_reasons": []
+    },
+    {
+      "cut_no": 11,
+      "scene_kind": "motion_graphic",
+      "narration_ko": "좋은 궁합의 팀이 만든 광고가 클릭률과 비용 효율 모두에서 훨씬 뛰어났습니다.",
+      "narration_en": "the ones from well-matched teams performed significantly better in both click-through rates and cost-efficiency.",
+      "estimated_sec": 8,
+      "visual_type": "image",
+      "visual_prompt": "Two digital ad mockups (placeholder images, no text) displayed side-by-side on a clean, minimalist 3D interface. The left ad (representing 'good match') subtly glows and shows a gentle upward animation, while the right ad (representing 'bad match') remains static. The background is a soft, gradient digital space.",
+      "motion_prompt": "dynamic animation: the left ad glows and expands slightly, while the right ad remains still, camera slowly zooms in on the left ad",
+      "loop_safe": false,
+      "style_anchor_ref": "",
+      "effects": [
+        "highlight"
+      ],
+      "transition": "cut",
+      "bgm_cue": "positive_shift",
+      "source_facts": [
+        "what_found[2]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C06"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "magnitude",
+      "novelty_event": "성과 비교 (클릭률, 비용 효율)",
+      "beat": "COMPARISON",
+      "beat_declared": true,
+      "motion_value": "high",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "",
+      "base_asset_ref": "",
+      "state_change": "Two side-by-side ad mockups are shown. The 'good match' ad visually 'activates' with subtle positive effects (e.g., a gentle glow), while the 'bad match' ad remains static or slightly dims.",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [
+        {
+          "type": "group_compare",
+          "text": "좋은 궁합: 높은 클릭률, 높은 비용 효율",
+          "claim_ids": [
+            "C06"
+          ],
+          "start_sec": 1.0,
+          "duration_sec": 6.0,
+          "priority": "primary"
+        }
+      ],
+      "visual_role": "MECHANISM",
+      "mechanism": {
+        "subject": "광고 성과 비교",
+        "components": [
+          "HIGH_PERFORMANCE_AD",
+          "LOW_PERFORMANCE_AD"
+        ],
+        "relationship": "좋은 궁합의 광고가 더 높은 성과를 보임",
+        "initial_state": "두 종류의 광고가 나란히 제시됨",
+        "transformation": "좋은 궁합의 광고에서 클릭률과 비용 효율 지표가 상승하는 애니메이션",
+        "final_state": "좋은 궁합의 광고가 확연히 높은 성과를 보여주는 상태",
+        "highlighted_element": "HIGH_PERFORMANCE_AD",
+        "claim_ids": [
+          "C06"
+        ]
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 4.0,
+          "entity_id": "HIGH_PERFORMANCE_AD",
+          "mutation": "HIGHLIGHT",
+          "camera": "HOLD"
+        },
+        {
+          "beat": 2,
+          "t0": 4.0,
+          "t1": 8.0,
+          "entity_id": "HIGH_PERFORMANCE_AD",
+          "mutation": "GROW",
+          "camera": "DOLLY_IN"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 11,
+        "beat": "COMPARISON",
+        "beat_declared": true,
+        "base": "CODE_VIZ",
+        "precision_layer": "",
+        "representation_mode": "LITERAL_OBSERVATION",
+        "sequence_ref": "SEQ3_FieldExperiment",
+        "world_ref": "SOCIAL_MEDIA_USER",
+        "stage_ref": "S5_AdImpression",
+        "claim_refs": [
+          "C06"
+        ],
+        "detail_restrictions": [],
+        "reasons": [],
+        "treatment": "CODE_VIZ"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "SMARTPHONE",
+          "property": "screen_content",
+          "operation": "TRANSFORM",
+          "visible_change": true,
+          "result_state": "social media feed scrolls, showing different ads, some appearing more engaging than others",
+          "claim_ids": [
+            "C06",
+            "C12"
+          ]
+        }
+      ],
+      "visual_treatment": "CODE_VIZ",
+      "routing_reasons": []
+    },
+    {
+      "cut_no": 12,
+      "scene_kind": "broll_stock",
+      "narration_ko": "즉 AI와 협업할 땐 무조건 성실한 AI가 정답이 아닐 수 있다는 겁니다.",
+      "narration_en": "In other words, a conscientious AI isn't always the answer.",
+      "estimated_sec": 7,
+      "visual_type": "image",
+      "visual_prompt": "A small group of diverse professionals in a modern conference room, engaged in a serious discussion around a large table. One person is gesturing thoughtfully, emphasizing a point. Research documents are neatly stacked on the table.",
+      "motion_prompt": "slow, steady pan across the group of professionals, capturing their thoughtful expressions",
+      "loop_safe": true,
+      "style_anchor_ref": "Professional, modern conference room setting.",
+      "effects": [],
+      "transition": "cut",
+      "bgm_cue": "thoughtful",
+      "source_facts": [
+        "claims[6]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C07"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "implication",
+      "novelty_event": "AI 성격의 중요성 재해석",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "new_asset",
+      "visual_reuse_group": "G05_Conclusion",
+      "base_asset_ref": "",
+      "state_change": "",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 7.0,
+          "entity_id": "RESEARCHER_GROUP",
+          "mutation": "APPEAR",
+          "camera": "TRACK"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 12,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "REALITY",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ4_Conclusion",
+        "world_ref": "MODERN_OFFICE_CONFERENCE",
+        "stage_ref": "S6_DiscussionAndConclusion",
+        "claim_refs": [
+          "C07"
+        ],
+        "detail_restrictions": [],
+        "reasons": [],
+        "treatment": "REALITY"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "REPORT_DOCUMENTS",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a stack of reports appears on the table, symbolizing accumulated knowledge",
+          "claim_ids": [
+            "C07"
+          ]
+        }
+      ],
+      "visual_treatment": "REALITY",
+      "routing_reasons": []
+    },
+    {
+      "cut_no": 13,
+      "scene_kind": "broll_stock",
+      "narration_ko": "누구와 일하느냐에 따라 AI의 '성격'도 맞춰야 최고의 결과를 낼 수 있습니다.",
+      "narration_en": "To get the best results, the AI's 'personality' should be matched to its human collaborator.",
+      "estimated_sec": 8,
+      "visual_type": "image",
+      "visual_prompt": "A close-up of research documents on a conference table, with a human hand pointing to a highlighted section (no text). The background shows blurred figures of professionals in discussion.",
+      "motion_prompt": "slow dolly in on the documents, with a hand appearing to highlight a section, subtle background movement of people",
+      "loop_safe": true,
+      "style_anchor_ref": "Continues the conference room setting and documents from cut 12.",
+      "effects": [
+        "highlight"
+      ],
+      "transition": "crossfade",
+      "bgm_cue": "resolve",
+      "source_facts": [
+        "claims[6]"
+      ],
+      "render_notes": "",
+      "motion_source": "video",
+      "claim_ids": [
+        "C07"
+      ],
+      "reasoning_id": "",
+      "reasoning_step": 0,
+      "evidence_role": "implication",
+      "novelty_event": "AI 성격 맞춤의 필요성",
+      "beat": "CONCLUSION",
+      "beat_declared": true,
+      "motion_value": "low",
+      "asset_strategy": "reuse_with_state_change",
+      "visual_reuse_group": "G05_Conclusion",
+      "base_asset_ref": "12",
+      "state_change": "The camera gently zooms in on the research documents on the table, with a hand pointing to a key finding (no legible text, just a visual highlight of a section).",
+      "crop": null,
+      "tone_grade": "none",
+      "overlay_plan": [],
+      "visual_role": "REALITY",
+      "mechanism": {
+        "subject": "",
+        "components": [],
+        "relationship": "",
+        "initial_state": "",
+        "transformation": "",
+        "final_state": "",
+        "highlighted_element": "",
+        "claim_ids": []
+      },
+      "temporal_plan": [
+        {
+          "beat": 1,
+          "t0": 0.0,
+          "t1": 8.0,
+          "entity_id": "REPORT_DOCUMENTS",
+          "mutation": "HIGHLIGHT",
+          "camera": "DOLLY_IN"
+        }
+      ],
+      "resolved_visual_plan": {
+        "cut_no": 13,
+        "beat": "CONCLUSION",
+        "beat_declared": true,
+        "base": "REALITY",
+        "precision_layer": "",
+        "representation_mode": "SCHEMATIC_PRINCIPLE",
+        "sequence_ref": "SEQ4_Conclusion",
+        "world_ref": "MODERN_OFFICE_CONFERENCE",
+        "stage_ref": "S6_DiscussionAndConclusion",
+        "claim_refs": [
+          "C07"
+        ],
+        "detail_restrictions": [],
+        "reasons": [],
+        "treatment": "REALITY"
+      },
+      "stage_mutations": [
+        {
+          "entity_id": "REPORT_DOCUMENTS",
+          "property": "visibility",
+          "operation": "APPEAR",
+          "visible_change": true,
+          "result_state": "a stack of reports appears on the table, symbolizing accumulated knowledge",
+          "claim_ids": [
+            "C07"
+          ]
+        }
+      ],
+      "visual_treatment": "REALITY",
+      "routing_reasons": []
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+ "experiment": "G2",
+ "tag": "B",
+ "cut_no": 5,
+ "arms": [
+  {
+   "key": "A_4s",
+   "clip_sec": 4,
+   "label": "4초"
+  },
+  {
+   "key": "B_8s",
+   "clip_sec": 8,
+   "label": "8초"
+  }
+ ]
+}

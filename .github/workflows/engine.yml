@@ -1,0 +1,92 @@
+name: engine
+
+# 엔진(수집 → Gemini 채점)을 클라우드에서 실행.
+# 비밀은 레포 Settings → Secrets(프로젝트별 격리)에서 주입한다.
+# 필수 Secret: GEMINI_API_KEY, SUPABASE_SERVICE_KEY
+# 선택 Secret: SUPABASE_URL, OPENALEX_MAILTO, REDDIT_CLIENT_ID/SECRET (없으면 기본값)
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: "수집 윈도우(일)"
+        default: "10"
+      score_limit:
+        description: "채점 편수 상한"
+        default: "150"
+      score_model:
+        description: "채점 모델(gemini-* 면 Gemini 사용)"
+        default: "gemini-2.5-flash"
+      draft_model:
+        description: "초안(Fact Sheet/대본/자기검증) 모델. 품질 높이려면 claude-opus-4-8 + ANTHROPIC_API_KEY Secret"
+        default: "gemini-2.5-flash"
+      run_draft:
+        description: "초안 큐(draft_requests) 처리 여부"
+        type: boolean
+        default: true
+  # 무인 실행(운영자 요청): 매일 자동 수집·채점. UTC 21:10 = KST 06:10.
+  # 스케줄 실행은 inputs 를 못 받으므로 아래 env 의 `|| 기본값` 이 적용된다.
+  # 근거·범위: docs/deviation-scheduled-collect.md
+  schedule:
+    - cron: "10 21 * * *"
+
+# 크론과 수동 실행이 겹쳐 같은 큐를 두 워커가 처리하지 않게 직렬화한다
+# (2026-09-06 추가. c8b46fd 에서 중복 dispatch 로 분이 두 배 나갈 뻔했다).
+concurrency:
+  group: engine-worker
+  cancel-in-progress: false
+
+# ★ 공개 저장소 대비(2026-09-15): GITHUB_TOKEN 최소 권한. 쓰기가 필요한 잡만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  run-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45   # 기본값 360분 방지(2026-09-06)
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # inputs 는 스케줄 실행 때 비므로 `|| 기본값` 으로 무인 실행에서도 동일하게 동작.
+      MODEL_FACTSHEET: ${{ inputs.draft_model || 'gemini-2.5-flash' }}
+      MODEL_SCRIPT: ${{ inputs.draft_model || 'gemini-2.5-flash' }}
+      MODEL_SELFCHECK: ${{ inputs.draft_model || 'gemini-2.5-flash' }}
+      OPENALEX_MAILTO: ${{ secrets.OPENALEX_MAILTO }}
+      ARXIV_CONTACT: ${{ secrets.OPENALEX_MAILTO }}
+      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+      COLLECT_WINDOW_DAYS: ${{ inputs.window_days || '10' }}
+      SCORE_LIMIT: ${{ inputs.score_limit || '150' }}
+      MODEL_SCORING: ${{ inputs.score_model || 'gemini-2.5-flash' }}
+      PEER_REVIEWED_ONLY: "true"
+      TIMEZONE: "Asia/Seoul"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install deps
+        run: python -m pip install -r engine/requirements.txt
+      - name: Collect (수집 + HN-우선 인테이크)
+        run: python -m engine.collect
+      - name: Score (Gemini 채점 + daily_batch)
+        run: python -m engine.score
+      # ★ 저장소 용량 경고 — 2026-08-24 처럼 한도를 넘겨 조직 전체가 멈추기 전에 알린다.
+      #   계획서 Phase S 는 analytics 워크플로에 넣으라고 했지만 **거기엔 크론이 없다**
+      #   (workflow_dispatch 뿐). 거기 두면 사람이 버튼을 누를 때만 도는 경고가 되어
+      #   "미리 알려 준다"는 목적 자체가 성립하지 않는다. 매일 도는 이 잡에 붙인다.
+      #   ★ 새 잡을 만들지 않고 **기존 잡의 스텝**으로 넣는다 — GitHub 은 잡당 1분으로
+      #     올림 과금하므로, 새 잡·새 크론은 빈 폴링에 매달 수십 분을 더 쓴다(2026-08-12
+      #     에 크론 주기를 낮춘 것과 같은 이유). 스텝은 몇 초라 추가 과금이 사실상 없다.
+      #   ★ continue-on-error: 보험이 본체(수집·채점·초안)를 죽이지 않는다.
+      - name: Storage quota warning (경고만 — 지우지 않는다)
+        continue-on-error: true
+        run: python -m engine.storage_quota
+
+      - name: Draft (초안 큐 처리 — draft_requests 폴링)
+        # 수동 실행에서 run_draft 가 true 이거나, 무인 스케줄 실행이면 처리.
+        if: ${{ inputs.run_draft || github.event_name == 'schedule' }}
+        run: python -m engine.draft

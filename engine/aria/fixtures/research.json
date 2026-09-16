@@ -1,0 +1,53 @@
+{
+  "note": "실제 ARIA search_research(status='selected') 응답 캡처 (2026-08-02). 두 계열이 섞여 있다 — 포털 리포트(report_title·report_date 있음, source_url=PDF)와 텔레그램(모두 null, source_url=채널). 전자만 전문 인용이 가능하다.",
+  "items": [
+    {
+      "id": 4902,
+      "matched_at_kst": "2026-07-31 12:03",
+      "broker": "하나증권",
+      "report_title": "[LG전자] 강해진 이익 체력과 신사업 가속화",
+      "portal_category": "company",
+      "report_date": "2026-07-31",
+      "status": "selected",
+      "signal_level": "MID",
+      "theme_name": "로봇",
+      "preview": "[하나증권] [LG전자] 강해진 이익 체력과 신사업 가속화 (company)"
+    },
+    {
+      "id": 4913,
+      "matched_at_kst": "2026-07-31 12:03",
+      "broker": "대신증권",
+      "report_title": "[삼성전자] 동의할 수 없는 주가",
+      "portal_category": "company",
+      "report_date": "2026-07-31",
+      "status": "selected",
+      "signal_level": "HIGH",
+      "theme_name": "메모리반도체",
+      "preview": "[대신증권] [삼성전자] 동의할 수 없는 주가 (company)"
+    },
+    {
+      "id": 4975,
+      "matched_at_kst": "2026-07-31 18:11",
+      "broker": "대신 전략. 돌직구",
+      "report_title": null,
+      "portal_category": null,
+      "report_date": null,
+      "status": "selected",
+      "signal_level": "HIGH",
+      "theme_name": "시황",
+      "preview": "[장 중 시황] 빅테크 CapEx와 디레버리징 막바지 인식, 반도체 폭발적 반등 [FICC리서치부 전략/시황: 이경민] - 국내 증시 수익률(15시 10분): KOSPI +18.50% 상승 / 6,628.20pt"
+    },
+    {
+      "id": 4936,
+      "matched_at_kst": "2026-07-31 12:03",
+      "broker": "IBK투자증권",
+      "report_title": "[LG전자] 높아진 경쟁력, 신사업으로 한계에서 벗어난..",
+      "portal_category": "company",
+      "report_date": "2026-07-31",
+      "status": "rejected",
+      "signal_level": null,
+      "theme_name": null,
+      "preview": "[IBK투자증권] [LG전자] 높아진 경쟁력, 신사업으로 한계에서 벗어난.. (company)"
+    }
+  ]
+}

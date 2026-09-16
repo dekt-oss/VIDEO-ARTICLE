@@ -1,0 +1,23 @@
+-- renders 버킷의 익명 삭제 권한 회수 (2026-09-02)
+--
+-- 무엇이 문제였나 — 실측:
+--   0011 이 `renders_public_delete` 로 `anon`·`authenticated` 에게 renders 버킷의 무조건
+--   DELETE 를 열어 뒀다. anon 키는 브라우저 번들에 실려 나가는 공개 값이므로, 그 키를 본
+--   사람은 누구나 렌더 mp4 전량을 지울 수 있었다. 게다가 RLS 가 꺼진
+--   `public.storage_objects_backup_20260821` 이 익명 조회로 객체 경로 471건을 그대로 내주고
+--   있어서 "무엇을 지울지" 목록까지 함께 노출돼 있었다(2026-09-01 진단, Advisor CRITICAL).
+--
+-- 0011 의 근거는 "대시보드는 anon 키 전용, service_role 은 엔진 전용"이었다. 그 전제는
+--   0031 에서 이미 깨졌다 — `web/lib/supabase/admin.ts` 가 생기면서 Next 라우트도
+--   service_role 로 쓴다. 그래서 삭제 권한을 그쪽으로 옮기고 이 정책은 닫는다.
+--
+-- ★ 적용 순서가 중요하다: 이 마이그레이션은 **web 배포가 끝난 뒤에** 적용한다.
+--   먼저 적용하면 /api/render-manage 의 purge 가 파일을 못 지운 채 행만 지우고, 그 파일은
+--   engine/storage_gc.py 가 일부러 남기는 "연결된 잡을 못 찾는 고아 경로"가 되어 영원히
+--   회수되지 않는다. 2026-08-24 Storage 1GB 초과 → 조직 전체 정지 사고가 그 누적이었다.
+--
+-- 영향 없는 것:
+--   · engine — `engine/db.py` 가 service_role 로 붙으므로 RLS 를 우회한다(storage_gc/cleanup 그대로).
+--   · 읽기·다운로드 — renders 는 public 버킷이라 이 DELETE 정책과 무관하다.
+
+drop policy if exists renders_public_delete on storage.objects;

@@ -1,0 +1,105 @@
+
+# 보드 골든 해시 갱신 (수동 실행 전용).
+#
+# 왜 워크플로인가: `tests/test_board_render_golden.py` 는 보드 11종을 실제로 그려 픽셀 해시를
+# 대조한다. 그런데 **해시는 실행 환경을 탄다** — 윈도우 로컬 Pillow 에는 raqm/harfbuzz 가 없어
+# 글자 배치가 리눅스와 미세하게 달라, 로컬에서 기준값을 만들면 CI 가 그날로 빨개진다.
+# 그래서 화면을 **의도적으로** 바꿨을 때는 여기서, 즉 CI 와 같은 환경에서 기준값을 만든다.
+#
+# 언제 돌리나: 보드 화면을 일부러 고쳤을 때만. 리팩터(화면 불변이 합격기준)에는 돌리면 안 된다 —
+# 돌리는 순간 그 검사가 무의미해진다(tests/make_golden.py 의 경고와 같은 이유).
+#
+# 무엇을 하나: 기준값을 다시 만들어 **브랜치에 커밋**한다. 기본 브랜치에는 밀지 않는다.
+name: golden-refresh
+
+# ★ 트리거가 둘이고 하는 일이 다르다.
+#   · pull_request: 보드 코드가 바뀐 PR 에서 기준값을 **만들어 첨부만** 한다(커밋 안 함).
+#     자동 커밋으로 두면 "화면 불변이 합격기준"인 리팩터에서도 기준값이 조용히 갱신돼
+#     검사가 무의미해진다. 사람이 받아서 의도한 변경일 때만 커밋한다.
+#   · workflow_dispatch: 의도한 변경임을 사람이 밝히고 브랜치에 커밋까지 한다.
+#     (workflow_dispatch 는 기본 브랜치에 이 파일이 있어야 목록에 뜬다 — 머지 후 쓸 수 있다.)
+on:
+  pull_request:
+    paths:
+      - "engine/board_*.py"
+      - "engine/visual_contract.py"
+      - "engine/component_registry.py"
+      - "tests/golden/**"
+      - ".github/workflows/golden-refresh.yml"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "무엇을 의도적으로 바꿨나(커밋 메시지에 남는다)"
+        required: true
+        type: string
+
+# ★ 공개 저장소 대비(2026-09-15): 기본은 읽기. 쓰기 토큰은 수동 실행의 커밋 잡만 받는다.
+#   종전엔 최상위 contents: write 라 PR 실행(같은 저장소 브랜치)도 쓰기 토큰을 쥔 채 브랜치 코드를 돌렸다.
+#   permissions 값에는 표현식을 쓸 수 없어서 잡을 둘로 나눴다.
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20   # 기본값 360분 방지(2026-09-06)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          # ★ PR 이벤트의 github.ref_name 은 "94/merge" 라 브랜치로 체크아웃할 수 없다.
+          #   PR 에서는 head_ref(원 브랜치)를, 수동 실행에서는 ref_name 을 쓴다.
+          ref: ${{ github.head_ref || github.ref_name }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install engine deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r engine/requirements.txt
+      # 폰트는 assets/fonts/ 에 커밋돼 있다(tests.yml 과 같은 전제).
+      - name: 기준값 재생성
+        run: python tests/make_golden.py
+      - name: 무엇이 바뀌었나
+        run: git --no-pager diff --stat tests/golden/board_render_hashes.json
+      - name: 갱신된 기준값으로 검사 통과 확인
+        run: python -m pytest tests/test_board_render_golden.py -q
+      # PR 에서는 여기까지 — 사람이 내려받아 의도한 변경일 때만 커밋한다.
+      - name: 기준값 첨부
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: golden-hashes
+          path: tests/golden/board_render_hashes.json
+          retention-days: 7
+
+  commit:
+    needs: refresh
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: golden-hashes
+          path: tests/golden
+      - name: 커밋
+        # ★ 입력값을 run: 스크립트에 직접 끼우지 않는다(셸 주입). 환경변수로 넘긴다(2026-09-15).
+        env:
+          REASON: ${{ inputs.reason }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          if git diff --quiet tests/golden/board_render_hashes.json; then
+            echo "::notice::기준값이 그대로다 — 화면이 안 바뀌었다는 뜻이다. 커밋할 것이 없다."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/golden/board_render_hashes.json
+          git commit -m "보드 기준 해시 갱신 — $REASON"
+          git push origin "HEAD:$TARGET_BRANCH"

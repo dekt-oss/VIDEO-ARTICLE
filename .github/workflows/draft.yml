@@ -1,0 +1,71 @@
+name: draft
+
+# 초안·지시서 생성 워커 — draft_requests / directive_requests 큐를 처리한다.
+#
+# ★ 2026-08-29(리뷰 §8): 지시서 생성이 **여기로 넘어왔다.** 예전에는 Edge Function 이
+#   202 를 돌려준 뒤 백그라운드에서 생성했는데, 런타임이 끊기면 요청이 영구 processing 으로
+#   남았다(실측: 47초 shutdown). 이제 Edge 는 큐에 넣기만 하고 생성은 이 워커가 독점한다.
+#   워커가 중간에 죽어도 임대(lease)가 만료돼 다음 실행이 되집는다(0043).
+# 대시보드 "초안 생성 요청" → 큐(draft_requests)에 적재 → 이 워크플로가 소비해 drafts 생성.
+# 로컬 워커 없이 클라우드에서 초안을 생성하기 위한 수동 트리거(D4 폴링을 Actions 로 대체).
+#
+# 필수 Secret: SUPABASE_SERVICE_KEY, 그리고 GEMINI_API_KEY 또는 ANTHROPIC_API_KEY.
+# 기본 모델은 Gemini(기존 채점과 동일 키로 바로 동작). 품질을 높이려면 입력에서
+# 대본 모델을 claude-opus-4-8 로 바꾸고 ANTHROPIC_API_KEY Secret 을 추가한다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      factsheet_model:
+        description: "Fact Sheet 추출 모델"
+        default: "gemini-2.0-flash"
+      script_model:
+        description: "대본 합성 모델 (품질 중요 — 여유되면 claude-opus-4-8)"
+        default: "gemini-2.0-flash"
+      selfcheck_model:
+        description: "자기검증 모델"
+        default: "gemini-2.0-flash"
+      directive_model:
+        description: "지시서 생성 모델"
+        default: "gemini-2.5-pro"
+
+# 크론과 수동 실행이 겹쳐 같은 큐를 두 워커가 처리하지 않게 직렬화한다
+# (2026-09-06 추가. c8b46fd 에서 중복 dispatch 로 분이 두 배 나갈 뻔했다).
+concurrency:
+  group: draft-worker
+  cancel-in-progress: false
+
+# ★ 공개 저장소 대비(2026-09-15): GITHUB_TOKEN 최소 권한. 쓰기가 필요한 잡만 따로 올린다.
+permissions:
+  contents: read
+
+jobs:
+  run-draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30   # 기본값 360분 방지(2026-09-06)
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      MODEL_FACTSHEET: ${{ inputs.factsheet_model }}
+      MODEL_SCRIPT: ${{ inputs.script_model }}
+      MODEL_SELFCHECK: ${{ inputs.selfcheck_model }}
+      MODEL_DIRECTIVE: ${{ inputs.directive_model || 'gemini-2.5-pro' }}
+      # 누가 임대를 잡았는지 요청 행에 남는다(0043) — 중단 원인을 추적하는 유일한 단서다.
+      WORKER_ID: ${{ github.run_id }}
+      TIMEZONE: "Asia/Seoul"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install deps
+        run: python -m pip install -r engine/requirements.txt
+      - name: Draft (초안 큐 처리 — draft_requests 폴링)
+        run: python -m engine.draft
+      # ★ 초안 다음에 둔다. 지시서는 초안이 있어야 만들 수 있으므로 같은 실행에서 이어진다.
+      #   실패해도 초안 결과를 버리지 않도록 별도 스텝이다.
+      - name: Directive (지시서 큐 처리 — directive_requests 폴링, 만료 임대 회수 포함)
+        run: python -m engine.directive

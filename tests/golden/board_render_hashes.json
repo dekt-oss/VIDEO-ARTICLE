@@ -1,0 +1,68 @@
+{
+  "HOOK_BOARD": {
+    "frames": 60,
+    "sha256": "1cda94391e48a32c81be435933787b1ed17e13c28f047dc06aca59ed5b2c60d0",
+    "core_fill": 0.1863,
+    "placements": 4
+  },
+  "CLAIM_BOARD": {
+    "frames": 60,
+    "sha256": "1cda94391e48a32c81be435933787b1ed17e13c28f047dc06aca59ed5b2c60d0",
+    "core_fill": 0.1863,
+    "placements": 4
+  },
+  "NUMBER_BOARD": {
+    "frames": 60,
+    "sha256": "aad1f731addc1d07be49fa46db9a11b85c2dd87a07014b9b3db7f5beb6f4f955",
+    "core_fill": 0.3787,
+    "placements": 8
+  },
+  "CHART_BOARD": {
+    "frames": 60,
+    "sha256": "fcc93f9592b0c9d7eb35a0dedb4c3dbc4cdbf21ed29f2aa60fc19a94c06a43a6",
+    "core_fill": 0.3787,
+    "placements": 8
+  },
+  "EVIDENCE_BOARD": {
+    "frames": 60,
+    "sha256": "350d36033ef4b0b1359cac6c784f4309de0d871a766b2f651ce6a3ae4172c10f",
+    "core_fill": 0.5602,
+    "placements": 4
+  },
+  "REPORT_REASON_BOARD": {
+    "frames": 60,
+    "sha256": "1cda94391e48a32c81be435933787b1ed17e13c28f047dc06aca59ed5b2c60d0",
+    "core_fill": 0.1863,
+    "placements": 4
+  },
+  "MECHANISM_BOARD": {
+    "frames": 60,
+    "sha256": "1cda94391e48a32c81be435933787b1ed17e13c28f047dc06aca59ed5b2c60d0",
+    "core_fill": 0.1863,
+    "placements": 4
+  },
+  "VALUATION_BOARD": {
+    "frames": 60,
+    "sha256": "aad1f731addc1d07be49fa46db9a11b85c2dd87a07014b9b3db7f5beb6f4f955",
+    "core_fill": 0.3787,
+    "placements": 8
+  },
+  "COMPARISON_BOARD": {
+    "frames": 60,
+    "sha256": "9c4018faeafc73ab755d5d5a4d820333b937c8b5e8239a246830f04af4364630",
+    "core_fill": 0.3787,
+    "placements": 8
+  },
+  "WATCHPOINT_BOARD": {
+    "frames": 60,
+    "sha256": "37aed1c64a90b6aa0e516bc452e694d76325f56b807c17e66c5cfdba062d60a7",
+    "core_fill": 0.486,
+    "placements": 5
+  },
+  "CONTEXT_BOARD": {
+    "frames": 60,
+    "sha256": "1cda94391e48a32c81be435933787b1ed17e13c28f047dc06aca59ed5b2c60d0",
+    "core_fill": 0.1863,
+    "placements": 4
+  }
+}

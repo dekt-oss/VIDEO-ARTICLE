@@ -1,0 +1,1259 @@
+{
+ "version_type": "photo",
+ "header": {
+  "version_type": "photo",
+  "aspect_ratio": "9:16",
+  "global_style": "Photorealistic, scientific, space exploration, clean, high-contrast, deep space blues and cold grays",
+  "hook_ko": "2026년, 달에 로켓이 충돌합니다. 그런데 이 로켓, 궤도를 돌다 갑자기 회전 속도가 변했습니다. 과연 무슨 일이?",
+  "hook_en": "In 2026, a rocket will crash into the Moon. But this rocket, while orbiting, suddenly changed its rotation speed. What happened?",
+  "cta_ko": "",
+  "cta_en": "",
+  "bgm": {
+   "mood": "긴장",
+   "track_ref": ""
+  },
+  "media_policy": "image_preferred",
+  "total_estimated_sec": 60,
+  "hook_type": "H3",
+  "hook_reframe_angle": "scientific_wonder",
+  "hook_promise_check": {
+   "pass": true,
+   "promise": "달에 충돌할 로켓의 갑작스러운 회전 속도 변화 원인",
+   "payoff_cut_no": [
+    10
+   ],
+   "reason": "컷 10에서 회전 속도 변화의 원인이 아직 명확히 밝혀지지 않았다고 언급하며 미스터리를 해소한다."
+  },
+  "science_reliability": {
+   "claim_type": "measured_result",
+   "evidence_strength": "high",
+   "generalization_risk": "low",
+   "required_caveat": ""
+  },
+  "cta_type": "comment_question",
+  "loop_match": true,
+  "series_id": "",
+  "content_mode": "series_split",
+  "primary_claim_id": "C01",
+  "supporting_claim_ids": [
+   "C02",
+   "C03",
+   "C04",
+   "C05",
+   "C06"
+  ],
+  "essential_evidence_units": [
+   "E1",
+   "E2",
+   "E3",
+   "E4",
+   "E7",
+   "E8"
+  ],
+  "target_duration_min_sec": 45,
+  "target_duration_max_sec": 90,
+  "duration_reason": "핵심 결과, 정체 확인 방법, 미스터리한 현상, 충돌 규모, 연구의 의의까지 전달하려면 standard 모드가 필요합니다.",
+  "retention_plan": {
+   "novelty_interval_max_sec": 7,
+   "payoff_start_ratio": 0.72,
+   "open_loop": "달에 충돌할 로켓의 회전 속도 변화 원인은 무엇일까?",
+   "pattern_interrupt_cut_nos": [
+    8,
+    12
+   ]
+  },
+  "evidence_coverage": {
+   "required_claim_ids": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06"
+   ],
+   "spoken_claim_ids": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05",
+    "C06"
+   ],
+   "visual_claim_ids": [],
+   "missing_claim_ids": [],
+   "primary_claim_covered": true,
+   "scope_present": true,
+   "method_present": true,
+   "magnitude_present": true,
+   "caveat_present": true
+  },
+  "mode_warnings": [
+   "forced_series_split_multiple_main_claims",
+   "mode_overridden:standard->series_split",
+   "photo_mechanism_structured:14",
+   "photo_mechanism_structured:4",
+   "photo_mechanism_structured:5",
+   "photo_mechanism_structured:7",
+   "photo_mechanism_thin:6",
+   "too_many_spoken_numbers",
+   "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S1_Approach#2",
+   "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S2_OriginTrace#3",
+   "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S2_OriginTrace#4",
+   "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S3_MaterialAnalysis#6",
+   "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S4_RotationAnomaly#8",
+   "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S5_ImpendingImpact#11",
+   "vseq_route_contract_conflict:1#REALITY/MECHANISM_SEQUENCE",
+   "vseq_route_contract_conflict:10#REALITY/MECHANISM_SEQUENCE"
+  ],
+  "visual_routing": {
+   "treatments": {
+    "MECHANISM_SEQUENCE": 8,
+    "CODE_VIZ": 2,
+    "REALITY": 4,
+    "OVERLAY": 1
+   },
+   "precision_layer_count": 3,
+   "in_sequence": 8,
+   "connective_in_world": 7,
+   "cut_claim_mismatch": 1,
+   "detail_restricted": 0,
+   "source_depth": "full_body"
+  },
+  "visual_sequences": [
+   {
+    "sequence_id": "SEQ1_RocketImpact",
+    "sequence_role": "RESULT_SEQUENCE",
+    "world": {
+     "world_id": "MoonOrbit",
+     "style": "Photorealistic, deep space, detailed lunar surface, metallic rocket texture",
+     "lighting": "Harsh, directional sunlight from a distant source, creating strong contrasts and deep shadows",
+     "background": "Star-filled blackness of space, detailed lunar surface with craters",
+     "camera_base": "elevated_three_quarter",
+     "identity_lock": true
+    },
+    "entities": [
+     {
+      "entity_id": "ROCKET_STAGE",
+      "entity_type": "object",
+      "visual_identity": "SpaceX Falcon 9 upper stage, cylindrical, white with dark markings, slightly elongated",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "MOON_SURFACE",
+      "entity_type": "structure",
+      "visual_identity": "Cratered, dusty, grey lunar surface",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "TRAJECTORY_LINE",
+      "entity_type": "object",
+      "visual_identity": "Glowing blue line representing orbital path",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "SPECTRAL_GRAPH",
+      "entity_type": "object",
+      "visual_identity": "Stylized line graph with absorption bands",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "TIMER_OVERLAY",
+      "entity_type": "object",
+      "visual_identity": "Digital timer display",
+      "continuity": "locked"
+     },
+     {
+      "entity_id": "CRATER",
+      "entity_type": "structure",
+      "visual_identity": "Freshly formed impact crater on lunar surface",
+      "continuity": "locked"
+     }
+    ],
+    "stages": [
+     {
+      "stage_id": "S1_Approach",
+      "cut_refs": [
+       1
+      ],
+      "representation_mode": "LITERAL_OBSERVATION",
+      "allow_connective": false,
+      "mutations": [
+       {
+        "entity_id": "ROCKET_STAGE",
+        "property": "position",
+        "operation": "MOVE",
+        "visible_change": true,
+        "result_state": "Approaching the Moon, appearing larger",
+        "claim_ids": [
+         "C01"
+        ]
+       }
+      ],
+      "operation": "FLOW",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "NEW_WORLD",
+      "continuity_from": "",
+      "entity_refs": [
+       "ROCKET_STAGE",
+       "MOON_SURFACE"
+      ],
+      "state_before": {
+       "ROCKET_STAGE": "Small, distant, tumbling",
+       "MOON_SURFACE": "Large, distant background"
+      },
+      "state_after": {
+       "ROCKET_STAGE": "Larger, closer, still tumbling",
+       "MOON_SURFACE": "Closer, more detailed background"
+      },
+      "observable_change": "로켓이 달에 가까워지며 화면에서 커진다.",
+      "claim_ids": [
+       "C01"
+      ],
+      "visual_prompt": "",
+      "state_before_computed": {
+       "ROCKET_STAGE": "Small, distant, tumbling",
+       "MOON_SURFACE": "Large, distant background"
+      },
+      "state_after_computed": {
+       "ROCKET_STAGE": "Approaching the Moon, appearing larger",
+       "MOON_SURFACE": "Large, distant background"
+      }
+     },
+     {
+      "stage_id": "S2_OriginTrace",
+      "cut_refs": [
+       2
+      ],
+      "representation_mode": "SCHEMATIC_PRINCIPLE",
+      "allow_connective": false,
+      "mutations": [
+       {
+        "entity_id": "TRAJECTORY_LINE",
+        "property": "visibility",
+        "operation": "APPEAR",
+        "visible_change": true,
+        "result_state": "Glowing line tracing back from Moon to Earth",
+        "claim_ids": [
+         "C02"
+        ]
+       }
+      ],
+      "operation": "REVEAL",
+      "camera_operation": "ORBIT",
+      "continuity_mode": "CONTINUE_WORLD",
+      "continuity_from": "S1_Approach",
+      "entity_refs": [
+       "ROCKET_STAGE",
+       "MOON_SURFACE",
+       "TRAJECTORY_LINE"
+      ],
+      "state_before": {
+       "ROCKET_STAGE": "Tumbling near Moon",
+       "MOON_SURFACE": "Background"
+      },
+      "state_after": {
+       "ROCKET_STAGE": "Tumbling near Moon",
+       "MOON_SURFACE": "Background",
+       "TRAJECTORY_LINE": "Visible, tracing back to Earth"
+      },
+      "observable_change": "로켓의 궤적이 달에서 지구로 역추적되는 선으로 나타난다.",
+      "claim_ids": [
+       "C02"
+      ],
+      "visual_prompt": "",
+      "state_before_computed": {
+       "ROCKET_STAGE": "Approaching the Moon, appearing larger",
+       "MOON_SURFACE": "Large, distant background"
+      },
+      "state_after_computed": {
+       "ROCKET_STAGE": "Approaching the Moon, appearing larger",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "Glowing line tracing back from Moon to Earth"
+      }
+     },
+     {
+      "stage_id": "S3_MaterialAnalysis",
+      "cut_refs": [
+       3
+      ],
+      "representation_mode": "SCHEMATIC_PRINCIPLE",
+      "allow_connective": false,
+      "mutations": [
+       {
+        "entity_id": "ROCKET_STAGE",
+        "property": "size",
+        "operation": "GROW",
+        "visible_change": true,
+        "result_state": "Extreme close-up on rocket surface",
+        "claim_ids": []
+       },
+       {
+        "entity_id": "SPECTRAL_GRAPH",
+        "property": "visibility",
+        "operation": "APPEAR",
+        "visible_change": true,
+        "result_state": "Spectral graph overlay with absorption bands",
+        "claim_ids": [
+         "C03"
+        ]
+       }
+      ],
+      "operation": "ZOOM_INTO",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "CONTINUE_WORLD",
+      "continuity_from": "S2_OriginTrace",
+      "entity_refs": [
+       "ROCKET_STAGE",
+       "SPECTRAL_GRAPH"
+      ],
+      "state_before": {
+       "ROCKET_STAGE": "Distant, tumbling",
+       "SPECTRAL_GRAPH": "Not visible"
+      },
+      "state_after": {
+       "ROCKET_STAGE": "Close-up of surface",
+       "SPECTRAL_GRAPH": "Visible, showing absorption bands"
+      },
+      "observable_change": "로켓 표면이 클로즈업되고, 그 위에 분광 분석 그래프가 나타난다.",
+      "claim_ids": [
+       "C03"
+      ],
+      "visual_prompt": "",
+      "state_before_computed": {
+       "ROCKET_STAGE": "Approaching the Moon, appearing larger",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "Glowing line tracing back from Moon to Earth"
+      },
+      "state_after_computed": {
+       "ROCKET_STAGE": "Extreme close-up on rocket surface",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "Glowing line tracing back from Moon to Earth",
+       "SPECTRAL_GRAPH": "Spectral graph overlay with absorption bands"
+      }
+     },
+     {
+      "stage_id": "S4_RotationAnomaly",
+      "cut_refs": [
+       4
+      ],
+      "representation_mode": "LITERAL_OBSERVATION",
+      "allow_connective": false,
+      "mutations": [
+       {
+        "entity_id": "ROCKET_STAGE",
+        "property": "rotation_speed",
+        "operation": "TRANSFORM",
+        "visible_change": true,
+        "result_state": "Rotation becomes erratic and changes speed",
+        "claim_ids": [
+         "C04"
+        ]
+       },
+       {
+        "entity_id": "TIMER_OVERLAY",
+        "property": "visibility",
+        "operation": "APPEAR",
+        "visible_change": true,
+        "result_state": "Digital timer showing changing rotation period",
+        "claim_ids": [
+         "C04"
+        ]
+       }
+      ],
+      "operation": "TRANSFORM",
+      "camera_operation": "HOLD",
+      "continuity_mode": "CONTINUE_WORLD",
+      "continuity_from": "S3_MaterialAnalysis",
+      "entity_refs": [
+       "ROCKET_STAGE",
+       "TIMER_OVERLAY"
+      ],
+      "state_before": {
+       "ROCKET_STAGE": "Steady rotation",
+       "TIMER_OVERLAY": "Not visible"
+      },
+      "state_after": {
+       "ROCKET_STAGE": "Erratic rotation, changed speed",
+       "TIMER_OVERLAY": "Visible, showing changed period"
+      },
+      "observable_change": "로켓의 회전 속도가 불규칙하게 변하고, 타이머 오버레이가 나타나 변화를 보여준다.",
+      "claim_ids": [
+       "C04"
+      ],
+      "visual_prompt": "",
+      "state_before_computed": {
+       "ROCKET_STAGE": "Extreme close-up on rocket surface",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "Glowing line tracing back from Moon to Earth",
+       "SPECTRAL_GRAPH": "Spectral graph overlay with absorption bands"
+      },
+      "state_after_computed": {
+       "ROCKET_STAGE": "Rotation becomes erratic and changes speed",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "Glowing line tracing back from Moon to Earth",
+       "SPECTRAL_GRAPH": "Spectral graph overlay with absorption bands",
+       "TIMER_OVERLAY": "Digital timer showing changing rotation period"
+      }
+     },
+     {
+      "stage_id": "S5_ImpendingImpact",
+      "cut_refs": [
+       5
+      ],
+      "representation_mode": "LITERAL_OBSERVATION",
+      "allow_connective": false,
+      "mutations": [
+       {
+        "entity_id": "ROCKET_STAGE",
+        "property": "position",
+        "operation": "IMPACT",
+        "visible_change": true,
+        "result_state": "Rocket crashes into Moon surface",
+        "claim_ids": [
+         "C05"
+        ]
+       },
+       {
+        "entity_id": "CRATER",
+        "property": "visibility",
+        "operation": "APPEAR",
+        "visible_change": true,
+        "result_state": "New crater forms on lunar surface",
+        "claim_ids": [
+         "C05"
+        ]
+       }
+      ],
+      "operation": "REVEAL",
+      "camera_operation": "DOLLY_IN",
+      "continuity_mode": "CONTINUE_WORLD",
+      "continuity_from": "S4_RotationAnomaly",
+      "entity_refs": [
+       "ROCKET_STAGE",
+       "MOON_SURFACE",
+       "CRATER"
+      ],
+      "state_before": {
+       "ROCKET_STAGE": "Approaching Moon",
+       "MOON_SURFACE": "Intact",
+       "CRATER": "Not visible"
+      },
+      "state_after": {
+       "ROCKET_STAGE": "Impacted, debris",
+       "MOON_SURFACE": "With new crater",
+       "CRATER": "Visible, expanding"
+      },
+      "observable_change": "로켓이 달에 충돌하고, 새로운 분화구가 형성된다.",
+      "claim_ids": [
+       "C05"
+      ],
+      "visual_prompt": "",
+      "state_before_computed": {
+       "ROCKET_STAGE": "Rotation becomes erratic and changes speed",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "Glowing line tracing back from Moon to Earth",
+       "SPECTRAL_GRAPH": "Spectral graph overlay with absorption bands",
+       "TIMER_OVERLAY": "Digital timer showing changing rotation period"
+      },
+      "state_after_computed": {
+       "ROCKET_STAGE": "Rocket crashes into Moon surface",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "Glowing line tracing back from Moon to Earth",
+       "SPECTRAL_GRAPH": "Spectral graph overlay with absorption bands",
+       "TIMER_OVERLAY": "Digital timer showing changing rotation period",
+       "CRATER": "New crater forms on lunar surface"
+      }
+     },
+     {
+      "stage_id": "S6_Benchmark",
+      "cut_refs": [
+       6
+      ],
+      "representation_mode": "SCHEMATIC_PRINCIPLE",
+      "allow_connective": true,
+      "mutations": [
+       {
+        "entity_id": "TRAJECTORY_LINE",
+        "property": "highlight",
+        "operation": "HIGHLIGHT",
+        "visible_change": true,
+        "result_state": "One trajectory line stands out as a benchmark",
+        "claim_ids": [
+         "C06"
+        ]
+       }
+      ],
+      "operation": "ACCUMULATE",
+      "camera_operation": "ORBIT",
+      "continuity_mode": "RETURN_WORLD",
+      "continuity_from": "S1_Approach",
+      "entity_refs": [
+       "MOON_SURFACE",
+       "TRAJECTORY_LINE"
+      ],
+      "state_before": {
+       "MOON_SURFACE": "In space",
+       "TRAJECTORY_LINE": "Multiple faint lines"
+      },
+      "state_after": {
+       "MOON_SURFACE": "In space",
+       "TRAJECTORY_LINE": "One highlighted, serving as a reference"
+      },
+      "observable_change": "달 주위의 여러 궤도선 중 하나가 강조되어 기준점 역할을 한다.",
+      "claim_ids": [
+       "C06"
+      ],
+      "visual_prompt": "",
+      "state_before_computed": {
+       "ROCKET_STAGE": "Approaching the Moon, appearing larger",
+       "MOON_SURFACE": "Large, distant background"
+      },
+      "state_after_computed": {
+       "ROCKET_STAGE": "Approaching the Moon, appearing larger",
+       "MOON_SURFACE": "Large, distant background",
+       "TRAJECTORY_LINE": "One trajectory line stands out as a benchmark"
+      }
+     }
+    ]
+   }
+  ],
+  "visual_sequence_gate": {
+   "block_reasons": [
+    "vseq_state_lineage_mismatch:SEQ1_RocketImpact/S2_OriginTrace",
+    "vseq_state_lineage_mismatch:SEQ1_RocketImpact/S5_ImpendingImpact",
+    "vseq_state_lineage_mismatch:SEQ1_RocketImpact/S6_Benchmark"
+   ],
+   "warnings": [
+    "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S1_Approach#2",
+    "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S2_OriginTrace#3",
+    "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S2_OriginTrace#4",
+    "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S3_MaterialAnalysis#6",
+    "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S4_RotationAnomaly#8",
+    "vseq_cut_claim_mismatch:SEQ1_RocketImpact/S5_ImpendingImpact#11",
+    "vseq_route_contract_conflict:1#REALITY/MECHANISM_SEQUENCE",
+    "vseq_route_contract_conflict:10#REALITY/MECHANISM_SEQUENCE"
+   ],
+   "metrics": {
+    "sequence_count": 1,
+    "stage_count": 6,
+    "avg_stages_per_sequence": 6.0,
+    "world_reset_rate": 0.167,
+    "continuity_rate": 0.833,
+    "declared_entity_lock_ratio": 1.0,
+    "stage_entity_resolution_rate": 1.0,
+    "mechanism_sequences": 1,
+    "declared_mechanism_role": 0
+   }
+  },
+  "cost_plan": {
+   "content_mode": "series_split",
+   "max_unique_assets": 12,
+   "max_video_clips": 8,
+   "max_video_generated_sec": 48,
+   "max_video_cost_usd": 2.4,
+   "preferred_code_viz_count": 0,
+   "asset_reuse_target": 0.0,
+   "cost_priority": "evidence_over_motion",
+   "unique_asset_count": 9,
+   "reuse_count": 6,
+   "asset_reuse_ratio": 0.4,
+   "code_viz_count": 5,
+   "video_clip_count": 8,
+   "video_generated_sec": 40,
+   "estimated_image_cost_usd": 0.318,
+   "image_models": [
+    "gemini-2.5-flash-image",
+    "gemini-3-pro-image"
+   ],
+   "video_model": "veo-3.1-lite-generate-preview",
+   "estimated_video_cost_usd": 2.0,
+   "estimated_total_generation_cost_usd": 2.318
+  },
+  "photo_gate": {
+   "block_reasons": [
+    "photo_forbidden_screen_request:7,15"
+   ],
+   "warnings": [
+    "photo_mechanism_structured:14",
+    "photo_mechanism_structured:4",
+    "photo_mechanism_structured:5",
+    "photo_mechanism_structured:7",
+    "photo_mechanism_thin:6"
+   ],
+   "stats": {
+    "cuts": 15,
+    "mechanism": 7,
+    "reality": 8,
+    "video_cuts": 8,
+    "total_sec": 60,
+    "target_cut_range": [
+     12,
+     20
+    ]
+   }
+  },
+  "block_reasons": [
+   "photo_forbidden_screen_request:7,15",
+   "series_split_required",
+   "vseq_state_lineage_mismatch:SEQ1_RocketImpact/S2_OriginTrace",
+   "vseq_state_lineage_mismatch:SEQ1_RocketImpact/S5_ImpendingImpact",
+   "vseq_state_lineage_mismatch:SEQ1_RocketImpact/S6_Benchmark"
+  ],
+  "approval_blocked": true,
+  "contract_retry": {
+   "attempted": true,
+   "first_block_reasons": [
+    "photo_forbidden_screen_request:3,7",
+    "photo_number_without_overlay:1"
+   ],
+   "retry_block_reasons": [
+    "photo_forbidden_screen_request:7,15"
+   ],
+   "new_violations": []
+  }
+ },
+ "cuts": [
+  {
+   "cut_no": 1,
+   "scene_kind": "broll_stock",
+   "narration_ko": "2026년 8월 5일, 인류가 쏘아 올린 로켓이 달 뒷면에 충돌합니다.",
+   "narration_en": "On August 5th, 2026, a rocket launched by humans will crash into the far side of the Moon.",
+   "estimated_sec": 3,
+   "visual_type": "image",
+   "visual_prompt": "dramatic wide shot of a lone rocket stage tumbling slowly in deep space, the massive, cratered surface of the Moon looming large in the background, subtle volumetric light from a distant sun, deep space blues and cold grays",
+   "motion_prompt": "slow dolly-in towards the Moon, the rocket stage tumbles with a steady, almost hypnotic motion, creating a sense of inevitable approach",
+   "loop_safe": true,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "시작",
+   "source_facts": [
+    "what_found[0]",
+    "numbers[0]"
+   ],
+   "render_notes": "",
+   "motion_source": "video",
+   "claim_ids": [
+    "C01"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "primary_result",
+   "novelty_event": "달 충돌 예측이라는 충격적인 사실 선공개",
+   "beat": "RESULT",
+   "beat_declared": true,
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G01",
+   "base_asset_ref": "",
+   "state_change": "",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "number_punch",
+     "text": "2026년 8월 5일",
+     "claim_ids": [
+      "C01"
+     ],
+     "start_sec": 0.5,
+     "duration_sec": 2.5,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "REALITY",
+   "mechanism": {
+    "subject": "",
+    "components": [],
+    "relationship": "",
+    "initial_state": "",
+    "transformation": "",
+    "final_state": "",
+    "highlighted_element": "",
+    "claim_ids": []
+   },
+   "resolved_visual_plan": {
+    "cut_no": 1,
+    "beat": "RESULT",
+    "beat_declared": true,
+    "base": "MECHANISM_SEQUENCE",
+    "precision_layer": "CODE_OVERLAY",
+    "representation_mode": "LITERAL_OBSERVATION",
+    "sequence_ref": "SEQ1_RocketImpact",
+    "world_ref": "MoonOrbit",
+    "stage_ref": "S1_Approach",
+    "claim_refs": [
+     "C01"
+    ],
+    "detail_restrictions": [],
+    "reasons": [
+     "in_visual_sequence",
+     "number_needs_precision_layer"
+    ],
+    "treatment": "MECHANISM_SEQUENCE"
+   },
+   "stage_mutations": [
+    {
+     "entity_id": "ROCKET_STAGE",
+     "property": "position",
+     "operation": "MOVE",
+     "visible_change": true,
+     "result_state": "Approaching the Moon, appearing larger",
+     "claim_ids": [
+      "C01"
+     ]
+    }
+   ],
+   "visual_treatment": "MECHANISM_SEQUENCE",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "number_needs_precision_layer"
+   ],
+   "_origin_cut_no": 1
+  },
+  {
+   "cut_no": 2,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "이 물체의 정체는 스페이스X의 팰컨 9 로켓 상단부입니다.",
+   "narration_en": "This object is identified as the upper stage of a SpaceX Falcon 9 rocket.",
+   "estimated_sec": 4,
+   "visual_type": "image",
+   "visual_prompt": "a detailed 3D render of a SpaceX Falcon 9 upper stage rocket, with a subtle glowing line tracing its trajectory backwards from the Moon towards Earth, the Moon and Earth are visible in the background, clean, scientific visualization style",
+   "motion_prompt": "camera slowly orbits around the Falcon 9 upper stage, while the glowing trajectory line animates backwards from the Moon, eventually pinpointing a launch location on Earth, subtle parallax effect",
+   "loop_safe": false,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "what_found[0]"
+   ],
+   "render_notes": "",
+   "motion_source": "video",
+   "claim_ids": [
+    "C01"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "primary_result",
+   "novelty_event": "로켓 정체 공개",
+   "beat": "RESULT",
+   "beat_declared": true,
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G03",
+   "base_asset_ref": "",
+   "state_change": "",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "로켓의 정체",
+    "components": [
+     "Falcon 9 upper stage",
+     "Moon",
+     "Earth"
+    ],
+    "relationship": "궤도를 역추적하여 로켓의 기원을 확인",
+    "initial_state": "달 근처를 떠도는 미확인 물체",
+    "transformation": "궤도 역추적을 통해 특정 발사체(Falcon 9)와 연결",
+    "final_state": "Falcon 9 상단부로 정체 확인",
+    "highlighted_element": "Falcon 9 upper stage",
+    "claim_ids": [
+     "C01"
+    ]
+   },
+   "resolved_visual_plan": {
+    "cut_no": 4,
+    "beat": "RESULT",
+    "beat_declared": true,
+    "base": "MECHANISM_SEQUENCE",
+    "precision_layer": "",
+    "representation_mode": "SCHEMATIC_PRINCIPLE",
+    "sequence_ref": "SEQ1_RocketImpact",
+    "world_ref": "MoonOrbit",
+    "stage_ref": "S2_OriginTrace",
+    "claim_refs": [
+     "C01"
+    ],
+    "detail_restrictions": [],
+    "reasons": [
+     "in_visual_sequence",
+     "cut_claim_not_in_stage"
+    ],
+    "treatment": "MECHANISM_SEQUENCE"
+   },
+   "stage_mutations": [
+    {
+     "entity_id": "TRAJECTORY_LINE",
+     "property": "visibility",
+     "operation": "APPEAR",
+     "visible_change": true,
+     "result_state": "Glowing line tracing back from Moon to Earth",
+     "claim_ids": [
+      "C02"
+     ]
+    }
+   ],
+   "visual_treatment": "MECHANISM_SEQUENCE",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "cut_claim_not_in_stage"
+   ],
+   "_origin_cut_no": 4
+  },
+  {
+   "cut_no": 3,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "우주선 단열재와 일치하는 물질임을 확인했습니다.",
+   "narration_en": "but a material consistent with spacecraft thermal insulation.",
+   "estimated_sec": 4,
+   "visual_type": "image",
+   "visual_prompt": "extreme close-up of a rocket's metallic surface, a stylized infographic overlay of a light spectrum graph appears over it, showing a distinct absorption band spike, scientific, clean, photorealistic",
+   "motion_prompt": "the light beam fades as the spectral graph overlay appears and pulses brightly at the absorption band, confirming the match, subtle rack-focus from the surface to the graph",
+   "loop_safe": false,
+   "style_anchor_ref": "Cut 6",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "what_found[2]"
+   ],
+   "render_notes": "",
+   "motion_source": "video",
+   "claim_ids": [
+    "C03"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "primary_result",
+   "novelty_event": "인공물질 확인 결과",
+   "beat": "RESULT",
+   "beat_declared": true,
+   "motion_value": "high",
+   "asset_strategy": "reuse_with_state_change",
+   "visual_reuse_group": "G04",
+   "base_asset_ref": "6",
+   "state_change": "스펙트럼 그래프가 로켓 표면 위로 오버레이되고, 흡수 밴드가 밝게 강조된다.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "evidence_card",
+     "text": "우주선 단열재와 일치",
+     "claim_ids": [
+      "C03"
+     ],
+     "start_sec": 0.5,
+     "duration_sec": 3.5,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "분광 분석 결과",
+    "components": [
+     "Rocket surface",
+     "Spectral graph",
+     "Absorption bands"
+    ],
+    "relationship": "스펙트럼 데이터가 우주선 단열재와 일치함을 보여줌",
+    "initial_state": "스캔된 로켓 표면",
+    "transformation": "스펙트럼 그래프가 나타나고, 특정 흡수 밴드가 강조되어 단열재와 일치함을 시각적으로 보여줌",
+    "final_state": "인공물질로 확인",
+    "highlighted_element": "스펙트럼 그래프의 흡수 밴드",
+    "claim_ids": [
+     "C03"
+    ]
+   },
+   "resolved_visual_plan": {
+    "cut_no": 7,
+    "beat": "RESULT",
+    "beat_declared": true,
+    "base": "MECHANISM_SEQUENCE",
+    "precision_layer": "",
+    "representation_mode": "SCHEMATIC_PRINCIPLE",
+    "sequence_ref": "SEQ1_RocketImpact",
+    "world_ref": "MoonOrbit",
+    "stage_ref": "S3_MaterialAnalysis",
+    "claim_refs": [
+     "C03"
+    ],
+    "detail_restrictions": [],
+    "reasons": [
+     "in_visual_sequence"
+    ],
+    "treatment": "MECHANISM_SEQUENCE"
+   },
+   "stage_mutations": [
+    {
+     "entity_id": "ROCKET_STAGE",
+     "property": "size",
+     "operation": "GROW",
+     "visible_change": true,
+     "result_state": "Extreme close-up on rocket surface",
+     "claim_ids": []
+    },
+    {
+     "entity_id": "SPECTRAL_GRAPH",
+     "property": "visibility",
+     "operation": "APPEAR",
+     "visible_change": true,
+     "result_state": "Spectral graph overlay with absorption bands",
+     "claim_ids": [
+      "C03"
+     ]
+    }
+   ],
+   "visual_treatment": "MECHANISM_SEQUENCE",
+   "routing_reasons": [
+    "in_visual_sequence"
+   ],
+   "_origin_cut_no": 7
+  },
+  {
+   "cut_no": 4,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "약 7분 주기로 돌던 이 로켓의 회전 속도가 관측 중 8초 넘게 변한 겁니다.",
+   "narration_en": "The rocket's rotation period, which was about 7 minutes, changed by more than 8 seconds during observation.",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "medium shot of the Falcon 9 upper stage spinning steadily, a digital timer overlay next to it displays a consistent rotation period, photorealistic",
+   "motion_prompt": "the rocket's spin suddenly becomes slightly erratic, and the numbers on the digital timer flicker and change, increasing by over 8 seconds, creating a glitch effect, quick burst of motion",
+   "loop_safe": false,
+   "style_anchor_ref": "",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "강조",
+   "source_facts": [
+    "what_found[3]",
+    "numbers[1]"
+   ],
+   "render_notes": "",
+   "motion_source": "video",
+   "claim_ids": [
+    "C04"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "magnitude",
+   "novelty_event": "회전 속도 변화 수치 공개",
+   "beat": "MEASUREMENT",
+   "beat_declared": true,
+   "motion_value": "high",
+   "asset_strategy": "new_asset",
+   "visual_reuse_group": "G06",
+   "base_asset_ref": "",
+   "state_change": "로켓의 회전이 갑자기 불규칙해지고, 디지털 타이머의 숫자가 깜빡이며 8초 이상으로 급격히 변하는 글리치 효과가 나타난다.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "number_punch",
+     "text": "7분 주기",
+     "claim_ids": [
+      "C04"
+     ],
+     "start_sec": 0.5,
+     "duration_sec": 2.0,
+     "priority": "supporting"
+    },
+    {
+     "type": "evidence_card",
+     "text": "+8초 이상 변화",
+     "claim_ids": [
+      "C04"
+     ],
+     "start_sec": 3.0,
+     "duration_sec": 4.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "로켓 회전 속도 변화",
+    "components": [
+     "Falcon 9 upper stage",
+     "Digital timer"
+    ],
+    "relationship": "관측 중 로켓의 회전 주기가 예상치 못하게 변함",
+    "initial_state": "약 7분 주기로 안정적으로 회전하는 로켓",
+    "transformation": "로켓의 회전 속도가 갑자기 불규칙해지고, 디지털 타이머의 숫자가 8초 이상 변하는 것을 시각적으로 보여줌",
+    "final_state": "회전 속도 변화가 관측됨",
+    "highlighted_element": "로켓의 불규칙한 회전과 변화하는 타이머",
+    "claim_ids": [
+     "C04"
+    ]
+   },
+   "resolved_visual_plan": {
+    "cut_no": 9,
+    "beat": "MEASUREMENT",
+    "beat_declared": true,
+    "base": "MECHANISM_SEQUENCE",
+    "precision_layer": "CODE_OVERLAY",
+    "representation_mode": "LITERAL_OBSERVATION",
+    "sequence_ref": "SEQ1_RocketImpact",
+    "world_ref": "MoonOrbit",
+    "stage_ref": "S4_RotationAnomaly",
+    "claim_refs": [
+     "C04"
+    ],
+    "detail_restrictions": [],
+    "reasons": [
+     "in_visual_sequence",
+     "number_needs_precision_layer"
+    ],
+    "treatment": "MECHANISM_SEQUENCE"
+   },
+   "stage_mutations": [
+    {
+     "entity_id": "ROCKET_STAGE",
+     "property": "rotation_speed",
+     "operation": "TRANSFORM",
+     "visible_change": true,
+     "result_state": "Rotation becomes erratic and changes speed",
+     "claim_ids": [
+      "C04"
+     ]
+    },
+    {
+     "entity_id": "TIMER_OVERLAY",
+     "property": "visibility",
+     "operation": "APPEAR",
+     "visible_change": true,
+     "result_state": "Digital timer showing changing rotation period",
+     "claim_ids": [
+      "C04"
+     ]
+    }
+   ],
+   "visual_treatment": "MECHANISM_SEQUENCE",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "number_needs_precision_layer"
+   ],
+   "_origin_cut_no": 9
+  },
+  {
+   "cut_no": 5,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "초속 약 2.4km 속도로 부딪혀 지름 약 40미터의 분화구를 만들 것으로 예측됩니다.",
+   "narration_en": "It's predicted to hit at about 2.4 kilometers per second, creating a crater about 40 meters in diameter.",
+   "estimated_sec": 8,
+   "visual_type": "image",
+   "visual_prompt": "a low-angle shot from the lunar surface, the Falcon 9 stage is a dark shape rapidly growing larger in the sky, about to impact, chiaroscuro lighting from the harsh sun creating deep shadows, dramatic and impactful mood, photorealistic",
+   "motion_prompt": "the rocket impacts the surface with a silent, powerful burst of dust and debris erupting outwards in slow-motion, the camera shakes, then a graphic overlay appears indicating a crater diameter, whip-pan up from the impact site",
+   "loop_safe": false,
+   "style_anchor_ref": "Cut 11",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "강조",
+   "source_facts": [
+    "what_found[4]",
+    "numbers[2]",
+    "numbers[3]"
+   ],
+   "render_notes": "",
+   "motion_source": "video",
+   "claim_ids": [
+    "C05"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "magnitude",
+   "novelty_event": "충돌 속도 및 분화구 크기 예측",
+   "beat": "RESULT",
+   "beat_declared": true,
+   "motion_value": "high",
+   "asset_strategy": "reuse_with_state_change",
+   "visual_reuse_group": "G07",
+   "base_asset_ref": "11",
+   "state_change": "로켓이 표면에 충돌하며 소리 없이 강력한 먼지와 파편이 슬로우 모션으로 폭발한다. 카메라가 흔들린 후, 분화구가 형성되는 모습이 강조된다.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "number_punch",
+     "text": "초속 2.4km",
+     "claim_ids": [
+      "C05"
+     ],
+     "start_sec": 0.5,
+     "duration_sec": 3.0,
+     "priority": "primary"
+    },
+    {
+     "type": "evidence_card",
+     "text": "지름 40m 분화구",
+     "claim_ids": [
+      "C05"
+     ],
+     "start_sec": 4.0,
+     "duration_sec": 4.0,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "충돌 예측",
+    "components": [
+     "Falcon 9 upper stage",
+     "Moon surface",
+     "Impact crater"
+    ],
+    "relationship": "로켓이 달에 충돌하여 분화구를 형성",
+    "initial_state": "로켓이 달 표면에 접근 중",
+    "transformation": "로켓이 표면에 충돌하며 먼지와 파편이 폭발하고, 지름 약 40미터의 분화구가 형성됨",
+    "final_state": "충돌 후 분화구가 남은 달 표면",
+    "highlighted_element": "충돌 지점과 형성되는 분화구",
+    "claim_ids": [
+     "C05"
+    ]
+   },
+   "resolved_visual_plan": {
+    "cut_no": 12,
+    "beat": "RESULT",
+    "beat_declared": true,
+    "base": "MECHANISM_SEQUENCE",
+    "precision_layer": "CODE_OVERLAY",
+    "representation_mode": "LITERAL_OBSERVATION",
+    "sequence_ref": "SEQ1_RocketImpact",
+    "world_ref": "MoonOrbit",
+    "stage_ref": "S5_ImpendingImpact",
+    "claim_refs": [
+     "C05"
+    ],
+    "detail_restrictions": [],
+    "reasons": [
+     "in_visual_sequence",
+     "number_needs_precision_layer"
+    ],
+    "treatment": "MECHANISM_SEQUENCE"
+   },
+   "stage_mutations": [
+    {
+     "entity_id": "ROCKET_STAGE",
+     "property": "position",
+     "operation": "IMPACT",
+     "visible_change": true,
+     "result_state": "Rocket crashes into Moon surface",
+     "claim_ids": [
+      "C05"
+     ]
+    },
+    {
+     "entity_id": "CRATER",
+     "property": "visibility",
+     "operation": "APPEAR",
+     "visible_change": true,
+     "result_state": "New crater forms on lunar surface",
+     "claim_ids": [
+      "C05"
+     ]
+    }
+   ],
+   "visual_treatment": "MECHANISM_SEQUENCE",
+   "routing_reasons": [
+    "in_visual_sequence",
+    "number_needs_precision_layer"
+   ],
+   "_origin_cut_no": 12
+  },
+  {
+   "cut_no": 6,
+   "scene_kind": "motion_graphic",
+   "narration_ko": "앞으로 달 주변의 정체불명 물체를 추적하고 분석하는 중요한 기준이 될 겁니다.",
+   "narration_en": "tracking and analyzing unidentified objects around the Moon in the future.",
+   "estimated_sec": 4,
+   "visual_type": "image",
+   "visual_prompt": "serene wide shot of the Moon in space, multiple faint, glowing lines representing various orbits of cislunar objects are drawn around it, one specific line (representing 2025-010D) is highlighted and solid, scientific visualization",
+   "motion_prompt": "the camera slowly cranes up and orbits around the Moon, showing the complexity of the orbital environment, as new, faint orbital lines appear around the highlighted trajectory, which serves as an anchor point, a sense of scientific progress",
+   "loop_safe": true,
+   "style_anchor_ref": "Cut 13",
+   "effects": [],
+   "transition": "cut",
+   "bgm_cue": "",
+   "source_facts": [
+    "C06"
+   ],
+   "render_notes": "",
+   "motion_source": "still",
+   "claim_ids": [
+    "C06"
+   ],
+   "reasoning_id": "",
+   "evidence_role": "implication",
+   "novelty_event": "미래 연구의 기준점 역할",
+   "beat": "RESULT",
+   "beat_declared": false,
+   "motion_value": "high",
+   "asset_strategy": "reuse_with_state_change",
+   "visual_reuse_group": "G08",
+   "base_asset_ref": "13",
+   "state_change": "강조된 궤적 주변으로 여러 개의 희미한 미확인 궤적들이 나타나며, 강조된 궤적이 이들을 비교하는 기준선 역할을 한다.",
+   "crop": null,
+   "tone_grade": "none",
+   "overlay_plan": [
+    {
+     "type": "evidence_card",
+     "text": "미래 물체 추적 벤치마크",
+     "claim_ids": [
+      "C06"
+     ],
+     "start_sec": 0.5,
+     "duration_sec": 3.5,
+     "priority": "primary"
+    }
+   ],
+   "visual_role": "MECHANISM",
+   "mechanism": {
+    "subject": "미래 물체 추적 및 분석 기준",
+    "components": [
+     "Moon",
+     "Known trajectory (2025-010D)",
+     "Unknown trajectories"
+    ],
+    "relationship": "확인된 궤적이 미확인 물체들의 궤도를 비교하고 분석하는 벤치마크가 됨",
+    "initial_state": "달 주위의 단일 강조된 궤적",
+    "transformation": "강조된 궤적을 중심으로 여러 개의 희미한 미확인 궤적들이 나타나고, 강조된 궤적이 이들을 비교하는 기준선 역할을 함",
+    "final_state": "확인된 궤적이 미래 연구의 벤치마크로 자리매김",
+    "highlighted_element": "강조된 궤적과 주변의 미확인 궤적들",
+    "claim_ids": [
+     "C06"
+    ]
+   },
+   "resolved_visual_plan": {
+    "cut_no": 14,
+    "beat": "RESULT",
+    "beat_declared": false,
+    "base": "MECHANISM_SEQUENCE",
+    "precision_layer": "",
+    "representation_mode": "SCHEMATIC_PRINCIPLE",
+    "sequence_ref": "SEQ1_RocketImpact",
+    "world_ref": "MoonOrbit",
+    "stage_ref": "S6_Benchmark",
+    "claim_refs": [
+     "C06"
+    ],
+    "detail_restrictions": [],
+    "reasons": [
+     "in_visual_sequence"
+    ],
+    "treatment": "MECHANISM_SEQUENCE"
+   },
+   "stage_mutations": [
+    {
+     "entity_id": "TRAJECTORY_LINE",
+     "property": "highlight",
+     "operation": "HIGHLIGHT",
+     "visible_change": true,
+     "result_state": "One trajectory line stands out as a benchmark",
+     "claim_ids": [
+      "C06"
+     ]
+    }
+   ],
+   "visual_treatment": "MECHANISM_SEQUENCE",
+   "routing_reasons": [
+    "in_visual_sequence"
+   ],
+   "_origin_cut_no": 14
+  }
+ ]
+}

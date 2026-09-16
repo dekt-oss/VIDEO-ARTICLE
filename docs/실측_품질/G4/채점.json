@@ -1,0 +1,34 @@
+[
+ {
+  "measured": true,
+  "freeze_sec": 0.0,
+  "scene_changes": 2,
+  "world_drift": 0.85,
+  "motion_median": 0.00373,
+  "clip_sec": 10.006,
+  "score": 1.0,
+  "freeze_ratio": 0.0,
+  "motion_score": 1.0,
+  "arm": "A_take1",
+  "label": "1번째",
+  "requested_sec": 8,
+  "actual_sec": 10.006,
+  "length_not_controlled": true
+ },
+ {
+  "measured": true,
+  "freeze_sec": 0.0,
+  "scene_changes": 1,
+  "world_drift": 0.951,
+  "motion_median": 0.00188,
+  "clip_sec": 10.006,
+  "score": 0.6065,
+  "freeze_ratio": 0.0,
+  "motion_score": 0.5081,
+  "arm": "B_take2",
+  "label": "2번째(같은 프롬프트 재생성)",
+  "requested_sec": 8,
+  "actual_sec": 10.006,
+  "length_not_controlled": true
+ }
+]

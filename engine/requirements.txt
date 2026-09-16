@@ -1,0 +1,25 @@
+# video-article 엔진 의존성
+anthropic>=0.40.0        # LLM 채점·추출·대본 생성
+httpx>=0.27.0            # HTTP 클라이언트 (OpenAlex/arXiv/HN/Reddit)
+supabase>=2.7.0          # Supabase Postgres 적재
+python-dotenv>=1.0.0     # .env 로딩
+feedparser>=6.0.0        # arXiv Atom 파싱
+tenacity>=8.2.0          # 지수 백오프 재시도
+python-dateutil>=2.9.0   # 날짜/타임존 처리
+langdetect>=1.0.9        # 1차 필터 언어 판별(영/한)
+Pillow>=10.0.0           # 렌더 플레이스홀더 스틸(9:16 PNG)
+pypdf>=5.0.0             # 논문 원문 PDF 텍스트 추출(engine/paper_source). 순수 파이썬 — 시스템
+                         #   라이브러리가 없어 draft.yml 을 깨뜨리지 않는다(manim 과 다르다).
+                         #   미설치여도 HTML/XML 경로는 그대로 돌고 PDF 만 건너뛴다.
+edge-tts>=6.1.0          # 무료 TTS + 단어 타임스탬프(TTS_PROVIDER=edge). 키 불필요.
+# ★ manim 은 여기 넣지 않는다(렌더 전용). 빌드에 시스템 라이브러리 libcairo2-dev·libpango1.0-dev 가
+#   필요해, apt 없이 `-r requirements.txt` 하는 engine.yml/draft.yml(수집·채점·초안) 잡을 깨뜨린다.
+#   버전3 애니 렌더가 필요한 render.yml 이 manim 을 별도 pip 로 설치한다(apt 시스템 라이브러리도 그 잡에서).
+# 렌더 조립은 시스템 ffmpeg(+libass)·한글 폰트(fonts-nanum) 의존. Gemini 이미지·ElevenLabs 는 P-V1(키 필요).
+# ★ 유튜브 업로드(engine.publish)는 google-api-python-client·google-auth 가 필요하나, 수집·채점·초안
+#   잡에는 불필요해 여기 넣지 않는다(manim 선례). publish.yml 이 별도 pip 로 설치한다.
+# ★ 유튜브 쇼츠 성과 수집(engine.analytics)도 같은 google 라이브러리(+ -httplib2/-oauthlib)를 쓴다.
+#   로컬 수동 실행 전용이라 여기 넣지 않는다. docs/deviation-youtube-analytics.md 의 설치 명령 참조.
+
+# 개발/테스트
+pytest>=8.0.0
