@@ -10,17 +10,32 @@
 ★ 왜 해시인가: placements 나 core_fill 같은 파생값만 보면 "색이 바뀌었는데 배치는 같은"
   변경을 통과시킨다. 화면 불변을 주장하려면 화면을 봐야 한다.
 
-★ 폰트가 없는 환경에서는 건너뛴다 — visual_contract 가 FontContractError 를 던진다.
-  (렌더 실패를 조용히 폴백하지 않는 것이 이 저장소의 자세라 예외가 그대로 올라온다.)
+★★ 이 대조는 **리눅스에서만 성립한다.** 기준값은 CI(ubuntu) 에서 만든 것이고,
+  윈도우 Pillow 휠에는 텍스트 셰이퍼 raqm/harfbuzz 가 없어(실측: features.check("raqm")
+  → False) 같은 폰트·같은 코드로도 글자 배치가 리눅스와 미세하게 어긋난다.
+  그래서 윈도우에서는 **대조를 하지 않고 건너뛴다.** 여기서 빨간 것을 보고 기준값을
+  갱신하면 CI 가 그날로 빨개지고 이 검사는 무의미해진다.
 
-기준값 갱신: 화면을 **의도적으로** 바꿨을 때만
-    python3 -m pytest tests/test_board_render_golden.py --update-golden
+  실측 근거(2026-09-17, docs/실측_골든해시_환경의존_2026-09-17.md):
+    · 기준값을 만든 그 시점의 트리(68b4f1f1, 2026-08-20)를 그대로 꺼내 윈도우에서
+      돌려도 **자기 기준값과 어긋난다** → 코드 드리프트가 아니다.
+    · Pillow 11.3 과 12.3 이 서로 **완전히 같은 해시**를 냈다 → Pillow 버전도 아니다.
+    · 남는 차이가 셰이퍼다. golden-refresh.yml 머리말이 처음부터 그렇게 적어 뒀다.
+
+★ 폰트가 없으면 대조를 못 한다. 다만 **기준 환경에서는 그것을 skip 으로 넘기지 않는다** —
+  폰트는 assets/fonts/ 에 커밋돼 있어서 없다는 것은 체크아웃이 깨졌다는 뜻이고, 그때
+  조용히 건너뛰면 대조가 통째로 사라져도 CI 는 초록이다(아래 전용 검사가 그것을 막는다).
+
+기준값 갱신: 화면을 **의도적으로** 바꿨을 때만, **워크플로로** 한다 —
+    Actions → golden-refresh → Run workflow (무엇을 바꿨는지 적는다)
+  로컬에서 `tests/make_golden.py` 를 직접 돌리지 말 것(그 스크립트가 막는다).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -30,6 +45,11 @@ from engine import board_render
 from engine import visual_contract as vc
 
 GOLDEN = Path(__file__).parent / "golden" / "board_render_hashes.json"
+
+# 기준값을 만드는 환경. 여기서만 대조가 성립한다(파일 머리말 참조).
+#   ★ sys.platform 으로 가른다 — raqm 유무로 가르면 "기준 환경에도 raqm 이 있는가"를
+#     확인하지 않은 채 CI 를 조용히 skip 으로 보낼 수 있다. 플랫폼은 확실하다.
+BASELINE_PLATFORM = "linux"
 
 # 렌더 입력. 보드마다 필요한 필드가 달라 한 벌로 다 채우고 보드만 바꾼다
 # (board_payload 가 자기 보드에 필요한 것만 꺼내 쓴다).
@@ -116,10 +136,26 @@ def _fonts_available() -> bool:
     return True
 
 
-pytestmark = pytest.mark.skipif(
+def test_fonts_are_present_on_the_baseline_platform():
+    """기준 환경에서 폰트가 없으면 **실패**한다 — 건너뛰지 않는다.
+
+    폰트는 assets/fonts/ 에 커밋돼 있으므로 기준 환경에서 없다는 것은 체크아웃이 깨졌다는
+    뜻이다. 종전엔 그 상황도 skip 이라, 화면 대조가 통째로 사라져도 CI 는 초록이었다.
+    tests.yml 의 skip 가드는 **건수만** 보고 이름을 안 보기 때문에 거기서도 안 잡힌다.
+    """
+    if sys.platform != BASELINE_PLATFORM:
+        pytest.skip(f"기준 환경({BASELINE_PLATFORM})이 아니다 — 여기서 잴 일이 아니다")
+    assert _fonts_available(), (
+        "기준 환경에 렌더 폰트가 없다. assets/fonts/ 는 저장소에 커밋돼 있으므로 "
+        "체크아웃·경로가 깨진 것이다. 이대로 두면 화면 불변 대조가 통째로 건너뛰어진다.")
+
+
+@pytest.mark.skipif(
+    sys.platform != BASELINE_PLATFORM,
+    reason=(f"기준값은 {BASELINE_PLATFORM}(CI)에서 만든다 — 여기선 텍스트 셰이퍼가 달라 "
+            "해시가 반드시 어긋난다. 판정은 CI 가 한다. 기준값을 갱신하지 말 것."))
+@pytest.mark.skipif(
     not _fonts_available(), reason="렌더 폰트 없음 — 화면 불변 대조를 못 한다")
-
-
 def test_board_render_is_pixel_stable():
     """P2 리팩터가 화면을 바꾸지 않았는가. 이것이 P2-b·P2-c·P2-e 의 합격기준이다."""
     if not GOLDEN.exists():
@@ -133,8 +169,9 @@ def test_board_render_is_pixel_stable():
             f"  {b}: 기대 {expected.get(b, {})} / 실제 {actual[b]}" for b in changed)
         pytest.fail(
             "보드 렌더 화면이 바뀌었다(P2 는 화면 불변이 합격기준):\n" + detail +
-            "\n의도한 변경이면 tests/golden/board_render_hashes.json 을 갱신하고 "
-            "커밋 메시지에 무엇이 왜 바뀌는지 적어라.")
+            "\n의도한 변경이면 Actions → golden-refresh 워크플로로 기준값을 다시 만든다"
+            "(무엇을 왜 바꿨는지 입력값으로 남는다). 손으로 JSON 을 고치거나 로컬에서 "
+            "make_golden.py 를 돌리지 말 것 — 환경이 달라 CI 가 빨개진다.")
 
 
 def test_golden_covers_every_board():
