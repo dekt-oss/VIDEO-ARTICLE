@@ -69,16 +69,28 @@ def test_middleware_matcher_has_no_extension_bypass():
 
 
 def test_middleware_matcher_does_not_exempt_the_image_optimizer():
-    """`_next/image` 도 게이트를 지나야 한다 (2026-09-16).
+    """`_next/image` 실행 표면을 **두 겹**으로 없앤다 (2026-09-16).
 
     GHSA-2xp9-vwfh-vxw4 는 Image Optimization API 의 미인증 RCE 다(next < 15.5.24).
-    그 경로가 matcher 예외로 남아 있으면 사이트 전체가 잠겨 있어도 **비로그인으로 닿는
-    실행 표면**이 하나 남는다. 이 앱은 next/image 를 쓰지 않으므로 잠가도 잃는 기능이
-    없고, 쓰기 시작하면 아래 두 번째 단언이 먼저 깨져 다시 판단하게 만든다.
+    이 앱은 next/image 를 쓰지 않으므로 그 경로를 통째로 없앤다.
+
+    ★ 왜 두 겹인가 — 프로덕션 실측으로 배운 것:
+      middleware 의 matcher 예외만 빼면 **로컬 `next start` 에서는** 307 로 막힌다.
+      그런데 **Vercel 에서는 안 막힌다** — `/_next/image?url=…` 가 400 을 내고 헤더에
+      `X-Vercel-Error: INVALID_IMAGE_OPTIMIZE_REQUEST` 가 찍힌다. 그 경로는 Vercel
+      플랫폼의 최적화기가 **Next 미들웨어보다 앞에서** 처리하기 때문이다.
+      그래서 `next.config.mjs` 의 `images.unoptimized` 로 빌드 산출물 단계에서 끈다.
+      matcher 쪽도 그대로 둔다(로컬·자체호스팅에서 유효).
     """
     src = (ROOT / "web" / "middleware.ts").read_text(encoding="utf-8")
     matcher = re.search(r"matcher:\s*\[(.*?)\]", src, re.S).group(1)
     assert "_next/image" not in matcher, "이미지 최적화 엔드포인트가 게이트 밖에 있다"
+
+    cfg = (ROOT / "web" / "next.config.mjs").read_text(encoding="utf-8")
+    assert re.search(r"images:\s*\{[^}]*unoptimized:\s*true", cfg), (
+        "next.config 에 images.unoptimized 가 없다 — Vercel 에서는 미들웨어가 "
+        "`/_next/image` 를 막지 못한다(플랫폼이 앞단에서 처리한다)"
+    )
 
     # `next/image` 를 **import 하는** 곳만 센다. next-env.d.ts 의
     # `types="next/image-types/global"` 은 Next 가 만드는 줄이라 사용처가 아니다.
