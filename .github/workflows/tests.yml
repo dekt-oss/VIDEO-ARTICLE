@@ -59,15 +59,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r engine/requirements.txt
       # ★ 폰트는 assets/fonts/ 에 커밋돼 있어 따로 설치할 것이 없다(Pretendard 4종 + Anton).
-      #   이게 중요한 이유: 폰트가 없으면 보드 렌더 테스트가 needs_fonts 가드로 **조용히
-      #   skip 된다** — 골든 해시 대조가 CI 에서 안 도는 것이 가장 아깝다. 아래 단계가
-      #   skip 개수를 확인해 그 사고를 막는다.
+      #   이게 중요한 이유: 폰트가 없으면 보드 렌더 테스트가 **조용히 skip 된다** —
+      #   골든 해시 대조가 CI 에서 안 도는 것이 가장 아깝다. 그 사고는 이제 건수가 아니라
+      #   전용 검사가 막는다(test_fonts_are_present_on_the_baseline_platform 는 기준 환경에서
+      #   폰트가 없으면 skip 이 아니라 **실패**한다).
+      # ★ -rs 를 붙이는 이유: 아래 가드는 **건수만** 본다. 이름과 사유가 로그에 없으면
+      #   "11건이 뭐였는지" 를 알 수 없어, 어느 보호막이 사라졌는지 사후에도 못 짚는다.
+      #   (2026-09-17 에 실제로 이것 때문에 CI 가 폰트를 못 찾는 줄 알고 잘못 짚었다.)
       - name: pytest
         run: |
           set -o pipefail          # tee 를 거쳐도 pytest 실패가 잡히게
-          python -m pytest -q | tee /tmp/pytest.out
-      # ★ 초록인데 사실은 대부분 건너뛴 상태를 막는다. 로컬 기준 skip 은 8건이고, 그보다
-      #   많이 건너뛰었다면 폰트·의존성이 빠져 검사가 헐거워진 것이다.
+          python -m pytest -q -rs | tee /tmp/pytest.out
+      # ★ 초록인데 사실은 대부분 건너뛴 상태를 막는다.
+      #   실측(2026-09-17): CI(ubuntu) 11건 — node·npx·ffmpeg 가 없어서 건너뛰는 것들이다.
+      #   윈도우 로컬은 3건(실측 클립 없음 1 + 리눅스 전용 골든 대조 2).
+      #   문턱 12 는 CI 실측치 11 의 바로 위다 — 하나라도 더 늘면 잡힌다.
       #   (위 pytest 출력을 재사용한다 — 두 번 돌리면 CI 시간이 배가 된다.)
       - name: Guard against silently skipped tests
         run: |
