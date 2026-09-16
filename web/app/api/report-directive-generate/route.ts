@@ -15,7 +15,7 @@ const REPORT_VERSIONS = new Set(["comic", "explainer", "photo"]);
 
 export async function POST(request: Request) {
   // 비용·발행 라우트 — 운영자 키 게이트(web/lib/apiGuard.ts).
-  const denied = requireOperator();
+  const denied = await requireOperator();
   if (denied) return denied;
 
   const supabase = queueWriter(createClient());

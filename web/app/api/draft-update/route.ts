@@ -20,7 +20,7 @@ interface SceneIn {
 
 export async function POST(request: Request) {
   // 공개 저장소 대비(2026-09-15): 쓰기 라우트는 전부 운영자 게이트를 맨 앞에서 통과한다.
-  const denied = requireOperator();
+  const denied = await requireOperator();
   if (denied) return denied;
   const supabase = queueWriter(createClient());
 

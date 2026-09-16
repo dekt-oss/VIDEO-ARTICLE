@@ -25,11 +25,12 @@ import WorkSummary from "@/components/WorkSummary";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: { date?: string };
+export default async function HomePage(props: {
+  searchParams: Promise<{ date?: string }>;
 }) {
+  // ★ Next 15: params·searchParams 가 Promise 다. 본문을 건드리지 않으려고
+  //   props 로 받아 맨 앞에서 await 해 같은 이름에 다시 묶는다.
+  const searchParams = await props.searchParams;
   const supabase = createClient();
   const [dates, reviewed, picked, renders, published] = await Promise.all([
     getBatchDates(supabase),
