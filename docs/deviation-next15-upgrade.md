@@ -12,8 +12,30 @@
 
 앱은 `next/image` 를 쓰지 않는다(import 0건). 그래서 막아도 잃는 기능이 없다.
 **업그레이드 후에도 유지한다** — 안 쓰는 표면은 계속 닫아 둔다.
-회귀 테스트: `tests/test_public_repo_guards.py::test_middleware_matcher_does_not_exempt_the_image_optimizer`.
-두 번째 단언이 "next/image 를 쓰기 시작하면" 먼저 깨져서 다시 판단하게 만든다.
+
+#### ★ 정정(같은 날, 프로덕션 실측) — 미들웨어만으로는 **Vercel 에서 안 막힌다**
+머지·배포 뒤 진짜 주소에서 재확인하다가 발견했다.
+
+| 환경 | `/_next/image?url=…` | 뜻 |
+|---|---|---|
+| 로컬 `next start` | 307 → `/unlock` | 미들웨어가 잡는다 |
+| **Vercel 프로덕션** | **400** + `X-Vercel-Error: INVALID_IMAGE_OPTIMIZE_REQUEST` | **플랫폼 최적화기가 미들웨어보다 앞에서 처리한다** |
+
+즉 matcher 수정은 로컬·자체호스팅에서만 유효했다. `url=%2Ffoo.png` 한 가지 입력만
+눌러 보면 307 이 나와 속는다 — 그건 최적화기가 **뒤에서 원본을 가져오다** 게이트에 걸린
+것이지 최적화기 자신이 막힌 것이 아니다. `url` 을 정적 자산·절대주소·없음으로 바꾸면
+전부 400 이 나온다(최적화기가 실행됐다는 뜻).
+
+→ `web/next.config.mjs` 에 `images: { unoptimized: true }` 를 넣어 **빌드 산출물 단계에서**
+   껐다. Vercel 이 그 경로를 아예 만들지 않게 하는 쪽이 막는 것보다 확실하다.
+   matcher 수정도 그대로 둔다(두 겹).
+
+★ 교훈: **로컬 `next start` 실측은 Vercel 실측이 아니다.** 플랫폼이 앞단에서 가로채는
+  경로(`/_next/image`·리라이트·헤더)는 진짜 주소에서 다시 재야 한다.
+
+회귀 테스트: `tests/test_public_repo_guards.py::test_middleware_matcher_does_not_exempt_the_image_optimizer`
+— matcher 와 `next.config` 두 겹을 다 본다. 세 번째 단언이 "next/image 를 쓰기 시작하면"
+먼저 깨져서 다시 판단하게 만든다.
 
 ### 1-2. 본 작업 — `next` 15.5.25 / React 19
 | 패키지 | 전 | 후 |
@@ -93,7 +115,7 @@ Next 15 는 `fetch` 기본이 `no-store`(14 는 `force-cache`)이고 클라이�
    | `/` · `/scored` · `/review/anything.png` | 307 → `/unlock?next=…` |
    | `POST /api/decide` | 401 |
    | `/unlock` · `/_next/static/chunks/*.js` | 200 |
-   | `/_next/image?url=…` | **307 → `/unlock`** (전에는 게이트 밖) |
+   | `/_next/image?url=…` | 307 → `/unlock` (★ **로컬에서만** 그렇다 — §1-1 정정 참조) |
 
    `OPERATOR_KEY` 설정 + 올바른 쿠키:
 
@@ -108,7 +130,17 @@ Next 15 는 `fetch` 기본이 `no-store`(14 는 `force-cache`)이고 클라이�
    ★ 이 양성 검증이 §2-1 의 핵심이다. `await` 를 빠뜨렸다면 "쿠키 없음"이 통과하거나
    "정상 쿠키"가 막혔을 텐데 둘 다 정확히 갈렸다.
 
-4. **아직 안 한 것:** 프로덕션(Vercel) 배포 후 같은 4가지 재확인. 배포는 운영자 몫이다.
+4. **프로덕션 실측**(머지·배포 뒤, `https://video-article.vercel.app`):
+
+   | 경로 | 결과 | 판정 |
+   |---|---|---|
+   | `/` · `/scored` · `/review/anything.png` | 307 → `/unlock?next=…` | ✅ |
+   | `POST /api/decide` | 401 | ✅ |
+   | `/unlock` · `/_next/static/chunks/*.js` | 200 | ✅ |
+   | `/_next/image?url=…` | **400** (`X-Vercel-Error`) | ❌ → §1-1 정정, `images.unoptimized` 로 후속 처리 |
+
+   ★ 로컬 4종은 프로덕션에서도 그대로 재현됐다. 어긋난 것은 `/_next/image` 하나뿐이고,
+   그것이 **로컬 실측으로는 알 수 없는 종류**였다는 것이 이번 작업에서 가장 값진 발견이다.
 
 ## 4. 남은 것
 - **next 16**: 남은 postcss 2건을 닫으려면 필요하다. `next lint` 가 16 에서 제거되므로
