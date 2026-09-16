@@ -50,7 +50,7 @@ jobs:
       ARIA_API_KEY: ${{ secrets.ARIA_API_KEY }}
       TIMEZONE: "Asia/Seoul"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
 
       # ★ 필수 시크릿이 비면 여기서 멈춘다. 빈 URL 로 curl 을 돌리면 전부 "큐 없음"으로
       #   보여서 **일이 밀리는데도 초록불**이 된다(2026-08 한도 소진 때 겪은 조용한 실패와 같은 종류).
@@ -65,7 +65,7 @@ jobs:
           fi
           echo "필수 시크릿 확인됨"
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
         with:
           python-version: "3.11"
           cache: pip
