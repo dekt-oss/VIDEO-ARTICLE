@@ -6,6 +6,9 @@ python-dotenv>=1.0.0     # .env 로딩
 feedparser>=6.0.0        # arXiv Atom 파싱
 tenacity>=8.2.0          # 지수 백오프 재시도
 python-dateutil>=2.9.0   # 날짜/타임존 처리
+tzdata>=2024.1           # ★ 윈도우에는 시스템 타임존 DB 가 없다. 이게 없으면 zoneinfo 가
+                         #   TIMEZONE(Asia/Seoul) 를 못 찾아 tests/test_logic.py 가 깨진다.
+                         #   리눅스 러너는 시스템 tz DB 로 돌아 CI 에서는 드러나지 않았다.
 langdetect>=1.0.9        # 1차 필터 언어 판별(영/한)
 Pillow>=10.0.0           # 렌더 플레이스홀더 스틸(9:16 PNG)
 pypdf>=5.0.0             # 논문 원문 PDF 텍스트 추출(engine/paper_source). 순수 파이썬 — 시스템
