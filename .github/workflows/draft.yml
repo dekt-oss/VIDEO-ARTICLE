@@ -18,13 +18,13 @@ on:
     inputs:
       factsheet_model:
         description: "Fact Sheet 추출 모델"
-        default: "gemini-2.0-flash"
+        default: "gemini-2.5-flash"
       script_model:
         description: "대본 합성 모델 (품질 중요 — 여유되면 claude-opus-4-8)"
-        default: "gemini-2.0-flash"
+        default: "gemini-2.5-flash"
       selfcheck_model:
         description: "자기검증 모델"
-        default: "gemini-2.0-flash"
+        default: "gemini-2.5-flash"
       directive_model:
         description: "지시서 생성 모델"
         default: "gemini-2.5-pro"
