@@ -30,6 +30,23 @@
    껐다. Vercel 이 그 경로를 아예 만들지 않게 하는 쪽이 막는 것보다 확실하다.
    matcher 수정도 그대로 둔다(두 겹).
 
+**배포 후 실측 (PR #2 머지 뒤, 입력 6종 전부):**
+
+| 입력 | 전 | 후 |
+|---|---|---|
+| `url=/foo.png` | 307 (뒤에서 원본 가져오다 걸린 것) | **307 → `/unlock`** |
+| `url=/_next/static/…js` | 400 `X-Vercel-Error` | **307 → `/unlock`** |
+| `url=https://example.com/a.png` | 400 `X-Vercel-Error` | **307 → `/unlock`** |
+| `url=/favicon.ico` · `url=/robots.txt` | 400 `X-Vercel-Error` | **307 → `/unlock`** |
+| `url` 없음 | 400 `X-Vercel-Error` | **307 → `/unlock`** |
+
+`X-Vercel-Error: INVALID_IMAGE_OPTIMIZE_REQUEST` 가 **사라졌다** — 플랫폼 최적화기가
+더는 이 경로를 잡지 않는다는 뜻이다. 대신 요청이 Next 서버까지 내려와 미들웨어가 잡는다.
+
+★ 404 가 아니라 307 인 것이 오히려 정확한 증거다. 리다이렉트의 `next=` 파라미터가
+  이제 **원래 경로 그대로**(`/_next/image?url=…`)다. 전에는 `next=%2Ffoo.png` 였다 —
+  미들웨어가 최적화기의 **내부 fetch** 를 보고 있었다는 흔적이었다.
+
 ★ 교훈: **로컬 `next start` 실측은 Vercel 실측이 아니다.** 플랫폼이 앞단에서 가로채는
   경로(`/_next/image`·리라이트·헤더)는 진짜 주소에서 다시 재야 한다.
 
