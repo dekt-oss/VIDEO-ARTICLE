@@ -2,9 +2,12 @@
 
 // 통합 작업 화면 — 한 화면 · 한 발주 · 한 승인 (docs/설계안_초안지시서_통합발주_v2.md).
 //
-// 왼쪽 칸 = 대본·근거(ReviewClient/ReportReviewClient pane), 오른쪽 칸 = 지시서 컷
-// (DirectiveClient/ReportDirectiveClient pane), 아래 = 렌더 결과(접힘). 위에 **결정 바 하나**가
-// 붙어 있다 — 저장·생성·승인을 전부 소유한다.
+// ★ 2026-09-17 재구성: 본문이 **시퀀스 한 장**이다(SequenceEditor). 종전의 [대본 | 지시서]
+//   가로 2분할과, 그 아래 따로 있던 컷 목록을 **전부 하나로** 합쳤다. 운영자 지시 —
+//   "굳이 이 과정을 하나로 통합하자 한 거였는데 그냥 화면만 가로 분할해서 이분만 되어 있어",
+//   "이런 컷들도 위에 시퀀스랑 합쳐서 하나로 만들어줘".
+//   같은 컷이 두 군데 있으면 어느 쪽을 고쳐야 하는지 매번 헷갈린다 — 이제 한 군데다.
+// 위에 **결정 바 하나**가 붙어 있다 — 저장·생성·승인을 전부 소유한다.
 //
 // ★ 왜 결정 바가 sticky 인가: 2026-08-19 에 ④⑤ 를 나눈 이유가 "페이지가 길어져 눌러야 할 버튼이
 //   화면 밖으로 사라진다"였다(FLOW-01). 다시 합치면서 그 문제가 돌아오지 않게, 버튼은 스크롤과
@@ -30,10 +33,6 @@ import { blockLabel } from "@/lib/blockLabels";
 import { useGeneration, genPhaseLabel } from "@/lib/useGeneration";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
-import ReviewClient from "@/components/ReviewClient";
-import DirectiveClient from "@/components/DirectiveClient";
-import ReportReviewClient from "@/components/ReportReviewClient";
-import ReportDirectiveClient from "@/components/ReportDirectiveClient";
 import SequenceEditor from "@/components/SequenceEditor";
 import RenderList from "@/components/RenderList";
 import ReportRenderList from "@/components/ReportRenderList";
@@ -426,9 +425,6 @@ export default function WorkspaceClient({
       case "make_directive":
         void requestDirectives(decision.targets as VersionType[]);
         return;
-      case "regen_stale":
-        setShowRegenDirective(decision.targets as VersionType[]);
-        return;
       case "approve_render":
         // ★ 막혀 있으면 사유 확인창으로, 아니면 보통 확인창으로. **버튼은 같은 자리 같은 이름**이다
         //   (2026-09-17). 운영자 눈에 렌더로 가는 길이 사라지지 않게 한다.
@@ -488,7 +484,7 @@ export default function WorkspaceClient({
           {!gen.busy && chain.size > 0 && (
             <span className="gen-progress"><span className="spinner" /> 지시서 만드는 중 · {[...chain].map(cfg.label).join(", ")} {chainSec > 0 && `· ${chainSec}s`}</span>
           )}
-          {decision.stale.length > 0 && decision.action !== "regen_stale" && (
+          {decision.stale.length > 0 && (
             <span className="work-stale">⚠ {decision.stale.map(cfg.label).join(", ")} 지시서가 옛 대본 기준입니다</span>
           )}
           {decision.blockedReasons.length > 0 && (
@@ -524,6 +520,15 @@ export default function WorkspaceClient({
             {busy ? "처리 중…" : cfg.versionMeta.reduce(
               (s, m) => s.replace(new RegExp(`\\b${m.key}\\b`, "g"), m.label), decision.label)}
           </button>
+          {/* ★ 낡았을 때의 권장 동작을 **주 버튼 옆에 보이게** 둔다(2026-09-17). ▾ 안에 숨겼더니
+              운영자가 못 찾았고, 주 버튼으로 만들었더니 이번엔 승인·렌더가 사라졌다. 둘 다 보인다. */}
+          {decision.stale.length > 0 && (
+            <button className="btn" disabled={busy}
+              title="지금 대본으로 지시서를 다시 만듭니다(LLM 비용)"
+              onClick={() => setShowRegenDirective(decision.stale as VersionType[])}>
+              지시서 재생성 ({decision.stale.map(cfg.label).join(", ")})
+            </button>
+          )}
           {draft && (
             <span className="work-menu">
               <button className="btn" onClick={() => setMenuOpen((o) => !o)} aria-label="다른 동작">▾</button>
@@ -531,15 +536,6 @@ export default function WorkspaceClient({
                 <div className="work-menu-list" onMouseLeave={() => setMenuOpen(false)}>
                   <button onClick={() => { setMenuOpen(false); setShowRegenDraft(true); }} disabled={gen.busy}>초안 재생성(지시서도 새로)</button>
                   <button onClick={() => { setMenuOpen(false); setShowRegenDirective(versions); }} disabled={versions.length === 0}>지시서만 재생성</button>
-                  {/* ★ 막다른 길을 없앤다(2026-09-17). 주 버튼이 [지시서 재생성]인 상태에서는
-                      승인·렌더로 가는 길이 화면에 하나도 없었다 — 운영자가 "렌더 버튼이 없다"고
-                      한 상태 중 하나가 이것이다. 재생성이 **권장**이라 주 버튼은 그대로 두고,
-                      "알고도 그냥 간다"는 선택지를 여기 둔다. */}
-                  {decision.action === "regen_stale" && (
-                    <button onClick={() => { setMenuOpen(false); setShowApprove(true); }}>
-                      그래도 지금 지시서로 승인 → 렌더
-                    </button>
-                  )}
                   {!scriptApproved && <button onClick={() => { setMenuOpen(false); void archiveScriptOnly(); }}>대본만 확정(렌더 없음)</button>}
                 </div>
               )}
@@ -570,26 +566,12 @@ export default function WorkspaceClient({
         {!draft ? (
           <p className="muted">초안이 만들어지면 여기에 영상 구성이 옵니다.</p>
         ) : (
-          <>
-            <SequenceEditor
-              directive={activeSlot?.directive ?? null}
-              updateUrl={cfg.directiveUpdateUrl}
-              paneRef={cutsRef}
-              readOnly={(activeSlot?.directive?.status ?? "draft") !== "draft"}
-            />
-            {/* ★ 옛 컷 편집기는 지우지 않고 접어 둔다 — 효과·전환·모션 프롬프트·장면 편집처럼
-                시퀀스 화면이 아직 안 다루는 것들이 여기 있다. 없애면 할 수 있던 일이 사라진다. */}
-            <details className="aux-panel" style={{ marginTop: 14 }}>
-              <summary>컷 상세 편집 — 효과 · 전환 · 프롬프트</summary>
-              {factory === "paper" ? (
-                <DirectiveClient paperId={id} version={activeVersion} directive={activeSlot?.directive ?? null}
-                  embedded pane pending={activePending} />
-              ) : (
-                <ReportDirectiveClient reportId={id} version={activeVersion} directive={activeSlot?.directive ?? null}
-                  pane pending={activePending} />
-              )}
-            </details>
-          </>
+          <SequenceEditor
+            directive={activeSlot?.directive ?? null}
+            updateUrl={cfg.directiveUpdateUrl}
+            paneRef={cutsRef}
+            readOnly={(activeSlot?.directive?.status ?? "draft") !== "draft"}
+          />
         )}
       </div>
 
