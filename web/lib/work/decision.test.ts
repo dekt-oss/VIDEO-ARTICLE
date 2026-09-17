@@ -55,9 +55,21 @@ test("같은 초 안의 저장(초안 직후 이어 만든 지시서)은 낡은 
   assert.equal(isStale(null, "2026-09-11T02:05:00Z"), false);   // 모르면 낡지 않음
 });
 
-test("차단 사유가 있으면 → [사유 보기](강제 승인은 그 안에서)", () => {
+test("★ 차단 사유가 있어도 버튼은 [승인 → 렌더] 그대로다 — 경고만 붙는다", () => {
+  // 2026-09-17 운영자 보고: 막히면 버튼이 통째로 `⛔ 승인 차단`으로 바뀌어,
+  // 눈에는 **렌더로 가는 버튼이 아예 없었다**. 실측 당시 draft 지시서 11건이 그 상태였다.
   const d = decide({ ...base, versions: [{ ...base.versions[0], blocked: ["photo_hook_missing"] }] });
-  assert.equal(d.action, "blocked");
+  assert.equal(d.action, "approve_render");
+  assert.deepEqual(d.blockedReasons, ["photo_hook_missing"]);
+  assert.match(d.label, /승인 → 렌더/);
+  assert.match(d.label, /^⚠/);           // 막혔다는 것은 보여야 한다
+});
+
+test("막히지 않았으면 경고 없이 그냥 [승인 → 렌더]", () => {
+  const d = decide(base);
+  assert.equal(d.action, "approve_render");
+  assert.deepEqual(d.blockedReasons, []);
+  assert.doesNotMatch(d.label, /⚠/);
 });
 
 test("고른 버전이 전부 승인·렌더로 넘어갔으면 → [렌더 결과]", () => {

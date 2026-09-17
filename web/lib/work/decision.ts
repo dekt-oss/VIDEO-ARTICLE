@@ -43,7 +43,6 @@ export type PrimaryAction =
   | "make_directive"  // 초안은 있는데 체크한 버전의 지시서가 없다 → 지시서 생성
   | "regen_stale"     // 대본이 지시서보다 새롭다 → 지시서 재생성
   | "approve_render"  // 승인 → 렌더
-  | "blocked"         // 승인 차단 — 사유 보기(강제 승인은 그 안에서)
   | "view_render";    // 승인·렌더 이후 — 렌더 결과
 
 export interface Decision {
@@ -56,6 +55,13 @@ export interface Decision {
   stale: string[];
   /** 왜 이 버튼인지 한 줄(툴팁·빈 상태 문구). */
   reason: string;
+  /** 승인 게이트가 잡은 사유. 비어 있지 않으면 **강제 승인**이 된다.
+   *
+   * ★ 왜 별도 필드인가(2026-09-17 운영자 결정): 종전에는 막히면 주 버튼이 통째로
+   *   `⛔ 승인 차단 — 사유 보기` 로 바뀌었다. 그래서 운영자가 보기에 **[승인 → 렌더] 버튼이
+   *   아예 없었다.** 실측: draft 지시서 23건 중 11건이 막혀 있었고, 그 화면에는 렌더로 가는
+   *   버튼이 보이지 않았다. 이제 버튼은 자리를 지키고, 막힌 사실은 경고로 알린다. */
+  blockedReasons: string[];
 }
 
 const HANDED_OFF: DirectiveStatus[] = ["approved", "rendering", "rendered"];
@@ -77,24 +83,24 @@ export function decide(input: DecisionInput): Decision {
   const pickedLabel = chosen.join(", ") || "(버전 없음)";
 
   if (draftPending) {
-    return { action: "wait_draft", label: "초안 만드는 중…", targets: chosen, stale: [],
+    return { action: "wait_draft", blockedReasons: [], label: "초안 만드는 중…", targets: chosen, stale: [],
              reason: "초안이 끝나면 고른 버전의 지시서가 이어서 만들어집니다" };
   }
   if (!hasDraft) {
-    return { action: "generate", label: `초안 + 지시서 생성 (${chosen.length}건)`, targets: chosen, stale: [],
+    return { action: "generate", blockedReasons: [], label: `초안 + 지시서 생성 (${chosen.length}건)`, targets: chosen, stale: [],
              reason: chosen.length ? `${pickedLabel} 지시서까지 한 번에 만듭니다` : "만들 버전을 하나 이상 고르세요" };
   }
 
   // ★ 초안은 있는데 고른 버전이 없다 — "할 일 없음"이 아니라 "골라라"다. 실측: 체크를 다 풀면
   //   [렌더 결과 보기]가 떴고 버전 선택칸까지 숨어 다시 고를 길이 없었다.
   if (chosen.length === 0) {
-    return { action: "choose_version", label: "만들·승인할 버전을 고르세요", targets: [], stale: [],
+    return { action: "choose_version", blockedReasons: [], label: "만들·승인할 버전을 고르세요", targets: [], stale: [],
              reason: "위 체크에서 버전을 하나 이상 고르면 다음 할 일이 정해집니다" };
   }
 
   const generating = picked.filter((v) => v.pending);
   if (generating.length) {
-    return { action: "wait_directive", label: `지시서 만드는 중 · ${generating.map((v) => v.key).join(", ")}`,
+    return { action: "wait_directive", blockedReasons: [], label: `지시서 만드는 중 · ${generating.map((v) => v.key).join(", ")}`,
              targets: generating.map((v) => v.key), stale: [],
              reason: "보통 1~3분. 이 화면을 닫았다 열어도 이어집니다" };
   }
@@ -105,31 +111,32 @@ export function decide(input: DecisionInput): Decision {
   const stale = picked.filter((v) => v.status === "draft" && isStale(draftUpdatedAt, v.createdAt)).map((v) => v.key);
 
   if (missing.length) {
-    return { action: "make_directive", label: `지시서 생성 (${missing.map((v) => v.key).join(", ")})`,
+    return { action: "make_directive", blockedReasons: [], label: `지시서 생성 (${missing.map((v) => v.key).join(", ")})`,
              targets: missing.map((v) => v.key), stale,
              reason: "초안은 있는데 이 버전의 지시서가 아직 없습니다" };
   }
   if (picked.length && handedOff.length === picked.length) {
-    return { action: "view_render", label: "렌더 결과 보기", targets: chosen, stale: [],
+    return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [],
              reason: "고른 버전이 전부 승인·렌더로 넘어갔습니다(편집 잠금)" };
   }
   if (stale.length) {
-    return { action: "regen_stale", label: `지시서 재생성 (${stale.join(", ")})`, targets: stale, stale,
+    return { action: "regen_stale", blockedReasons: [], label: `지시서 재생성 (${stale.join(", ")})`, targets: stale, stale,
              reason: "대본을 지시서 이후에 고쳤습니다 — 옛 대본으로 렌더하지 않게 다시 만듭니다" };
   }
   const approvable = picked.filter((v) => v.status === "draft");
   if (!approvable.length) {
-    return { action: "view_render", label: "렌더 결과 보기", targets: chosen, stale: [],
+    return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [],
              reason: "승인할 지시서가 없습니다" };
   }
-  const blocked = approvable.filter((v) => v.blocked?.length);
-  if (blocked.length) {
-    return { action: "blocked", label: `⛔ 승인 차단 — 사유 보기 (${blocked.map((v) => v.key).join(", ")})`,
-             targets: approvable.map((v) => v.key), stale: [],
-             reason: "원칙은 재생성입니다. 그래도 렌더하려면 사유를 보고 강제 승인합니다(흔적이 남습니다)" };
-  }
-  return { action: "approve_render",
-           label: `${scriptApproved ? "" : "대본 확정 + "}승인 → 렌더 (${approvable.map((v) => v.key).join(", ")})`,
+  // ★ 막혀 있어도 **버튼은 [승인 → 렌더] 그대로 둔다**(2026-09-17 운영자 결정).
+  //   종전에는 버튼이 통째로 `⛔ 승인 차단 — 사유 보기` 로 바뀌어, 운영자 눈에는 렌더로 가는
+  //   버튼이 **아예 없었다.** 막혔다는 사실은 버튼을 없애는 대신 ⚠ 경고와 확인창으로 알린다.
+  //   확인창에서 사유를 다시 보여주고, 거기서 누르면 강제 승인이 된다(흔적은 서버 로그에 남는다).
+  const blockedReasons = [...new Set(approvable.flatMap((v) => v.blocked ?? []))];
+  return { action: "approve_render", blockedReasons,
+           label: `${blockedReasons.length ? "⚠ " : ""}${scriptApproved ? "" : "대본 확정 + "}승인 → 렌더 (${approvable.map((v) => v.key).join(", ")})`,
            targets: approvable.map((v) => v.key), stale: [],
-           reason: dirty ? "저장하지 않은 편집을 먼저 저장하고 승인합니다" : "확인창에서 비용·언어를 보고 렌더를 시작합니다" };
+           reason: blockedReasons.length
+             ? "승인 게이트가 잡은 문제가 있습니다 — 누르면 사유를 보여주고, 그래도 진행하면 강제 승인입니다"
+             : (dirty ? "저장하지 않은 편집을 먼저 저장하고 승인합니다" : "확인창에서 비용·언어를 보고 렌더를 시작합니다") };
 }
