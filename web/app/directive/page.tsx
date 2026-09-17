@@ -1,4 +1,5 @@
 // ⑤ 영상 지시서 목록: 초안이 있는(=지시서 생성 가능) 논문. 상세에서 버전 선택·생성·승인한다.
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPicked, getDirectiveStatusMap } from "@/lib/queries";
 import type { DirectiveStatus } from "@/lib/types";
@@ -45,7 +46,7 @@ export default async function DirectiveListPage() {
 
       {ready.length === 0 ? (
         <p className="empty">
-          지시서를 만들 초안이 없습니다. <a href="/review">④ 초안</a>에서 대본을 먼저 생성하세요.
+          지시서를 만들 초안이 없습니다. <Link href="/review">④ 초안</Link>에서 대본을 먼저 생성하세요.
         </p>
       ) : (
         <div className="section">

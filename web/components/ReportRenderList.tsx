@@ -2,6 +2,7 @@
 
 // ⑥ 리포트 렌더 결과. 논문 RenderList 미러(경량) — 유튜브/캡션 복사 블록 제외.
 // 종목별 그룹 · 상태 필터 · mp4 미리보기 · 저장/휴지통 · 지금 렌더.
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ReportRenderJob } from "@/lib/reportTypes";
@@ -150,7 +151,7 @@ export default function ReportRenderList({ jobs }: { jobs: ReportRenderJob[] }) 
   if (jobs.length === 0) {
     return (
       <p className="empty">
-        렌더 잡이 없습니다. <a href="/finance/review">④ 초안 검수</a>에서 지시서를 만들어 승인하면 여기 나타납니다.
+        렌더 잡이 없습니다. <Link href="/finance/review">④ 초안 검수</Link>에서 지시서를 만들어 승인하면 여기 나타납니다.
       </p>
     );
   }

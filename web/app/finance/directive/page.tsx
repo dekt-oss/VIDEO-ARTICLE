@@ -1,5 +1,6 @@
 // ⑤ 리포트 영상 지시서 목록: 초안이 있는(=지시서 생성 가능) 리포트. 상세에서 생성·승인한다.
 // 논문 /directive 인덱스의 report 미러(단일 comic 버전).
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { selectIn } from "@/lib/supabase/chunked";
 import { getPickedReports } from "@/lib/reportQueries";
@@ -57,7 +58,7 @@ export default async function FinanceDirectiveListPage() {
 
       {ready.length === 0 ? (
         <p className="empty">
-          지시서를 만들 초안이 없습니다. <a href="/finance/review">④ 초안 검수</a>에서 대본을 먼저 생성하세요.
+          지시서를 만들 초안이 없습니다. <Link href="/finance/review">④ 초안 검수</Link>에서 대본을 먼저 생성하세요.
         </p>
       ) : (
         <div className="section">

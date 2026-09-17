@@ -5,6 +5,7 @@
 // 한 화면이다 — 다만 세로로 붙이는 것이 아니라 **결정 바 하나 + 두 칸(대본 | 지시서)** 이고,
 // 결정 바는 스크롤과 무관하게 화면 위에 붙어 있다. 옛 `?step=` 주소는 그대로 열린다
 // (6 이면 렌더 패널을 펼치고, 5 면 좁은 화면에서 지시서 칸을 먼저 보인다).
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   getDraft,
@@ -119,13 +120,18 @@ export default async function ReviewDetailPage(props: {
     <main className="container container--work">
       <div className="header">
         <h1>{score?.title_ko || paper?.title || "검수"}</h1>
-        <a className="muted" href="/review">← 목록</a>
+        <Link className="muted" href="/review">← 목록</Link>
       </div>
 
       {/* 상태 띠 — 단계 이동이 아니라 "어디까지 왔나"를 보여준다. 링크는 같은 화면으로 온다. */}
       <StageStepper steps={steps} current={step} basePath={`/review/${params.paperId}`} summary={stepperSummary} />
 
+      {/* ★ key 로 논문이 바뀌면 통째로 새로 마운트한다. 이 컴포넌트는 서버 props 를
+          useState 초기값으로 잡는데, 초기값은 **첫 마운트에서만** 쓰인다 — key 가 없으면
+          소프트 내비게이션으로 다른 논문에 가도 앞 논문의 상태가 그대로 남는다
+          (CandidateList 가 배치일에서 이미 낸 사고와 같은 것이다). */}
       <WorkspaceClient
+        key={params.paperId}
         factory="paper"
         id={params.paperId}
         draft={draft}
@@ -158,6 +164,7 @@ export default async function ReviewDetailPage(props: {
             </details>
             {draft && (
               <PublishTitles
+                key={params.paperId}
                 paperId={params.paperId}
                 initialKo={draft.upload_title_ko}
                 initialEn={draft.upload_title_en}
