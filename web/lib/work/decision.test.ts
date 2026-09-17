@@ -43,10 +43,14 @@ test("검수 필요 → [대본 확정 + 승인 → 렌더]; 대본이 이미 �
   assert.equal(decide(base).action, "approve_render");
 });
 
-test("대본을 지시서 이후에 고쳤으면 → [지시서 재생성]이 승인을 가로막는다", () => {
+test("★ 대본이 지시서보다 새로워도 주 버튼은 [승인 → 렌더] 다 — 경고와 별도 버튼으로 알린다", () => {
+  // 2026-09-17 운영자 결정. 종전에는 주 버튼이 [지시서 재생성]으로 **바뀌어** 승인·렌더로 가는
+  // 길이 화면에서 사라졌다. 운영자가 두 번에 걸쳐 "승인 렌더 버튼이 없다"고 한 상태가 이것이다.
+  // 재생성이 권장이라는 사실은 stale(⚠ 경고 + 별도 버튼)로 전하고, 버튼을 없애서 전하지 않는다.
   const d = decide({ ...base, draftUpdatedAt: "2026-09-11T03:00:00Z" });
-  assert.equal(d.action, "regen_stale");
-  assert.deepEqual(d.stale, ["photo"]);
+  assert.equal(d.action, "approve_render");
+  assert.match(d.label, /승인 → 렌더/);
+  assert.deepEqual(d.stale, ["photo"]);      // 화면이 이걸로 ⚠ 와 [지시서 재생성]을 그린다
 });
 
 test("같은 초 안의 저장(초안 직후 이어 만든 지시서)은 낡은 것이 아니다", () => {

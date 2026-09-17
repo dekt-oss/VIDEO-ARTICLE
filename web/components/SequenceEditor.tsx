@@ -20,6 +20,7 @@ import {
   buildSequenceLayout, sequenceRoleLabel,
   type VisualSequence, type SeqStage,
 } from "@/lib/work/sequenceView";
+import { effectLabel, transitionLabel } from "@/lib/effectLabels";
 import { useToast } from "@/components/Toast";
 import { apiErrorText } from "@/lib/apiError";
 
@@ -148,10 +149,22 @@ export default function SequenceEditor({
         <div className="seq-cut-head">
           <b>컷 {c.cut_no}</b>
           <span className="muted">{c.estimated_sec}초</span>
+          {/* ★ 아래에 따로 있던 "컷 목록"의 정보를 여기로 들여왔다(2026-09-17 운영자 지시:
+              "이런 컷들도 위에 시퀀스랑 합쳐서 하나로 만들어줘"). 같은 컷이 두 군데 있으면
+              어느 쪽을 고쳐야 하는지 매번 헷갈린다. */}
+          {c.motion_source === "video"
+            ? <span className="chip" title="영상으로 생성(I2V)">🎬 영상</span>
+            : <span className="chip" title="스틸 이미지">🖼 스틸</span>}
           {c.visual_role && (
             <span className="chip">{c.visual_role === "MECHANISM" ? "기전 도해" : "실사"}</span>
           )}
-          {ungrounded && <span className="flag">⛔ 근거 없음</span>}
+          {c.evidence_role && <span className="chip">{c.evidence_role}</span>}
+          {(c.claim_ids?.length ?? 0) > 0 && (
+            <span className="muted" title="이 컷이 말하는 주장">주장 {c.claim_ids!.join("·")}</span>
+          )}
+          {ungrounded
+            ? <span className="flag">⛔ 근거 없음</span>
+            : <span className="muted">✓ 근거 {c.source_facts.length}</span>}
           {stageOptions.length > 1 && place && !readOnly && (
             <label className="seq-move">
               묶음
@@ -185,6 +198,49 @@ export default function SequenceEditor({
             />
           </label>
         </div>
+        <details className="seq-more">
+          <summary>이 컷 더 보기 — 움직임 · 효과 · 전환</summary>
+          {c.motion_source === "video" && (
+            <label>
+              <span className="seq-label">움직임 — 영상으로 어떻게 움직이나</span>
+              <textarea rows={2} value={c.motion_prompt ?? ""} readOnly={readOnly}
+                onChange={(ev) => patchCut(cutNo, { motion_prompt: ev.target.value })} />
+            </label>
+          )}
+          <div className="seq-fx">
+            <span className="seq-label">효과</span>
+            {(c.effects ?? []).length === 0 && <span className="muted">없음</span>}
+            {(c.effects ?? []).map((t) => (
+              <span className="chip" key={t} title={t}>
+                {effectLabel(t)}
+                {!readOnly && (
+                  <button type="button" aria-label={`${effectLabel(t)} 빼기`}
+                    onClick={() => patchCut(cutNo, { effects: (c.effects ?? []).filter((x) => x !== t) })}>×</button>
+                )}
+              </span>
+            ))}
+            {!readOnly && (
+              <select value="" onChange={(ev) => {
+                const v = ev.target.value;
+                if (!v) return;
+                const cur = c.effects ?? [];
+                if (!cur.includes(v)) patchCut(cutNo, { effects: [...cur, v] });
+              }}>
+                <option value="">+ 효과 추가</option>
+                {["ken_burns_zoom_in", "ken_burns_zoom_out", "pan_left", "pan_right", "highlight"]
+                  .filter((t) => !(c.effects ?? []).includes(t))
+                  .map((t) => <option key={t} value={t}>{effectLabel(t)}</option>)}
+              </select>
+            )}
+          </div>
+          <div className="seq-fx">
+            <span className="seq-label">전환</span>
+            <select value={c.transition ?? "cut"} disabled={readOnly}
+              onChange={(ev) => patchCut(cutNo, { transition: ev.target.value })}>
+              {["cut", "crossfade"].map((t) => <option key={t} value={t}>{transitionLabel(t)}</option>)}
+            </select>
+          </div>
+        </details>
       </div>
     );
   }

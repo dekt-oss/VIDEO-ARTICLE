@@ -41,7 +41,6 @@ export type PrimaryAction =
   | "wait_draft"      // 초안 만드는 중
   | "wait_directive"  // 지시서 만드는 중
   | "make_directive"  // 초안은 있는데 체크한 버전의 지시서가 없다 → 지시서 생성
-  | "regen_stale"     // 대본이 지시서보다 새롭다 → 지시서 재생성
   | "approve_render"  // 승인 → 렌더
   | "view_render";    // 승인·렌더 이후 — 렌더 결과
 
@@ -51,7 +50,8 @@ export interface Decision {
   label: string;
   /** 이 결정이 가리키는 버전들(생성/승인 대상). */
   targets: string[];
-  /** 대본이 지시서보다 새로운 버전들(경고 배너용). action 이 regen_stale 이 아니어도 채운다. */
+  /** 대본이 지시서보다 새로운 버전들. 화면이 ⚠ 경고 + 별도 [지시서 재생성] 버튼으로 쓴다.
+   *  ★ 이것 때문에 주 버튼을 바꾸지 않는다 — 바꾸면 승인·렌더로 가는 길이 사라진다. */
   stale: string[];
   /** 왜 이 버튼인지 한 줄(툴팁·빈 상태 문구). */
   reason: string;
@@ -119,10 +119,10 @@ export function decide(input: DecisionInput): Decision {
     return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [],
              reason: "고른 버전이 전부 승인·렌더로 넘어갔습니다(편집 잠금)" };
   }
-  if (stale.length) {
-    return { action: "regen_stale", blockedReasons: [], label: `지시서 재생성 (${stale.join(", ")})`, targets: stale, stale,
-             reason: "대본을 지시서 이후에 고쳤습니다 — 옛 대본으로 렌더하지 않게 다시 만듭니다" };
-  }
+  // ★ 대본이 더 새로워도(stale) 주 버튼을 [지시서 재생성]으로 **바꾸지 않는다**(2026-09-17).
+  //   종전에는 바꿨고, 그러면 승인·렌더로 가는 길이 화면에서 사라진다 — 운영자가 두 번에 걸쳐
+  //   "승인 렌더 버튼이 없다"고 한 상태 중 하나가 정확히 이것이었다. 낡았다는 사실은 `stale` 로
+  //   내보내 화면이 ⚠ 경고와 **별도 [지시서 재생성] 버튼**으로 알린다. 버튼을 없애서 알리지 않는다.
   const approvable = picked.filter((v) => v.status === "draft");
   if (!approvable.length) {
     return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [],
@@ -135,7 +135,7 @@ export function decide(input: DecisionInput): Decision {
   const blockedReasons = [...new Set(approvable.flatMap((v) => v.blocked ?? []))];
   return { action: "approve_render", blockedReasons,
            label: `${blockedReasons.length ? "⚠ " : ""}${scriptApproved ? "" : "대본 확정 + "}승인 → 렌더 (${approvable.map((v) => v.key).join(", ")})`,
-           targets: approvable.map((v) => v.key), stale: [],
+           targets: approvable.map((v) => v.key), stale,
            reason: blockedReasons.length
              ? "승인 게이트가 잡은 문제가 있습니다 — 누르면 사유를 보여주고, 그래도 진행하면 강제 승인입니다"
              : (dirty ? "저장하지 않은 편집을 먼저 저장하고 승인합니다" : "확인창에서 비용·언어를 보고 렌더를 시작합니다") };
