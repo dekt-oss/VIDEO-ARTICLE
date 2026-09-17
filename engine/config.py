@@ -1593,6 +1593,19 @@ CUT_SKELETON_TOLERANCE: float = _get_float("CUT_SKELETON_TOLERANCE", 0.8)
 #   다른 워커가 뺏어가 같은 지시서를 두 번 만든다(유료 호출 2배).
 REQUEST_LEASE_SEC: int = _get_int("REQUEST_LEASE_SEC", 900)      # 15분
 REQUEST_MAX_ATTEMPTS: int = _get_int("REQUEST_MAX_ATTEMPTS", 3)
+
+# ─ 초안 요청 큐(draft_requests·report_draft_requests)의 정체 회수 ─
+# ★ 왜 임대가 아니라 시간인가: 이 두 테이블에는 0043 의 임대 컬럼이 **없다**. 그런데 0043 이
+#   고치려던 바로 그 사고(Edge Function isolate 가 47초에 죽어 요청이 영구 processing)는
+#   **초안 경로에서** 났다 — 지시서 큐에만 장치가 붙고 초안 큐는 빠졌다(2026-09-17 실측).
+#   두 테이블 다 updated_at 이 이미 있으므로 렌더 잡 워치독(_reclaim_stale_render_jobs)과
+#   같은 방식으로 막는다. 마이그레이션이 필요 없다.
+# ★★ 문턱을 워커의 **잡 타임아웃보다 크게** 잡는다. 살아 있는 워커의 일을 뺏으면 같은 초안을
+#   두 번 만들어 유료 호출이 두 배가 된다. 지금 타임아웃은 draft.yml 30분 · queues.yml 45분이라
+#   60분이면 살아 있는 워커와 절대 겹치지 않는다. 짧게 줄이려면 워커가 요청마다 하트비트를
+#   찍는지부터 확인할 것(지금은 자기 차례가 와야 찍는다).
+REQUEST_STALE_MINUTES: int = _get_int("REQUEST_STALE_MINUTES", 60)
+
 # 누가 잡았는지 — 로그·디버깅용. Actions 러너면 워크플로가 넣어 준다.
 WORKER_ID: str = os.getenv("WORKER_ID", os.getenv("GITHUB_RUN_ID", "local"))
 

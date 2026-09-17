@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireOperator } from "@/lib/apiGuard";
 import { triggerReportDraft } from "@/lib/trigger-render";
 import { chainableVersions, REPORT_VERSION_KEYS } from "@/lib/versions";
+import { isStaleProcessing, STALE_REVIVE_NOTE } from "@/lib/requestQueue";
 
 import { queueWriter } from "@/lib/supabase/admin";
 export async function POST(request: Request) {
@@ -23,9 +24,9 @@ export async function POST(request: Request) {
   // ★ 초안 뒤 이어서 만들 지시서 버전(0046, 설계안 v2). 리포트 공장이 발주하는 버전만 받는다.
   const versionTypes = chainableVersions(body?.version_types, REPORT_VERSION_KEYS);
 
-  const { data: existing } = await supabase
+  const { data: found } = await supabase
     .from("report_draft_requests")
-    .select("id, status")
+    .select("id, status, updated_at")
     .eq("report_id", body.report_id)
     .in("status", ["queued", "processing"])
     // ★ 재검사 요청은 빼고 찾는다(2026-09-11 리뷰). 대기 중인 recheck 행에 이번 [초안 생성]의
@@ -44,6 +45,25 @@ export async function POST(request: Request) {
   //   리뷰는 둘 다 409(방식 A)를 권했지만, queued 를 거절하면 운영자가 지시를 고칠 방법이
   //   "완료될 때까지 기다렸다 재생성"뿐이라 오히려 헛돈이 나간다. 계약이 애매한 것이 문제였지
   //   갱신 자체가 문제는 아니었다.
+  // ★ 죽은 채로 방치된 요청을 먼저 되살린다(2026-09-17). 워커·Edge 가 중간에 끊기면 행이
+  //   'processing' 으로 남고, 아래 409 가 **영원히** 걸린다 — 운영자에게는 "이미 생성 중"이라는
+  //   거짓말이 계속 보이고, SQL 로 status 를 되돌리는 것 말고는 방법이 없었다.
+  //   ★★ 새 행을 넣지 않고 그 행을 되돌린다(엔진 워치독이 옛 행까지 되살려 두 번 만드는 것을 막는다).
+  let existing = found;
+  if (existing?.status === "processing" && isStaleProcessing(existing.updated_at)) {
+    const { error: revErr } = await supabase
+      .from("report_draft_requests")
+      .update({ status: "queued", error: STALE_REVIVE_NOTE, updated_at: new Date().toISOString() })
+      .eq("id", existing.id)
+      .eq("status", "processing");   // 그 사이 워커가 끝냈으면 건드리지 않는다
+    if (revErr) {
+      console.warn(`[report-generate-draft] 정체 요청 회수 실패(무시): ${revErr.message}`);
+    } else {
+      console.warn(`[report-generate-draft] 정체 요청 회수 report=${body.report_id} req=${existing.id}`);
+      existing = { ...existing, status: "queued" };
+    }
+  }
+
   if (existing?.status === "processing") {
     return NextResponse.json(
       {

@@ -270,8 +270,47 @@ def upsert_draft(row: dict[str, Any]) -> None:
     log.info("draft upsert: paper=%s", row.get("paper_id"))
 
 
+def reclaim_stale_draft_requests(table: str = "draft_requests") -> int:
+    """워커·엣지가 죽어 'processing' 으로 방치된 초안 요청을 'queued' 로 되돌린다.
+
+    ★ 왜 필요한가: 폴러는 'queued' 만 집는다. 그래서 중간에 죽은 요청은 **영원히** 방치되고,
+      화면의 [초안 생성] 은 "이미 처리 중"으로 막혀 운영자가 SQL 로 status 를 되돌려야 했다.
+      실측된 사고가 바로 이것이다(0043 머리말, 2026-08-28 13:07: Edge isolate 가 47초에
+      shutdown → catch 가 안 돌아 processing 인 채로 남음). 그때 장치는 **지시서 큐에만**
+      붙었고 초안 큐는 빠졌다(2026-09-17 확인).
+
+    ★ 임대(0043)가 아니라 updated_at 시간으로 잰다 — 이 테이블에는 임대 컬럼이 없고,
+      updated_at 은 처음부터 있다. 렌더 잡 워치독(_reclaim_stale_render_jobs)과 같은 방식이다.
+
+    ★★ 문턱(config.REQUEST_STALE_MINUTES)은 워커 잡 타임아웃보다 길다. 살아 있는 워커의 일을
+      뺏으면 같은 초안을 두 번 만들어 유료 호출이 두 배가 된다.
+    """
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(minutes=config.REQUEST_STALE_MINUTES)).isoformat()
+    resp = (client().table(table)
+            .update({"status": "queued",
+                     "error": "이전 워커가 응답 없어 재큐됨(watchdog)",
+                     "updated_at": now.isoformat()})
+            .eq("status", "processing")
+            .lt("updated_at", cutoff)
+            .execute())
+    n = len(resp.data or [])
+    if n:
+        log.warning("watchdog: 정체된 %s %d건 재큐(>%d분)", table, n, config.REQUEST_STALE_MINUTES)
+    return n
+
+
 def claim_draft_requests(limit: int = 5) -> list[dict[str, Any]]:
-    """'queued' 요청을 가져와 'processing' 으로 표시(폴링 워커용)."""
+    """'queued' 요청을 가져와 'processing' 으로 표시(폴링 워커용).
+
+    정체된 processing 행을 먼저 회수한다 — claim_render_jobs·claim_directive_requests 와 같은 자세.
+    """
+    try:
+        reclaim_stale_draft_requests()
+    except Exception as exc:  # noqa: BLE001 — 회수 실패가 정상 폴링을 막지 않는다
+        log.warning("정체 초안 요청 회수 실패(무시): %s", exc)
+
     def _fetch(cols: str):
         return client().table("draft_requests").select(cols).eq(
             "status", "queued"
@@ -291,8 +330,12 @@ def claim_draft_requests(limit: int = 5) -> list[dict[str, Any]]:
 
 
 def update_draft_request(req_id: str, status: str, error: str | None = None) -> None:
+    # ★ updated_at 을 반드시 함께 찍는다 — 워치독이 이 값으로 "죽었나"를 판단한다.
+    #   안 찍으면 방금 집은 요청이 옛 시각을 달고 있어 다른 워커에게 곧바로 뺏길 수 있다.
+    from datetime import datetime, timezone
     client().table("draft_requests").update(
-        {"status": status, "error": error}
+        {"status": status, "error": error,
+         "updated_at": datetime.now(timezone.utc).isoformat()}
     ).eq("id", req_id).execute()
 
 

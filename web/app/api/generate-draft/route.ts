@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireOperator } from "@/lib/apiGuard";
 import { chainableVersions } from "@/lib/versions";
 import { triggerDraft } from "@/lib/trigger-render";
+import { isStaleProcessing, STALE_REVIVE_NOTE } from "@/lib/requestQueue";
 
 import { queueWriter } from "@/lib/supabase/admin";
 export async function POST(request: Request) {
@@ -28,12 +29,32 @@ export async function POST(request: Request) {
   const versionTypes = chainableVersions(body?.version_types);
 
   // 이미 대기/처리 중인 요청이 있으면 중복 적재하지 않음(단, 함수 호출은 아래서 재시도).
-  const { data: existing } = await supabase
+  const { data: found } = await supabase
     .from("draft_requests")
-    .select("id, status")
+    .select("id, status, updated_at")
     .eq("paper_id", body.paper_id)
     .in("status", ["queued", "processing"])
     .maybeSingle();
+
+  // ★ 죽은 채로 방치된 요청을 여기서 되살린다(2026-09-17). 워커·Edge 가 중간에 끊기면 행이
+  //   'processing' 으로 남고 폴러는 'queued' 만 집으므로 **영원히** 막힌다 — 운영자가
+  //   SQL 로 status 를 되돌려야 했던 자리다(핸드오프 남은일 6번).
+  //   ★★ 새 행을 넣지 않고 **그 행을 되돌린다.** 새로 넣으면 엔진 워치독이 나중에 옛 행까지
+  //     되살려 같은 초안을 두 번 만든다(유료 호출 2배).
+  let existing = found;
+  if (existing?.status === "processing" && isStaleProcessing(existing.updated_at)) {
+    const { error: revErr } = await supabase
+      .from("draft_requests")
+      .update({ status: "queued", error: STALE_REVIVE_NOTE, updated_at: new Date().toISOString() })
+      .eq("id", existing.id)
+      .eq("status", "processing");   // 그 사이 워커가 끝냈으면 건드리지 않는다
+    if (revErr) {
+      console.warn(`[generate-draft] 정체 요청 회수 실패(무시): ${revErr.message}`);
+    } else {
+      console.warn(`[generate-draft] 정체 요청 회수 paper=${body.paper_id} req=${existing.id}`);
+      existing = { ...existing, status: "queued" };
+    }
+  }
 
   if (!existing) {
     const { error } = await supabase
