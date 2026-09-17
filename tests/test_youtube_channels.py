@@ -246,3 +246,65 @@ def test_upload_path_does_not_widen_scopes():
     upload_section = src.split("if channel_key:", 1)[1].split("else:", 1)[0]
     assert "yc.load_credentials(channel_key)" in upload_section
     assert "YOUTUBE_READONLY_SCOPE" not in upload_section
+
+
+# ── 자격증명 점검 스크립트 ↔ 엔진 드리프트 (2026-09-17) ──────────────────
+def _check_script_src() -> str:
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parents[1] / "scripts" / "check_youtube_tokens.py").read_text(
+        encoding="utf-8")
+
+
+def test_analytics_token_env_names_match_the_engine():
+    """점검 스크립트가 보는 토큰 이름이 엔진이 읽는 이름과 같은가.
+
+    ★ 갈리면 점검이 **엉뚱한 시크릿**을 보고 초록을 준다 — 그러면 "확인했다"가 거짓이 된다.
+      스크립트는 의존성 없이 단독으로 돌아야 해서 표를 인라인으로 복제한다(채널 표와 같은 사정).
+    """
+    import re
+
+    from engine import config
+
+    src = _check_script_src()
+    m = re.search(r"ANALYTICS_TOKENS[^=]*=\s*\[(.*?)\n\]", src, re.S)
+    assert m, "ANALYTICS_TOKENS 를 못 찾았다"
+    in_script = set(re.findall(r'"secret_env":\s*"([A-Z_]+)"', m.group(1)))
+
+    # 엔진 쪽 정본: config.SECRETS 의 필드 이름 → 환경변수 이름
+    expected = {name.upper() for name in config.YOUTUBE_ANALYTICS_TOKEN_SECRET_BY_LANG.values()}
+    assert in_script == expected, f"스크립트 {in_script} ≠ 엔진 {expected}"
+
+
+def test_analytics_client_fallback_matches_the_engine():
+    """전용 클라이언트가 없을 때 업로드 클라이언트로 폴백하는가 — 양쪽이 같은가.
+
+    ★ 엔진은 폴백하는데 점검 스크립트가 폴백하지 않으면, 실제로는 도는 설정을 점검이
+      "클라이언트 없음"이라고 말한다(그 반대면 더 나쁘다 — 안 되는 설정에 초록을 준다).
+      2026-09-17 실측: 전용 값이 없는데도 성과 조회 토큰 2개가 업로드 클라이언트로 정상 갱신됐다.
+    """
+    from pathlib import Path
+
+    engine_src = (Path(__file__).resolve().parents[1] / "engine" / "providers" / "youtube.py").read_text(
+        encoding="utf-8")
+    # 엔진의 폴백(`... or config.SECRETS.youtube_client_id`)이 살아 있는가
+    assert "youtube_analytics_client_id or config.SECRETS.youtube_client_id" in engine_src
+    # 스크립트도 같은 폴백을 하는가
+    script = _check_script_src()
+    assert "def analytics_client_credentials" in script
+    assert 'os.getenv("YOUTUBE_CLIENT_ID"' in script.split(
+        "def analytics_client_credentials", 1)[1].split("def ", 1)[0]
+
+
+def test_analytics_check_requires_the_analytics_scope():
+    """성과 조회 토큰에 yt-analytics.readonly 가 있는지 **실제로** 본다.
+
+    ★ 업로드 쪽에서 배운 것과 같은 교훈이다 — 갱신 성공 ≠ 쓸 수 있음. 조회 전용인 줄 알았던
+      토큰이 사실은 권한이 모자라 API 가 403 을 주는 일이 이미 한 번 있었다(2026-09-14).
+    """
+    from engine import config
+
+    script = _check_script_src()
+    assert config.YOUTUBE_ANALYTICS_SCOPE.endswith("/yt-analytics.readonly")
+    assert 'ANALYTICS_SCOPE_SUFFIX = "/yt-analytics.readonly"' in script
+    assert "ANALYTICS_SCOPE_SUFFIX" in script.split("def check_analytics_token", 1)[1]

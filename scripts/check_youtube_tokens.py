@@ -66,6 +66,22 @@ CHANNELS: list[dict[str, str]] = [
 ]
 
 
+# 성과 조회(분석) 토큰 — engine/config.YOUTUBE_ANALYTICS_TOKEN_SECRET_BY_LANG 과 같은 표.
+# 드리프트는 tests/test_youtube_channels.py 가 잡는다.
+#
+# ★ 왜 여기서도 보나(2026-09-17): 핸드오프가 YOUTUBE_ANALYTICS_CLIENT_ID/SECRET 을 "미등록"
+#   으로 적어 뒀는데, 코드를 보면 **업로드 클라이언트로 폴백**한다
+#   (engine/providers/youtube.py::_analytics_client_credentials). 그래서 "정말 막혀 있는가"는
+#   눈으로는 알 수 없고 실제로 갱신을 시켜봐야만 답이 나온다. 업로드와 달리 이쪽은
+#   읽기 전용이라 확인 비용이 0 이다.
+ANALYTICS_TOKENS: list[dict[str, str]] = [
+    {"key": "ko", "label": "성과 조회 KO", "secret_env": "YOUTUBE_ANALYTICS_REFRESH_TOKEN_KO"},
+    {"key": "en", "label": "성과 조회 EN", "secret_env": "YOUTUBE_ANALYTICS_REFRESH_TOKEN_EN"},
+]
+# 성과 조회에 반드시 있어야 하는 스코프(config.YOUTUBE_ANALYTICS_SCOPE).
+ANALYTICS_SCOPE_SUFFIX = "/yt-analytics.readonly"
+
+
 def _post_form(url: str, data: dict[str, str]) -> tuple[int, dict]:
     body = urllib.parse.urlencode(data).encode()
     req = urllib.request.Request(url, data=body, method="POST")
@@ -155,6 +171,64 @@ def check_channel(spec: dict[str, str], client_id: str, client_secret: str) -> t
     return True, f"토큰 유효 ✓ · 채널 확인 ✓ ({actual_title})"
 
 
+def analytics_client_credentials() -> tuple[str, str, bool]:
+    """성과 조회용 클라이언트. 반환: (id, secret, 전용 값을 썼나).
+
+    ★ engine/providers/youtube.py::_analytics_client_credentials 와 **같은 폴백**이다.
+      전용 값이 없으면 업로드 클라이언트를 쓴다. 갈리면 여기 결과와 실제 수집이 어긋난다.
+    """
+    cid = os.getenv("YOUTUBE_ANALYTICS_CLIENT_ID", "").strip()
+    csec = os.getenv("YOUTUBE_ANALYTICS_CLIENT_SECRET", "").strip()
+    if cid and csec:
+        return cid, csec, True
+    return (os.getenv("YOUTUBE_CLIENT_ID", "").strip(),
+            os.getenv("YOUTUBE_CLIENT_SECRET", "").strip(), False)
+
+
+def check_analytics_token(spec: dict[str, str], client_id: str,
+                          client_secret: str) -> tuple[bool | None, str]:
+    """반환: (True 정상 / False 고장 / None 미설정, 사람이 읽는 한 줄).
+
+    ★ 미설정은 **실패가 아니다.** 엔진이 업로드 토큰으로 폴백하도록 돼 있어서, 성과 수집을
+      안 쓰는 상태일 뿐이다. 반면 '넣었는데 안 되는 것'은 반드시 실패로 올린다 —
+      그게 화면에 빈 성과 표로 나타나는 원인이다.
+    """
+    token = os.getenv(spec["secret_env"], "").strip()
+    if not token:
+        return None, f"미설정 — {spec['secret_env']} 없음(성과 수집을 쓰지 않는 상태)"
+
+    status, data = _post_form(TOKEN_URI, {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": token,
+        "grant_type": "refresh_token",
+    })
+    if status != 200:
+        err = str(data.get("error", ""))
+        if err == "invalid_client":
+            return False, ("클라이언트 인증 실패(invalid_client) — 이 토큰은 지금 쓰는 클라이언트로 "
+                           "발급된 것이 아닙니다. YOUTUBE_ANALYTICS_CLIENT_ID/SECRET 를 따로 넣거나 "
+                           "같은 클라이언트로 토큰을 재발급하세요")
+        if err == "invalid_grant":
+            return False, (f"리프레시 토큰 만료·폐기(invalid_grant) — {spec['secret_env']} 재발급 필요")
+        return False, f"토큰 갱신 실패({status}): {err or data}"
+
+    access_token = str(data.get("access_token") or "")
+    if not access_token:
+        return False, "토큰 갱신 응답에 access_token 이 없습니다"
+
+    granted = str((data.get("scope") or "")).split()
+    if not granted:
+        _s, info = _get("https://oauth2.googleapis.com/tokeninfo?access_token="
+                        + urllib.parse.quote(access_token), access_token)
+        granted = str(info.get("scope") or "").split()
+    if not any(sc.endswith(ANALYTICS_SCOPE_SUFFIX) for sc in granted):
+        short = ", ".join(sc.rsplit("/", 1)[-1] for sc in granted) or "(없음)"
+        return False, (f"성과 조회 권한 없음 ✗ — 이 토큰의 권한은 [{short}] 뿐입니다. "
+                       f"yt-analytics.readonly 를 포함해 재발급하세요")
+    return True, "토큰 유효 ✓ · 성과 조회 권한 ✓"
+
+
 def main() -> int:
     _load_env_file()          # 로컬 .env → 환경변수(Actions 에서는 이미 주입돼 있어 무해하다)
     client_id = os.getenv("YOUTUBE_CLIENT_ID", "").strip()
@@ -174,11 +248,31 @@ def main() -> int:
         if not ok:
             failures += 1
 
+    # ── 성과 조회(분석) 토큰 — 읽기 전용, 업로드와 별개 ──────────────
+    a_id, a_secret, dedicated = analytics_client_credentials()
+    print("\n[성과 조회]")
+    if not a_id or not a_secret:
+        print("  클라이언트 없음 — 업로드 클라이언트도 비어 있습니다(위에서 이미 걸렸어야 합니다)")
+    else:
+        print("  클라이언트: " + ("전용(YOUTUBE_ANALYTICS_CLIENT_ID/SECRET)" if dedicated
+                                  else "업로드 클라이언트로 폴백(전용 값 미설정)"))
+        unset = 0
+        for spec in ANALYTICS_TOKENS:
+            ok, message = check_analytics_token(spec, a_id, a_secret)
+            mark = "✅" if ok else ("➖" if ok is None else "❌")
+            print(f"  {mark} {spec['label']:<10} {message}")
+            if ok is None:
+                unset += 1
+            elif not ok:
+                failures += 1
+        if unset == len(ANALYTICS_TOKENS):
+            print("  → 성과 수집(/analytics)은 지금 쓰지 않는 상태입니다. 쓰려면 토큰을 넣으세요.")
+
     print()
     if failures:
         print(f"실패 {failures}건 — 위 메시지의 조치를 따르세요.")
         return 1
-    print("3채널 모두 정상입니다.")
+    print("업로드 3채널 정상. 성과 조회는 위 줄을 보세요.")
     return 0
 
 

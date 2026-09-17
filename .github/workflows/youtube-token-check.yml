@@ -16,6 +16,8 @@
 # 필요한 Secrets: YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET,
 #   YOUTUBE_REFRESH_TOKEN_KO, YOUTUBE_REFRESH_TOKEN_EN
 #   (채널 통합으로 리포트도 KO 토큰을 쓴다 — 2026-07-30)
+# 선택 Secrets: YOUTUBE_ANALYTICS_* (성과 조회). 없으면 업로드 클라이언트로 폴백하므로
+#   "미설정"이 곧 고장은 아니다 — 스크립트가 둘을 구분해 찍는다.
 # ★ 스크립트는 토큰 값을 출력하지 않는다(로그에 시크릿이 남지 않게).
 name: youtube-token-check
 
@@ -45,4 +47,11 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN_KO: ${{ secrets.YOUTUBE_REFRESH_TOKEN_KO }}
           YOUTUBE_REFRESH_TOKEN_EN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_EN }}
+          # ★ 성과 조회(분석) 토큰도 함께 본다(2026-09-17). 읽기 전용이라 확인 비용이 0 이고,
+          #   전용 클라이언트가 없으면 업로드 클라이언트로 폴백하는 구조라 "정말 되는가"는
+          #   실제로 갱신을 시켜봐야만 답이 나온다. 없으면 스크립트가 "미설정"으로 넘긴다.
+          YOUTUBE_ANALYTICS_CLIENT_ID: ${{ secrets.YOUTUBE_ANALYTICS_CLIENT_ID }}
+          YOUTUBE_ANALYTICS_CLIENT_SECRET: ${{ secrets.YOUTUBE_ANALYTICS_CLIENT_SECRET }}
+          YOUTUBE_ANALYTICS_REFRESH_TOKEN_KO: ${{ secrets.YOUTUBE_ANALYTICS_REFRESH_TOKEN_KO }}
+          YOUTUBE_ANALYTICS_REFRESH_TOKEN_EN: ${{ secrets.YOUTUBE_ANALYTICS_REFRESH_TOKEN_EN }}
         run: python scripts/check_youtube_tokens.py
