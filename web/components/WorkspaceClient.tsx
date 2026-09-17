@@ -425,13 +425,17 @@ export default function WorkspaceClient({
         setShowRegenDirective(decision.targets as VersionType[]);
         return;
       case "approve_render":
-        setShowApprove(true);
+        // ★ 막혀 있으면 사유 확인창으로, 아니면 보통 확인창으로. **버튼은 같은 자리 같은 이름**이다
+        //   (2026-09-17). 운영자 눈에 렌더로 가는 길이 사라지지 않게 한다.
+        if (decision.blockedReasons.length) {
+          setBlocked({
+            ids: targetSlots.map((s) => s.directive?.id).filter((x): x is string => !!x),
+            reasons: decision.blockedReasons,
+          });
+        } else {
+          setShowApprove(true);
+        }
         return;
-      case "blocked": {
-        const reasons = [...new Set(targetSlots.flatMap((s) => s.directive?.header?.block_reasons ?? []))];
-        setBlocked({ ids: targetSlots.map((s) => s.directive?.id).filter((x): x is string => !!x), reasons });
-        return;
-      }
       case "view_render":
         document.getElementById("work-render")?.setAttribute("open", "");
         document.getElementById("work-render")?.scrollIntoView({ behavior: "smooth" });
@@ -482,6 +486,13 @@ export default function WorkspaceClient({
           {decision.stale.length > 0 && decision.action !== "regen_stale" && (
             <span className="work-stale">⚠ {decision.stale.map(cfg.label).join(", ")} 지시서가 옛 대본 기준입니다</span>
           )}
+          {decision.blockedReasons.length > 0 && (
+            // ★ 버튼을 없애는 대신 여기서 알린다(2026-09-17). 눌러야 할 곳은 그대로 두고,
+            //   "그냥 누르면 안 되는 상태"라는 것만 보이게 한다.
+            <span className="work-stale" title={decision.blockedReasons.map(blockLabel).join("\n")}>
+              ⚠ 승인 게이트 {decision.blockedReasons.length}건 — 누르면 사유를 보여줍니다
+            </span>
+          )}
           {!validationCurrent && (
             <span className="work-stale">⚠ 검사 이후 대본이 수정됨 — 재검사 권장</span>
           )}
@@ -515,6 +526,15 @@ export default function WorkspaceClient({
                 <div className="work-menu-list" onMouseLeave={() => setMenuOpen(false)}>
                   <button onClick={() => { setMenuOpen(false); setShowRegenDraft(true); }} disabled={gen.busy}>초안 재생성(지시서도 새로)</button>
                   <button onClick={() => { setMenuOpen(false); setShowRegenDirective(versions); }} disabled={versions.length === 0}>지시서만 재생성</button>
+                  {/* ★ 막다른 길을 없앤다(2026-09-17). 주 버튼이 [지시서 재생성]인 상태에서는
+                      승인·렌더로 가는 길이 화면에 하나도 없었다 — 운영자가 "렌더 버튼이 없다"고
+                      한 상태 중 하나가 이것이다. 재생성이 **권장**이라 주 버튼은 그대로 두고,
+                      "알고도 그냥 간다"는 선택지를 여기 둔다. */}
+                  {decision.action === "regen_stale" && (
+                    <button onClick={() => { setMenuOpen(false); setShowApprove(true); }}>
+                      그래도 지금 지시서로 승인 → 렌더
+                    </button>
+                  )}
                   {!scriptApproved && <button onClick={() => { setMenuOpen(false); void archiveScriptOnly(); }}>대본만 확정(렌더 없음)</button>}
                 </div>
               )}
