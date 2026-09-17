@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from . import config
-from .db import client
+from .db import client, reclaim_stale_draft_requests
 from .util import log
 
 
@@ -225,8 +225,15 @@ def claim_report_draft_requests(limit: int = 5) -> list[dict[str, Any]]:
 
     ★ 논문 claim_draft_requests 는 비원자적이라 동시 워커 시 중복 처리 가능 →
       리포트는 status='queued' 조건부 갱신(compare-and-swap)으로 중복 방지.
+    ★ 정체된 processing 행을 먼저 회수한다(db.reclaim_stale_draft_requests 미러).
+      원자 클레임은 "둘이 동시에 집는 것"을 막을 뿐, "집고 죽은 것"은 못 푼다.
     """
     from datetime import datetime, timezone
+    try:
+        reclaim_stale_draft_requests("report_draft_requests")
+    except Exception as exc:  # noqa: BLE001 — 회수 실패가 정상 폴링을 막지 않는다
+        log.warning("정체 리포트 초안 요청 회수 실패(무시): %s", exc)
+
     def _fetch(cols: str):
         return client().table("report_draft_requests").select(cols).eq(
             "status", "queued"

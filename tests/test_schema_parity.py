@@ -410,3 +410,71 @@ def test_approve_action_only_accepts_degraded_jobs():
         assert '"approve_degraded"' in src, f"{route}: 액션 미등록"
         assert 'job.status !== "degraded"' in src, f"{route}: 상태 확인 없이 승인한다"
         assert 'status: "done"' not in src, f"{route}: 승인이 판정을 덮으면 기록이 사라진다"
+
+
+# ── 초안 요청 큐의 정체 회수 — PY/TS 쌍둥이 + 배선 (2026-09-17) ──────────────
+def test_request_stale_minutes_matches_between_python_and_ts():
+    """★ 갈리면 조용히 망가진다. 웹이 더 짧게 보면 살아 있는 워커의 요청을 되살려 같은 초안을
+    두 번 만들고(유료 호출 2배), 웹이 더 길게 보면 [초안 생성] 이 필요 이상으로 오래 막힌다.
+    """
+    import re
+
+    from engine import config
+
+    src = (ROOT / "web" / "lib" / "requestQueue.ts").read_text(encoding="utf-8")
+    m = re.search(r"export const REQUEST_STALE_MINUTES\s*=\s*(\d+)", src)
+    assert m, "requestQueue.ts 에서 REQUEST_STALE_MINUTES 를 못 찾았다"
+    assert int(m.group(1)) == config.REQUEST_STALE_MINUTES
+
+
+def test_stale_threshold_outlives_the_worker_job_timeout():
+    """문턱은 워커 잡이 살 수 있는 최대 시간보다 길어야 한다.
+
+    짧으면 **정상 동작 중인** 워커의 요청을 회수해 같은 초안을 두 번 만든다. 워크플로의
+    timeout-minutes 가 워커 수명의 상한이므로 거기서 직접 읽어 비교한다 — 숫자를 주석에
+    적어 두면 워크플로만 늘렸을 때 갈린다.
+    """
+    import re
+
+    from engine import config
+
+    limits = []
+    for wf in ("draft.yml", "queues.yml"):
+        src = (ROOT / ".github" / "workflows" / wf).read_text(encoding="utf-8")
+        found = [int(x) for x in re.findall(r"timeout-minutes:\s*(\d+)", src)]
+        assert found, f"{wf} 에 timeout-minutes 가 없다"
+        limits.append(max(found))
+    assert config.REQUEST_STALE_MINUTES > max(limits), (
+        f"정체 문턱 {config.REQUEST_STALE_MINUTES}분이 워커 타임아웃 {max(limits)}분보다 짧다 — "
+        "살아 있는 워커의 요청을 회수해 초안을 두 번 만든다")
+
+
+def test_every_request_queue_has_a_way_out_of_processing():
+    """'processing 으로 방치되면 영원히 막힌다' 는 사고를 큐마다 막아 뒀는가.
+
+    ★ 이 검사가 생긴 이유: 0043 이 그 사고를 고쳤는데 **지시서 큐에만** 붙고 초안 큐는
+      빠져 있었다(2026-09-17 발견). 정작 0043 머리말이 실측한 사고는 초안 경로였다.
+      큐가 늘어날 때 같은 구멍이 다시 나지 않도록 목록으로 못박는다.
+    """
+    db_src = (ROOT / "engine" / "db.py").read_text(encoding="utf-8")
+    report_src = (ROOT / "engine" / "report_db.py").read_text(encoding="utf-8")
+    both = db_src + report_src
+
+    covered = {
+        "render_jobs": "_reclaim_stale_render_jobs",
+        "report_render_jobs": "_reclaim_stale_report_render_jobs",
+        "directive_requests": "requeue_stale_directive_requests",
+        "draft_requests": "reclaim_stale_draft_requests",
+    }
+    for queue, fn in covered.items():
+        assert f"def {fn}" in both, f"{queue} 의 회수 함수 {fn} 가 없다"
+
+    # 회수를 **일부러 안 하는** 큐. 업로드는 되돌리기 어려운 외부 행위라 중복 발행이 더 나쁘다.
+    # (engine/db.py·report_db.py 의 주석이 근거다 — 근거가 사라지면 여기서 걸린다.)
+    assert "watchdog 재큐 없음" in report_src
+    assert "업로드는 되돌리기 어려운 외부 행위" in both
+
+    # 초안 큐의 회수가 실제로 **폴링 경로에 걸려 있는가**(함수만 있고 아무도 안 부르는 것을 막는다).
+    assert "reclaim_stale_draft_requests()" in db_src, "claim_draft_requests 가 회수를 안 부른다"
+    assert 'reclaim_stale_draft_requests("report_draft_requests")' in report_src, (
+        "claim_report_draft_requests 가 회수를 안 부른다")
