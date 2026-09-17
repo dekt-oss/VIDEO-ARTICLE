@@ -34,6 +34,7 @@ import ReviewClient from "@/components/ReviewClient";
 import DirectiveClient from "@/components/DirectiveClient";
 import ReportReviewClient from "@/components/ReportReviewClient";
 import ReportDirectiveClient from "@/components/ReportDirectiveClient";
+import SequenceEditor from "@/components/SequenceEditor";
 import RenderList from "@/components/RenderList";
 import ReportRenderList from "@/components/ReportRenderList";
 import { apiErrorText } from "@/lib/apiError";
@@ -52,6 +53,8 @@ interface FactoryConfig {
   directiveGenerateUrl: string;
   approveScriptUrl: string;
   directiveApproveUrl: string;
+  /** 시퀀스 화면이 컷·시퀀스를 저장하는 곳. */
+  directiveUpdateUrl: string;
   /** 지시서 승인 라우트가 여러 id 를 한 번에 받는가(논문은 directive_ids, 리포트는 단건). */
   approveBatch: boolean;
   versionMeta: VersionMeta[];
@@ -69,6 +72,7 @@ const FACTORY: Record<Factory, FactoryConfig> = {
     directiveGenerateUrl: "/api/directive-generate",
     approveScriptUrl: "/api/approve",
     directiveApproveUrl: "/api/directive-approve",
+    directiveUpdateUrl: "/api/directive-update",
     approveBatch: true,
     versionMeta: VERSION_META,
     defaultVersion: DEFAULT_VERSION_KEY,
@@ -83,6 +87,7 @@ const FACTORY: Record<Factory, FactoryConfig> = {
     directiveGenerateUrl: "/api/report-directive-generate",
     approveScriptUrl: "/api/report-approve",
     directiveApproveUrl: "/api/report-directive-approve",
+    directiveUpdateUrl: "/api/report-directive-update",
     approveBatch: false,
     versionMeta: REPORT_VERSION_META,
     defaultVersion: REPORT_DEFAULT_VERSION_KEY,
@@ -543,46 +548,49 @@ export default function WorkspaceClient({
         </div>
       </div>
 
-      {/* 좁은 화면 탭 */}
-      <div className="work-tabs toggle">
-        <button data-active={mobilePane === "script"} onClick={() => setMobilePane("script")}>대본 · 근거</button>
-        <button data-active={mobilePane === "cuts"} onClick={() => setMobilePane("cuts")}>지시서</button>
-      </div>
+      {/* ── 한 장: 시퀀스 → 단계 → 컷 (2026-09-17) ──
+          종전에는 [대본 | 지시서] 가로 2분할이었다. 두 칸은 같은 영상의 두 표현인데 따로 놓여
+          있어서 "이 나레이션이 어느 화면에 붙나"를 눈으로 이어 붙여야 했다. 이제 한글과 시각
+          지시가 같은 줄에 나란히 온다. 대본 칸은 없앴다(운영자 결정) — 나레이션은 시퀀스 안에서
+          고치고, 렌더도 원래 **지시서의 나레이션**으로 나간다. */}
+      <div className="work-one">
+        <div className="toggle" style={{ margin: "0 0 10px" }}>
+          {cfg.versionMeta.map((m) => {
+            const st = slots.find((s) => s.key === m.key)?.directive?.status;
+            return (
+              <a key={m.key} href={cfg.hrefForVersion(id, m.key)} data-active={m.key === activeVersion} title={m.hint}>
+                {m.label}{st ? ` · ${st === "draft" ? "검수" : st}` : chain.has(m.key) ? " · 만드는 중" : " · 미생성"}
+              </a>
+            );
+          })}
+        </div>
 
-      {/* ── 두 칸 ── */}
-      <div className="work-panes" data-mobile={mobilePane}>
-        <section className="work-pane work-pane--script" id="work-script">
-          {leftExtras}
-          {factory === "paper" ? (
-            <ReviewClient paperId={id} draft={draft as Draft | null} initialPublished={scriptApproved} pending={draftPending} pane paneRef={scriptRef} />
-          ) : (
-            <ReportReviewClient reportId={id} draft={draft as ReportDraft | null} initialPublished={scriptApproved} pending={draftPending}
-              validationCurrent={validationCurrent} pane paneRef={scriptRef} />
-          )}
-        </section>
-        <section className="work-pane work-pane--cuts" id="work-cuts">
-          <div className="toggle" style={{ margin: "0 0 8px" }}>
-            {cfg.versionMeta.map((m) => {
-              const st = slots.find((s) => s.key === m.key)?.directive?.status;
-              return (
-                <a key={m.key} href={cfg.hrefForVersion(id, m.key)} data-active={m.key === activeVersion} title={m.hint}>
-                  {m.label}{st ? ` · ${st === "draft" ? "검수" : st}` : chain.has(m.key) ? " · 만드는 중" : " · 미생성"}
-                </a>
-              );
-            })}
-          </div>
-          {draft ? (
-            factory === "paper" ? (
-              <DirectiveClient paperId={id} version={activeVersion} directive={activeSlot?.directive ?? null}
-                embedded pane paneRef={cutsRef} pending={activePending} />
-            ) : (
-              <ReportDirectiveClient reportId={id} version={activeVersion} directive={activeSlot?.directive ?? null}
-                pane paneRef={cutsRef} pending={activePending} />
-            )
-          ) : (
-            <p className="muted">초안이 만들어지면 여기에 지시서가 옵니다.</p>
-          )}
-        </section>
+        {leftExtras}
+
+        {!draft ? (
+          <p className="muted">초안이 만들어지면 여기에 영상 구성이 옵니다.</p>
+        ) : (
+          <>
+            <SequenceEditor
+              directive={activeSlot?.directive ?? null}
+              updateUrl={cfg.directiveUpdateUrl}
+              paneRef={cutsRef}
+              readOnly={(activeSlot?.directive?.status ?? "draft") !== "draft"}
+            />
+            {/* ★ 옛 컷 편집기는 지우지 않고 접어 둔다 — 효과·전환·모션 프롬프트·장면 편집처럼
+                시퀀스 화면이 아직 안 다루는 것들이 여기 있다. 없애면 할 수 있던 일이 사라진다. */}
+            <details className="aux-panel" style={{ marginTop: 14 }}>
+              <summary>컷 상세 편집 — 효과 · 전환 · 프롬프트</summary>
+              {factory === "paper" ? (
+                <DirectiveClient paperId={id} version={activeVersion} directive={activeSlot?.directive ?? null}
+                  embedded pane pending={activePending} />
+              ) : (
+                <ReportDirectiveClient reportId={id} version={activeVersion} directive={activeSlot?.directive ?? null}
+                  pane pending={activePending} />
+              )}
+            </details>
+          </>
+        )}
       </div>
 
       {/* ── 렌더 결과(접힘) ── */}

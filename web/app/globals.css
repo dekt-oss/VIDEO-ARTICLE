@@ -564,3 +564,39 @@ details.render-group[open] > summary { margin-bottom: 10px; }
   .work-panes[data-mobile="script"] .work-pane--cuts { display: none; }
   .work-panes[data-mobile="cuts"] .work-pane--script { display: none; }
 }
+
+/* ── 시퀀스 중심 작업 화면 (2026-09-17) ──────────────────────────────
+   한 장에 시퀀스 → 단계 → 컷 이 세로로 쌓인다. 종전 [대본 | 지시서] 가로 2분할을 대신한다.
+   ★ 한글 나레이션과 시각 지시를 **같은 줄에 나란히** 두는 것이 이 화면의 핵심이다 —
+     둘을 함께 읽고 함께 고치려고 합친 것이므로, 좁은 화면에서만 위아래로 떨어진다. */
+.work-one { max-width: 1100px; margin: 0 auto; }
+.seq-wrap { display: flex; flex-direction: column; gap: 18px; }
+
+.seq-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.seq-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.seq-head h3 { margin: 0; font-size: 15px; }
+
+.seq-world { margin: 0 0 12px; border: 1px dashed var(--border); border-radius: 10px; padding: 8px 12px; }
+.seq-world > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.seq-world label, .seq-entities label { display: block; margin: 10px 0 0; }
+.seq-entities { margin-top: 12px; }
+
+.seq-stage { border-left: 3px solid var(--border); padding: 4px 0 4px 12px; margin: 14px 0; }
+.seq-stage-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.seq-stage > label { display: block; margin-bottom: 10px; }
+
+.seq-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+
+.seq-cut { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.seq-cut-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 13px; }
+/* 한글 ↔ 화면을 나란히. 좁은 화면에서는 한 줄씩. */
+.seq-cut-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 860px) { .seq-cut-body { grid-template-columns: 1fr; } }
+.seq-cut-body label { display: block; }
+.seq-move { margin-left: auto; font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.seq-move select { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
+
+.seq-wrap textarea { width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; line-height: 1.55; resize: vertical; }
+.seq-wrap textarea[readonly] { opacity: .7; }
+.flag { color: #ff6b6b; font-size: 12px; }
