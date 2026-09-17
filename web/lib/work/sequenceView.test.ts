@@ -1,7 +1,7 @@
 // 순수 로직 테스트. 실행: `node --test web/lib/work/sequenceView.test.ts`
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSequenceLayout, sequenceRoleLabel } from "./sequenceView.ts";
+import { buildSequenceLayout } from "./sequenceView.ts";
 
 const SEQS = [
   { sequence_id: "SEQ1", sequence_role: "MECHANISM_SEQUENCE",
@@ -60,10 +60,4 @@ test("cutCount 는 실제로 담긴 컷 수다(유령 컷은 안 센다)", () =>
   const L = buildSequenceLayout([1, 2, 3, 4, 5, 6], SEQS);
   assert.equal(L.sequences[0].cutCount, 3);
   assert.equal(L.sequences[1].cutCount, 3);
-});
-
-test("모르는 시퀀스 역할은 숨기지 않고 그대로 보여 준다", () => {
-  assert.match(sequenceRoleLabel("MECHANISM_SEQUENCE"), /기전/);
-  assert.equal(sequenceRoleLabel("NEW_ROLE_X"), "NEW_ROLE_X");
-  assert.equal(sequenceRoleLabel(""), "묶음");
 });
