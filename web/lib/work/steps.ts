@@ -47,7 +47,8 @@ export interface StageResult {
 }
 
 export function buildStages(input: StageInput): StageResult {
-  const { hasDraft, scriptApproved, directiveStatus, render, hrefFor } = input;
+  // scriptApproved 는 합친 뒤 단계 판정에 안 쓴다 — 대본 확정은 승인 버튼이 함께 처리한다.
+  const { hasDraft, directiveStatus, render, hrefFor } = input;
   const href = (no: StepNo) => hrefFor?.(no);
 
   const dStatus = mostAdvanced(directiveStatus);
@@ -55,28 +56,27 @@ export function buildStages(input: StageInput): StageResult {
 
   const { total, failed, running, action } = render;
 
-  const step4: StepState = {
-    no: 4,
-    label: "④ 초안 검수",
-    status: !hasDraft ? "초안 없음" : scriptApproved ? "✓ 승인됨" : "검수 필요",
-    done: hasDraft && scriptApproved,
-    needsWork: !hasDraft || !scriptApproved,
-    href: href(4),
-  };
-
-  const step5: StepState = {
+  // ★ ④ 초안 검수와 ⑤ 영상 지시서를 **한 단계로 합쳤다**(2026-09-17 운영자 지시:
+  //   "번호 순서인 초안생성이랑 영상지시서 따로 구분 필요 있겠나? 통합해").
+  //   화면이 이미 한 장이고(SequenceEditor) 발주도 한 번에 나가는데, 머리에만 두 칸이
+  //   남아 있어 "지금 어느 단계인가"를 쓸데없이 묻게 만들었다.
+  // ★ `no` 는 5 로 둔다 — 옛 주소 `?step=4` 와 `?step=5` 가 둘 다 이 단계로 들어온다.
+  const work: StepState = {
     no: 5,
-    label: "⑤ 영상 지시서",
-    status: dStatus ? DIRECTIVE_LABEL[dStatus] ?? dStatus : "지시서 없음",
+    label: "영상 지시서",
+    status: !hasDraft
+      ? "아직 없음"
+      : dStatus
+        ? DIRECTIVE_LABEL[dStatus] ?? dStatus
+        : "지시서 만드는 중",
     done: handedOff,
-    needsWork: hasDraft && !handedOff,
-    locked: !hasDraft, // 초안 없이는 지시서를 만들 수 없다
+    needsWork: !hasDraft || !handedOff,
     href: href(5),
   };
 
   const step6: StepState = {
     no: 6,
-    label: "⑥ 렌더 결과",
+    label: "렌더 결과",
     status:
       total === 0
         ? "렌더 없음"
@@ -93,7 +93,7 @@ export function buildStages(input: StageInput): StageResult {
     href: href(6),
   };
 
-  const steps = [step4, step5, step6];
+  const steps = [work, step6];
   const firstNeeds = steps.find((s) => s.needsWork && !s.locked);
   const defaultStep = (firstNeeds?.no ?? (step6.locked ? 5 : 6)) as StepNo;
   return { steps, defaultStep };
