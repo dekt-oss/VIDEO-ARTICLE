@@ -23,6 +23,7 @@ import {
   type VersionMeta,
 } from "@/lib/versions";
 import { decide, type VersionState } from "@/lib/work/decision";
+import { pickInitialVersions } from "@/lib/work/versionSelection";
 import type { ScriptPaneHandle, CutsPaneHandle } from "@/lib/work/panes";
 import { estimateOrder, formatUsd, LANG_COST_NOTE } from "@/lib/orderCost";
 import { blockLabel } from "@/lib/blockLabels";
@@ -94,16 +95,17 @@ const FACTORY: Record<Factory, FactoryConfig> = {
 const POLL_MS = 4000;
 const POLL_TIMEOUT_MS = 720_000;
 
-function loadVersions(cfg: FactoryConfig): VersionType[] {
+/** 화면을 열 때 체크해 둘 버전. 판단은 `lib/work/versionSelection` 이 하고(검사로 못박음),
+ *  여기서는 localStorage 읽기만 맡는다(서버 렌더에서는 못 읽는다). */
+function initialVersions(cfg: FactoryConfig, slots: VersionSlot[]): VersionType[] {
+  const withDirective = slots.filter((s) => s.directive).map((s) => s.key as string);
+  const known = cfg.versionMeta.map((m) => m.key as string);
+  let stored: string[] | null = null;
   try {
     const raw = window.localStorage.getItem(cfg.storageKey);
-    const list = raw ? (JSON.parse(raw) as string[]) : null;
-    const known = cfg.versionMeta.map((m) => m.key as string);
-    const picked = (list ?? []).filter((v) => known.includes(v)) as VersionType[];
-    return picked.length ? picked : [cfg.defaultVersion];
-  } catch {
-    return [cfg.defaultVersion];
-  }
+    stored = raw ? (JSON.parse(raw) as string[]) : null;
+  } catch { /* 저장소를 못 읽어도 동작한다 */ }
+  return pickInitialVersions(withDirective, stored, known, cfg.defaultVersion) as VersionType[];
 }
 
 export default function WorkspaceClient({
@@ -142,9 +144,21 @@ export default function WorkspaceClient({
   const router = useRouter();
   const toast = useToast();
 
-  // ── 버전 선택(마지막 선택 기억). 기본 만화식 1건 — CLAUDE.md 결정 그대로.
-  const [versions, setVersions] = useState<VersionType[]>([cfg.defaultVersion]);
-  useEffect(() => { setVersions(loadVersions(cfg)); }, [cfg]);
+  // ── 버전 선택. **있는 지시서를 먼저 체크**하고, 하나도 없으면 마지막 선택·기본값(만화식 1건).
+  // ★ 초기값에서부터 있는 지시서를 본다 — 서버 렌더에도 같은 버튼이 찍힌다. 초기값이
+  //   기본값이면 하이드레이션 전까지 "지시서 생성(만화식)"이 깜빡였다가 바뀐다.
+  //   (localStorage 는 서버에서 못 읽으므로 그 경로는 아래 effect 가 맡는다.)
+  const [versions, setVersions] = useState<VersionType[]>(() =>
+    // 서버 렌더에서는 localStorage 를 못 읽으므로 ①(있는 지시서)·③(기본값)만으로 정한다.
+    pickInitialVersions(
+      slots.filter((s) => s.directive).map((s) => s.key as string),
+      null, cfg.versionMeta.map((m) => m.key as string), cfg.defaultVersion) as VersionType[]);
+  // ★ 의존성은 slots 배열이 아니라 "지시서가 있는 버전 목록"이다. slots 는 렌더마다 새 배열이라
+  //   그대로 넣으면 매 렌더 초기화돼 운영자가 방금 켠 체크가 지워진다.
+  const existingVersionKey = slots.filter((s) => s.directive).map((s) => s.key).join(",");
+  useEffect(() => { setVersions(initialVersions(cfg, slots)); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- slots 는 위 키로 대표한다(매 렌더 새 배열)
+    [cfg, existingVersionKey]);
   function toggleVersion(v: VersionType) {
     setVersions((prev) => {
       const next = prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v];
