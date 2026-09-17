@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { RenderJob, VersionType } from "@/lib/types";
@@ -293,7 +294,7 @@ export default function RenderList({ jobs }: { jobs: RenderJob[] }) {
   if (jobs.length === 0) {
     return (
       <p className="empty">
-        렌더 잡이 없습니다. <a href="/directive">⑤ 영상 지시서</a>에서 승인하면 여기 나타납니다.
+        렌더 잡이 없습니다. <Link href="/directive">⑤ 영상 지시서</Link>에서 승인하면 여기 나타납니다.
       </p>
     );
   }

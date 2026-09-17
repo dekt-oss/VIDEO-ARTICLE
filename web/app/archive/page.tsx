@@ -1,4 +1,5 @@
 // 아카이브: 보관된 영상 + 생성 완료된 초안 + 발행 이력.
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDraftList, getPublished, getSavedRenderJobs } from "@/lib/queries";
 import { dayLabelWithDate, seoulDateOf } from "@/lib/date";
@@ -45,7 +46,7 @@ export default async function ArchivePage() {
 
       <h2 style={{ fontSize: 15, marginTop: 24 }}>생성된 초안</h2>
       {drafts.length === 0 ? (
-        <p className="muted">아직 생성된 초안이 없습니다. <a href="/review">④ 초안</a>에서 생성 요청하세요.</p>
+        <p className="muted">아직 생성된 초안이 없습니다. <Link href="/review">④ 초안</Link>에서 생성 요청하세요.</p>
       ) : (
         draftGroups.map((g) => (
           <div className="section" key={g.date ?? "none"}>

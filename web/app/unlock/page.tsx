@@ -91,6 +91,11 @@ export default function UnlockPage() {
         )}
 
         <p className="muted" style={{ marginTop: 16 }}>
+          {/* ★ 여기만 <Link> 가 아니다. 이 화면은 **게이트 상태 자체가 바뀌는** 자리다.
+              소프트 내비게이션은 클라이언트 라우터 캐시를 탈 수 있어, 잠금이 풀린 뒤에도
+              풀리기 전 화면이 보일 여지가 있다. 게이트 화면에서는 전체 새로고침이 맞다.
+              성공 경로도 같은 이유로 window.location.replace 를 쓴다(위 45줄). */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/">← 오늘의 후보로</a>
         </p>
       </div>

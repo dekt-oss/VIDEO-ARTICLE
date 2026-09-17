@@ -102,6 +102,14 @@ export default async function HomePage(props: { searchParams: Promise<{ date?: s
 동기 함수였어서 `async` 로 바꿨다.
 
 ### 2-3. ⚠️ lint 규칙 하나를 껐다 — `@next/next/no-html-link-for-pages`
+
+> **✅ 해소(2026-09-17).** 규칙을 다시 켰다. 아래에 적어 둔 "되돌리는 법" 그대로 밟았다 —
+> 검수 화면의 클라이언트 컴포넌트에 `key`(논문·리포트 id)를 걸어 id 가 바뀌면 통째로 다시
+> 마운트되게 하고, `<a>` 8곳을 `<Link>` 로 바꿨다. **`/unlock` 한 곳만 `<a>` 로 남겼다** —
+> 게이트 상태가 바뀌는 화면이라 전체 새로고침이 맞다(코드에 `eslint-disable-next-line`
+> 한 줄과 이유를 적어 뒀다). 두 공장에서 실제 데이터로 소프트 내비게이션을 확인했다.
+> 근거: `docs/deviation-relink-internal-navigation.md`
+
 `eslint-config-next` 15 부터 이 규칙이 App Router 에서도 걸린다. 14 에서는 안 걸려서
 `<a href="/review/...">` 9곳이 통과했고 CI(`tests.yml` 의 `npm run lint`)도 초록이었다.
 

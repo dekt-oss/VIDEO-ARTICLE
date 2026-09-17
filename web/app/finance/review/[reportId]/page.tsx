@@ -1,5 +1,6 @@
 // 리포트 1편의 **통합 작업 화면** — 논문 /review/[paperId] 와 같은 구조(WorkspaceClient factory="report").
 // docs/설계안_초안지시서_통합발주_v2.md §5. 옛 `?step=` 주소는 그대로 열린다.
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   getReportDraft,
@@ -84,12 +85,17 @@ export default async function ReportReviewDetailPage(props: {
     <main className="container container--work">
       <div className="header">
         <h1>{title}</h1>
-        <a className="muted" href="/finance/review">← 검수 목록</a>
+        <Link className="muted" href="/finance/review">← 검수 목록</Link>
       </div>
 
       <StageStepper steps={steps} current={step} basePath={`/finance/review/${reportId}`} />
 
+      {/* ★ key 로 리포트이 바뀌면 통째로 새로 마운트한다. 이 컴포넌트는 서버 props 를
+          useState 초기값으로 잡는데, 초기값은 **첫 마운트에서만** 쓰인다 — key 가 없으면
+          소프트 내비게이션으로 다른 리포트에 가도 앞 리포트의 상태가 그대로 남는다
+          (CandidateList 가 배치일에서 이미 낸 사고와 같은 것이다). */}
       <WorkspaceClient
+        key={reportId}
         factory="report"
         id={reportId}
         draft={draft}

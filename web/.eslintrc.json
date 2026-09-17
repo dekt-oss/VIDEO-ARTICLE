@@ -1,19 +1,3 @@
 {
-  "extends": "next/core-web-vitals",
-  "rules": {
-    // ★ 2026-09-16 (Next 15 업그레이드): eslint-config-next 15 부터 이 규칙이 App Router
-    //   에서도 걸린다. 14 에서는 걸리지 않아 코드 9곳이 그대로 통과했고 CI 도 초록이었다.
-    //
-    //   ★ 왜 고치지 않고 끄나 — 여기 <a> 들은 **일부러 전체 새로고침**이다.
-    //   이 앱의 검수 화면(ReviewClient·ReportReviewClient·CandidateList 등)은
-    //   `useState(initialXxx)` 로 서버 props 를 초기값으로 잡는다. useState 초기값은
-    //   **첫 마운트에서만** 쓰이므로, <Link> 로 바꿔 소프트 내비게이션이 되면 다른
-    //   논문/리포트로 넘어가도 앞 화면의 상태가 그대로 남는다 — 실제로 한 번 낸 사고다
-    //   (components/CandidateList.tsx:51 주석, ReportCandidateList.tsx:49 주석 참조).
-    //   보안 업그레이드 커밋에서 화면 동작까지 같이 바꾸지 않는다.
-    //
-    //   되돌리는 법: 위 컴포넌트들이 props 변화를 따라가도록 고친 뒤 이 줄을 지우고
-    //   <a> 9곳을 <Link> 로 바꾼다. 남은 자리는 `npm run lint` 가 바로 짚어 준다.
-    "@next/next/no-html-link-for-pages": "off"
-  }
+  "extends": "next/core-web-vitals"
 }

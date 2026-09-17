@@ -1,4 +1,5 @@
 // 검수 대상 목록: 낙점(picked)된 논문 + 초안/요청 상태. 낙점 일자별로 구획한다.
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPicked } from "@/lib/queries";
 import { dayLabelWithDate, seoulDateOf } from "@/lib/date";
@@ -43,7 +44,7 @@ export default async function ReviewListPage() {
 
       {picked.length === 0 ? (
         <p className="muted" style={{ marginTop: 24 }}>
-          낙점된 논문이 없습니다. <a href="/">오늘의 후보</a>에서 낙점하세요.
+          낙점된 논문이 없습니다. <Link href="/">오늘의 후보</Link>에서 낙점하세요.
         </p>
       ) : (
         groups.map((g) => (
