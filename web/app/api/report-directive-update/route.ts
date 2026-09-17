@@ -29,7 +29,14 @@ export async function POST(request: Request) {
     (acc: number, c: { estimated_sec?: number }) => acc + (Number(c.estimated_sec) || 0),
     0
   );
-  const header = { ...(current.header ?? {}), total_estimated_sec: total };
+  // ★ 시퀀스 편집(2026-09-17). 화면이 시퀀스 → 단계 → 컷 으로 바뀌면서 운영자가 세계 설정·
+  //   단계 설명·컷 묶음을 그 자리에서 고친다. **보낸 경우에만** 덮어쓴다 — 안 보내면 그대로 둔다
+  //   (옛 화면이나 다른 호출이 시퀀스를 지워 버리지 않게).
+  //   ★★ 배열이 아니면 무시한다. 여기서 header 를 망가뜨리면 승인 게이트가 읽을 것을 잃는다.
+  const header: Record<string, unknown> = { ...(current.header ?? {}), total_estimated_sec: total };
+  if (Array.isArray(body.visual_sequences)) {
+    header.visual_sequences = body.visual_sequences;
+  }
 
   const { error } = await supabase
     .from("report_directives")
