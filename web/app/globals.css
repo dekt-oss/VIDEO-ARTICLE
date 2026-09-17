@@ -608,3 +608,9 @@ details.render-group[open] > summary { margin-bottom: 10px; }
   border-radius: 6px; padding: 3px 8px; font-size: 12px; }
 .seq-fx .chip button { background: none; border: none; color: var(--muted); cursor: pointer;
   margin-left: 4px; padding: 0 2px; font-size: 12px; }
+/* 영어 칸 위에 붙는 한글 설명 — 읽기용. 영어가 정본이라는 것이 보이게 살짝 들여쓴다. */
+.seq-ko { margin: 0 0 6px; padding: 5px 9px; font-size: 13px; line-height: 1.55;
+  color: var(--text); background: rgba(255,255,255,.035); border-left: 2px solid var(--border);
+  border-radius: 0 6px 6px 0; }
+.seq-mut { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+.seq-mut li { margin: 2px 0; }

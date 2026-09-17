@@ -76,6 +76,12 @@ def normalize_world(raw: Any) -> dict[str, Any]:
         "style": scrub_spec_tokens(d.get("style")),
         "lighting": scrub_spec_tokens(d.get("lighting")),
         "background": scrub_spec_tokens(d.get("background")),
+        # ★ 한글 쌍둥이(2026-09-17 운영자 지시: "영어로 되어있는건 한글로도 같이 입력해줘").
+        #   **렌더·게이트는 영어 원문만 쓴다** — 이 값은 화면에서 사람이 읽는 용도다.
+        #   여기 안 적으면 정규화가 모델이 준 한글을 통째로 버린다(이 함수는 고정 키만 남긴다).
+        "style_ko": str(d.get("style_ko") or "").strip(),
+        "lighting_ko": str(d.get("lighting_ko") or "").strip(),
+        "background_ko": str(d.get("background_ko") or "").strip(),
         "camera_base": _enum(d.get("camera_base"), config.CAMERA_BASES,
                              config.DEFAULT_CAMERA_BASE),
         "identity_lock": bool(d.get("identity_lock", True)),
@@ -90,6 +96,10 @@ def normalize_entity(raw: Any) -> dict[str, Any]:
         "entity_type": str(d.get("entity_type") or "").strip(),
         # 렌더가 프롬프트에 실을 짧은 외형 서술. 여기도 규격 토큰은 지운다.
         "visual_identity": scrub_spec_tokens(d.get("visual_identity")),
+        # ★ 한글 쌍둥이(2026-09-17 운영자 지시: "영어로 되어있는건 한글로도 같이 입력해줘").
+        #   **렌더·게이트는 영어 원문만 쓴다** — 이 값은 화면에서 사람이 읽는 용도다.
+        #   여기 안 적으면 정규화가 모델이 준 한글을 통째로 버린다(이 함수는 고정 키만 남긴다).
+        "visual_identity_ko": str(d.get("visual_identity_ko") or "").strip(),
         "continuity": "locked" if str(d.get("continuity") or "locked") == "locked" else "free",
     }
 
@@ -154,6 +164,10 @@ def normalize_stage(raw: Any, index: int) -> dict[str, Any]:
         "state_after": d.get("state_after") if isinstance(d.get("state_after"), dict) else {},
         # ★ 계약의 핵심: **화면에서 무엇이 보이게 달라지는가**를 사람 말로 적는다.
         "observable_change": str(d.get("observable_change") or "").strip(),
+        # ★ 한글 쌍둥이(2026-09-17 운영자 지시: "영어로 되어있는건 한글로도 같이 입력해줘").
+        #   **렌더·게이트는 영어 원문만 쓴다** — 이 값은 화면에서 사람이 읽는 용도다.
+        #   여기 안 적으면 정규화가 모델이 준 한글을 통째로 버린다(이 함수는 고정 키만 남긴다).
+        "observable_change_ko": str(d.get("observable_change_ko") or "").strip(),
         "claim_ids": [str(x).strip() for x in (d.get("claim_ids") or []) if str(x).strip()],
         "visual_prompt": scrub_spec_tokens(d.get("visual_prompt")),
     }

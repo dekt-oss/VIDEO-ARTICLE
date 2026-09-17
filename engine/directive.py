@@ -178,11 +178,15 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
                   " 뒤에 있다는 것은 **거리**로 말한다 — 'blurred lab equipment' 가 아니라"
                   " 'lab equipment further back along the far wall'. 배경이 부차적이라는 것은"
                   " 위치로 충분히 전달된다>",
-                  "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — 이 토큰만 쓴다>" }},
+                  "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — 이 토큰만 쓴다>",
+                  "style_ko": "<style 을 한국어로 — 운영자가 읽는 용도. 영어 원문은 그대로 둔다>",
+                  "lighting_ko": "<lighting 을 한국어로>",
+                  "background_ko": "<background 를 한국어로>" }},
        "entities": [
          {{ "entity_id": "<PARTICIPANT_A / TOKEN_SET 처럼 대문자 식별자>",
             "entity_type": "<person|object|structure>",
-            "visual_identity": "<이 개체를 매 stage 같게 만들 외형 한 구절>" }} ],
+            "visual_identity": "<이 개체를 매 stage 같게 만들 외형 한 구절>",
+            "visual_identity_ko": "<위 외형을 한국어로 — 운영자가 읽는 용도>" }} ],
        "stages": [
          {{ "stage_id": "<S1 …>",
             "cut_refs": [<이 stage 가 담당하는 컷 번호들>],
@@ -204,7 +208,8 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
                  "claim_ids": ["<이 변화가 지불하는 claim_id>"] }} ],
             "state_before": {{ "<개체 id>": "<이전 상태>" }},
             "state_after":  {{ "<개체 id>": "<이후 상태>" }},
-            "observable_change": "<화면에서 눈에 보이게 달라지는 것 한 문장>",
+            "observable_change": "<화면에서 눈에 보이게 달라지는 것 한 문장(영어)>",
+            "observable_change_ko": "<바로 위 문장을 한국어로 — 운영자가 읽는 용도>",
             "claim_ids": ["<이 stage 가 지불하는 claim_id>"] }} ] }}
   ],
   "cuts": [
@@ -241,6 +246,7 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
            "priority": "primary|supporting" }}
       ],
       "visual_prompt": "<이미지/클립 생성용 영문 프롬프트>",
+      "visual_prompt_ko": "<위 영문 프롬프트가 무엇을 그리라는 것인지 한국어 한두 문장>",
       "beat": "<{_BEAT_KINDS_HELP} 중 1 — 이 컷이 설명에서 맡은 역할>",
       "motion_value": "<{_MOTION_VALUES_HELP} — 움직임이 이해·감정·반전에 직접 기여하면 high>",
       "motion_source": "<video|still — 이 컷을 I2V 영상으로 낼지 스틸로 낼지. 버전 지침이 영상 컷 수를 정했으면 그만큼 video 로 적어라. 기본 still>",
@@ -1853,8 +1859,11 @@ def normalize_directive(
             "estimated_sec": max(config.CUT_MIN_SEC, min(sec_cap, _as_int(c.get("estimated_sec")))),
             "visual_type": visual_type,  # 버전에서 강제(모델 값 무시, 레거시 호환)
             "visual_prompt": str(c.get("visual_prompt") or ""),
+            # ★ 한글 쌍둥이 — 화면에서 사람이 읽는 용도. 렌더는 위 영어만 쓴다(2026-09-17).
+            "visual_prompt_ko": str(c.get("visual_prompt_ko") or ""),
             # 모션 전용(명세 §3-2): motion_source=video 컷의 Veo 프롬프트에 합류. still 컷은 소비 안 함.
             "motion_prompt": str(c.get("motion_prompt") or ""),
+            "motion_prompt_ko": str(c.get("motion_prompt_ko") or ""),
             # 길이 보정(수정명세 v1 §3-4): 핑퐁 루프(역재생) 허용 여부. 기본 false(안전측) —
             # 미지정 컷은 홀드 전략으로 강제돼 방향 있는 모션이 역재생으로 망가지지 않는다.
             "loop_safe": bool(c.get("loop_safe", config.CLIP_FIT_LOOP_SAFE_DEFAULT)),

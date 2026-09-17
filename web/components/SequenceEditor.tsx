@@ -17,12 +17,28 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import type { Cut, Directive } from "@/lib/types";
 import type { CutsPaneHandle } from "@/lib/work/panes";
 import {
-  buildSequenceLayout, sequenceRoleLabel,
+  buildSequenceLayout,
   type VisualSequence, type SeqStage,
 } from "@/lib/work/sequenceView";
+import { seqLabel, seqTitle, sequenceRoleLabel } from "@/lib/work/seqLabels";
 import { effectLabel, transitionLabel } from "@/lib/effectLabels";
 import { useToast } from "@/components/Toast";
 import { apiErrorText } from "@/lib/apiError";
+
+
+/** 영어 문장 위에 붙는 **한글 설명**.
+ *
+ * ★ 운영자 지시(2026-09-17): "영어로 되어있는건 한글로도 같이 입력해줘. 실제 작업은 영어로
+ *   하더라도 내가 이해할 수 있게." 그래서 **영어 칸이 정본**이고(렌더·게이트가 쓰는 값),
+ *   한글은 그 위에 읽기용으로 붙는다. 한글을 고쳐도 영상은 안 바뀌므로 입력칸으로 두지 않는다.
+ * ★ 한글이 없으면(옛 지시서) 아무것도 그리지 않는다 — 빈 상자가 늘어나면 화면만 길어진다.
+ *   그때는 [지시서 재생성]을 하면 한글이 함께 만들어진다.
+ */
+function KoNote({ text }: { text?: string | null }) {
+  const t = String(text ?? "").trim();
+  if (!t) return null;
+  return <p className="seq-ko" title="만들 때 붙인 한국어 설명 — 영어를 고쳐도 자동으로 바뀌지 않습니다">{t}</p>;
+}
 
 export default function SequenceEditor({
   directive,
@@ -156,9 +172,13 @@ export default function SequenceEditor({
             ? <span className="chip" title="영상으로 생성(I2V)">🎬 영상</span>
             : <span className="chip" title="스틸 이미지">🖼 스틸</span>}
           {c.visual_role && (
-            <span className="chip">{c.visual_role === "MECHANISM" ? "기전 도해" : "실사"}</span>
+            <span className="chip" title={seqTitle("visual_role", c.visual_role)}>{seqLabel("visual_role", c.visual_role)}</span>
           )}
-          {c.evidence_role && <span className="chip">{c.evidence_role}</span>}
+          {c.evidence_role && (
+            <span className="chip" title={seqTitle("evidence_role", c.evidence_role)}>
+              {seqLabel("evidence_role", c.evidence_role)}
+            </span>
+          )}
           {(c.claim_ids?.length ?? 0) > 0 && (
             <span className="muted" title="이 컷이 말하는 주장">주장 {c.claim_ids!.join("·")}</span>
           )}
@@ -192,6 +212,7 @@ export default function SequenceEditor({
           </label>
           <label>
             <span className="seq-label">이 컷의 화면 — 무엇이 보이나</span>
+            <KoNote text={(c as unknown as { visual_prompt_ko?: string }).visual_prompt_ko} />
             <textarea
               rows={3} value={c.visual_prompt ?? ""} readOnly={readOnly}
               onChange={(ev) => patchCut(cutNo, { visual_prompt: ev.target.value })}
@@ -203,6 +224,7 @@ export default function SequenceEditor({
           {c.motion_source === "video" && (
             <label>
               <span className="seq-label">움직임 — 영상으로 어떻게 움직이나</span>
+              <KoNote text={(c as unknown as { motion_prompt_ko?: string }).motion_prompt_ko} />
               <textarea rows={2} value={c.motion_prompt ?? ""} readOnly={readOnly}
                 onChange={(ev) => patchCut(cutNo, { motion_prompt: ev.target.value })} />
             </label>
@@ -259,14 +281,22 @@ export default function SequenceEditor({
           <details className="seq-world">
             <summary>
               세계 설정 — 어디서 벌어지나{s.world.world_id ? ` (${s.world.world_id})` : ""}
+              {s.world.camera_base && (
+                <span className="muted" title={seqTitle("camera_base", s.world.camera_base)}>
+                  {" · 기본 카메라: "}{seqLabel("camera_base", s.world.camera_base)}
+                </span>
+              )}
             </summary>
             <label><span className="seq-label">장소·분위기</span>
+              <KoNote text={s.world.style_ko} />
               <textarea rows={2} value={s.world.style ?? ""} readOnly={readOnly}
                 onChange={(ev) => patchWorld(si, { style: ev.target.value })} /></label>
             <label><span className="seq-label">조명</span>
+              <KoNote text={s.world.lighting_ko} />
               <textarea rows={1} value={s.world.lighting ?? ""} readOnly={readOnly}
                 onChange={(ev) => patchWorld(si, { lighting: ev.target.value })} /></label>
             <label><span className="seq-label">배경</span>
+              <KoNote text={s.world.background_ko} />
               <textarea rows={1} value={s.world.background ?? ""} readOnly={readOnly}
                 onChange={(ev) => patchWorld(si, { background: ev.target.value })} /></label>
             {s.entities.length > 0 && (
@@ -275,6 +305,7 @@ export default function SequenceEditor({
                 {s.entities.map((e, ei) => (
                   <label key={e.entity_id ?? ei}>
                     <span className="muted">{e.entity_id}</span>
+                    <KoNote text={e.visual_identity_ko} />
                     <textarea rows={2} value={e.visual_identity ?? ""} readOnly={readOnly}
                       onChange={(ev) => patchEntity(si, ei, ev.target.value)} />
                   </label>
@@ -287,20 +318,39 @@ export default function SequenceEditor({
             <div className="seq-stage" key={`${st.stageId}-${ti}`}>
               <div className="seq-stage-head">
                 <b>{st.stageId}</b>
-                {st.stage.camera_operation && (
-                  <span className="chip">{String(st.stage.camera_operation)}</span>
-                )}
+                {/* ★ 코드 어휘는 한글로 보여 주고 원값은 툴팁에 남긴다 — 렌더가 쓰는 것은 원값이다. */}
+                {["operation", "camera_operation", "continuity_mode", "representation_mode"]
+                  .map((k) => [k, String((st.stage as Record<string, unknown>)[k] ?? "")] as const)
+                  .filter(([, v]) => v)
+                  .map(([k, v]) => (
+                    <span className="chip" key={k} title={seqTitle(k, v)}>{seqLabel(k, v)}</span>
+                  ))}
                 {st.missingCutNos.length > 0 && (
                   <span className="flag">⚠ 없는 컷을 가리킴: {st.missingCutNos.join(", ")}</span>
                 )}
               </div>
               <label>
                 <span className="seq-label">이 단계에서 무엇이 어떻게 변하나</span>
+                <KoNote text={String(st.stage.observable_change_ko ?? "")} />
                 <textarea
                   rows={2} value={String(st.stage.observable_change ?? "")} readOnly={readOnly}
                   onChange={(ev) => patchStage(si, ti, { observable_change: ev.target.value })}
                 />
               </label>
+              {/* 무엇이 어떻게 바뀌는지 항목별로 — 전부 코드 어휘라 한글 표로 끝난다(비용 0). */}
+              {Array.isArray(st.stage.mutations) && st.stage.mutations.length > 0 && (
+                <ul className="seq-mut">
+                  {(st.stage.mutations as Record<string, unknown>[]).map((m, mi) => (
+                    <li key={mi}>
+                      <b>{String(m.entity_id ?? "")}</b>
+                      <span title={seqTitle("mutation_operation", String(m.operation ?? ""))}>
+                        {" "}{seqLabel("mutation_operation", String(m.operation ?? ""))}
+                      </span>
+                      {m.result_state ? <span className="muted"> — {String(m.result_state)}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {st.cutNos.length === 0
                 ? <p className="muted">이 단계에 컷이 없습니다.</p>
                 : st.cutNos.map((n) => cutRow(n, { si, ti }))}

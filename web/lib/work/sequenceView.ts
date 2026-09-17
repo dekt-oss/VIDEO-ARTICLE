@@ -15,6 +15,8 @@ export interface SeqEntity {
   entity_id?: string;
   entity_type?: string;
   visual_identity?: string;
+  /** 한글 쌍둥이 — 화면에서 읽는 용도. 렌더·게이트는 영어 원문만 쓴다(2026-09-17). */
+  visual_identity_ko?: string;
   continuity?: string;
 }
 
@@ -24,12 +26,18 @@ export interface SeqWorld {
   lighting?: string;
   background?: string;
   camera_base?: string;
+  /** 한글 쌍둥이 — 화면에서 읽는 용도. 렌더·게이트는 영어 원문만 쓴다(2026-09-17). */
+  style_ko?: string;
+  lighting_ko?: string;
+  background_ko?: string;
 }
 
 export interface SeqStage {
   stage_id?: string;
   cut_refs?: number[];
   observable_change?: string;
+  /** 한글 쌍둥이 — 화면에서 읽는 용도. */
+  observable_change_ko?: string;
   operation?: string;
   camera_operation?: string;
   continuity_mode?: string;
@@ -128,15 +136,4 @@ export function buildSequenceLayout(
     loose: cutNos.filter((n) => !taken.has(n)),
     hasSequences: seqs.length > 0,
   };
-}
-
-/** 시퀀스 역할 코드를 사람 말로. 모르는 값은 그대로 보여 준다(숨기면 새 역할이 조용히 사라진다). */
-export function sequenceRoleLabel(role: string): string {
-  const map: Record<string, string> = {
-    MECHANISM_SEQUENCE: "기전 — 원리를 도해로 보여주는 묶음",
-    REALITY_ANCHOR: "현실 — 실제 현장·사람으로 붙잡는 묶음",
-    HOOK_SEQUENCE: "후크 — 첫 3초를 잡는 묶음",
-    CONTEXT_SEQUENCE: "맥락 — 배경을 깔아 주는 묶음",
-  };
-  return map[role] ?? (role || "묶음");
 }
