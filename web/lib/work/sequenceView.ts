@@ -137,3 +137,83 @@ export function buildSequenceLayout(
     hasSequences: seqs.length > 0,
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+// 흐름 순 보기 (2026-09-17 운영자 지시: "보여주는 시퀀스 컷 순서도 뒤죽박죽인데?
+// 흐름 순으로 정렬되게끔 수정하고.")
+//
+// ★ 왜 뒤죽박죽이었나: 시퀀스로 묶어서 보여 줬기 때문이다. 영상은 컷 1→9 순서로 재생되는데
+//   시퀀스는 그 사이를 **오가며** 짜인다(기전 세계 ↔ 현실 세계). 그래서 시퀀스로 묶으면
+//   화면에는 3,4,6,7 다음에 1,2,5,8,9 가 오고, 읽는 순서와 보는 순서가 어긋난다.
+//
+// ★ 그래서 **재생 순서를 축으로 삼고** 시퀀스·단계는 그 위에 붙는 머리말이 된다.
+//   연속된 컷이 같은 단계면 한 덩어리로 묶고, 단계가 바뀌면 새 머리말을 낸다.
+//   위에서 아래로 읽으면 **영상이 흘러가는 순서 그대로**다.
+
+export interface FlowBlock {
+  /** 이 덩어리에 이어 붙는 컷 번호들(재생 순서). */
+  cutNos: number[];
+  sequenceId: string;
+  role: string;
+  world: SeqWorld;
+  entities: SeqEntity[];
+  stageId: string;
+  stage: SeqStage;
+  /** 편집용 위치. 시퀀스·단계가 없는 덩어리는 -1. */
+  seqIndex: number;
+  stageIndex: number;
+  /** 이 시퀀스가 화면에 처음 나오는 덩어리인가 — 세계 설정은 여기서만 보여 준다. */
+  firstOfSequence: boolean;
+}
+
+/**
+ * 컷을 **재생 순서대로** 훑으며 같은 단계가 이어지는 구간을 한 덩어리로 묶는다.
+ *
+ * ★ 어느 단계에도 안 속한 컷도 **제 자리에** 남는다(끝으로 몰아내지 않는다) — 그래야
+ *   위에서 아래로 읽은 것이 실제 영상 순서와 같다.
+ */
+export function buildFlowLayout(
+  cutNos: readonly number[],
+  sequences: readonly VisualSequence[] | null | undefined,
+): FlowBlock[] {
+  const seqs = Array.isArray(sequences) ? sequences : [];
+  // 컷 → (시퀀스, 단계). 같은 컷을 두 단계가 가리키면 앞 단계가 가진다(buildSequenceLayout 과 같은 규칙).
+  const owner = new Map<number, { si: number; ti: number }>();
+  seqs.forEach((s, si) => {
+    (Array.isArray(s.stages) ? s.stages : []).forEach((st: SeqStage, ti: number) => {
+      for (const n of Array.isArray(st.cut_refs) ? st.cut_refs.map(Number) : []) {
+        if (!owner.has(n)) owner.set(n, { si, ti });
+      }
+    });
+  });
+
+  const blocks: FlowBlock[] = [];
+  const seenSeq = new Set<number>();
+  for (const n of cutNos) {
+    const o = owner.get(n);
+    const si = o?.si ?? -1;
+    const ti = o?.ti ?? -1;
+    const last = blocks[blocks.length - 1];
+    if (last && last.seqIndex === si && last.stageIndex === ti) {
+      last.cutNos.push(n);          // 같은 단계가 이어진다 — 머리말을 또 내지 않는다
+      continue;
+    }
+    const s = si >= 0 ? seqs[si] : undefined;
+    const st = (si >= 0 && ti >= 0 ? (s?.stages ?? [])[ti] : undefined) ?? {};
+    const first = si >= 0 && !seenSeq.has(si);
+    if (si >= 0) seenSeq.add(si);
+    blocks.push({
+      cutNos: [n],
+      sequenceId: String(s?.sequence_id ?? (si >= 0 ? `SEQ${si + 1}` : "")),
+      role: String(s?.sequence_role ?? ""),
+      world: (s?.world ?? {}) as SeqWorld,
+      entities: Array.isArray(s?.entities) ? s!.entities! : [],
+      stageId: String((st as SeqStage).stage_id ?? (ti >= 0 ? `S${ti + 1}` : "")),
+      stage: st as SeqStage,
+      seqIndex: si,
+      stageIndex: ti,
+      firstOfSequence: first,
+    });
+  }
+  return blocks;
+}

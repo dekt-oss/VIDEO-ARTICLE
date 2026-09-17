@@ -3,6 +3,8 @@
 // 유튜브 업로드용 제목(한/영) — 인라인 편집 + 복사. 초안 생성 LLM 이 자극적 제목을 산출하고,
 // 여기서 사람이 다듬어 저장한다(drafts.upload_title_ko/en, /api/draft-update). 게시 시 제목란에 붙여넣는다.
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { decideReseed, afterSave, type ReseedState } from "@/lib/work/reseed";
 import { useToast } from "@/components/Toast";
 import { apiErrorText } from "@/lib/apiError";
 
@@ -18,25 +20,40 @@ export default function PublishTitles({
   fallback?: string | null; // 제목이 비었을 때 참고용(논문 제목) — 저장값은 아님
 }) {
   const toast = useToast();
+  const router = useRouter();
   const [ko, setKo] = useState(initialKo ?? "");
   const [en, setEn] = useState(initialEn ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // 서버값이 실제로 바뀐 경우에만(그리고 미저장 편집이 없을 때만) 반영 — ReviewClient 패턴과 동일.
-  const serverRef = useRef({ ko: initialKo ?? "", en: initialEn ?? "" });
+  // ★ 되살리기 규칙은 lib/work/reseed 가 진다(검사로 못박음). 여기서 직접 조건을 쓰지 않는다.
+  //
+  // ★★ 원래 버그(2026-09-17 운영자 보고 "저장했는데 원래 제목 그대로 됩니다"):
+  //   deps 에 `dirty` 가 들어 있어서, 저장 성공으로 dirty 가 false 가 되는 **그 순간** effect 가
+  //   다시 돌았다. 그때 props 는 아직 서버를 다시 읽기 전이라 옛 제목이었고, 그 값으로 덮어썼다.
+  //   저장은 됐는데 화면이 "안 됐다"고 거짓말을 한 것이다.
+  //   → deps 에서 dirty 를 뺐고, 저장한 값을 앞당겨 기억한 뒤 서버가 따라올 때까지 무시한다.
+  const stateRef = useRef<ReseedState<{ ko: string; en: string }>>({
+    known: { ko: initialKo ?? "", en: initialEn ?? "" },
+    awaitingServer: false,
+  });
+  const dirtyRef = useRef(false);
   useEffect(() => {
-    const nk = initialKo ?? "";
-    const ne = initialEn ?? "";
-    if (nk !== serverRef.current.ko || ne !== serverRef.current.en) {
-      serverRef.current = { ko: nk, en: ne };
-      if (!dirty) {
-        setKo(nk);
-        setEn(ne);
-      }
+    const incoming = { ko: initialKo ?? "", en: initialEn ?? "" };
+    const r = decideReseed(incoming, stateRef.current, dirtyRef.current,
+                           (a, b) => a.ko === b.ko && a.en === b.en);
+    stateRef.current = { known: r.known, awaitingServer: r.awaitingServer };
+    if (r.reseed) {
+      setKo(r.known.ko);
+      setEn(r.known.en);
     }
-  }, [initialKo, initialEn, dirty]);
+  }, [initialKo, initialEn]);
+
+  function markDirty(v: boolean) {
+    dirtyRef.current = v;
+    setDirty(v);
+  }
 
   async function copy(text: string, which: string) {
     if (!text) return;
@@ -59,9 +76,12 @@ export default function PublishTitles({
     setSaving(false);
     const e = await res.json().catch(() => null);
     if (res.ok) {
-      serverRef.current = { ko, en };
-      setDirty(false);
+      // 저장한 값을 **앞당겨** 기억하고 서버가 따라올 때까지 들어오는 props 를 무시한다.
+      stateRef.current = afterSave({ ko, en });
+      markDirty(false);
       toast.show("발행 제목을 저장했습니다.", "ok");
+      router.refresh();   // 서버 props 가 따라오게 — 그래야 대기가 풀린다
+
     } else {
       toast.show(apiErrorText(e, res.status, "제목을 저장"), "err");
     }
@@ -82,7 +102,7 @@ export default function PublishTitles({
         placeholder={placeholder}
         onChange={(e) => {
           onChange(e.target.value);
-          setDirty(true);
+          markDirty(true);
         }}
       />
     </div>
