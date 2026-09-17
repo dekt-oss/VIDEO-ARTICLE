@@ -614,3 +614,8 @@ details.render-group[open] > summary { margin-bottom: 10px; }
   border-radius: 0 6px 6px 0; }
 .seq-mut { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.7; }
 .seq-mut li { margin: 2px 0; }
+.nuance { margin: 0 0 14px; }
+.nuance > summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.nuance textarea { width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit;
+  font-size: 13px; line-height: 1.55; resize: vertical; margin-top: 8px; }

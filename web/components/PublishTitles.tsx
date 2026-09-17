@@ -92,16 +92,18 @@ export default function PublishTitles({
     <div className="section">
       <h3>발행용 제목 (유튜브 업로드)</h3>
       <p className="muted">
-        업로드 시 제목란에 붙여넣으세요. 자극적 훅으로 초안 생성 시 자동 작성됩니다 — 필요하면 여기서 직접 다듬어 저장하세요.
+        ✏️ <b>아래 칸을 직접 고칠 수 있습니다.</b> 고치면 [제목 저장]이 켜집니다.
+        업로드 시 제목란에 붙여넣으세요. 초안 생성 시 자동 작성됩니다.
       </p>
       {row("한국어", ko, setKo, "ko", fallback ? `예: ${fallback}` : "자극적 한국어 제목")}
       {row("English", en, setEn, "en", "punchy English title")}
-      {dirty && (
-        <button className="btn pick" style={{ marginTop: 10 }} onClick={save} disabled={saving}>
-          {saving ? "저장 중…" : "제목 저장"}
-          <span className="dirty-dot" />
-        </button>
-      )}
+      {/* ★ 버튼을 dirty 일 때만 보여 줬더니 운영자가 "수정하는 게 없다"고 읽었다(2026-09-17).
+          칸은 원래 편집 가능했는데 저장 수단이 안 보이니 읽기 전용으로 보인 것이다.
+          이제 항상 두고, 고친 것이 없으면 비활성으로 둔다. */}
+      <button className="btn pick" style={{ marginTop: 10 }} onClick={save} disabled={saving || !dirty}>
+        {saving ? "저장 중…" : dirty ? "제목 저장" : "제목 저장 (고친 내용 없음)"}
+        {dirty && <span className="dirty-dot" />}
+      </button>
     </div>
   );
 }

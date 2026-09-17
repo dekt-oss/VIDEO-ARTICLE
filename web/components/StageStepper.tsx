@@ -43,8 +43,11 @@ export default function StageStepper({
   return (
     <nav className="stepper" aria-label="작업 단계">
       <ol>
-        {steps.map((s) => {
+        {steps.map((s, i) => {
           const active = s.no === current;
+          // ★ 화면에 보이는 번호는 **순서**다(2026-09-17). `no` 는 주소(?step=)용 값이라
+          //   단계를 합친 뒤에도 5·6 으로 남아 있는데, 그걸 그대로 찍으면 "①②가 어디 갔지"가 된다.
+          const shown = i + 1;
           const cls = [
             "step",
             active ? "active" : "",
@@ -57,7 +60,7 @@ export default function StageStepper({
           const body = (
             <>
               <span className="step-no" aria-hidden="true">
-                {s.done ? "✓" : s.no}
+                {s.done ? "✓" : shown}
               </span>
               <span className="step-text">
                 <span className="step-label">{s.label}</span>

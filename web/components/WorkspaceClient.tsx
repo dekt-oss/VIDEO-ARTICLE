@@ -177,6 +177,10 @@ export default function WorkspaceClient({
   const [busy, setBusy] = useState(false);
   const [showApprove, setShowApprove] = useState(false);
   const [showRegenDraft, setShowRegenDraft] = useState(false);
+  // ★ 방향 있는 재생성(2026-09-17 복구). 대본 칸을 없애면서 이 기능이 같이 사라졌다 —
+  //   운영자 지적 "전체적인 늬앙스를 수정하도록 요청하는것도 필요해. 이전에 있던 건데 없어진 거라서".
+  //   무작정 재생성이 아니라 **적은 방향대로** 다시 만든다. 사실은 Fact Sheet 범위 안에서만 바뀐다.
+  const [instruction, setInstruction] = useState("");
   const [showRegenDirective, setShowRegenDirective] = useState<VersionType[] | null>(null);
   const [blocked, setBlocked] = useState<{ ids: string[]; reasons: string[] } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -560,6 +564,35 @@ export default function WorkspaceClient({
             );
           })}
         </div>
+
+        {draft && (
+          <details className="aux-panel nuance">
+            <summary>✍️ 이 방향으로 다시 만들기 — 전체 뉘앙스·말투·강조점</summary>
+            <p className="muted">
+              어떤 방향으로 다듬을지 적으면 그 지시대로 다시 만듭니다(무작정 재생성이 아니라 방향 있는 재생성).
+              예: &quot;어려운 용어를 일상 비유로 풀어써줘&quot;, &quot;훅을 더 자극적으로&quot;,
+              &quot;숫자를 더 강조&quot;, &quot;더 짧고 간결하게&quot;.
+              <br />★ 사실은 Fact Sheet 범위 안에서만 바뀌고, 없는 내용은 추가되지 않습니다.
+              <br />★ 대본과 고른 버전의 지시서가 **함께** 새로 만들어집니다(LLM 비용).
+            </p>
+            <textarea
+              rows={3}
+              value={instruction}
+              placeholder="예: 전문 용어를 일상 비유로 풀어서, 말투는 좀 더 차분하게"
+              onChange={(e) => setInstruction(e.target.value)}
+              disabled={gen.busy || busy}
+            />
+            <button
+              className="btn pick"
+              style={{ marginTop: 8 }}
+              disabled={gen.busy || busy || !instruction.trim() || versions.length === 0}
+              title={versions.length === 0 ? "만들 버전을 하나 이상 고르세요" : "적은 방향대로 다시 만듭니다"}
+              onClick={() => void gen.run({ instruction: instruction.trim(), version_types: versions })}
+            >
+              {gen.busy ? "다시 만드는 중…" : "이 방향으로 다시 만들기"}
+            </button>
+          </details>
+        )}
 
         {leftExtras}
 
