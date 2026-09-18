@@ -125,10 +125,16 @@ PHOTO_CONTRACT = f"""
   마술처럼 시청자가 한쪽을 보게 만들고 다른 쪽에서 답이 나오게 하라(예측 오류).
 
 [추가 필드] 위 기본 스키마의 각 컷에 다음을 더해서 출력하라.
-  "overlay_plan": [ {{ "type": "source_card|evidence_card|number_punch|caveat_tag|legend|label_pair",
+  "overlay_plan": [ {{ "type": "source_card|evidence_card|number_punch|caveat_tag|legend|label_pair|keyword|pointer",
                        "text": "<화면 카드 문구>", "start_sec": <초>, "duration_sec": <초>,
                        "payload": {{ "<legend 일 때>": "items: [{{color: amber|blue|coral, label: 한글 낱말}}]",
-                                    "<label_pair 일 때>": "top / bottom (위·아래 화면이 무엇인지, 한글)" }} }} ]
+                                    "<label_pair 일 때>": "top / bottom (위·아래 화면이 무엇인지, 한글)",
+                                    "<pointer 일 때>": "at: [구역 1~3개] — {dv._POINTER_ZONES_HELP}" }} }} ]
+  ★ **컷마다 키워드 카드 하나**(type: keyword). 화면 속 물체에 다는 이름표다 — 대문자 영어 낱말
+    하나나 수치 하나({config.OVERLAY_KEYWORD_MAX_WORDS}낱말·{config.OVERLAY_KEYWORD_MAX_CHARS}자 이내,
+    예: CATHODE · 30-60 MIN · 1984). 나레이션을 옮겨 적지 마라(같은 말을 두 번 하는 셈이다).
+  ★ **설명 대상은 화살표로 찍어라**(type: pointer, payload.at 에 구역 1~3개).
+    좌표(픽셀)를 적지 마라 — 너는 그 그림을 본 적이 없다. 네가 아는 것은 네가 짠 구도뿐이다.
   ★ visual_role 이 MECHANISM 인 컷은 **아래 구조를 반드시 채운다**(안 채우면 승인이 막힌다):
   "mechanism": {{ "subject": "<무엇의 원리인가(영어 한 구절)>",
                   "components": ["<화면에 보일 물체 2개 이상 — **영어**, 보이는 물건 이름

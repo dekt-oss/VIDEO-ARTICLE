@@ -64,6 +64,7 @@ _MUTATIONS_HELP = "|".join(config.MUTATION_OPERATIONS)
 _CAMERA_OPS_HELP = "|".join(config.CAMERA_OPERATIONS)
 _ASSET_STRATEGIES_HELP = "|".join(config.ASSET_STRATEGIES)
 _OVERLAY_TYPES_HELP = "|".join(config.OVERLAY_TEXT_TYPES)
+_POINTER_ZONES_HELP = " / ".join(config.OVERLAY_POINTER_ZONES)
 _TONE_GRADES_HELP = "|".join((config.DEFAULT_TONE_GRADE, *config.TONE_GRADES))
 
 DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 겸 스토리 작가다. 입력은
@@ -243,7 +244,8 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
         {{ "type": "<{_OVERLAY_TYPES_HELP} 중 1>",
            "text": "<화면에 뜰 짧은 문구(표본·기간·수치·단서). 나레이션과 중복하지 마라>",
            "payload": {{ "<legend 일 때>": "items: [{{color: amber|blue|coral, label: 한글 낱말}}] (2~3개)",
-                        "<label_pair 일 때>": "top: 위 화면이 무엇인지 / bottom: 아래 화면이 무엇인지 (한글, 짧게)" }},
+                        "<label_pair 일 때>": "top: 위 화면이 무엇인지 / bottom: 아래 화면이 무엇인지 (한글, 짧게)",
+                        "<pointer 일 때>": "at: [구역 1~3개] — {_POINTER_ZONES_HELP}" }},
            "claim_ids": ["<이 카드가 근거하는 claim_id>"],
            "start_sec": <컷 시작 기준 초>, "duration_sec": <int, 최소 {config.OVERLAY_MIN_SEC}>,
            "priority": "primary|supporting" }}
@@ -727,6 +729,16 @@ VERSION_GUIDANCE: dict[str, str] = {
         " 없으면 너는 결국 이미지에 글자를 굽게 된다. 아래로 옮겨라:"
         " 두 그룹·두 색이 무엇인지 → overlay_plan 의 legend / 위·아래 분할 화면의 전후 → label_pair /"
         " 표본·기간·대상 → scope_tag / 수치 → number_punch / 출처 → source_card."
+        " ■■ **[키워드 카드] 컷마다 낱말 하나를 붙여라.** 화면 속 물체에 이름표를 다는 것이다:"
+        " `type: keyword`, text 는 **대문자 영어 낱말 하나 또는 수치 하나**"
+        f" (MYOGLOBIN · 75% WATER · 30-60 MIN · 1984). {config.OVERLAY_KEYWORD_MAX_WORDS}낱말·"
+        f"{config.OVERLAY_KEYWORD_MAX_CHARS}자를 넘기면 그건 카드가 아니라 자막이다."
+        " ★ 나레이션을 옮겨 적지 마라 — 귀로 듣는 말을 눈으로 또 읽히면 화면만 복잡해진다."
+        " 나레이션이 '근육의 대부분은 물'이라 말하면 카드는 `75% WATER` 다(같은 문장이 아니다)."
+        " ■■ **[지시 화살표] 설명 대상을 직접 찍어라.** `type: pointer`, payload.at 에 구역 이름을"
+        f" 1~3개: {_POINTER_ZONES_HELP}. **좌표(픽셀)를 적지 마라** — 너는 그 그림을 본 적이 없다."
+        " 네가 아는 것은 네가 짠 구도뿐이다('왼쪽이 청각인'이면 left)."
+        " 색·글자로 가리키는 것보다 화살표가 세다 — 원리를 설명하는 컷에는 되도록 붙여라."
     " ★★ **훅 컷도 예외가 아니다**(실측: 두 번 연속 여기서 막혔다). 컷1 이 숫자를 말하면"
     " (\"수명을 92일 연장\") 그 컷의 overlay_plan 에도 number_punch 를 넣어라 —"
     " 숫자를 말하는 **모든** 컷이 대상이고, 첫 컷이 가장 자주 빠진다."
