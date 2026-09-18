@@ -378,9 +378,12 @@ def build_overlay_cues(
     skip_cut_nos: set[Any] | None = None,
     only_types: set[str] | None = None,
     images: dict[Any, str] | None = None,
+    drop_types: set[str] | None = None,
 ) -> list[tuple[float, float, str, str]]:
     """컷별 overlay_plan → 영상 전체 타임라인의 ASS 이벤트.
 
+    drop_types: 이 유형은 내보내지 않는다. **거짓이 될 카드를 지우는 자리**다 —
+      색 코드가 어긋난 지시서에서 범례를 그리면 화면이 거짓말을 한다(2026-09-19).
     images: 컷 번호 → 그 컷의 그림 경로. 주면 화살표가 **격자가 아니라 그림 속 물체**를 가리킨다.
     only_types: 이 유형만 내보낸다(None = 전부). 수치·출처 카드는 꺼 둔 채 범례·캡션만 그릴 때
       쓴다(config.MECHANISM_LABEL_OVERLAYS_ENABLED, 2026-09-18).
@@ -406,6 +409,8 @@ def build_overlay_cues(
         cut_start, cut_dur = starts[i], durations[i]
         for item in plan:
             if only_types is not None and item["type"] not in only_types:
+                continue
+            if drop_types and item["type"] in drop_types:
                 continue
             start = cut_start + min(item["start_sec"], max(0.0, cut_dur - 0.1))
             end = min(cut_start + cut_dur, start + item["duration_sec"])

@@ -859,6 +859,10 @@ PHOTO_GLOW_REWRITES: tuple[tuple[str, str], ...] = (
     # "The glow in the prefrontal cortex slowly fades" (실측)
     (r"\bthe\s+(?:bright|soft|warm|subtle|faint)?\s*glow\s+in\b", "the amber accent in"),
     (r"\b(?:an?|the)\s+(?:soft|warm|bright|subtle|faint|inner|internal)\s+glow\b", "an amber accent"),
+    # "glows a bright, expanded coral color" (실측) — 뜻은 **그 색이 된다**이지 빛난다가 아니다.
+    #   동사만 바꾸면 "is picked out in amber a bright … color" 로 문장이 깨진다.
+    (r"\bglows\s+(an?|the)\s+", r"turns \1 "),
+    (r"\bglow\s+(an?|the)\s+", r"turn \1 "),
     (r"\bglows\b", "is picked out in amber"),
     (r"\bglow\b", "amber accent"),
     # ── ③ 남은 형용사는 그냥 뗀다 — 지워도 장면이 남는다("glowing blue double-helix" → "blue …").
@@ -951,6 +955,9 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     #   시청자가 모른다. overlay_plan 에 legend/label_pair 를 넣으면 되는 종류라 되묻는다.
     "photo_mechanism_unlabeled",
     # ★ 2026-09-18 — 카드·화살표는 되먹임 한 번으로 고쳐지는 종류다(문구를 줄이거나 구역 이름을 고친다).
+    # ★ 2026-09-19 — 색의 뜻이 갈아엎히면 범례가 거짓말이 된다. 되먹임 한 번으로 고쳐질 종류다
+    #   (한 개체 한 색으로 되돌리고, 부위는 amber·화살표로 가리키면 된다).
+    "photo_color_code_reused",
     "photo_keyword_is_a_sentence",
     "photo_keyword_repeats_narration",
     "photo_pointer_zone_unknown",
