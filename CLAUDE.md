@@ -88,6 +88,10 @@
   시퀀스 등급제(invest 8초·후보 2발)가 **오직 photo 에만** 붙는다(`SEQUENCE_TIER_VERSIONS`).
   기획·명세는 `docs/기획서_시퀀스등급제_v2.md`·`docs/작업명세서_시퀀스등급제_v2.md`.
   진입점: `python -m scripts.regen_from_draft <paper_id>` → 지시서 → `engine.render`.
+  ▸ **편 전체를 사기 전에 시퀀스 하나만 본다**(2026-09-18):
+    `python -m scripts.preview_sequence <directive_id>` 가 기전 컷이 가장 많은 시퀀스를 골라
+    계획·비용을 먼저 찍고, `--yes` 를 붙여야 만든다(`--stills` 그림만·`--free` 비용 0).
+    산출은 `docs/preview-<날짜>/`(gitignore) — 단계별 그림·최종 프레임·report.json.
 
 - **★★★ 실사형 화풍은 2026-09-08 에 확정됐다 — 임의로 바꾸지 말 것.**
   운영자 판정: "저 화풍이 마음에 들어. 저 화풍으로 이제 고정해서 유지해주세요."
