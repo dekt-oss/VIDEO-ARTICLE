@@ -150,6 +150,12 @@ def main() -> None:
     print(f"\n시퀀스 {seq_id} · 컷 {len(mini['cuts'])}개")
     print(f"예상 비용(상한): ${est}   그림={config.IMAGE_PROVIDER} 영상={config.VIDEO_PROVIDER} "
           f"범례·캡션={config.MECHANISM_LABEL_OVERLAYS_ENABLED} 분할스틸={config.MECHANISM_SPLIT_BEFORE_AFTER}")
+    if not args.free:
+        # ★ 미리보기는 **에셋 캐시를 타지 않는다.** 컷 번호를 1..N 으로 다시 매기기 때문에
+        #   (directive, cut_no) 키가 본 지시서의 것과 겹쳐서, 캐시에 넣으면 본 렌더가 미리보기
+        #   그림을 물려받는다. 그래서 일부러 안 쓴다 — 대신 **돌릴 때마다 새로 산다**는 것을
+        #   여기서 밝힌다(2026-09-18: 세 번 돌려 세 번 결제된 뒤에 알았다).
+        print("  ※ 미리보기는 캐시를 쓰지 않는다 — **다시 돌리면 그림값이 또 나간다.**")
     if not args.yes:
         print("\n  --yes 를 붙이면 실제로 만든다. 지금은 아무것도 만들지 않았다.")
         return

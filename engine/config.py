@@ -1384,6 +1384,12 @@ OVERLAY_POINTER_MAX_PER_CUT: int = 3
 OVERLAY_POINTER_COLOR_ASS: str = OVERLAY_ANNOTATION_COLOR_ASS
 OVERLAY_POINTER_LENGTH_PX: int = 150
 OVERLAY_POINTER_HALF_HEIGHT_PX: int = 30
+#: 윤곽 에너지 문턱 — 이 위를 "물체가 있다"로 센다(0~255). 낮추면 배경 얼룩까지 잡는다.
+OVERLAY_POINTER_EDGE_THRESHOLD: int = 24
+#: 화살촉을 물체 한가운데에서 들어오는 쪽으로 물리는 거리(촉이 대상을 덮지 않게).
+OVERLAY_POINTER_TIP_BACKOFF_PX: int = 110
+#: 화살표가 화면 가장자리에서 떨어져 있어야 할 거리(꼬리까지 포함해 안으로 민다).
+OVERLAY_POINTER_EDGE_MARGIN_PX: int = 24
 #: 상·하 분할 캡션 자리는 **레터박스 기하에서 유도한다** — 아래 LAYOUT 절 참조.
 #  (여기서 숫자로 박아 두면 LAYOUT_MODE·밴드 높이를 바꿀 때 캡션만 조용히 딴 곳에 남는다.)
 
