@@ -435,6 +435,15 @@ def _english(value: Any) -> str:
     return "" if (not text or _HANGUL.search(text)) else text
 
 
+def _phrase(value: Any, *, max_words: int = 12) -> str:
+    """이름·구절로 쓸 수 있는 영어 값. 문장(마침표·너무 긴 것)은 버린다 — 프롬프트 안에서
+    "the The two models as a comparative pair. is the part" 같은 파편이 된다(2026-09-18 실측)."""
+    text = _english(value).rstrip(".").strip()
+    if not text or len(text.split()) > max_words:
+        return ""
+    return text
+
+
 def mechanism_prose(cut: dict[str, Any], *, referenced: bool = False) -> str:
     """도해 구조(mechanism) → 이미지 프롬프트에 붙일 한 문장 (2026-09-18, 연구 T1-a).
 
@@ -447,36 +456,35 @@ def mechanism_prose(cut: dict[str, Any], *, referenced: bool = False) -> str:
       그림은 언어판이 공유한다. 지시서 프롬프트가 이제 이 필드들을 영어로 요구한다
       (사람이 읽는 것은 `mechanism_ko`).
 
+    ★★ **전·후를 한 프롬프트에 나열하지 않는다**(2026-09-18 유료 실측 4장 전부). 첫 판은
+      "before: …; after: …" 를 붙였고 Gemini 는 그것을 **세로 3단 스토리보드**로 그렸다 —
+      한 화면에 두 뇌가 세 줄로 반복됐다. 한 장은 한 상태다. 무엇이 보여야 하고 무엇이
+      설명 대상인지만 말하고, 상태는 visual_prompt(그 컷의 장면)가 말한다. 그리고 "한 장면"
+      을 명시한다 — 구성요소를 나열하면 모델이 칸을 나누고 싶어한다.
+
     ★ referenced=True(참조 그림에 이어 그리는 컷)에서는 **변화와 강조만** 말한다. 전·후를 다
       말하면 "이것만 바꿔라"와 싸운다(providers/image.py 의 참조 프롬프트 규칙 그대로).
     """
     spec = cut.get("mechanism")
     if not isinstance(spec, dict):
         return ""
-    comps = [c for c in (_english(x) for x in (spec.get("components") or [])) if c]
-    subject = _english(spec.get("subject"))
-    before = _english(spec.get("initial_state"))
-    change = _english(spec.get("transformation"))
-    after = _english(spec.get("final_state"))
-    focus = _english(spec.get("highlighted_element"))
-    parts: list[str] = []
+    comps = [c for c in (_phrase(x) for x in (spec.get("components") or [])) if c]
+    focus = _phrase(spec.get("highlighted_element"))
     if referenced:
+        change = _english(spec.get("transformation")).rstrip(".").strip()
+        parts: list[str] = []
         if change:
             parts.append(f"The change to show: {change}")
         if focus:
             parts.append(f"keep the attention on {focus}")
         return ". ".join(parts) if parts else ""
-    if subject and len(comps) >= 2:
-        parts.append(f"Show {subject} with {', '.join(comps[:-1])} and {comps[-1]} all visible")
-    elif len(comps) >= 2:
-        parts.append(f"Show {', '.join(comps[:-1])} and {comps[-1]} all visible")
-    if before and after:
-        parts.append(f"before: {before}; after: {after}")
-    elif change:
-        parts.append(f"what changes: {change}")
+    if len(comps) < 2:
+        return ""
+    prose = (f"One single scene (no panels, no grid, no storyboard) showing "
+             f"{', '.join(comps[:-1])} and {comps[-1]} all visible together")
     if focus:
-        parts.append(f"the {focus} is the part being explained")
-    return ". ".join(parts)
+        prose += f"; {focus} is the part being explained"
+    return prose
 
 
 def mechanism_component_hits(cut: dict[str, Any]) -> tuple[int, int]:

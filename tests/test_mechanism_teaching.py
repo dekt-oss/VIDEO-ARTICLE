@@ -56,11 +56,23 @@ def _header(stages):
 # ── T1-a 구조가 프롬프트에 닿는다 ─────────────────────────────────────────
 def test_mechanism_prose_reaches_the_image_prompt():
     got = image_provider._build_image_prompt(_cut(4), {"version_type": "photo"})
-    assert "a hearing brain, a deaf brain and the visual cortex all visible" in got
-    assert "before: both brains identical; after: the deaf brain has an enlarged visual cortex" in got
+    assert "a hearing brain, a deaf brain and the visual cortex all visible together" in got
     assert "the visual cortex is the part being explained" in got
+    # ★ 전·후를 나열하지 않는다 — 유료 실측에서 "before: …; after: …" 가 세로 3단 스토리보드가 됐다.
+    assert "before:" not in got and "after:" not in got
+    assert "One single scene (no panels, no grid, no storyboard)" in got
     # 구조가 장면 묘사보다 **앞**에 온다 — 무엇이 보여야 하는지가 먼저다.
     assert got.index("all visible") < got.index("two brains side by side")
+
+
+def test_sentence_shaped_fields_do_not_become_prompt_fragments():
+    """실측 파편: 'the The two models as a comparative pair. is the part being explained'."""
+    cut = _cut(4, mechanism={**MECH, "highlighted_element": "The two models as a comparative pair."})
+    prose = vs.mechanism_prose(cut)
+    assert "pair." not in prose and "The two models as a comparative pair is the part" in prose
+    long_focus = _cut(4, mechanism={**MECH, "highlighted_element": (
+        "the specific larger area representing peripheral vision which is highlighted with a bright amber glow")})
+    assert "part being explained" not in vs.mechanism_prose(long_focus), "문장은 이름이 아니다 — 버린다"
 
 
 def test_referenced_cut_only_carries_the_change_not_the_before_state():
@@ -77,7 +89,7 @@ def test_korean_fields_are_not_sent_to_the_image():
                               "initial_state": "두 뇌가 같다", "final_state": "시각 피질이 커졌다"})
     prose = vs.mechanism_prose(cut)
     assert "청각" not in prose and "두 뇌" not in prose
-    assert "Show a hearing brain and a deaf brain all visible" in prose
+    assert "a hearing brain and a deaf brain all visible together" in prose
 
 
 def test_cuts_without_mechanism_are_byte_for_byte_unchanged():
