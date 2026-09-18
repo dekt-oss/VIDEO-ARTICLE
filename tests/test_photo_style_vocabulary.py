@@ -41,11 +41,18 @@ def test_world_style_that_names_a_drawing_technique_is_blocked():
     assert any("세계 W1" in b and "3d rendering" in b for b in blocked), blocked
 
 
-def test_world_lighting_glow_is_warned():
-    """실측 원문: "Soft, internal glow, highlighting active elements" → 그림 4의 발광."""
+def test_world_lighting_glow_is_repaired_by_code_not_warned():
+    """실측 원문: "Soft, internal glow, highlighting active elements" → 그림 4의 발광.
+
+    ★ **경고에서 수리로 바꿨다**(2026-09-18). 이유는 바로 아래 렌즈 어휘와 똑같다 — 경고만
+      하면 모델이 부분만 고치고, 그 사이 화면에는 발광이 나간다. 실제로 그렇게 나갔다
+      (지시서 79298b9f 컷3, 산호 뇌의 주황 테두리). 저장된 40편 437컷 중 **143회**가 이 어휘를
+      들고 있었으니 경고로 둘 일이 아니다. 근거: config.PHOTO_GLOW_REWRITES.
+    """
     header = {"visual_sequences": [_world(lighting="Soft, internal glow")]}
-    _, warned = pc.style_vocabulary_hits(header, [])
-    assert any("glow" in w for w in warned), warned
+    touched = pc.normalize_glow(header, [])
+    assert touched, "고친 자리를 돌려줘야 화면이 그 사실을 안다"
+    assert "glow" not in header["visual_sequences"][0]["world"]["lighting"].lower()
 
 
 def test_world_background_lens_word_is_repaired_by_code_not_blocked():

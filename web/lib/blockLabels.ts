@@ -126,6 +126,8 @@ export const WARNING_LABEL: Record<string, string> = {
   causal_overreach: "연관을 인과로 말함",
   numeric_mismatch: "대본의 숫자·단위·방향이 Fact Sheet 와 다름",
   editorial_inference: "논문이 지지하지 않는 해석·교훈을 덧붙임",
+  photo_glow_normalized:
+    "발광 어휘를 코드가 앰버 강조로 옮김(화풍이 금지하는 빛남입니다)",
   photo_optics_normalized:
     "렌즈 어휘(blurred·depth of field)를 코드가 배치 표현으로 바꿨음 — 화풍은 코드가 정합니다",
   photo_prompt_number_removed:
