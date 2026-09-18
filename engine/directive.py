@@ -2220,6 +2220,14 @@ def normalize_directive(
             header["mode_warnings"] = sorted(set([
                 *header.get("mode_warnings", []),
                 "photo_style_word_normalized:" + ", ".join(style_fixed[:6])]))
+        # ★★ 발광 어휘는 **앰버 강조로 옮긴다**(2026-09-18). 화풍이 "no glowing effects" 라고
+        #   말하는데도 그림에 발광이 나왔다 — 부정어는 긍정 어휘를 못 이긴다(실측 4회).
+        #   437컷 중 143회가 이 어휘를 들고 있었다. 근거: config.PHOTO_GLOW_REWRITES.
+        glow_fixed = photo_contract.normalize_glow(header, cuts)
+        if glow_fixed:
+            header["mode_warnings"] = sorted(set([
+                *header.get("mode_warnings", []),
+                "photo_glow_normalized:" + ", ".join(glow_fixed[:6])]))
         # ★ 카드가 이미 그리는 퍼센트 수치는 이미지 프롬프트에서 코드가 지운다(2026-09-14 —
         #   같은 논문 세 편 연속 같은 차단, 세 번 다 손으로 숫자만 지웠다. 함수 주석).
         numbers_fixed = photo_contract.normalize_prompt_numbers(cuts)

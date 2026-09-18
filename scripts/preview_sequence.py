@@ -74,7 +74,12 @@ def describe(mini: dict) -> None:
     print("\n[미리 볼 컷]")
     for c in mini["cuts"]:
         overlays = [str(o.get("type")) for o in c.get("overlay_plan") or []]
-        split = "  ← 전·후 분할 스틸" if render.split_before_after_applies(c, header) else ""
+        # ★ --stills 는 stage 렌더를 끄므로 분할이 **일어나지 않는다.** 그런데도 "분할 스틸"이라고
+        #   찍으면 도구가 거짓말을 한다 — 안 할 일을 할 것처럼 적으면 그게 가장 나쁜 표시다.
+        will_split = render.split_before_after_applies(c, header) and config.STAGE_RENDER_ENABLED
+        split = ("  ← 전·후 분할 스틸" if will_split
+                 else ("  (분할 대상이지만 --stills 라 이번엔 안 함)"
+                       if render.split_before_after_applies(c, header) else ""))
         print(f"  컷{c['cut_no']} (원본 {c['_origin_cut_no']}) {c.get('visual_role') or '-'} "
               f"{c.get('motion_source')} {c.get('estimated_sec')}초 "
               f"오버레이={overlays or '없음'}{split}")

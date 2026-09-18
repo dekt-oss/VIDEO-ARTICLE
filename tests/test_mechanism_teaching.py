@@ -484,3 +484,82 @@ def test_the_render_hands_the_images_to_the_overlay_builder():
     import inspect
     src = inspect.getsource(render)
     assert "images={no: p for no, p in asset_index.items() if p}" in src
+
+
+# ── 발광 어휘를 앰버 강조로 (2026-09-18 밤) ──────────────────────────────
+#
+# 화풍은 "no glowing effects, no neon, no bloom, no light emission" 이라고 이미 말한다.
+# 그런데 실제 그림에 발광이 나왔다(지시서 79298b9f 컷3, 산호 뇌의 주황 테두리). 이 저장소의
+# 결론 그대로다 — **부정어는 긍정 어휘를 못 이긴다.** 그러니 프롬프트에서 그 어휘를 뺀다.
+# 저장된 40편 437컷 중 **143회**가 이 어휘를 들고 있었다(셋 중 한 컷).
+
+def test_glow_becomes_an_amber_accent_not_a_hole_in_the_sentence():
+    """★ 지우기만 하면 문장이 깨진다 — 실측: 'The model is glowing softly, emphasizing…' 이
+    'The model is softly, emphasizing…' 이 됐다. 동사형을 **먼저** 잡아야 한다."""
+    got = pc.strip_glow("The model is glowing softly, emphasizing its folded structure.")
+    assert got == "The model is picked out in amber, emphasizing its folded structure."
+    assert "glow" not in pc.strip_glow("824 markers glow more intensely and are highlighted")
+    assert "glow" not in pc.strip_glow("the cortex glows brightly, indicating expression")
+
+
+def test_glow_as_an_adjective_is_simply_dropped():
+    """형용사는 지워도 장면이 남는다(실측 문장 그대로)."""
+    assert pc.strip_glow("A, glowing blue double-helix DNA strand model") \
+        == "A blue double-helix DNA strand model"
+    # ★ 첫 글자 대문자화는 공용 정리 규칙(strip_optics)이 하는 일이다 — 문장 머리를 지운 뒤
+    #   소문자로 시작하지 않게 한다. 여기서 바꾸지 않는다.
+    assert pc.strip_glow("subtle glowing lines represent hydrogen bonds") \
+        == "Subtle lines represent hydrogen bonds"
+
+
+def test_prompts_without_glow_are_untouched():
+    """★ 멀쩡한 프롬프트를 건드리면 안 된다(strip_optics 와 같은 규율)."""
+    clean = "two brains side by side on a studio tabletop, the left one muted blue"
+    assert pc.strip_glow(clean) == clean
+
+
+def test_the_normalizer_reaches_prompt_world_and_mechanism():
+    """★ 도해 구조도 봐야 한다 — 2026-09-18 부터 그 문장이 그림에 실린다(mechanism_prose)."""
+    header = {"visual_sequences": [{"sequence_id": "S", "world": {"lighting": "a soft glow"},
+                                    "stages": []}]}
+    cuts = [{"cut_no": 1, "visual_prompt": "a glowing cube",
+             "mechanism": {"highlighted_element": "the glowing rim"}}]
+    touched = pc.normalize_glow(header, cuts)
+    assert touched, "고친 자리를 돌려줘야 화면이 그 사실을 안다"
+    assert "glow" not in cuts[0]["visual_prompt"]
+    assert "glow" not in cuts[0]["mechanism"]["highlighted_element"]
+    assert "glow" not in header["visual_sequences"][0]["world"]["lighting"]
+
+
+def test_the_pipeline_actually_calls_it_and_says_so():
+    """만들어 놓고 안 부르면 발광은 그대로 나간다(dead-wiring). 그리고 조용히 고치지 않는다."""
+    from engine import directive
+    src = inspect_src(directive)
+    assert "photo_contract.normalize_glow(header, cuts)" in src
+    assert "photo_glow_normalized" in src
+    assert "photo_glow_normalized" in pc.WARNING_REASONS
+    # 발광은 "그릴 수 없는 판정"이 아니라 **너무 잘 그려지는 것**이다 — 그 목록에서 뺐다.
+    assert "glowing" not in config.PHOTO_UNDRAWABLE_QUALITY_TERMS
+
+
+def test_a_split_cut_always_gets_its_before_after_caption():
+    """★★ 2026-09-19 첫 실전 분할에서 잡았다 — 모델이 label_pair 를 빼먹어 **위·아래가 무엇인지
+    아무 표시가 없는** 분할 화면이 나왔다. 분할하는 이유가 통째로 사라진다.
+    전·후는 코드가 확실히 아는 것이다(위=앞 stage, 아래=이 stage)."""
+    cut = _cut(4, overlay_plan=[])
+    assert render._ensure_split_labels(cut, "ko") is True
+    pair = [o for o in cut["overlay_plan"] if o["type"] == "label_pair"]
+    assert pair and pair[0]["payload"] == {"top": "변화 전", "bottom": "변화 후"}
+    assert render._ensure_split_labels(_cut(4, overlay_plan=[]), "en")
+    # ★ 모델이 적어 둔 캡션은 건드리지 않는다 — 그 편이 항상 더 구체적이다.
+    mine = _cut(5, overlay_plan=[{"type": "label_pair",
+                                  "payload": {"top": "청각인", "bottom": "청각 장애인"}}])
+    assert render._ensure_split_labels(mine, "ko") is False
+    assert mine["overlay_plan"][0]["payload"]["top"] == "청각인"
+
+
+def test_the_split_path_actually_calls_the_caption_filler():
+    import inspect
+    src = inspect.getsource(render)
+    assert "_ensure_split_labels(cut, lang)" in src
+    assert 'decision["split_labels_defaulted"] = True' in src

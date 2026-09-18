@@ -658,6 +658,31 @@ def _build_split_stage_video(split_img: str, plan: dict[str, Any], work_dir: str
     return out
 
 
+def _ensure_split_labels(cut: dict[str, Any], lang: str) -> bool:
+    """분할 컷에 위·아래 캡션이 없으면 **코드가 채운다**. 채웠으면 True.
+
+    ★ 왜(2026-09-19 첫 실전 분할): 모델이 `label_pair` 를 빼먹었고 경고만 떴다. 그 결과 화면에는
+      뇌 두 쌍이 위아래로 붙어 있는데 **어느 쪽이 전이고 후인지 아무 표시가 없었다** — 분할을
+      하는 이유가 통째로 사라진다. 전·후는 코드가 **확실히 아는 것**이다(위가 앞 stage 의 그림,
+      아래가 이 stage 의 그림). 기계가 아는 것을 모델에게 다시 시키고 경고로 때울 이유가 없다.
+    ★ 모델이 적어 둔 캡션이 있으면 **건드리지 않는다** — 그 편이 항상 더 구체적이다
+      ("청각인 (변화 전)" vs "변화 전").
+    """
+    plan = cut.get("overlay_plan")
+    if not isinstance(plan, list):
+        plan = []
+        cut["overlay_plan"] = plan
+    if any(isinstance(o, dict) and str(o.get("type")) == "label_pair" for o in plan):
+        return False
+    top, bottom = config.MECHANISM_SPLIT_DEFAULT_LABELS.get(
+        lang, config.MECHANISM_SPLIT_DEFAULT_LABELS["ko"])
+    plan.append({"type": "label_pair", "payload": {"top": top, "bottom": bottom},
+                 "start_sec": 0, "duration_sec": config.OVERLAY_MIN_SEC})
+    log.warning("컷 %s 분할 캡션이 없어 코드가 채웠다(%s / %s) — 지시서가 label_pair 를 넣는 편이 낫다",
+                cut.get("cut_no"), top, bottom)
+    return True
+
+
 class _SplitStillDone(Exception):
     """stage 영상을 분할 스틸로 이미 만들었다 — 아래 캐시·I2V 블록을 건너뛰는 신호."""
 
@@ -1304,6 +1329,8 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                         try:
                             stage_videos[gi] = _build_split_stage_video(split_img, plan, work_dir, gi)
                             decision["split_before_after"] = True
+                            if _ensure_split_labels(cut, lang):
+                                decision["split_labels_defaulted"] = True
                             log.info("stage %s 전·후 분할 스틸로 렌더(영상 생성 0회): %s ← %s",
                                      plan["stage_id"] or gi, os.path.basename(split_ref),
                                      os.path.basename(img0))

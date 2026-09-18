@@ -70,6 +70,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_subject_dominates",         # 연구 대상(동물·장비)이 화면 시간의 상한을 넘겼다
     "photo_undrawable_difference",     # 차이를 판정 어휘로 적었다(모델은 "건강함"을 못 그린다)
     "photo_optics_normalized",         # 렌즈 어휘를 코드가 배치 표현으로 바꿨다(조용히 하지 않는다)
+    "photo_glow_normalized",           # 발광 어휘를 코드가 앰버 강조로 옮겼다(화풍이 금지하는 것이다)
     "photo_prompt_number_removed",     # 카드가 이미 그리는 퍼센트를 이미지 프롬프트에서 지웠다
     "photo_world_lead_disagrees",      # 세계를 여는 컷이 그 세계를 안 그린다(세계 선언이 죽는다)
     "photo_mechanism_starts_late",     # 원리 설명이 너무 늦게 시작한다(전반부가 통째로 소개)
@@ -587,11 +588,17 @@ _UNDRAWABLE_RE = _terms_re(config.PHOTO_UNDRAWABLE_QUALITY_TERMS)
 
 _OPTICS_REWRITES = tuple((re.compile(p, re.I), r) for p, r in config.PHOTO_OPTICS_REWRITES)
 _STYLE_WORD_REWRITES = tuple((re.compile(p, re.I), r) for p, r in config.PHOTO_STYLE_WORD_REWRITES)
+_GLOW_REWRITES = tuple((re.compile(p, re.I), r) for p, r in config.PHOTO_GLOW_REWRITES)
 
 
 def strip_style_words(text: str) -> str:
     """화풍 형용사(`stylized`)를 지운다. 정리 규칙은 strip_optics 와 같다(같은 함수를 쓴다)."""
     return strip_optics(text, _STYLE_WORD_REWRITES)
+
+
+def strip_glow(text: str) -> str:
+    """발광 어휘를 **앰버 강조로 옮긴다**. 근거는 config.PHOTO_GLOW_REWRITES 주석."""
+    return strip_optics(text, _GLOW_REWRITES)
 
 
 def normalize_style_words(header: dict[str, Any], cuts: list[dict[str, Any]]) -> list[str]:
@@ -624,6 +631,46 @@ def normalize_style_words(header: dict[str, Any], cuts: list[dict[str, Any]]) ->
             if after != before:
                 c[k] = after
                 touched.append(f"컷{c.get('cut_no')}")
+    return sorted(set(touched))
+
+
+def normalize_glow(header: dict[str, Any], cuts: list[dict[str, Any]]) -> list[str]:
+    """world 선언과 컷 프롬프트의 발광 어휘를 **제자리에서** 앰버 강조로 옮긴다 → 고친 자리 목록.
+
+    ★ normalize_style_words 와 같은 자리를 본다(검사하는 자리와 고치는 자리가 같아야 한다).
+    """
+    touched: list[str] = []
+    for seq in (header.get("visual_sequences") or []):
+        if not isinstance(seq, dict):
+            continue
+        world = seq.get("world")
+        if not isinstance(world, dict):
+            continue
+        wid = str(world.get("world_id") or seq.get("sequence_id") or "?")
+        for k in ("style", "lighting", "background"):
+            before = str(world.get(k) or "")
+            after = strip_glow(before)
+            if after != before:
+                world[k] = after
+                touched.append(f"세계 {wid}.{k}")
+    for c in cuts:
+        if not isinstance(c, dict):
+            continue
+        for k in ("visual_prompt", "motion_prompt"):
+            before = str(c.get(k) or "")
+            after = strip_glow(before)
+            if after != before:
+                c[k] = after
+                touched.append(f"컷{c.get('cut_no')}")
+        # ★ 도해 구조도 본다 — 2026-09-18 부터 그 문장이 그림에 실린다(mechanism_prose).
+        spec = c.get("mechanism")
+        if isinstance(spec, dict):
+            for k in ("initial_state", "transformation", "final_state", "highlighted_element"):
+                before = str(spec.get(k) or "")
+                after = strip_glow(before)
+                if after != before:
+                    spec[k] = after
+                    touched.append(f"컷{c.get('cut_no')}")
     return sorted(set(touched))
 
 

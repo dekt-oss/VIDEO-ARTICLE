@@ -821,6 +821,53 @@ PHOTO_STYLE_WORD_REWRITES: tuple[tuple[str, str], ...] = (
     (r",?\s*\bstylized\b", ""),
 )
 
+#: **발광 어휘 치환** — 화풍이 금지하는 빛남을 코드가 걷어낸다(2026-09-18 저녁).
+#
+# ★ 왜 경고가 아니라 치환인가: `VISUAL_ROLE_NEGATIVE` 가 "no glowing effects, no neon, no bloom,
+#   no light emission" 이라고 이미 말하고 있는데 **그림에는 발광이 나왔다**(2026-09-18 실측,
+#   지시서 79298b9f 컷3 — 산호색 뇌에 주황 발광 테두리). 이 저장소의 결론 그대로다:
+#   **부정어로는 못 막는다. 막는 것은 긍정 어휘다**(화풍 전환 핸드오프, 실측 4회).
+#   그러니 프롬프트에서 그 긍정 어휘를 빼야 한다 — `stylized` 를 지우는 것과 같은 자리·같은 이유.
+#
+# ★★ 히트율(저장된 photo 지시서 40건 437컷): 발광 어휘 **143회**가 컷 프롬프트에 있었다
+#   (glowing 88 · glow/glows 51 · luminous 2 · aura 1 · emits 1). **셋 중 한 컷**이 화풍과
+#   싸우는 문장을 들고 있었다는 뜻이다.
+#
+# ★★★ **뜻을 죽이지 않는다.** 모델이 발광을 쓰는 이유는 "여기를 봐라"이고, 그 일은 우리 화풍에
+#   이미 있다 — `amber accent on the part being explained`. 그래서 지우는 것이 아니라
+#   **앰버 강조로 옮긴다.** 형용사(`glowing lines`)만 그냥 지운다(지워도 장면이 남는다).
+#   순서가 중요하다 — 긴 표현을 먼저 잡아야 짧은 규칙이 문장을 조각내지 않는다.
+PHOTO_GLOW_REWRITES: tuple[tuple[str, str], ...] = (
+    # ── ① 발광을 **동사로** 쓴 자리부터. 먼저 안 잡으면 아래 형용사 규칙이 문장을 조각낸다
+    #      (실측: "The model is glowing softly, emphasizing…" → "The model is softly, emphasizing…").
+    (r"\bemitting\s+(?:an?\s+)?(?:soft|warm|bright|subtle|faint)?\s*(?:glow|light)\b",
+     "picked out in amber"),
+    (r"\b(is|are|was|were)\s+glowing(?:\s+(?:softly|brightly|faintly|gently|intensely))?\b",
+     r"\1 picked out in amber"),
+    (r"\bglowing\s+(?:softly|brightly|faintly|gently|intensely)\b", "picked out in amber"),
+    # "glows with a warm amber light" — 이미 앰버를 말하고 있다. 발광만 뗀다.
+    (r"\bglows\s+with\s+(?:an?\s+)?(?:warm|soft|bright|subtle)?\s*amber\s+(?:light|glow)\b",
+     "is picked out in amber"),
+    (r"\bglow\s+with\s+(?:an?\s+)?(?:warm|soft|bright|subtle)?\s*amber\s+(?:light|glow)\b",
+     "are picked out in amber"),
+    # "824 specific markers glow more intensely" · "the cortex glows brightly" (실측)
+    (r"\bglows\s+(?:more\s+)?(?:brightly|softly|intensely|faintly)\b", "is picked out in amber"),
+    (r"\bglow\s+(?:more\s+)?(?:brightly|softly|intensely|faintly)\b", "are picked out in amber"),
+    # ── ② 명사로 쓴 자리. "a soft glow emanating from the spectrometer" (실측)
+    (r"\b(?:an?|the)\s+(?:soft|warm|bright|subtle|faint|inner|internal)?\s*glow\s+emanating\s+from\b",
+     "an amber accent on"),
+    # "The glow in the prefrontal cortex slowly fades" (실측)
+    (r"\bthe\s+(?:bright|soft|warm|subtle|faint)?\s*glow\s+in\b", "the amber accent in"),
+    (r"\b(?:an?|the)\s+(?:soft|warm|bright|subtle|faint|inner|internal)\s+glow\b", "an amber accent"),
+    (r"\bglows\b", "is picked out in amber"),
+    (r"\bglow\b", "amber accent"),
+    # ── ③ 남은 형용사는 그냥 뗀다 — 지워도 장면이 남는다("glowing blue double-helix" → "blue …").
+    (r",?\s*\bglowing\b", ""),
+    (r",?\s*\bluminous\b", ""),
+    (r",?\s*\bradiant\b", ""),
+    (r"\baura\b", "accent"),
+)
+
 #: **그릴 수 없는 판정 어휘** — 차이를 *가치 판단*으로 적은 말.
 #   ★ 실측(2026-09-07 그림 4): "the same stylized aged cell … initiating a more pronounced
 #     transformation into a healthier, more active cell" → 두 세포가 **똑같이** 나왔다.
@@ -846,7 +893,10 @@ PHOTO_UNDRAWABLE_QUALITY_TERMS: tuple[str, ...] = (
     "improved", "improvement", "better", "enhanced", "optimized",
     "more pronounced", "subtle improvement", "revitalized", "rejuvenated",
     "youthful", "more efficient", "more effective", "superior",
-    "glowing", "glow", "aura", "radiant", "energized",
+    "energized",
+    # ★ glowing·glow·aura·radiant 는 2026-09-18 에 **여기서 뺐다.** 그것들은 "그릴 수 없는
+    #   판정"이 아니라 반대로 **모델이 너무 잘 그리는 것**이고(그래서 화풍이 깨졌다),
+    #   경고가 아니라 치환이 맞는 처방이다 — PHOTO_GLOW_REWRITES 로 옮겼다.
     # 판정을 우회해 적는 말 — "그렇게 보인다"는 물체가 아니다.
     "signs of", "indications of", "evidence of", "appears to",
     "sense of", "look of", "suggesting",
@@ -1940,6 +1990,13 @@ MECHANISM_SPLIT_DIVIDER_RGB: tuple[int, int, int] = (58, 58, 58)
 #   ② 비교는 원래 멈춰서 보는 화면이다(참고 영상도 구도를 고정하고 주석 레이어만 움직인다).
 #   대가: 최종 mp4 freezedetect 경고가 뜬다(차단 아님). 그 경고는 **사실이므로 숨기지 않는다**.
 MECHANISM_SPLIT_EFFECT: str = ""
+#: 분할 화면에 **캡션이 없으면 코드가 채운다**(2026-09-19 첫 실전 분할에서 잡았다).
+#  모델이 label_pair 를 빼먹으면 위·아래가 무엇인지 알 길이 없어 분할 자체가 무의미해진다.
+#  경고만 하고 넘기면 그 화면이 그대로 나간다 — 기계가 확실히 아는 것은 기계가 적는다.
+MECHANISM_SPLIT_DEFAULT_LABELS: dict[str, tuple[str, str]] = {
+    "ko": ("변화 전", "변화 후"),
+    "en": ("Before", "After"),
+}
 
 # ★ 도해 컷의 visual_prompt 가 구조와 **떨어져 있는가**(2026-09-18, 연구 T1-b).
 #   components 중 프롬프트에 한 번도 안 나오는 컷 — 실측 117컷 중 4컷(3.4%), 오탐 0
