@@ -28,6 +28,7 @@ from . import (assemble, board_render, clip_fit_types, config, cost as cost_ledg
                sequence_render, stage_metrics as sm, stage_render, subtitles,
                visual_sequence)
 from . import continuity_qa
+from . import photo_contract
 from .providers import image as image_provider
 from .providers import tts as tts_provider
 from .providers import video as video_provider
@@ -1473,9 +1474,17 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         skip = {c.get("cut_no") for c in cuts if board_render.code_render_board(c, header)}
         # ★ 컷의 **실제 그림**을 넘긴다 — 화살표가 격자가 아니라 물체를 가리키게(2026-09-18 실측:
         #   격자만 쓰면 빈 벽을 가리켰다). asset_index 는 영상 컷도 첫 프레임 스틸을 들고 있다.
+        # ★★ **거짓말하는 범례는 안 그린다**(2026-09-19). 범례는 "파랑=청각인"처럼 색의 뜻을
+        #   선언하는데, 지시서가 그 색을 개체 안의 부위 구분으로 다시 쓰면 그 선언이 거짓이 된다.
+        #   실측(지시서 4851eb41): 되먹임으로 처방을 줬는데도 모델이 재생성 뒤에도 같은 실수를
+        #   했다 — 모델에게 반복시키는 대신, 뜻이 깨진 카드는 화면에서 뺀다. 경고는 남는다
+        #   (photo_color_code_reused) 이므로 운영자는 왜 없는지 알 수 있다.
+        drop_types = ({"legend"} if photo_contract.color_code_conflicts(header) else None)
+        if drop_types:
+            log.warning("색 코드가 어긋나 범례를 그리지 않는다 — 지시서를 고쳐야 한다")
         overlay_out.extend(evidence_overlay.build_overlay_cues(
             cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types,
-            images={no: p for no, p in asset_index.items() if p}))
+            images={no: p for no, p in asset_index.items() if p}, drop_types=drop_types))
     if cut_map_out is not None:
         # ★ cut_no 가 정본이다. 예전 오버레이 경로는 결측 시 리스트 인덱스로 폴백했는데,
         #   그러면 지시서가 컷을 건너뛴 번호를 쓸 때 두 체계가 어긋난다. 여기서는 결측을

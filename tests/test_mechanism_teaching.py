@@ -563,3 +563,97 @@ def test_the_split_path_actually_calls_the_caption_filler():
     src = inspect.getsource(render)
     assert "_ensure_split_labels(cut, lang)" in src
     assert 'decision["split_labels_defaulted"] = True' in src
+
+
+# ── 색 코드가 뜻을 잃는 것 (2026-09-19 실측) ────────────────────────────
+#
+# 운영자가 "좌우가 뒤집혔다"고 본 화면의 실제 원인. 거울 대칭이 아니었다(형태 상관계수 0.985) —
+# **색의 뜻이 갈아엎힌 것**이었다. 지시서가 "청각장애인 뇌: 주변부 coral, 중심부 blue /
+# 청각인 뇌: 둘 다 blue" 라고 적었고, 그러면 화면의 범례('파랑=청각인')가 거짓말이 된다.
+
+def _seq_with_colors(deaf: str, hearing: str) -> dict:
+    return {"visual_sequences": [{
+        "sequence_id": "SEQ1",
+        "entities": [{"entity_id": "DEAF"}, {"entity_id": "HEARING"}],
+        "stages": [{"stage_id": "S1", "mutations": [
+            {"entity_id": "DEAF", "result_state": deaf},
+            {"entity_id": "HEARING", "result_state": hearing}]}]}]}
+
+
+def test_one_entity_holding_both_comparison_colours_is_flagged():
+    bad = pc.color_code_conflicts(_seq_with_colors(
+        "the peripheral region turns coral while the central region is blue",
+        "both regions stay a neutral blue"))
+    assert any("DEAF" in b and "blue" in b and "coral" in b for b in bad), bad
+
+
+def test_a_colour_shared_by_two_entities_is_flagged():
+    bad = pc.color_code_conflicts(_seq_with_colors(
+        "stays muted blue", "stays muted blue and grows"))
+    assert bad == [], "두 색이 다 나오지 않으면 비교색을 쓰는 시퀀스가 아니다"
+    bad = pc.color_code_conflicts(_seq_with_colors(
+        "turns muted blue", "stays muted blue while a coral marker appears"))
+    assert any("나눠 쓴다" in b for b in bad), bad
+
+
+def test_a_clean_two_colour_comparison_passes():
+    assert pc.color_code_conflicts(_seq_with_colors(
+        "stays muted coral, its peripheral area growing larger",
+        "stays muted blue, unchanged")) == []
+
+
+def test_sequences_that_do_not_use_the_colour_code_are_left_alone():
+    """★ 색 규약(2026-09-18) 이전 지시서는 파랑을 그냥 사물 색으로 썼다 — 잡으면 오탐이다.
+    실측: 저장된 44편 중 그런 편이 2편 있었고, 이 전제로 둘 다 빠졌다(오탐 0)."""
+    assert pc.color_code_conflicts(_seq_with_colors(
+        "a blue DNA strand model", "another blue strand beside it")) == []
+
+
+def test_the_colour_gate_is_wired_with_notice_and_feedback():
+    from engine import directive, report_directive
+    got = pc.evaluate({"hook_ko": "훅", **_seq_with_colors(
+        "peripheral turns coral, central turns blue", "both stay blue")}, [_cut(1)])
+    assert any(w.startswith("photo_color_code_reused") for w in got["warnings"]), got["warnings"]
+    assert "photo_color_code_reused" in config.RETRYABLE_QUALITY_WARNINGS
+    assert pc.feedback_prompt([], ["photo_color_code_reused:SEQ1(x)"]).strip()
+    for src in (inspect_src(directive), inspect_src(report_directive)):
+        assert "한 색" in src, "색이 영상 내내 같은 뜻이라는 고지가 프롬프트에 있어야 한다"
+
+
+def test_glow_is_stripped_from_stage_mutations_too():
+    """★★ 실측: 컷 프롬프트만 청소했더니 발광이 **변이 서술**을 타고 그림에 닿았다
+    (change_prose 가 result_state 를 참조 프롬프트에 그대로 싣는다)."""
+    header = {"visual_sequences": [{"sequence_id": "S", "stages": [
+        {"stage_id": "S1", "observable_change": "the rim glows",
+         "mutations": [{"entity_id": "E",
+                        "result_state": "the region glows a bright, expanded coral color"}]}]}]}
+    touched = pc.normalize_glow(header, [])
+    assert touched
+    st = header["visual_sequences"][0]["stages"][0]
+    assert "glow" not in st["mutations"][0]["result_state"]
+    assert "turns a bright, expanded coral color" in st["mutations"][0]["result_state"]
+    assert "glow" not in st["observable_change"]
+
+
+def test_a_lying_legend_is_not_drawn():
+    """★★ 색의 뜻이 깨졌으면 범례를 **그리지 않는다**(2026-09-19).
+
+    범례는 "파랑=청각인"처럼 색의 뜻을 선언한다. 지시서가 그 색을 개체 안의 부위 구분으로 다시
+    쓰면 그 선언이 거짓이 된다. 실측(지시서 4851eb41): 되먹임으로 처방을 줬는데도 재생성 뒤에
+    **같은 실수를 반복했다** — 모델에게 다시 시키는 대신 뜻이 깨진 카드를 화면에서 뺀다.
+    경고는 남으므로 운영자는 왜 없는지 안다.
+    """
+    plan = eo.normalize_overlay_plan([
+        {"type": "legend", "payload": {"items": [{"color": "blue", "label": "청각인"}]}},
+        {"type": "keyword", "text": "CORTEX"}])
+    cuts = [{"cut_no": 1, "overlay_plan": plan}]
+    kept = eo.build_overlay_cues(cuts, [0.0], [4.0], drop_types={"legend"})
+    assert [c[3] for c in kept] == ["Keyword"], "범례만 빠지고 나머지는 남아야 한다"
+    assert len(eo.build_overlay_cues(cuts, [0.0], [4.0])) == 2
+
+
+def test_the_render_drops_the_legend_when_the_colour_code_is_broken():
+    import inspect
+    src = inspect.getsource(render)
+    assert 'photo_contract.color_code_conflicts(header)' in src
+    assert 'drop_types=drop_types' in src

@@ -76,6 +76,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_mechanism_starts_late",     # 원리 설명이 너무 늦게 시작한다(전반부가 통째로 소개)
     "photo_role_claim_mismatch",       # 컷의 역할 라벨이 가리키는 근거와 맞지 않는다
     "photo_mechanism_unlabeled",       # 기전 시퀀스에 범례·캡션이 없다(어느 쪽이 무엇인지 화면이 안 말한다)
+    "photo_color_code_reused",         # 비교색을 부위 구분으로 다시 썼다(범례가 거짓이 된다)
     "photo_keyword_is_a_sentence",     # 키워드 카드가 낱말이 아니라 문장이다(9/8 에 뺀 그 카드다)
     "photo_keyword_repeats_narration",  # 카드가 나레이션을 그대로 옮겨 적었다(같은 말을 두 번)
     "photo_pointer_zone_unknown",      # 화살표가 가리킬 구역 이름이 틀렸다(화살표가 통째로 사라진다)
@@ -360,6 +361,61 @@ def pointer_zone_problems(cuts: list[dict[str, Any]]) -> list[Any]:
             if isinstance(item, dict) and str(item.get("type")) == "pointer":
                 if not evidence_overlay._pointer_zones(item) and c.get("cut_no") not in out:
                     out.append(c.get("cut_no"))
+    return out
+
+
+def color_code_conflicts(header: dict[str, Any]) -> list[str]:
+    """비교색(blue·coral)이 **뜻을 잃은** 시퀀스 → "SEQ1(BRAIN_DEAF 가 두 색을 다 쓴다)" 목록.
+
+    ★ 무엇이 문제였나(2026-09-19 실측, 지시서 fa58ed10): 색 규약은 "blue=첫 집단, coral=둘째
+      집단"인데 모델이 그 두 색을 **한 뇌 안의 부위 구분**으로 다시 썼다 —
+      "BRAIN_MODEL_DEAF: 주변부는 coral, 중심부는 blue / BRAIN_MODEL_HEARING: 둘 다 blue".
+      그러면 화면의 범례("파랑=청각인")가 **거짓말이 된다.** 운영자가 "좌우가 뒤집혔다"고 본 것이
+      실은 이것이었다 — 거울 대칭이 아니라 **색의 뜻이 갈아엎힌 것**이다(형태 상관계수 0.985).
+
+    ★ 판정 규칙 둘:
+        · 한 개체가 **두 비교색을 다 쓴다** → 색을 부위 구분으로 재사용한 것이다.
+        · 한 비교색을 **두 개체가 나눠 쓴다** → 어느 쪽이 누구인지 화면이 말할 수 없다.
+    ★ **두 색이 다 등장하는 시퀀스에만** 적용한다 — 색 규약(2026-09-18) 이전 지시서는 파랑을
+      그냥 사물 색으로 쓰고 비교하지 않았다. 그 편들까지 잡으면 오탐이다(실측: 44편 중 그런 편 2).
+      실측 히트: 규약 이후 만든 2편 **둘 다** 어긋났다(오탐 0).
+    """
+    compare = {c for c in config.MECHANISM_COLOR_CODE if c != "amber"}
+    out: list[str] = []
+    for seq in (header.get("visual_sequences") or []):
+        if not isinstance(seq, dict):
+            continue
+        owned: dict[str, set[str]] = {}
+        seen: set[str] = set()
+
+        def _note(entity_id: str, text: str) -> None:
+            found = {c for c in compare if c in text.lower()}
+            seen.update(found)
+            if entity_id and found:
+                owned.setdefault(entity_id, set()).update(found)
+
+        for e in (seq.get("entities") or []):
+            if isinstance(e, dict):
+                _note(str(e.get("entity_id") or ""), str(e.get("visual_identity") or ""))
+        for st in (seq.get("stages") or []):
+            if not isinstance(st, dict):
+                continue
+            for mu in (st.get("mutations") or []):
+                if isinstance(mu, dict):
+                    _note(str(mu.get("entity_id") or ""), str(mu.get("result_state") or ""))
+        if len(seen) < 2:
+            continue                     # 비교색을 쓰지 않는 시퀀스 — 판정 대상이 아니다
+        sid = str(seq.get("sequence_id") or "?")
+        for eid, colors in sorted(owned.items()):
+            if len(colors) > 1:
+                out.append(f"{sid}({eid} 가 {'·'.join(sorted(colors))} 를 다 쓴다)")
+        holders: dict[str, list[str]] = {}
+        for eid, colors in owned.items():
+            for c in colors:
+                holders.setdefault(c, []).append(eid)
+        for c, eids in sorted(holders.items()):
+            if len(eids) > 1:
+                out.append(f"{sid}({c} 를 {', '.join(sorted(eids))} 가 나눠 쓴다)")
     return out
 
 
@@ -671,6 +727,31 @@ def normalize_glow(header: dict[str, Any], cuts: list[dict[str, Any]]) -> list[s
                 if after != before:
                     spec[k] = after
                     touched.append(f"컷{c.get('cut_no')}")
+    # ★★ **stage 의 변이 서술도 본다**(2026-09-19 실측으로 잡았다). `sequence_render.change_prose`
+    #   가 `mutations[].result_state` 를 참조 컷 프롬프트에 **그대로 싣는다** — 그래서 컷
+    #   프롬프트만 청소했더니 발광이 그 길로 그림에 닿았다(실제 프롬프트에 "glows a bright,
+    #   expanded coral color" 가 남아 있었다). 검사하는 자리와 고치는 자리는 같아야 한다.
+    for seq in (header.get("visual_sequences") or []):
+        if not isinstance(seq, dict):
+            continue
+        for st in (seq.get("stages") or []):
+            if not isinstance(st, dict):
+                continue
+            sid = str(st.get("stage_id") or "?")
+            for k in ("observable_change", "state_before", "state_after"):
+                before = str(st.get(k) or "")
+                after = strip_glow(before)
+                if after != before:
+                    st[k] = after
+                    touched.append(f"단계 {sid}")
+            for mu in (st.get("mutations") or []):
+                if not isinstance(mu, dict):
+                    continue
+                before = str(mu.get("result_state") or "")
+                after = strip_glow(before)
+                if after != before:
+                    mu["result_state"] = after
+                    touched.append(f"단계 {sid}")
     return sorted(set(touched))
 
 
@@ -1282,6 +1363,9 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
                  if config.MECHANISM_LABEL_OVERLAYS_ENABLED else [])
     # ⑧-C 키워드 카드·화살표(2026-09-18 운영자 지시). 셋 다 경고다 — 새 문법이라 첫 실측 전엔
     #   차단하지 않는다. 재생성은 되묻는다(config.RETRYABLE_QUALITY_WARNINGS).
+    color_bad = color_code_conflicts(header)
+    if color_bad:
+        warns.append("photo_color_code_reused:" + ", ".join(color_bad[:4]))
     if config.MECHANISM_LABEL_OVERLAYS_ENABLED:
         kw_sentences, kw_repeats = keyword_card_problems(cuts)
         if kw_sentences:
@@ -1684,6 +1768,13 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 실측: world 가 '세포 단면 모형'인데 여는 컷이 벤 다이어그램을 그려"
                 " **세포가 영상에서 사라졌다.**"
                 " 여는 컷의 visual_prompt 에 world 가 말한 장소와 물건을 **실제로 적어라.**")
+        if "photo_color_code_reused" in wcodes:
+            fixes.append(
+                "- 비교색(muted blue · muted coral)을 **한 개체 안의 부위 구분**으로 다시 썼다."
+                " 그 두 색은 영상 내내 **비교하는 두 대상**을 가리키는 이름이다 — 부위를 나누는 데"
+                " 쓰면 범례가 거짓말이 된다(화면은 '파랑=청각인'이라고 적혀 있는데 파랑이 청각장애인"
+                " 뇌의 중심부를 뜻하게 된다). 한 개체는 처음부터 끝까지 **한 색**만 갖는다."
+                " 개체 **안의** 한 부분을 가리키려면 amber 강조나 화살표(pointer)를 써라.")
         if "photo_keyword_is_a_sentence" in wcodes:
             fixes.append(
                 "- 키워드 카드가 **문장**이다. 카드는 화면 속 물체에 다는 이름표이지 자막이 아니다 —"
