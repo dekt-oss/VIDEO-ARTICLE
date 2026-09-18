@@ -25,7 +25,7 @@ import math
 import re
 from typing import Any
 
-from . import config
+from . import config, visual_sequence
 
 # ─────────────────────────────────────────────────────────────
 # 사유 코드 (정본). web/lib/blockLabels.ts 가 표시 문자열을 미러한다.
@@ -47,6 +47,7 @@ BLOCK_REASONS: tuple[str, ...] = (
     "photo_text_request_conflict",       # 같은 프롬프트가 글자를 요구하면서 동시에 금지한다
     "photo_style_word_in_prompt",        # 장면 묘사가 화풍·렌즈 기법을 지시한다(화풍은 코드가 정한다)
     "photo_quoted_label_in_prompt",      # 따옴표 친 라벨 이름 — 그림에 글자로 구워진다
+    "photo_mechanism_prompt_detached",   # 도해 구조와 visual_prompt 가 서로 딴 것을 말한다(연구 T1-b)
 )
 WARNING_REASONS: tuple[str, ...] = (
     "photo_role_balance_off",          # 도해/실사 비율이 권장에서 벗어남
@@ -73,6 +74,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_world_lead_disagrees",      # 세계를 여는 컷이 그 세계를 안 그린다(세계 선언이 죽는다)
     "photo_mechanism_starts_late",     # 원리 설명이 너무 늦게 시작한다(전반부가 통째로 소개)
     "photo_role_claim_mismatch",       # 컷의 역할 라벨이 가리키는 근거와 맞지 않는다
+    "photo_mechanism_unlabeled",       # 기전 시퀀스에 범례·캡션이 없다(어느 쪽이 무엇인지 화면이 안 말한다)
 )
 
 # ─────────────────────────────────────────────────────────────
@@ -255,8 +257,23 @@ def _has_structured_progression(cut: dict[str, Any]) -> bool:
 
 
 def _raw_text_of(cut: dict[str, Any]) -> str:
-    """부정문을 **지우지 않은** 원문. 모순 검사는 금지문이 있었는지도 알아야 한다."""
+    """부정문을 **지우지 않은** 원문. 모순 검사는 금지문이 있었는지도 알아야 한다.
+
+    ★ 장면 묘사(visual_prompt·motion_prompt)만이다. 도해 구조 문장은 여기 넣지 않는다 —
+      구조·장식 판정(⑧)은 **장면이** 설명을 하는지를 보는 것이라, 구조 문장이 섞이면 배경
+      사진에 구조만 좋은 컷이 통과한다. 구조 문장이 실제로 그림에 가는 데 따른 검사는
+      `_image_text_of` 를 쓰는 곳(따옴표 라벨)에서 따로 한다.
+    """
     return " ".join(str(cut.get(k) or "") for k in ("visual_prompt", "motion_prompt"))
+
+
+def _image_text_of(cut: dict[str, Any]) -> str:
+    """이미지 모델에 **실제로 가는** 문장 전부 — 장면 묘사 + 도해 구조 문장(2026-09-18).
+    구조 필드가 프롬프트에 실리기 시작했으므로(visual_sequence.mechanism_prose) 글자로
+    구워질 위험을 보는 검사는 이것을 봐야 한다."""
+    mech = visual_sequence.mechanism_prose(cut)
+    base = _raw_text_of(cut)
+    return f"{base} {mech}" if mech else base
 
 
 def _text_of(cut: dict[str, Any]) -> str:
@@ -288,6 +305,43 @@ def mechanism_spec_complete(spec: dict[str, Any]) -> bool:
     # 전·후 중 하나는 있어야 "바뀐다"가 화면에 성립한다.
     return bool(str(spec.get("initial_state") or "").strip()
                 or str(spec.get("final_state") or "").strip())
+
+
+def _overlay_types_of(cut: dict[str, Any]) -> set[str]:
+    return {str((o or {}).get("type") or "") for o in (cut.get("overlay_plan") or [])
+            if isinstance(o, dict)}
+
+
+def mechanism_unlabeled_cuts(header: dict[str, Any], cuts: list[dict[str, Any]]) -> list[Any]:
+    """범례·캡션이 빠진 기전 컷 번호(연구 T3). 순수 — 지시서 dict 만 본다.
+
+    ▸ 시퀀스 단위: MECHANISM 컷을 2개 이상 담은 시퀀스에 `legend` 가 하나도 없으면
+      그 시퀀스의 첫 MECHANISM 컷을 적는다(어디에 넣으라는 뜻).
+    ▸ stage 단위: 상태가 바뀌는 stage(`stage_changes_state`)의 컷에 `label_pair` 가 없으면 적는다 —
+      그 컷은 전·후 분할 스틸로 나가므로 위·아래가 무엇인지 캡션이 있어야 한다.
+    """
+    seqs = [x for x in (header.get("visual_sequences") or []) if isinstance(x, dict)]
+    if not seqs:
+        return []
+    by_no = {int(c.get("cut_no") or 0): c for c in cuts if str(c.get("cut_no") or "").isdigit()}
+    out: list[Any] = []
+    for seq in seqs:
+        mech_cuts: list[dict[str, Any]] = []
+        has_legend = False
+        for st in seq.get("stages") or []:
+            for ref in st.get("cut_refs") or []:
+                c = by_no.get(int(ref)) if str(ref).isdigit() else None
+                if not c or str(c.get("visual_role") or "") != "MECHANISM":
+                    continue
+                mech_cuts.append(c)
+                types = _overlay_types_of(c)
+                has_legend = has_legend or ("legend" in types)
+                if (visual_sequence.stage_changes_state(st) and "label_pair" not in types
+                        and c["cut_no"] not in out):
+                    out.append(c["cut_no"])
+        if len(mech_cuts) >= 2 and not has_legend and mech_cuts[0]["cut_no"] not in out:
+            out.append(mech_cuts[0]["cut_no"])
+    return out
 
 
 def effective_runtime(cuts: list[dict[str, Any]], total_sec: int) -> int:
@@ -701,7 +755,9 @@ def quoted_label_cuts(cuts: list[dict[str, Any]]) -> list[str]:
     for c in cuts:
         if not isinstance(c, dict):
             continue
-        text = " ".join(str(c.get(k) or "") for k in ("visual_prompt", "motion_prompt"))
+        # ★ 도해 구조 문장도 본다 — 그 문장이 이미지에 가므로(2026-09-18) 거기 따옴표가 있으면
+        #   장면에 있는 것과 똑같이 글자로 구워진다.
+        text = _image_text_of(c)
         hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)})
         if hits:
             out.append(f"컷{c.get('cut_no')}({', '.join(hits[:3])})")
@@ -1071,6 +1127,13 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
                 continue
             blocks.append(f"photo_mechanism_spec_missing:{c['cut_no']}")
             continue
+        # ★ [구조와 장면이 서로 딴 말을 한다] 2026-09-18, 연구 T1-b. components 를 적어 놓고
+        #   visual_prompt 에는 그중 하나도 안 그리는 컷 — 구조는 게이트용, 장면은 따로 지은 것.
+        #   실측 117컷 중 4컷(3.4%)·오탐 0 이라 차단이다. 한글 구성요소는 그림에 못 가므로
+        #   영어 구성요소가 2개 미만이면 같은 사유다(지시서 프롬프트가 영어를 요구한다).
+        hits, english_comps = visual_sequence.mechanism_component_hits(c)
+        if english_comps < 2 or hits < config.PHOTO_MECHANISM_PROMPT_MIN_HITS:
+            blocks.append(f"photo_mechanism_prompt_detached:{c['cut_no']}")
         text = _text_of(c)
         signals = 0
         if not _STRUCTURAL.search(text):
@@ -1093,6 +1156,20 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
             blocks.append(f"photo_mechanism_decorative:{c['cut_no']}")
         elif signals == 1:
             warns.append(f"photo_mechanism_thin:{c['cut_no']}")
+
+    # ⑧-B 기전 시퀀스가 **어느 쪽이 무엇인지** 말하는가(2026-09-18, 연구 T3).
+    #   두 뇌를 나란히 그려도 범례가 없으면 시청자는 어느 쪽이 손상인지 모른다. 이미지에
+    #   글자는 금지이므로 말할 길은 overlay_plan 의 legend/label_pair 뿐이다.
+    #   ▸ 기전 시퀀스(stage 를 가진 MECHANISM 컷 묶음)마다 legend 가 하나는 있어야 하고,
+    #   ▸ 상태가 바뀌는 stage(전·후 분할 스틸로 나가는 컷)에는 label_pair 가 있어야 한다.
+    #   경고다 — 새 어휘라 첫 실측 전엔 차단하지 않는다(재생성은 되묻는다: RETRYABLE).
+    #   ★ 범례·캡션 스위치(MECHANISM_LABEL_OVERLAYS_ENABLED)가 꺼져 있으면 이 검사도 끈다
+    #     (위 number_without_overlay 와 같은 이유 — 렌더가 안 그리는 것을 요구하면 함정이다).
+    #     수치·출처 카드 스위치(EVIDENCE_OVERLAY_ENABLED)와는 별개다 — 9/8 에 그 카드만 뺐다.
+    unlabeled = (mechanism_unlabeled_cuts(header, cuts)
+                 if config.MECHANISM_LABEL_OVERLAYS_ENABLED else [])
+    if unlabeled:
+        warns.append("photo_mechanism_unlabeled:" + ",".join(str(x) for x in unlabeled[:6]))
 
     # ⑧-A 오버레이 연도가 원장에 있는가 (2026-08-29 실측: 없는 연도를 지어냈다).
     bad_years = unverified_overlay_years(cuts, fact_sheet)
@@ -1373,6 +1450,14 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
             "- 도해 컷의 visual_prompt 가 배경·분위기에 그친다. **무엇을 잘라서 무엇을 보여주는지**"
             " 를 적어라(cutaway / cross-section / exploded view / step sequence / before-and-after)."
             " 'abstract', 'glowing', 'wide shot of' 같은 분위기 어휘를 빼라.")
+    if "photo_mechanism_prompt_detached" in codes:
+        fixes.append(
+            "- 도해 컷의 mechanism.components 와 visual_prompt 가 **서로 딴 것을 말한다.**"
+            " components 에는 화면에 실제로 보일 물체를 **영어로** 2개 이상 적어라(entity_id·데이터셋"
+            " 이름·한글 금지). visual_prompt 는 그 물체들을 **이름 그대로** 써서 그려라 —"
+            " 구조에 있는 것이 장면에 없으면 그 구조는 그림에 닿지 않는다."
+            " (subject / initial_state / transformation / final_state / highlighted_element 도"
+            " 영어로. 사람이 읽을 요약은 mechanism_ko 에 한글로.)")
     # ★★ 아래 여섯은 **처방이 비어 있었다**(2026-08-31). 차단은 하면서 고치는 법을 안 주면
     #   재시도가 같은 결함을 반복한다 — 실제로 `photo_text_request_conflict` 는 재생성
     #   실측에서 차단 사유로 나왔는데 되먹임 문장이 없었다.
@@ -1473,6 +1558,14 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 실측: world 가 '세포 단면 모형'인데 여는 컷이 벤 다이어그램을 그려"
                 " **세포가 영상에서 사라졌다.**"
                 " 여는 컷의 visual_prompt 에 world 가 말한 장소와 물건을 **실제로 적어라.**")
+        if "photo_mechanism_unlabeled" in wcodes:
+            fixes.append(
+                "- 기전 시퀀스에 **범례·캡션이 없다.** 두 집단·전후를 나란히 그려도 어느 쪽이"
+                " 무엇인지 시청자가 모른다. 이미지에 글자는 금지이니 overlay_plan 으로 말하라:"
+                " 시퀀스의 첫 도해 컷에 legend(payload.items = [{color: amber|blue|coral, label: 한글"
+                " 낱말}]) 하나, 상태가 바뀌는 stage 의 컷에는 label_pair(payload.top / payload.bottom"
+                " = 위·아래 화면이 무엇인지 한글 짧게). 색은 규약대로 — amber=설명하는 부분,"
+                " blue=첫 집단·전, coral=둘째 집단·후 — visual_prompt 도 같은 색으로 칠하라.")
         if "photo_mechanism_starts_late" in wcodes:
             wfix.append(
                 "- **원리 설명이 너무 늦게 시작한다.** 총량이 충분해도 뒤로 몰리면 전반부가"

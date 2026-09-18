@@ -421,6 +421,112 @@ def entity_prose(entities: list[dict[str, Any]], refs: list[str]) -> str:
     return "; ".join(f"{e['entity_id']}: {e['visual_identity']}" for e in named)
 
 
+_HANGUL = re.compile(r"[가-힣]")
+_WORD = re.compile(r"[a-z]+")
+_PROSE_STOP = frozenset(
+    "a an the of in on at to for and or with without from by into over under between across "
+    "through as is are be this that these those its it their his her one two three left right "
+    "top bottom front back side same new old small large big".split())
+
+
+def _english(value: Any) -> str:
+    """영어로만 적힌 값. 한글이 섞이면 빈 문자열 — 그림에는 영어만 보낸다."""
+    text = str(value or "").strip()
+    return "" if (not text or _HANGUL.search(text)) else text
+
+
+def _phrase(value: Any, *, max_words: int = 12) -> str:
+    """이름·구절로 쓸 수 있는 영어 값. 문장(마침표·너무 긴 것)은 버린다 — 프롬프트 안에서
+    "the The two models as a comparative pair. is the part" 같은 파편이 된다(2026-09-18 실측)."""
+    text = _english(value).rstrip(".").strip()
+    if not text or len(text.split()) > max_words:
+        return ""
+    return text
+
+
+def mechanism_prose(cut: dict[str, Any], *, referenced: bool = False) -> str:
+    """도해 구조(mechanism) → 이미지 프롬프트에 붙일 한 문장 (2026-09-18, 연구 T1-a).
+
+    ★ 왜 생겼나: `mechanism` 은 subject/components/transformation 을 필드로 받아 게이트가
+      검사했지만 **그림에는 한 번도 닿지 않았다**(연구_기전시퀀스_교육력 §3-1). 구조가 완벽해도
+      화면은 visual_prompt 의 배경 사진이었다. `entity_prose`·`world_prose` 와 같은 처지였다 —
+      만들어 놓고 배선하지 않은 것.
+
+    ★ 영어 필드만 싣는다. 한글이 섞인 필드는 뺀다 — 생성 모델이 한글을 글자로 구울 수 있고,
+      그림은 언어판이 공유한다. 지시서 프롬프트가 이제 이 필드들을 영어로 요구한다
+      (사람이 읽는 것은 `mechanism_ko`).
+
+    ★★ **전·후를 한 프롬프트에 나열하지 않는다**(2026-09-18 유료 실측 4장 전부). 첫 판은
+      "before: …; after: …" 를 붙였고 Gemini 는 그것을 **세로 3단 스토리보드**로 그렸다 —
+      한 화면에 두 뇌가 세 줄로 반복됐다. 한 장은 한 상태다. 무엇이 보여야 하고 무엇이
+      설명 대상인지만 말하고, 상태는 visual_prompt(그 컷의 장면)가 말한다. 그리고 "한 장면"
+      을 명시한다 — 구성요소를 나열하면 모델이 칸을 나누고 싶어한다.
+
+    ★ referenced=True(참조 그림에 이어 그리는 컷)에서는 **변화와 강조만** 말한다. 전·후를 다
+      말하면 "이것만 바꿔라"와 싸운다(providers/image.py 의 참조 프롬프트 규칙 그대로).
+    """
+    spec = cut.get("mechanism")
+    if not isinstance(spec, dict):
+        return ""
+    comps = [c for c in (_phrase(x) for x in (spec.get("components") or [])) if c]
+    focus = _phrase(spec.get("highlighted_element"))
+    if referenced:
+        change = _english(spec.get("transformation")).rstrip(".").strip()
+        parts: list[str] = []
+        if change:
+            parts.append(f"The change to show: {change}")
+        if focus:
+            parts.append(f"keep the attention on {focus}")
+        return ". ".join(parts) if parts else ""
+    if len(comps) < 2:
+        return ""
+    prose = (f"One single scene (no panels, no grid, no storyboard) showing "
+             f"{', '.join(comps[:-1])} and {comps[-1]} all visible together")
+    if focus:
+        prose += f"; {focus} is the part being explained"
+    return prose
+
+
+def mechanism_component_hits(cut: dict[str, Any]) -> tuple[int, int]:
+    """(프롬프트에 등장하는 영어 구성요소 수, 영어 구성요소 수). 연구 T1-b 게이트의 재료.
+
+    낱말 겹침으로 잰다(4자 이상, 복수형·-ing 을 거칠게 벗긴다). 정밀하지 않지만 실측
+    117컷에서 0겹침 4건이 전부 진짜였고 오탐이 없었다(config.PHOTO_MECHANISM_PROMPT_MIN_HITS).
+    """
+    spec = cut.get("mechanism")
+    if not isinstance(spec, dict):
+        return 0, 0
+    comps = [c for c in (_english(x) for x in (spec.get("components") or [])) if c]
+    prompt_words = _stems(str(cut.get("visual_prompt") or ""))
+    hits = sum(1 for c in comps if _stems(c) & prompt_words)
+    return hits, len(comps)
+
+
+def _stems(text: str) -> set[str]:
+    out: set[str] = set()
+    for tok in _WORD.findall(text.lower()):
+        if len(tok) < 4 or tok in _PROSE_STOP:
+            continue
+        for suf in ("ing", "es", "ed", "s"):
+            if tok.endswith(suf) and len(tok) - len(suf) >= 4:
+                tok = tok[: -len(suf)]
+                break
+        out.add(tok)
+    return out
+
+
+def stage_changes_state(stage: dict[str, Any] | None) -> bool:
+    """이 stage 가 **의미 변화**(모양이 바뀜·커짐·줄어듦·갈라짐·합쳐짐·사라짐)를 선언하는가.
+
+    I2V 가 못 하는 종류의 변화다 — 운동(MOVE·ROTATE·IMPACT)은 여기 들지 않는다.
+    렌더가 전·후 분할 스틸로 갈지 정할 때 쓴다(config.MECHANISM_SPLIT_OPERATIONS).
+    """
+    for m in ((stage or {}).get("mutations") or []):
+        if str(m.get("operation") or "") in config.MECHANISM_SPLIT_OPERATIONS:
+            return True
+    return False
+
+
 def stage_index(sequences: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """stage_id → stage. 연속성 참조 검사와 렌더가 같은 색인을 쓴다."""
     out: dict[str, dict[str, Any]] = {}

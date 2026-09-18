@@ -29,12 +29,19 @@ LOCKED_REALITY = (
     "matte surfaces with minimal micro-texture, even studio lighting, "
     "limited desaturated palette with a single amber accent, neutral background"
 )
+# ★ 2026-09-18 **의도한 변경**(운영자 승인 "T5 색까지 승인", 연구_기전시퀀스_교육력 T5).
+#   앰버 1색으로는 두 집단·전후를 구별할 수 없어(두 뇌가 같은 색) 비교용 두 색을 뜻과 함께
+#   더했다(config.MECHANISM_COLOR_CODE). 재질·조명·배경은 2026-09-08 고정 그대로다 —
+#   아래 `test_the_two_roles_still_share_one_visual_language` 가 그것을 계속 지킨다.
+#   REALITY 는 손대지 않았다. 실측 판정은 docs/핸드오프_기전교육력_2026-09-18.md 에 기록한다.
 LOCKED_MECHANISM = (
     "stylized 3D render, simplified geometric forms with clean silhouettes, "
     "matte surfaces with minimal micro-texture, "
     "isometric cutaway with crisp layer separation, "
     "even studio lighting, "
-    "single amber accent color on the part being explained, neutral background"
+    "amber accent on the part being explained, "
+    "muted blue and muted coral as the only two comparison colors, "
+    "no other saturated color, neutral background"
 )
 LOCKED_GLOBAL = (
     "One consistent look across every cut: the same materials, the same even studio light, "
@@ -67,8 +74,12 @@ def test_the_two_roles_still_share_one_visual_language():
                    "even studio lighting",
                    "neutral background"):
         assert shared in real and shared in mech, shared
-    # 다른 것은 시점 하나뿐이다.
+    # 다른 것은 시점 하나 — 그리고 2026-09-18 부터 **비교용 두 색**(도해에만 필요하다).
     assert "isometric cutaway" in mech and "isometric cutaway" not in real
+    assert "muted blue and muted coral" in mech and "muted blue and muted coral" not in real
+    # 색 규약의 세 색이 프롬프트 문자열에 **뜻 그대로** 살아 있어야 범례가 거짓이 안 된다.
+    for color in config.MECHANISM_COLOR_CODE:
+        assert color in mech, color
 
 
 def test_neither_role_asks_for_a_photograph_or_an_illustration():

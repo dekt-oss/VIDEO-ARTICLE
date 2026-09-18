@@ -62,12 +62,16 @@ export type AssetStrategy =
 export type Tristate = "pass" | "fail" | "not_applicable";
 export type OverlayType =
   | "source_card" | "evidence_card" | "number_punch" | "caveat_tag" | "scope_tag"
+  // 2026-09-18 기전 교육력: 색 범례 · 상하 분할 화면 캡션(engine/config.py OVERLAY_TYPES 미러)
+  | "legend" | "label_pair"
   | "before_after" | "group_compare" | "timeline" | "mechanism_steps";
 
 /** 화면으로 증명하는 근거 카드 1건. 자막과 같은 ASS 레이어에 얹혀 언어별로 렌더된다. */
 export interface OverlayItem {
   type: OverlayType;
   text: string;
+  /** legend: {items:[{color,label}]} · label_pair: {top,bottom}. 다른 유형은 없음. */
+  payload?: Record<string, unknown>;
   claim_ids: string[];
   start_sec: number;
   duration_sec: number;

@@ -17,6 +17,7 @@ import tempfile
 
 from engine import (config, generation_spec, sequence_render as sr,
                     visual_sequence as vs, visual_sequence_contract as vc)
+from engine import config
 from engine.providers import image as image_provider
 
 
@@ -630,8 +631,13 @@ def test_the_repaint_clause_is_dropped_when_continuing_a_world():
     header = {"version_type": "photo"}
     first = image_provider._build_image_prompt(cut, header)
     cont = image_provider._build_image_prompt(cut, header, referenced=True)
-    assert "amber accent color on the part being explained" in first
-    assert "amber accent color on the part being explained" not in cont
+    # ★ 2026-09-18 색 규약으로 문구가 바뀌었다(config.STYLE_CLAUSES_DROPPED_WHEN_REFERENCED 가 정본).
+    #   검사의 뜻은 그대로다 — 첫 컷에는 있고 참조 컷에는 없다.
+    clause = config.STYLE_CLAUSES_DROPPED_WHEN_REFERENCED[0]
+    assert clause in first
+    assert clause not in cont
+    # 비교용 두 색은 참조 컷에서도 **남는다** — 집단 색이 컷마다 바뀌면 범례가 거짓이 된다.
+    assert "muted blue and muted coral" in cont
     # 나머지 화풍은 그대로여야 한다 — 참조 컷만 다른 그림체가 되면 그것도 단절이다.
     # ★ 화풍 문자열은 2026-09-07 에 바뀌었다(운영자 지시로 두 역할을 한 언어로 통일).
     #   검사의 뜻은 그대로다 — 참조 컷만 다른 그림체가 되면 그것도 단절이다.

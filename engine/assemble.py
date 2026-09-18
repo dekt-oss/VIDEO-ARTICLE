@@ -171,6 +171,26 @@ def build_cut_command(
     ]
 
 
+def build_still_video_command(*, image_path: str, duration: float, effects: list[str],
+                              out_path: str) -> list[str]:
+    """스틸 한 장 → 오디오 없는 mp4(켄번스). stage 영상 자리에 **영상 생성 대신** 들어간다.
+
+    ★ 2026-09-18 전·후 분할 스틸(연구 T2)의 영상 부분. build_cut_command 와 같은 필터를 쓰되
+      오디오가 없다 — stage 영상은 컷들이 구간을 잘라 자기 나레이션을 얹기 때문이다
+      (build_slice_cut_command). 길이는 -t 로 정확히 자른다(-shortest 가 기댈 오디오가 없다).
+    """
+    vf = effect_filter(effects, duration)
+    return [
+        "ffmpeg", "-y",
+        "-loop", "1", "-t", f"{float(duration):.3f}", "-i", image_path,
+        "-vf", vf,
+        "-r", str(config.RENDER_FPS),
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-an",
+        out_path,
+    ]
+
+
 def clip_fit_video_filter(strategy: Strategy | None, duration: float,
                           fps: int = config.RENDER_FPS) -> str:
     """길이 보정 전략 → 단일 입출력 비디오 필터 조각(fit 뒤에 붙는다). 순수 함수.
