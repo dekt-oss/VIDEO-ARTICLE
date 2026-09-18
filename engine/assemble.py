@@ -126,16 +126,23 @@ def effect_filter(effects: list[str], duration: float, fps: int = config.RENDER_
     #   최대치에 닿고 남은 구간이 정지("정지화면")로 보였다. 중앙 기준(x/y)으로 줌해 흔들림 없이.
     zmax = 1.18
     center = "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+    # ★★ **먼저 종횡비를 맞춰 잘라낸다**(2026-09-18 실측으로 잡았다). zoompan 의 `s=` 는 출력
+    #   크기일 뿐 종횡비를 지켜 주지 않는다 — 9:16 그림(1080×1920)을 중앙 밴드(1080×1300)로
+    #   내보내면 **세로로 눌린다.** 실측: 지름 600px 원이 600×406 타원이 됐다(68%).
+    #   효과가 없는 컷은 아래 마지막 줄에서 이미 cover-crop 을 하고 있었다 — 켄번스·팬 branch 만
+    #   그 줄을 안 지나가고 있었던 것이다. 저장된 지시서 실측: 스틸 컷 70개 중 21개(30%),
+    #   13/40 편이 이 상태로 나갔다(사람은 납작하고 도해는 찌그러진다).
+    fit = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
     if "ken_burns_zoom_in" in eff:
-        return (f"zoompan=z='min(1+{zmax - 1:.3f}*on/{frames},{zmax})':{center}"
+        return (fit + f"zoompan=z='min(1+{zmax - 1:.3f}*on/{frames},{zmax})':{center}"
                 f":d={frames}:s={w}x{h}:fps={fps}") + pad
     if "ken_burns_zoom_out" in eff:
-        return (f"zoompan=z='max({zmax}-{zmax - 1:.3f}*on/{frames},1.0)':{center}"
+        return (fit + f"zoompan=z='max({zmax}-{zmax - 1:.3f}*on/{frames},1.0)':{center}"
                 f":d={frames}:s={w}x{h}:fps={fps}") + pad
     if "pan_left" in eff:
-        return f"zoompan=z='{zmax}':x='(iw-iw/zoom)*(1-on/{frames})':d={frames}:s={w}x{h}:fps={fps}" + pad
+        return fit + f"zoompan=z='{zmax}':x='(iw-iw/zoom)*(1-on/{frames})':d={frames}:s={w}x{h}:fps={fps}" + pad
     if "pan_right" in eff:
-        return f"zoompan=z='{zmax}':x='(iw-iw/zoom)*(on/{frames})':d={frames}:s={w}x{h}:fps={fps}" + pad
+        return fit + f"zoompan=z='{zmax}':x='(iw-iw/zoom)*(on/{frames})':d={frames}:s={w}x{h}:fps={fps}" + pad
     # 효과 없음/미지원: 정지 프레임을 콘텐츠 영역에 맞춤(+상하 바).
     return f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}" + pad
 

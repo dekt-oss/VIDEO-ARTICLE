@@ -616,13 +616,19 @@ def split_before_after_applies(cut: dict[str, Any], header: dict[str, Any]) -> b
 def _compose_split_still(before_path: str, after_path: str, out_path: str) -> bool:
     """전(위)·후(아래)를 세로로 붙인 9:16 한 장. 실패하면 False(호출부가 I2V 로 되돌아간다).
 
-    ★ 위·아래다(좌·우가 아니다) — 세로 화면에서 좌우 분할은 각각이 너무 좁아 도해가 안 읽힌다.
-      각 반쪽은 원본을 **가운데 기준으로 잘라**(cover) 채운다 — 늘리면 화풍이 깨진다.
+    ★ 위·아래다(좌·우가 아니다). **실측으로 정했다**(2026-09-18, 실제 생성 그림으로 두 방식을
+      만들어 비교): 위·아래는 각 반쪽이 원본 세로의 33% 만 남기지만 그 33% 가 **대상이 있는
+      한가운데**라 뇌가 크고 또렷하게 잡힌다. 좌·우는 74% 를 남기는데도 빈 배경과 탁자만 두 번
+      보여 대상이 작아진다. "많이 남기는 쪽"이 아니라 "대상이 크게 남는 쪽"이 맞았다.
+
+    ★★ 캔버스는 **콘텐츠 밴드 크기**다(전체 프레임이 아니다). 전체 프레임(1080×1920)으로 만들면
+      조립이 그것을 다시 밴드(1080×1300)로 cover-crop 하면서 **위 화면의 위쪽과 아래 화면의
+      아래쪽을 잘라낸다** — 비교하라고 만든 것을 잘라 버리는 셈이다(2026-09-18 재리뷰에서 잡았다).
       어느 쪽이 전이고 후인지는 그림이 아니라 label_pair 오버레이가 말한다(언어별).
     """
     try:
         from PIL import Image  # noqa: PLC0415 — 지연 import(엔진 순수 테스트는 Pillow 없이도 돈다)
-        w, h = int(config.RENDER_WIDTH), int(config.RENDER_HEIGHT)
+        w, h = assemble.layout_content_dims()
         gap = int(config.MECHANISM_SPLIT_DIVIDER_PX)
         half = (h - gap) // 2
 
@@ -648,7 +654,7 @@ def _build_split_stage_video(split_img: str, plan: dict[str, Any], work_dir: str
     out = os.path.join(work_dir, f"stage_{gi}_split.mp4")
     assemble.run_ffmpeg(assemble.build_still_video_command(
         image_path=split_img, duration=float(plan["total_sec"]),
-        effects=[config.MECHANISM_SPLIT_EFFECT], out_path=out))
+        effects=[e for e in [config.MECHANISM_SPLIT_EFFECT] if e], out_path=out))
     return out
 
 

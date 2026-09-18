@@ -167,11 +167,23 @@ def test_ass_defines_the_three_new_styles_only_when_overlays_exist():
     with_ov = subtitles.build_ass([(0.0, 2.0, "자막")], header_title="t", header_hook="h", overlays=cues)
     for name in ("Style: Legend,", "Style: LabelTop,", "Style: LabelBottom,"):
         assert name in with_ov, name
-    # 범례는 좌하단(1), 캡션은 상단 기준(8) — 자리가 서로·자막과 겹치지 않게.
-    legend_line = next(l for l in with_ov.splitlines() if l.startswith("Style: Legend,"))
-    assert legend_line.split(",")[11] == "1"
-    top_line = next(l for l in with_ov.splitlines() if l.startswith("Style: LabelTop,"))
-    assert top_line.split(",")[11] == "8"
+    # 범례는 좌하단(1). 캡션 두 줄은 **분할선을 위·아래로 끼고** 붙는다 —
+    #   위 캡션은 하단 기준(2)으로 선 위에, 아래 캡션은 상단 기준(8)으로 선 아래에.
+    def _style(name: str) -> list[str]:
+        return next(l for l in with_ov.splitlines() if l.startswith(f"Style: {name},")).split(",")
+    assert _style("Legend")[11] == "1"
+    # ★ 캡션 두 줄은 **각자 자기 화면의 머리**에 붙는다(둘 다 상단 기준 8). 실측 세 번 끝에 정했다:
+    #   분할선을 끼면 몰려서 주인이 안 보이고, 화면 아래에 두면 나레이션 자막과 12px 까지 붙는다.
+    assert _style("LabelTop")[11] == "8" and _style("LabelBottom")[11] == "8"
+    # ★ 자리는 레터박스 기하에서 **유도**된다 — 숫자를 박으면 밴드를 바꿀 때 캡션만 딴 곳에 남는다.
+    top_mv, bot_mv = int(_style("LabelTop")[14]), int(_style("LabelBottom")[14])
+    assert top_mv == config.LETTERBOX_TOP_PX + config._SPLIT_CAPTION_GAP_PX
+    assert bot_mv == config._SPLIT_DIVIDER_Y + config._SPLIT_CAPTION_GAP_PX
+    assert top_mv < bot_mv, "위 화면 캡션이 아래 화면 캡션보다 위에 있어야 한다"
+    assert bot_mv - top_mv > 400, "둘이 가까우면 어느 캡션이 어느 화면 것인지 안 보인다"
+    # 아래 캡션이 나레이션 자막(하단)까지 내려오면 두 글자가 붙어 읽힌다(실측 12px).
+    assert bot_mv + config.OVERLAY_LABEL_FONT_SIZE < config.RENDER_HEIGHT - int(
+        config.RENDER_HEIGHT * config.SUBTITLE_SAFE_BOTTOM)
     without = subtitles.build_ass([(0.0, 2.0, "자막")], header_title="t", header_hook="h")
     assert "Style: Legend," not in without, "오버레이가 없으면 출력 바이트 불변"
 
@@ -253,11 +265,13 @@ def test_compose_split_still_stacks_before_over_after():
         Image.new("RGB", (540, 960), (255, 0, 0)).save(after)
         assert render._compose_split_still(before, after, out) is True
         img = Image.open(out)
-        assert (img.width, img.height) == (config.RENDER_WIDTH, config.RENDER_HEIGHT)
+        # ★★ 캔버스는 **콘텐츠 밴드 크기**다(전체 프레임이 아니다). 전체 프레임으로 만들면 조립이
+        #   다시 밴드로 cover-crop 하면서 위 화면의 위·아래 화면의 아래를 잘라낸다(2026-09-18).
+        w, h = assemble.layout_content_dims()
+        assert (img.width, img.height) == (w, h)
         assert img.getpixel((10, 10)) == (0, 0, 255), "위가 전"
-        assert img.getpixel((10, config.RENDER_HEIGHT - 10)) == (255, 0, 0), "아래가 후"
-        mid = config.RENDER_HEIGHT // 2
-        assert img.getpixel((10, mid)) == tuple(config.MECHANISM_SPLIT_DIVIDER_RGB), "가운데 분할선"
+        assert img.getpixel((10, h - 10)) == (255, 0, 0), "아래가 후"
+        assert img.getpixel((10, h // 2)) == tuple(config.MECHANISM_SPLIT_DIVIDER_RGB), "가운데 분할선"
 
 
 def test_compose_split_still_fails_soft():
@@ -271,6 +285,15 @@ def test_still_video_command_has_no_audio_and_exact_length():
                                               effects=["ken_burns_zoom_in"], out_path="o.mp4")
     assert "-an" in argv and "-t" in argv and argv[argv.index("-t") + 1] == "6.250"
     assert "zoompan" in argv[argv.index("-vf") + 1]
+
+
+def test_the_split_still_gets_no_camera_move():
+    """★ 합성본이 이미 밴드 크기라 켄번스를 걸면 **비교하라고 만든 가장자리를 잘라낸다.**
+    비교는 멈춰서 보는 화면이다(참고 영상도 구도를 고정하고 주석만 움직인다).
+    대가는 freezedetect 경고이고, 그 경고는 사실이므로 숨기지 않는다."""
+    assert config.MECHANISM_SPLIT_EFFECT == ""
+    import inspect
+    assert "if e]" in inspect.getsource(render._build_split_stage_video), "빈 효과를 넘기면 안 된다"
 
 
 def test_the_split_is_actually_wired_into_the_stage_loop():

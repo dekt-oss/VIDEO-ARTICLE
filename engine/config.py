@@ -1346,9 +1346,8 @@ LEGEND_COLORS_ASS: dict[str, str] = {
 OVERLAY_LEGEND_FONT_SIZE: int = 40
 OVERLAY_LEGEND_MARGIN_V: int = 700     # 좌하단 기준(Alignment=1) — 근거 카드(520)보다 위, 자막 위
 OVERLAY_LABEL_FONT_SIZE: int = 44
-#: 상·하 분할 화면의 캡션 자리. 위 캡션은 헤더 아래, 아래 캡션은 분할선 바로 아래(둘 다 상단 기준).
-OVERLAY_LABEL_TOP_MARGIN_V: int = 330
-OVERLAY_LABEL_BOTTOM_MARGIN_V: int = 1000   # = RENDER_HEIGHT(1920)//2 + 40, 분할선 바로 아래
+#: 상·하 분할 캡션 자리는 **레터박스 기하에서 유도한다** — 아래 LAYOUT 절 참조.
+#  (여기서 숫자로 박아 두면 LAYOUT_MODE·밴드 높이를 바꿀 때 캡션만 조용히 딴 곳에 남는다.)
 
 # 【§14】 자기검증 3값 판정(해당 없음을 실패로 세지 않기 위해).
 SELFCHECK_TRISTATE: tuple[str, ...] = ("pass", "fail", "not_applicable")
@@ -1891,7 +1890,12 @@ MECHANISM_SPLIT_OPERATIONS: tuple[str, ...] = (
 )
 MECHANISM_SPLIT_DIVIDER_PX: int = 8
 MECHANISM_SPLIT_DIVIDER_RGB: tuple[int, int, int] = (58, 58, 58)
-MECHANISM_SPLIT_EFFECT: str = "ken_burns_zoom_in"
+# ★★ 분할 스틸에는 **효과를 넣지 않는다**(2026-09-18 재리뷰, 실측 근거 둘).
+#   ① 합성본을 이미 콘텐츠 밴드 크기로 만들기 때문에 켄번스를 걸면 그만큼 **가장자리를 잘라낸다** —
+#      비교하라고 만든 두 화면의 바깥쪽이 사라진다.
+#   ② 비교는 원래 멈춰서 보는 화면이다(참고 영상도 구도를 고정하고 주석 레이어만 움직인다).
+#   대가: 최종 mp4 freezedetect 경고가 뜬다(차단 아님). 그 경고는 **사실이므로 숨기지 않는다**.
+MECHANISM_SPLIT_EFFECT: str = ""
 
 # ★ 도해 컷의 visual_prompt 가 구조와 **떨어져 있는가**(2026-09-18, 연구 T1-b).
 #   components 중 프롬프트에 한 번도 안 나오는 컷 — 실측 117컷 중 4컷(3.4%), 오탐 0
@@ -2531,6 +2535,27 @@ LAYOUT_MODE: str = os.getenv("LAYOUT_MODE", "center_band")
 LETTERBOX_TOP_PX: int = _get_int("LETTERBOX_TOP_PX", 200)        # 상단 바 높이
 LETTERBOX_CONTENT_HEIGHT: int = _get_int("LETTERBOX_CONTENT_HEIGHT", 1300)  # 중앙 콘텐츠 밴드 높이(px, 크게)
 LETTERBOX_BAR_COLOR: str = os.getenv("LETTERBOX_BAR_COLOR", "black")  # 상하 바 색(ffmpeg color)
+
+# ★ 전·후 분할 스틸의 **분할선이 최종 화면에서 놓이는 y**. 콘텐츠 밴드 한가운데다.
+#   캡션 두 줄은 이 선을 위·아래로 끼고 붙는다 — 그래야 어느 캡션이 어느 화면 것인지 명확하고,
+#   상단 헤더(제목·훅)와도 겹치지 않는다. 숫자를 박지 않고 **유도**한다(2026-09-18 재리뷰).
+_SPLIT_DIVIDER_Y: int = (LETTERBOX_TOP_PX + LETTERBOX_CONTENT_HEIGHT // 2
+                         if LAYOUT_MODE == "center_band" else RENDER_HEIGHT // 2)
+_SPLIT_CAPTION_GAP_PX: int = 24
+# ★★ 두 캡션은 **각자 자기 화면의 머리**에 붙는다 — 둘 다 상단 기준(ASS Alignment=8).
+#   실제 그림으로 세 번 만들어 보고 정했다(2026-09-18):
+#     ① 분할선을 위·아래로 끼게 두니 두 줄이 60px 간격으로 몰려 **어느 게 어느 화면 것인지
+#        안 보였다** — 그냥 두 줄짜리 자막처럼 읽힌다.
+#     ② 각자 화면 **아래**에 두니 아래 캡션이 나레이션 자막과 **12px** 까지 붙었다(실측).
+#        콘텐츠 밴드 바닥이 자막 영역과 겹치므로, "아래 화면의 아래"는 구조적으로 자리가 없다.
+#     ③ 각자 화면 **위**: 위 캡션은 훅 아래, 아래 캡션은 분할선 아래. 650px 떨어져 주인이 분명하고
+#        자막과도 안 겹친다. 참고 영상들도 라벨을 화면 위쪽에 얹는다.
+_SPLIT_BAND_BOTTOM_Y: int = (LETTERBOX_TOP_PX + LETTERBOX_CONTENT_HEIGHT
+                             if LAYOUT_MODE == "center_band" else RENDER_HEIGHT)
+#: 위 화면의 캡션 — 콘텐츠 밴드 맨 위(훅 바로 아래).
+OVERLAY_LABEL_TOP_MARGIN_V: int = (LETTERBOX_TOP_PX if LAYOUT_MODE == "center_band" else 0) + _SPLIT_CAPTION_GAP_PX
+#: 아래 화면의 캡션 — 분할선 바로 아래.
+OVERLAY_LABEL_BOTTOM_MARGIN_V: int = _SPLIT_DIVIDER_Y + _SPLIT_CAPTION_GAP_PX
 # center_band 에서 제목/자막을 바 안에 배치하되 "콘텐츠에 가깝게". 콘텐츠[200~1500]·하단 바[1500~1920].
 # ★ 자막은 바닥 채널 UI 와 겹치지 않게 더 위로(=바닥 여백 키움), 제목/부제목은 상단 끝에서 더 내려오게(=위 여백 키움).
 LETTERBOX_CAPTION_MARGIN_V: int = _get_int("LETTERBOX_CAPTION_MARGIN_V", 380)  # 하단 자막(바닥에서 px) ↑

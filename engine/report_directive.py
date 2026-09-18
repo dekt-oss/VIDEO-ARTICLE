@@ -125,8 +125,26 @@ PHOTO_CONTRACT = f"""
   마술처럼 시청자가 한쪽을 보게 만들고 다른 쪽에서 답이 나오게 하라(예측 오류).
 
 [추가 필드] 위 기본 스키마의 각 컷에 다음을 더해서 출력하라.
-  "overlay_plan": [ {{ "type": "source_card|evidence_card|number_punch|caveat_tag",
-                       "text": "<화면 카드 문구>", "start_sec": <초>, "duration_sec": <초> }} ]
+  "overlay_plan": [ {{ "type": "source_card|evidence_card|number_punch|caveat_tag|legend|label_pair",
+                       "text": "<화면 카드 문구>", "start_sec": <초>, "duration_sec": <초>,
+                       "payload": {{ "<legend 일 때>": "items: [{{color: amber|blue|coral, label: 한글 낱말}}]",
+                                    "<label_pair 일 때>": "top / bottom (위·아래 화면이 무엇인지, 한글)" }} }} ]
+  ★ visual_role 이 MECHANISM 인 컷은 **아래 구조를 반드시 채운다**(안 채우면 승인이 막힌다):
+  "mechanism": {{ "subject": "<무엇의 원리인가(영어 한 구절)>",
+                  "components": ["<화면에 보일 물체 2개 이상 — **영어**, 보이는 물건 이름
+                                   (기업명·지표명·개념어 금지: a stacked battery cell, a cathode layer)>"],
+                  "relationship": "<구성요소가 어떻게 맞물리는가(영어)>",
+                  "initial_state": "<변화 전 모습(영어)>",
+                  "transformation": "<무엇이 무엇을 어떻게 바꾸는가(영어)>",
+                  "final_state": "<변화 후 모습(영어)>",
+                  "highlighted_element": "<강조할 하나(영어)>",
+                  "claim_ids": ["<이 도해가 지불하는 claim_id>"] }},
+  "mechanism_ko": "<위 구조를 한국어 한 문장으로(사람이 읽는 용도)>"
+  ★★ visual_prompt 는 그 components 를 **같은 이름 그대로** 그려라 — 구조에 있는 물체가 장면에
+     없으면 차단된다(photo_mechanism_prompt_detached). 구조 필드가 곧 이미지 프롬프트로 나간다.
+  ★★ 기전 컷의 색은 셋뿐이다: amber=설명하는 부분, blue=첫 집단·변화 전, coral=둘째 집단·변화 후.
+     두 쪽을 비교하는 컷은 한쪽을 muted blue, 다른 쪽을 muted coral 로 칠하고(표면색으로 적어라 —
+     'rendered in'·'glow' 는 화풍 어휘라 차단된다) 그 컷에 legend 를 넣어 무슨 색이 무엇인지 말하라.
 """
 
 
