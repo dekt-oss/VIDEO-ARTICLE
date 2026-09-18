@@ -315,8 +315,11 @@ def _overlay_types_of(cut: dict[str, Any]) -> set[str]:
 def mechanism_unlabeled_cuts(header: dict[str, Any], cuts: list[dict[str, Any]]) -> list[Any]:
     """범례·캡션이 빠진 기전 컷 번호(연구 T3). 순수 — 지시서 dict 만 본다.
 
-    ▸ 시퀀스 단위: MECHANISM 컷을 2개 이상 담은 시퀀스에 `legend` 가 하나도 없으면
-      그 시퀀스의 첫 MECHANISM 컷을 적는다(어디에 넣으라는 뜻).
+    ▸ 시퀀스 단위: **두 비교색을 실제로 쓴** 기전 시퀀스(MECHANISM 컷 2개 이상)에 `legend` 가
+      없으면 그 시퀀스의 첫 MECHANISM 컷을 적는다(어디에 넣으라는 뜻).
+      ★ 색을 안 쓴 시퀀스에는 요구하지 않는다(2026-09-18 재리뷰) — 한 대상을 잘라 보여주는
+        컷에 범례를 강요하면 "앰버=설명하는 부분" 같은 뻔한 카드가 붙는다. 운영자가 9/8 에
+        뺀 것이 바로 그런 군더더기였다. 설명할 색이 없으면 설명할 것도 없다.
     ▸ stage 단위: 상태가 바뀌는 stage(`stage_changes_state`)의 컷에 `label_pair` 가 없으면 적는다 —
       그 컷은 전·후 분할 스틸로 나가므로 위·아래가 무엇인지 캡션이 있어야 한다.
     """
@@ -325,21 +328,26 @@ def mechanism_unlabeled_cuts(header: dict[str, Any], cuts: list[dict[str, Any]])
         return []
     by_no = {int(c.get("cut_no") or 0): c for c in cuts if str(c.get("cut_no") or "").isdigit()}
     out: list[Any] = []
+    compare_colors = {c for c in config.MECHANISM_COLOR_CODE if c != "amber"}
     for seq in seqs:
         mech_cuts: list[dict[str, Any]] = []
         has_legend = False
+        seen_colors: set[str] = set()
         for st in seq.get("stages") or []:
             for ref in st.get("cut_refs") or []:
                 c = by_no.get(int(ref)) if str(ref).isdigit() else None
                 if not c or str(c.get("visual_role") or "") != "MECHANISM":
                     continue
                 mech_cuts.append(c)
+                low = str(c.get("visual_prompt") or "").lower()
+                seen_colors |= {col for col in compare_colors if col in low}
                 types = _overlay_types_of(c)
                 has_legend = has_legend or ("legend" in types)
                 if (visual_sequence.stage_changes_state(st) and "label_pair" not in types
                         and c["cut_no"] not in out):
                     out.append(c["cut_no"])
-        if len(mech_cuts) >= 2 and not has_legend and mech_cuts[0]["cut_no"] not in out:
+        if (len(mech_cuts) >= 2 and len(seen_colors) >= 2 and not has_legend
+                and mech_cuts[0]["cut_no"] not in out):
             out.append(mech_cuts[0]["cut_no"])
     return out
 
@@ -731,8 +739,10 @@ def style_vocabulary_hits(header: dict[str, Any],
     for c in cuts:
         if not isinstance(c, dict):
             continue
-        _scan(" ".join(str(c.get(k) or "") for k in ("visual_prompt", "motion_prompt")),
-              f"컷{c.get('cut_no')}")
+        # ★ 도해 구조 문장도 본다(2026-09-18 재리뷰). 그 문장이 이제 **실제로 이미지 프롬프트에
+        #   실리므로**(visual_sequence.mechanism_prose) 여기서 빼면 화풍 어휘가 게이트를 우회해
+        #   그림에 닿는다 — 화풍이 정해지는 자리를 하나 더 만들어 주는 셈이 된다.
+        _scan(_image_text_of(c), f"컷{c.get('cut_no')}")
 
     return blocked, warned
 

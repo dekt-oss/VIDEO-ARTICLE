@@ -36,8 +36,20 @@ _LABEL_TOP_STYLE = "LabelTop"
 _LABEL_BOTTOM_STYLE = "LabelBottom"
 
 
+#: 모델이 한글로 적은 색 이름 → 색 규약 키. 못 알아들으면 흰 네모가 나가는데, 화면의 뇌는
+#  파란데 범례는 흰색이면 **범례가 거짓말을 한다**(2026-09-18 재리뷰).
+_COLOR_SYNONYM: dict[str, str] = {
+    "파랑": "blue", "파란색": "blue", "파란": "blue", "블루": "blue", "청색": "blue",
+    "산호": "coral", "산호색": "coral", "코랄": "coral", "주황": "coral", "주황색": "coral",
+    "빨강": "coral", "붉은색": "coral", "분홍": "coral",
+    "앰버": "amber", "호박": "amber", "호박색": "amber", "노랑": "amber", "노란색": "amber",
+    "황색": "amber", "amber": "amber", "orange": "coral", "red": "coral", "yellow": "amber",
+}
+
+
 def _color_key(v: Any) -> str:
     color = str(v or "").strip().lower()
+    color = _COLOR_SYNONYM.get(color, color)
     return color if color in config.LEGEND_COLORS_ASS else "white"
 
 
@@ -124,6 +136,12 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
     items = v if isinstance(v, list) else []
     out: list[dict[str, Any]] = []
     number_used = False
+    # ★ 구조형(범례·전후 캡션)은 **컷당 상한을 따로 센다**(2026-09-18 재리뷰). 상한의 뜻은
+    #   "한 화면에 읽을 카드는 핵심 1 + 보조 1"인데, 범례는 좌하단·캡션은 분할선 옆이라 그
+    #   카드들과 자리를 다투지 않는다. 같이 세면 수치 카드 두 장이 슬롯을 먹고 범례가 조용히
+    #   잘린다 — 게다가 지금은 수치 카드가 **화면에 나가지도 않는다**(EVIDENCE_OVERLAY_ENABLED).
+    plain_used = 0
+    structured_used: set[str] = set()
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -164,6 +182,14 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
         claim_ids = item.get("claim_ids") or []
         if isinstance(claim_ids, str):
             claim_ids = [claim_ids]
+        if otype in config.OVERLAY_STRUCTURED_TYPES:
+            if otype in structured_used:
+                continue
+            structured_used.add(otype)
+        else:
+            if plain_used >= config.OVERLAY_MAX_PER_CUT:
+                continue
+            plain_used += 1
         out.append({
             "type": otype,
             "text": text,
@@ -176,8 +202,6 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
                          if str(item.get("priority") or "").strip().lower()
                          in config.OVERLAY_PRIORITIES else config.DEFAULT_OVERLAY_PRIORITY),
         })
-        if len(out) >= config.OVERLAY_MAX_PER_CUT:
-            break
     return out
 
 
