@@ -540,3 +540,26 @@ def test_the_pipeline_actually_calls_it_and_says_so():
     assert "photo_glow_normalized" in pc.WARNING_REASONS
     # 발광은 "그릴 수 없는 판정"이 아니라 **너무 잘 그려지는 것**이다 — 그 목록에서 뺐다.
     assert "glowing" not in config.PHOTO_UNDRAWABLE_QUALITY_TERMS
+
+
+def test_a_split_cut_always_gets_its_before_after_caption():
+    """★★ 2026-09-19 첫 실전 분할에서 잡았다 — 모델이 label_pair 를 빼먹어 **위·아래가 무엇인지
+    아무 표시가 없는** 분할 화면이 나왔다. 분할하는 이유가 통째로 사라진다.
+    전·후는 코드가 확실히 아는 것이다(위=앞 stage, 아래=이 stage)."""
+    cut = _cut(4, overlay_plan=[])
+    assert render._ensure_split_labels(cut, "ko") is True
+    pair = [o for o in cut["overlay_plan"] if o["type"] == "label_pair"]
+    assert pair and pair[0]["payload"] == {"top": "변화 전", "bottom": "변화 후"}
+    assert render._ensure_split_labels(_cut(4, overlay_plan=[]), "en")
+    # ★ 모델이 적어 둔 캡션은 건드리지 않는다 — 그 편이 항상 더 구체적이다.
+    mine = _cut(5, overlay_plan=[{"type": "label_pair",
+                                  "payload": {"top": "청각인", "bottom": "청각 장애인"}}])
+    assert render._ensure_split_labels(mine, "ko") is False
+    assert mine["overlay_plan"][0]["payload"]["top"] == "청각인"
+
+
+def test_the_split_path_actually_calls_the_caption_filler():
+    import inspect
+    src = inspect.getsource(render)
+    assert "_ensure_split_labels(cut, lang)" in src
+    assert 'decision["split_labels_defaulted"] = True' in src

@@ -1990,6 +1990,13 @@ MECHANISM_SPLIT_DIVIDER_RGB: tuple[int, int, int] = (58, 58, 58)
 #   ② 비교는 원래 멈춰서 보는 화면이다(참고 영상도 구도를 고정하고 주석 레이어만 움직인다).
 #   대가: 최종 mp4 freezedetect 경고가 뜬다(차단 아님). 그 경고는 **사실이므로 숨기지 않는다**.
 MECHANISM_SPLIT_EFFECT: str = ""
+#: 분할 화면에 **캡션이 없으면 코드가 채운다**(2026-09-19 첫 실전 분할에서 잡았다).
+#  모델이 label_pair 를 빼먹으면 위·아래가 무엇인지 알 길이 없어 분할 자체가 무의미해진다.
+#  경고만 하고 넘기면 그 화면이 그대로 나간다 — 기계가 확실히 아는 것은 기계가 적는다.
+MECHANISM_SPLIT_DEFAULT_LABELS: dict[str, tuple[str, str]] = {
+    "ko": ("변화 전", "변화 후"),
+    "en": ("Before", "After"),
+}
 
 # ★ 도해 컷의 visual_prompt 가 구조와 **떨어져 있는가**(2026-09-18, 연구 T1-b).
 #   components 중 프롬프트에 한 번도 안 나오는 컷 — 실측 117컷 중 4컷(3.4%), 오탐 0
