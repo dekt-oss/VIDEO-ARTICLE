@@ -176,6 +176,25 @@ def test_ass_defines_the_three_new_styles_only_when_overlays_exist():
     assert "Style: Legend," not in without, "오버레이가 없으면 출력 바이트 불변"
 
 
+def test_labels_render_while_evidence_cards_stay_off():
+    """★ 2026-09-18 운영자 "오버레이 스위치 켜줘" — 9/8 에 뺀 수치·출처 카드는 그대로 꺼 둔 채
+    범례·캡션만 나간다. 같은 스위치를 통째로 켰다면 그 카드가 돌아왔을 것이다."""
+    assert config.MECHANISM_LABEL_OVERLAYS_ENABLED is True
+    assert config.EVIDENCE_OVERLAY_ENABLED is False, "9/8 지시(수치·출처 카드 빼기)는 유지"
+    cuts = [{"cut_no": 1, "overlay_plan": [
+                {"type": "number_punch", "text": "+92일"},
+                {"type": "legend", "payload": {"items": [{"color": "blue", "label": "정상"}]}}]},
+            {"cut_no": 2, "overlay_plan": [{"type": "label_pair", "payload": {"top": "전", "bottom": "후"}}]}]
+    only = eo.build_overlay_cues(cuts, [0.0, 5.0], [5.0, 5.0], only_types=set(config.OVERLAY_STRUCTURED_TYPES))
+    assert [c[3] for c in only] == ["Legend", "LabelTop", "LabelBottom"], "수치 카드는 안 나간다"
+    everything = eo.build_overlay_cues(cuts, [0.0, 5.0], [5.0, 5.0])
+    assert "NumberPunch" in [c[3] for c in everything]
+    # 렌더가 실제로 이 분기를 탄다(만들고 안 부르는 것 방지).
+    import inspect
+    src = inspect.getsource(render)
+    assert "config.MECHANISM_LABEL_OVERLAYS_ENABLED" in src and "only_types=only_types" in src
+
+
 def test_new_overlay_types_are_offered_to_the_directive_model():
     """게이트가 legend 를 요구하는데 프롬프트가 그 유형을 안 주면 함정이다(gate-prompt-feedback-parity)."""
     from engine import directive
@@ -185,11 +204,11 @@ def test_new_overlay_types_are_offered_to_the_directive_model():
 
 
 def test_mechanism_sequence_without_legend_warns_on_its_first_cut(monkeypatch):
-    # 오버레이 스위치가 꺼져 있으면 검사도 꺼진다(렌더가 안 그리는 것을 요구하지 않는다).
-    monkeypatch.setattr(config, "EVIDENCE_OVERLAY_ENABLED", False)
+    # 범례 스위치가 꺼져 있으면 검사도 꺼진다(렌더가 안 그리는 것을 요구하지 않는다).
+    monkeypatch.setattr(config, "MECHANISM_LABEL_OVERLAYS_ENABLED", False)
     off = pc.evaluate(_header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")]), [_cut(3), _cut(4)])
     assert not any(w.startswith("photo_mechanism_unlabeled") for w in off["warnings"])
-    monkeypatch.setattr(config, "EVIDENCE_OVERLAY_ENABLED", True)
+    monkeypatch.setattr(config, "MECHANISM_LABEL_OVERLAYS_ENABLED", True)
     header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")])
     cuts = [_cut(3), _cut(4)]
     got = pc.evaluate(header, cuts)

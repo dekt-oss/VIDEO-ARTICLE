@@ -76,7 +76,13 @@ def test_evidence_overlays_are_off_by_default():
 def test_the_render_does_not_build_overlay_cues_when_off():
     """★ 상수만 두고 배선이 그대로면 화면은 안 바뀐다."""
     src = open(__import__("engine.render", fromlist=["x"]).__file__, encoding="utf-8").read()
-    assert "if overlay_out is not None and config.EVIDENCE_OVERLAY_ENABLED:" in src
+    # ★ 2026-09-18 부터 스위치가 둘이다 — 수치·출처 카드(EVIDENCE_OVERLAY_ENABLED, 9/8 지시로 꺼짐)와
+    #   범례·캡션(MECHANISM_LABEL_OVERLAYS_ENABLED). 전자가 꺼져 있으면 렌더는 **구조형만** 내보낸다.
+    #   9/8 의 뜻("수치·출처 카드가 화면에 안 나간다")은 그대로다.
+    assert "only_types = (None if config.EVIDENCE_OVERLAY_ENABLED" in src
+    assert "else set(config.OVERLAY_STRUCTURED_TYPES))" in src
+    from engine import config
+    assert config.EVIDENCE_OVERLAY_ENABLED is False
 
 
 def test_the_number_card_gate_is_off_too():

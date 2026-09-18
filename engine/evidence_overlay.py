@@ -202,8 +202,12 @@ def _legacy_text_overlays(cut: dict[str, Any]) -> list[dict[str, Any]]:
 def build_overlay_cues(
     cuts: list[dict[str, Any]], starts: list[float], durations: list[float],
     skip_cut_nos: set[Any] | None = None,
+    only_types: set[str] | None = None,
 ) -> list[tuple[float, float, str, str]]:
     """컷별 overlay_plan → 영상 전체 타임라인의 ASS 이벤트.
+
+    only_types: 이 유형만 내보낸다(None = 전부). 수치·출처 카드는 꺼 둔 채 범례·캡션만 그릴 때
+      쓴다(config.MECHANISM_LABEL_OVERLAYS_ENABLED, 2026-09-18).
 
     `starts[i]`·`durations[i]` 는 렌더가 실측한 컷 시작시각·화면시간이다(나레이션 실측 기준).
     오버레이는 자기 컷 밖으로 나가지 않도록 컷 끝에서 잘린다 — 다음 컷 화면에 남으면 근거가
@@ -225,6 +229,8 @@ def build_overlay_cues(
             plan = normalize_overlay_plan(_legacy_text_overlays(cut))
         cut_start, cut_dur = starts[i], durations[i]
         for item in plan:
+            if only_types is not None and item["type"] not in only_types:
+                continue
             start = cut_start + min(item["start_sec"], max(0.0, cut_dur - 0.1))
             end = min(cut_start + cut_dur, start + item["duration_sec"])
             if end - start <= 0:

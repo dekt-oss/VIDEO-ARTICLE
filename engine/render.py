@@ -1427,14 +1427,19 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         t += clip_dur
     cues = subtitles.clamp_overlaps(cues)  # 컷 경계 tail_hold 겹침 제거(한 시점에 자막 1개)
     duck_spans = assemble.duck_spans_from_words(vo_words)
-    if overlay_out is not None and config.EVIDENCE_OVERLAY_ENABLED:
+    # ★ 2026-09-18: 수치·출처 카드(EVIDENCE_OVERLAY_ENABLED, 9/8 지시로 꺼짐)와 범례·캡션
+    #   (MECHANISM_LABEL_OVERLAYS_ENABLED)은 스위치가 다르다. 후자만 켜져 있으면 구조형만 그린다.
+    if overlay_out is not None and (config.EVIDENCE_OVERLAY_ENABLED
+                                    or config.MECHANISM_LABEL_OVERLAYS_ENABLED):
+        only_types = (None if config.EVIDENCE_OVERLAY_ENABLED
+                      else set(config.OVERLAY_STRUCTURED_TYPES))
         # ★ 코드 보드 컷은 ASS 오버레이를 내보내지 않는다 — 보드가 그 텍스트를 이미 화면에
         #   그렸다. 둘 다 내면 같은 문장이 서로 다른 자리에 두 번 뜨고, full_bleed 에서는
         #   오버레이 카드가 나레이션 자막 위에 겹쳐 둘 다 못 읽는다(실측). 즉 `overlay_plan` 은
         #   설명판형에서 **보드의 입력원**이지 자막 레이어의 입력원이 아니다.
         skip = {c.get("cut_no") for c in cuts if board_render.code_render_board(c, header)}
         overlay_out.extend(evidence_overlay.build_overlay_cues(
-            cuts, cut_starts, cut_durs, skip_cut_nos=skip))
+            cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types))
     if cut_map_out is not None:
         # ★ cut_no 가 정본이다. 예전 오버레이 경로는 결측 시 리스트 인덱스로 폴백했는데,
         #   그러면 지시서가 컷을 건너뛴 번호를 쓸 때 두 체계가 어긋난다. 여기서는 결측을

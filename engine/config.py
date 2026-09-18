@@ -1307,6 +1307,14 @@ OVERLAY_SIDE_MARGIN_PX: int = _get_int("OVERLAY_SIDE_MARGIN_PX", 60)
 #   "숫자를 말했으니 카드를 넣어라"고 막으면서 그 카드를 **렌더가 그리지 않는** 상태가
 #   된다 — 통과할 수 없는 함정이다. evaluate 가 이 스위치를 본다.
 EVIDENCE_OVERLAY_ENABLED: bool = _get_bool("EVIDENCE_OVERLAY_ENABLED", False)
+# 【범례·캡션만 켜기】 2026-09-18 운영자 지시 "오버레이 스위치 켜줘".
+# ★ 위 스위치를 통째로 켜면 9/8 에 빼라고 한 수치·출처 카드가 같이 돌아온다. 사장님이 켜 달라고
+#   한 것은 기전 시퀀스의 **범례(legend)·전후 캡션(label_pair)** 이다 — 이 둘은 나레이션이 말하지
+#   않는 정보("어느 색이 무엇인지·위아래가 무엇인지")라 9/8 의 "같은 정보를 두 번" 지적에 해당하지
+#   않는다. 그래서 스위치를 나눈다: 이 값이 True 면 EVIDENCE_OVERLAY_ENABLED 가 꺼져 있어도
+#   구조형 오버레이(OVERLAY_STRUCTURED_TYPES)만 그린다. 수치·출처 카드까지 원하면 위 값을 켠다.
+#   `photo_mechanism_unlabeled` 검사는 이 스위치를 본다(렌더가 그리는 것만 요구한다).
+MECHANISM_LABEL_OVERLAYS_ENABLED: bool = _get_bool("MECHANISM_LABEL_OVERLAYS_ENABLED", True)
 
 # ★★ ASS 색은 `&HAABBGGRR` — **RGB 가 아니라 BGR** 이다(2026-09-08 실물 렌더에서 잡았다).
 #   옛 값 `&H00FFE000` 은 노랑을 적으려다 자릿수를 RGB 순으로 쓴 것이라 실제로는
