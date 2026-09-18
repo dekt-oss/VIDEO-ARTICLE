@@ -172,7 +172,12 @@ def test_new_overlay_types_are_offered_to_the_directive_model():
     assert "photo_mechanism_unlabeled" in config.RETRYABLE_QUALITY_WARNINGS
 
 
-def test_mechanism_sequence_without_legend_warns_on_its_first_cut():
+def test_mechanism_sequence_without_legend_warns_on_its_first_cut(monkeypatch):
+    # 오버레이 스위치가 꺼져 있으면 검사도 꺼진다(렌더가 안 그리는 것을 요구하지 않는다).
+    monkeypatch.setattr(config, "EVIDENCE_OVERLAY_ENABLED", False)
+    off = pc.evaluate(_header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")]), [_cut(3), _cut(4)])
+    assert not any(w.startswith("photo_mechanism_unlabeled") for w in off["warnings"])
+    monkeypatch.setattr(config, "EVIDENCE_OVERLAY_ENABLED", True)
     header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")])
     cuts = [_cut(3), _cut(4)]
     got = pc.evaluate(header, cuts)

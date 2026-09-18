@@ -1163,7 +1163,10 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     #   ▸ 기전 시퀀스(stage 를 가진 MECHANISM 컷 묶음)마다 legend 가 하나는 있어야 하고,
     #   ▸ 상태가 바뀌는 stage(전·후 분할 스틸로 나가는 컷)에는 label_pair 가 있어야 한다.
     #   경고다 — 새 어휘라 첫 실측 전엔 차단하지 않는다(재생성은 되묻는다: RETRYABLE).
-    unlabeled = mechanism_unlabeled_cuts(header, cuts)
+    #   ★ 오버레이 스위치가 꺼져 있으면 이 검사도 끈다(위 number_without_overlay 와 같은 이유 —
+    #     렌더가 안 그리는 것을 요구하면 함정이다). 2026-09-18 현재 운영 워크플로에는
+    #     EVIDENCE_OVERLAY_ENABLED 가 설정돼 있지 않다 → 켜기 전까지 범례는 화면에 안 나간다.
+    unlabeled = mechanism_unlabeled_cuts(header, cuts) if config.EVIDENCE_OVERLAY_ENABLED else []
     if unlabeled:
         warns.append("photo_mechanism_unlabeled:" + ",".join(str(x) for x in unlabeled[:6]))
 
