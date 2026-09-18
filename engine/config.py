@@ -900,6 +900,10 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     # ★ 2026-09-18 — 기전 시퀀스에 범례·캡션이 없으면 두 집단을 그려도 어느 쪽이 무엇인지
     #   시청자가 모른다. overlay_plan 에 legend/label_pair 를 넣으면 되는 종류라 되묻는다.
     "photo_mechanism_unlabeled",
+    # ★ 2026-09-18 — 카드·화살표는 되먹임 한 번으로 고쳐지는 종류다(문구를 줄이거나 구역 이름을 고친다).
+    "photo_keyword_is_a_sentence",
+    "photo_keyword_repeats_narration",
+    "photo_pointer_zone_unknown",
 )
 
 #: 역할 라벨이 **명백히 거짓인지**만 보는 필요조건표(의미 분류기가 아니다).
@@ -1267,15 +1271,25 @@ OVERLAY_TYPES: tuple[str, ...] = (
     #     legend      색 견본 + 낱말 (■ 손상 뉴런 / ■ 정상 뉴런) — 기전 시퀀스당 1개
     #     label_pair  상·하 분할 화면의 위/아래 캡션 (전 / 후)
     "legend", "label_pair",
+    # ★★ 2026-09-18 저녁, 운영자가 참고 영상(고기 핏물 편, 57초)을 주며 "키워드 카드랑 화살표까지".
+    #   그 영상이 **모든 컷**에서 하는 두 가지다:
+    #     keyword  화면 속 물체에 **낱말 하나**로 이름표를 단다(BLOOD? · MYOGLOBIN · 75% WATER).
+    #              나레이션을 반복하는 문장 카드가 아니다 — 9/8 에 운영자가 뺀 것이 그 문장 카드였다.
+    #     pointer  설명 대상에 **화살표**를 직접 얹는다. 색만으로 가리키는 것보다 세다.
+    #   둘 다 생성 모델이 아니라 **코드가 그린다**(ASS 텍스트·도형) — 추가 비용 0, 언어별 렌더.
+    "keyword", "pointer",
     # 아래 4종은 도형·차트가 필요해 M-E4(코드 시각화)에서 처리한다. 지금 지정되면 텍스트로 폴백.
     "before_after", "group_compare", "timeline", "mechanism_steps",
 )
 OVERLAY_TEXT_TYPES: tuple[str, ...] = (
     "source_card", "evidence_card", "number_punch", "caveat_tag", "scope_tag",
-    "legend", "label_pair",
+    "legend", "label_pair", "keyword", "pointer",
 )
 #: 문구 하나가 아니라 **구조(payload)** 를 갖는 오버레이. normalize 가 payload 를 보존한다.
-OVERLAY_STRUCTURED_TYPES: tuple[str, ...] = ("legend", "label_pair")
+OVERLAY_STRUCTURED_TYPES: tuple[str, ...] = ("legend", "label_pair", "pointer")
+#: **주석 레이어** — 화면 가장자리·대상 위에 놓여 가운데 근거 카드와 자리를 다투지 않는다.
+#  컷당 상한(OVERLAY_MAX_PER_CUT)을 따로 세고, 근거 카드가 꺼져 있어도 이것만 나간다.
+OVERLAY_ANNOTATION_TYPES: tuple[str, ...] = ("legend", "label_pair", "keyword", "pointer")
 OVERLAY_PRIORITIES: tuple[str, ...] = ("primary", "supporting")
 DEFAULT_OVERLAY_PRIORITY: str = "supporting"
 OVERLAY_MIN_SEC: float = 2.0          # §11-4 2초 미만으로 지나가는 복잡한 카드 금지
@@ -1346,6 +1360,30 @@ LEGEND_COLORS_ASS: dict[str, str] = {
 OVERLAY_LEGEND_FONT_SIZE: int = 40
 OVERLAY_LEGEND_MARGIN_V: int = 700     # 좌하단 기준(Alignment=1) — 근거 카드(520)보다 위, 자막 위
 OVERLAY_LABEL_FONT_SIZE: int = 44
+# ── 키워드 카드(2026-09-18) — 낱말 하나. 참고 영상은 시안색 불투명 박스를 좌상단에 쓴다 ──
+OVERLAY_KEYWORD_FONT_SIZE: int = 72
+#: ★ 주석 레이어는 **한 색**이다 — 카드 박스와 화살표가 같은 색이어야 "이건 우리가 얹은 설명"
+#  이라고 한눈에 읽힌다(참고 영상이 시안 하나로 카드·화살표·조준선을 다 칠한다).
+#  ASS 는 &HAABBGGRR(BGR!) — 아래 값은 RGB(32,192,224).
+OVERLAY_ANNOTATION_COLOR_ASS: str = "&H00E0C020"
+OVERLAY_KEYWORD_COLOR_ASS: str = "&H00FFFFFF"    # 카드 글자는 흰색
+OVERLAY_KEYWORD_BOX_ASS: str = OVERLAY_ANNOTATION_COLOR_ASS
+#: 낱말이 아니라 문장이면 카드가 아니다. 이 이상이면 게이트가 경고한다.
+#: 카드 세로 자리 — 콘텐츠 밴드 맨 위(훅 아래). LAYOUT 절에서 레터박스 기하로 다시 잡는다.
+OVERLAY_KEYWORD_MARGIN_V: int = 0
+OVERLAY_KEYWORD_MAX_WORDS: int = 3
+OVERLAY_KEYWORD_MAX_CHARS: int = 18
+# ── 지시 화살표(2026-09-18) — 대상 구역을 코드가 가리킨다 ──
+#: 화살표를 놓을 구역. **좌표를 모델에게 묻지 않는다** — 모델은 자기가 만든 그림을 본 적이 없다.
+#  자기 장면 구성("왼쪽이 청각인")은 알고 있으므로 구역 이름은 신뢰할 수 있다.
+OVERLAY_POINTER_ZONES: tuple[str, ...] = (
+    "left", "right", "center", "top", "bottom",
+    "top_left", "top_right", "bottom_left", "bottom_right",
+)
+OVERLAY_POINTER_MAX_PER_CUT: int = 3
+OVERLAY_POINTER_COLOR_ASS: str = OVERLAY_ANNOTATION_COLOR_ASS
+OVERLAY_POINTER_LENGTH_PX: int = 150
+OVERLAY_POINTER_HALF_HEIGHT_PX: int = 30
 #: 상·하 분할 캡션 자리는 **레터박스 기하에서 유도한다** — 아래 LAYOUT 절 참조.
 #  (여기서 숫자로 박아 두면 LAYOUT_MODE·밴드 높이를 바꿀 때 캡션만 조용히 딴 곳에 남는다.)
 
@@ -2552,14 +2590,23 @@ _SPLIT_CAPTION_GAP_PX: int = 24
 #        자막과도 안 겹친다. 참고 영상들도 라벨을 화면 위쪽에 얹는다.
 _SPLIT_BAND_BOTTOM_Y: int = (LETTERBOX_TOP_PX + LETTERBOX_CONTENT_HEIGHT
                              if LAYOUT_MODE == "center_band" else RENDER_HEIGHT)
-#: 위 화면의 캡션 — 콘텐츠 밴드 맨 위(훅 바로 아래).
-OVERLAY_LABEL_TOP_MARGIN_V: int = (LETTERBOX_TOP_PX if LAYOUT_MODE == "center_band" else 0) + _SPLIT_CAPTION_GAP_PX
 #: 아래 화면의 캡션 — 분할선 바로 아래.
 OVERLAY_LABEL_BOTTOM_MARGIN_V: int = _SPLIT_DIVIDER_Y + _SPLIT_CAPTION_GAP_PX
 # center_band 에서 제목/자막을 바 안에 배치하되 "콘텐츠에 가깝게". 콘텐츠[200~1500]·하단 바[1500~1920].
 # ★ 자막은 바닥 채널 UI 와 겹치지 않게 더 위로(=바닥 여백 키움), 제목/부제목은 상단 끝에서 더 내려오게(=위 여백 키움).
 LETTERBOX_CAPTION_MARGIN_V: int = _get_int("LETTERBOX_CAPTION_MARGIN_V", 380)  # 하단 자막(바닥에서 px) ↑
 LETTERBOX_HEADER_MARGIN_V: int = _get_int("LETTERBOX_HEADER_MARGIN_V", 120)   # 상단 제목(위에서 px) ↓
+
+# ★ 주석 레이어는 **헤더(시리즈 제목 + 훅) 아래에서 시작한다.** 밴드 맨 위로 잡았더니
+#   키워드 카드(불투명 박스)가 훅을 덮었다(2026-09-18 실측). 헤더 높이에서 유도한다.
+_HEADER_BLOCK_BOTTOM_Y: int = ((LETTERBOX_HEADER_MARGIN_V if LAYOUT_MODE == "center_band"
+                                else int(RENDER_HEIGHT * SUBTITLE_SAFE_TOP))
+                               + HEADER_TITLE_SIZE + HEADER_HOOK_SIZE)
+#: 키워드 카드 — 헤더 바로 아래, 좌상단.
+OVERLAY_KEYWORD_MARGIN_V = _HEADER_BLOCK_BOTTOM_Y + _SPLIT_CAPTION_GAP_PX
+#: 위 화면의 캡션 — 키워드 카드 **아래** 줄(둘이 같은 줄이면 좌측 카드와 가운데 캡션이 붙는다).
+OVERLAY_LABEL_TOP_MARGIN_V: int = (OVERLAY_KEYWORD_MARGIN_V + OVERLAY_KEYWORD_FONT_SIZE
+                                   + _SPLIT_CAPTION_GAP_PX)
 
 
 # ─────────────────────────────────────────────────────────────

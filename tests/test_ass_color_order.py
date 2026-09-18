@@ -80,7 +80,9 @@ def test_the_render_does_not_build_overlay_cues_when_off():
     #   범례·캡션(MECHANISM_LABEL_OVERLAYS_ENABLED). 전자가 꺼져 있으면 렌더는 **구조형만** 내보낸다.
     #   9/8 의 뜻("수치·출처 카드가 화면에 안 나간다")은 그대로다.
     assert "only_types = (None if config.EVIDENCE_OVERLAY_ENABLED" in src
-    assert "else set(config.OVERLAY_STRUCTURED_TYPES))" in src
+    # ★ 2026-09-18 저녁: 주석 레이어가 넷으로 늘었다(범례·캡션·키워드 카드·화살표) —
+    #   상수 이름이 OVERLAY_ANNOTATION_TYPES 로 바뀌었다. 9/8 의 뜻은 그대로다.
+    assert "else set(config.OVERLAY_ANNOTATION_TYPES))" in src
     from engine import config
     assert config.EVIDENCE_OVERLAY_ENABLED is False
 

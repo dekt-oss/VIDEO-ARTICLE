@@ -105,6 +105,9 @@ export const WARNING_LABEL: Record<string, string> = {
   photo_mechanism_spec_inherited: "재사용 컷이 기준 컷의 구조를 물려받음(면제)",
   photo_mechanism_structured: "어휘는 장식적이나 단계가 진행을 구조로 선언함",
   photo_mechanism_unlabeled: "기전 시퀀스에 범례·캡션이 없음(어느 쪽이 무엇인지 화면이 말하지 않는다)",
+  photo_keyword_is_a_sentence: "키워드 카드가 문장임(카드는 낱말 하나여야 한다)",
+  photo_keyword_repeats_narration: "키워드 카드가 나레이션을 그대로 옮겨 적음(같은 말을 두 번)",
+  photo_pointer_zone_unknown: "화살표가 가리킬 구역 이름이 틀림(화살표가 사라진다)",
   photo_reuse_base_overused: "한 기준 컷에서 파생이 너무 많음(그 대상이 화면을 지배)",
   photo_undrawable_difference:
     "차이를 판정 어휘로 적음(healthier·improved 등) — 모델은 그것을 못 그려 두 화면이 같아집니다",

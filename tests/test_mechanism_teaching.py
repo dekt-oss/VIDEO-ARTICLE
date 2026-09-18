@@ -177,7 +177,10 @@ def test_ass_defines_the_three_new_styles_only_when_overlays_exist():
     assert _style("LabelTop")[11] == "8" and _style("LabelBottom")[11] == "8"
     # ★ 자리는 레터박스 기하에서 **유도**된다 — 숫자를 박으면 밴드를 바꿀 때 캡션만 딴 곳에 남는다.
     top_mv, bot_mv = int(_style("LabelTop")[14]), int(_style("LabelBottom")[14])
-    assert top_mv == config.LETTERBOX_TOP_PX + config._SPLIT_CAPTION_GAP_PX
+    # ★ 위 캡션은 **키워드 카드 아래 줄**이다 — 같은 줄이면 좌측 카드와 가운데 캡션이 붙는다.
+    assert top_mv == (config.OVERLAY_KEYWORD_MARGIN_V + config.OVERLAY_KEYWORD_FONT_SIZE
+                      + config._SPLIT_CAPTION_GAP_PX)
+    assert top_mv > config._HEADER_BLOCK_BOTTOM_Y, "헤더(제목·훅) 아래에서 시작해야 한다"
     assert bot_mv == config._SPLIT_DIVIDER_Y + config._SPLIT_CAPTION_GAP_PX
     assert top_mv < bot_mv, "위 화면 캡션이 아래 화면 캡션보다 위에 있어야 한다"
     assert bot_mv - top_mv > 400, "둘이 가까우면 어느 캡션이 어느 화면 것인지 안 보인다"
@@ -330,3 +333,102 @@ def test_prompt_is_recorded_in_asset_meta():
     import inspect
     src = inspect.getsource(render)
     assert 'asset_meta["prompt"]' in src
+
+
+# ── 키워드 카드 · 지시 화살표 (2026-09-18 저녁, 참고 영상 문법) ──────────────
+#
+# 운영자가 참고 영상(고기 핏물 편)을 주며 "키워드 카드랑 화살표까지". 그 영상이 모든 컷에서 하는
+# 두 가지다: ① 화면 속 물체에 **낱말 하나**로 이름표를 단다 ② 설명 대상을 **화살표로 찍는다**.
+# 둘 다 생성 모델이 아니라 코드가 그린다(ASS 텍스트·도형) — 추가 비용 0.
+
+def test_keyword_card_becomes_a_boxed_ass_cue():
+    plan = eo.normalize_overlay_plan([{"type": "keyword", "text": "  MYOGLOBIN \n"}])
+    assert plan[0]["type"] == "keyword" and plan[0]["text"] == "MYOGLOBIN"
+    cues = eo.build_overlay_cues([{"cut_no": 1, "overlay_plan": plan}], [0.0], [4.0])
+    assert [c[3] for c in cues] == ["Keyword"]
+    with_ov = subtitles.build_ass([(0.0, 4.0, "자막")], header_title="t", header_hook="h",
+                                  overlays=cues)
+    line = next(l for l in with_ov.splitlines() if l.startswith("Style: Keyword,"))
+    parts = line.split(",")
+    # ★ ASS 는 BorderStyle=3 에서 **OutlineColour** 를 박스로 칠한다(BackColour 가 아니다).
+    #   거꾸로 넣었더니 시안 카드가 검게 나왔다(2026-09-18 실측).
+    assert parts[4] == config.OVERLAY_KEYWORD_BOX_ASS, "박스 색이 Outline 자리에 있어야 한다"
+    assert parts[8] == "3", "BorderStyle=3 이어야 불투명 박스가 된다"
+    assert parts[11] == "7", "좌상단"
+
+
+def test_the_annotation_layer_is_one_colour():
+    """★ 카드 박스와 화살표가 같은 색이어야 '이건 우리가 얹은 설명'으로 읽힌다(참고 영상의 문법)."""
+    assert config.OVERLAY_KEYWORD_BOX_ASS == config.OVERLAY_ANNOTATION_COLOR_ASS
+    assert config.OVERLAY_POINTER_COLOR_ASS == config.OVERLAY_ANNOTATION_COLOR_ASS
+
+
+def test_the_card_sits_below_the_header_not_on_top_of_the_hook():
+    """★ 밴드 맨 위로 잡았더니 불투명 카드가 훅을 덮었다(실측) — 헤더 높이에서 유도한다."""
+    assert config.OVERLAY_KEYWORD_MARGIN_V >= config._HEADER_BLOCK_BOTTOM_Y
+    assert config.OVERLAY_LABEL_TOP_MARGIN_V > config.OVERLAY_KEYWORD_MARGIN_V, \
+        "분할 캡션이 카드와 같은 줄이면 좌측 카드와 가운데 캡션이 붙는다"
+
+
+def test_pointer_draws_one_arrow_per_zone_with_the_tip_on_target():
+    plan = eo.normalize_overlay_plan([{"type": "pointer", "payload": {"at": ["left", "right"]}}])
+    assert plan[0]["payload"]["zones"] == ["left", "right"]
+    cues = eo.build_overlay_cues([{"cut_no": 1, "overlay_plan": plan}], [0.0], [4.0])
+    assert [c[3] for c in cues] == ["Pointer", "Pointer"], "구역마다 화살표 하나"
+    # ★ 회전 중심(\org)이 화살촉이어야 각도가 바뀌어도 촉이 목표에 남는다.
+    for cue, zone in zip(cues, ("left", "right")):
+        fx, _fy, deg = eo._POINTER_ZONE[zone]
+        tip_x = int(config.RENDER_WIDTH * fx)
+        assert f"\\org({tip_x}," in cue[2], cue[2]
+        assert f"\\frz{deg}" in cue[2]
+        assert "\\p1}" in cue[2] and "{\\p0}" in cue[2], "ASS 도형 모드로 열고 닫아야 한다"
+
+
+def test_pointers_stay_inside_the_content_band():
+    """★ 상하 검은 바 위에 화살표를 그리면 띠를 가린다 — 밴드 안에서만 논다."""
+    _, top, height = eo.content_band()
+    for zone in config.OVERLAY_POINTER_ZONES:
+        text = eo.pointer_ass_text(zone)
+        y = int(text.split("\\org(")[1].split(",")[1].split(")")[0])
+        assert top <= y <= top + height, (zone, y)
+
+
+def test_unknown_zones_are_reported_not_silently_dropped():
+    """조용히 사라지면 운영자는 화살표를 시켰다고 믿는다(error-vs-empty)."""
+    assert eo.normalize_overlay_plan([{"type": "pointer", "payload": {"at": "nowhere"}}]) == []
+    got = pc.evaluate({"hook_ko": "훅"}, [_cut(1, overlay_plan=[
+        {"type": "pointer", "payload": {"at": "nowhere"}}])])
+    assert any(w.startswith("photo_pointer_zone_unknown") for w in got["warnings"])
+
+
+def test_a_sentence_card_is_flagged_but_a_word_card_is_not():
+    """★ 9/8 에 운영자가 뺀 것은 카드가 아니라 **문장짜리 카드**였다."""
+    bad = pc.evaluate({"hook_ko": "훅"}, [_cut(1, narration_ko="문장", overlay_plan=[
+        {"type": "keyword", "text": "캘리포니아 대학교 버클리 연구팀"}])])
+    assert any(w.startswith("photo_keyword_is_a_sentence") for w in bad["warnings"])
+    ok = pc.evaluate({"hook_ko": "훅"}, [_cut(1, narration_ko="문장", overlay_plan=[
+        {"type": "keyword", "text": "75% WATER"}])])
+    assert not any(w.startswith("photo_keyword") for w in ok["warnings"])
+
+
+def test_a_card_that_copies_the_narration_is_flagged_but_naming_is_not():
+    """낱말 하나가 나레이션에 나오는 것은 **정상이다** — 말하면서 이름을 다는 것이 문법이다."""
+    copied = pc.evaluate({"hook_ko": "훅"}, [_cut(1, narration_ko="이건 그냥 붉은 물입니다",
+                                                 overlay_plan=[{"type": "keyword", "text": "붉은 물"}])])
+    assert any(w.startswith("photo_keyword_repeats_narration") for w in copied["warnings"])
+    naming = pc.evaluate({"hook_ko": "훅"}, [_cut(1, narration_ko="이건 미오글로빈입니다",
+                                                 overlay_plan=[{"type": "keyword", "text": "미오글로빈"}])])
+    assert not any(w.startswith("photo_keyword") for w in naming["warnings"])
+
+
+def test_the_model_is_told_about_both_new_types():
+    """게이트가 요구하는 것을 프롬프트가 안 주면 함정이다(gate-prompt-feedback-parity)."""
+    from engine import directive, report_directive
+    for src in (inspect_src(directive), inspect_src(report_directive)):
+        assert "keyword" in src and "pointer" in src
+        assert "payload.at" in src or "at: [구역" in src
+    for code in ("photo_keyword_is_a_sentence", "photo_keyword_repeats_narration",
+                 "photo_pointer_zone_unknown"):
+        assert code in config.RETRYABLE_QUALITY_WARNINGS, code
+        assert code in pc.WARNING_REASONS, code
+        assert pc.feedback_prompt([], [f"{code}:1"]).strip(), code

@@ -25,7 +25,7 @@ import math
 import re
 from typing import Any
 
-from . import config, visual_sequence
+from . import config, evidence_overlay, visual_sequence
 
 # ─────────────────────────────────────────────────────────────
 # 사유 코드 (정본). web/lib/blockLabels.ts 가 표시 문자열을 미러한다.
@@ -75,6 +75,9 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_mechanism_starts_late",     # 원리 설명이 너무 늦게 시작한다(전반부가 통째로 소개)
     "photo_role_claim_mismatch",       # 컷의 역할 라벨이 가리키는 근거와 맞지 않는다
     "photo_mechanism_unlabeled",       # 기전 시퀀스에 범례·캡션이 없다(어느 쪽이 무엇인지 화면이 안 말한다)
+    "photo_keyword_is_a_sentence",     # 키워드 카드가 낱말이 아니라 문장이다(9/8 에 뺀 그 카드다)
+    "photo_keyword_repeats_narration",  # 카드가 나레이션을 그대로 옮겨 적었다(같은 말을 두 번)
+    "photo_pointer_zone_unknown",      # 화살표가 가리킬 구역 이름이 틀렸다(화살표가 통째로 사라진다)
 )
 
 # ─────────────────────────────────────────────────────────────
@@ -305,6 +308,58 @@ def mechanism_spec_complete(spec: dict[str, Any]) -> bool:
     # 전·후 중 하나는 있어야 "바뀐다"가 화면에 성립한다.
     return bool(str(spec.get("initial_state") or "").strip()
                 or str(spec.get("final_state") or "").strip())
+
+
+_PUNCT = re.compile(r"[\s.,!?·~…\-—'\"“”‘’()\[\]]+")
+
+
+def _squash(text: str) -> str:
+    return _PUNCT.sub("", str(text or "")).lower()
+
+
+def keyword_card_problems(cuts: list[dict[str, Any]]) -> tuple[list[Any], list[Any]]:
+    """(문장꼴 카드 컷, 나레이션을 옮겨 적은 카드 컷). 순수 — 지시서 dict 만 본다.
+
+    ★ 왜 이 둘인가(2026-09-18): 운영자가 9/8 에 화면 카드를 뺀 이유는 "그냥 들어간다"였다.
+      그때 나간 카드는 `캘리포니아 대학교 버클리 연구팀` 처럼 **나레이션이 이미 말한 문장**이었다.
+      참고 영상의 카드는 반대다 — `MYOGLOBIN`·`75% WATER` 처럼 **낱말 하나로 화면 속 물체에
+      이름을 단다.** 그래서 막아야 할 것은 카드 자체가 아니라 **문장짜리 카드**다.
+
+    ★ 낱말 하나가 나레이션에 나오는 것은 **정상이다**(말하면서 이름을 다는 것이 문법이다).
+      두 낱말 이상이 통째로 나레이션 안에 들어 있을 때만 "옮겨 적었다"로 본다.
+    """
+    sentences: list[Any] = []
+    repeats: list[Any] = []
+    for c in cuts:
+        if not isinstance(c, dict):
+            continue
+        for item in (c.get("overlay_plan") or []):
+            if not isinstance(item, dict) or str(item.get("type")) != "keyword":
+                continue
+            text = " ".join(str(item.get("text") or "").split())
+            if not text:
+                continue
+            words = text.split()
+            if (len(words) > config.OVERLAY_KEYWORD_MAX_WORDS
+                    or len(text) > config.OVERLAY_KEYWORD_MAX_CHARS):
+                sentences.append(c.get("cut_no"))
+                continue
+            if len(words) >= 2 and _squash(text) in _squash(c.get("narration_ko")):
+                repeats.append(c.get("cut_no"))
+    return sentences, repeats
+
+
+def pointer_zone_problems(cuts: list[dict[str, Any]]) -> list[Any]:
+    """화살표를 걸었는데 **구역 이름이 하나도 안 맞는** 컷. 그대로 두면 화살표가 조용히 사라진다."""
+    out: list[Any] = []
+    for c in cuts:
+        if not isinstance(c, dict):
+            continue
+        for item in (c.get("overlay_plan") or []):
+            if isinstance(item, dict) and str(item.get("type")) == "pointer":
+                if not evidence_overlay._pointer_zones(item) and c.get("cut_no") not in out:
+                    out.append(c.get("cut_no"))
+    return out
 
 
 def _overlay_types_of(cut: dict[str, Any]) -> set[str]:
@@ -1178,6 +1233,20 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     #     수치·출처 카드 스위치(EVIDENCE_OVERLAY_ENABLED)와는 별개다 — 9/8 에 그 카드만 뺐다.
     unlabeled = (mechanism_unlabeled_cuts(header, cuts)
                  if config.MECHANISM_LABEL_OVERLAYS_ENABLED else [])
+    # ⑧-C 키워드 카드·화살표(2026-09-18 운영자 지시). 셋 다 경고다 — 새 문법이라 첫 실측 전엔
+    #   차단하지 않는다. 재생성은 되묻는다(config.RETRYABLE_QUALITY_WARNINGS).
+    if config.MECHANISM_LABEL_OVERLAYS_ENABLED:
+        kw_sentences, kw_repeats = keyword_card_problems(cuts)
+        if kw_sentences:
+            warns.append("photo_keyword_is_a_sentence:"
+                         + ",".join(str(x) for x in kw_sentences[:6]))
+        if kw_repeats:
+            warns.append("photo_keyword_repeats_narration:"
+                         + ",".join(str(x) for x in kw_repeats[:6]))
+        bad_zones = pointer_zone_problems(cuts)
+        if bad_zones:
+            warns.append("photo_pointer_zone_unknown:"
+                         + ",".join(str(x) for x in bad_zones[:6]))
     if unlabeled:
         warns.append("photo_mechanism_unlabeled:" + ",".join(str(x) for x in unlabeled[:6]))
 
@@ -1568,6 +1637,21 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 실측: world 가 '세포 단면 모형'인데 여는 컷이 벤 다이어그램을 그려"
                 " **세포가 영상에서 사라졌다.**"
                 " 여는 컷의 visual_prompt 에 world 가 말한 장소와 물건을 **실제로 적어라.**")
+        if "photo_keyword_is_a_sentence" in wcodes:
+            fixes.append(
+                "- 키워드 카드가 **문장**이다. 카드는 화면 속 물체에 다는 이름표이지 자막이 아니다 —"
+                f" {config.OVERLAY_KEYWORD_MAX_WORDS}낱말·{config.OVERLAY_KEYWORD_MAX_CHARS}자 안으로"
+                " 줄여라(MYOGLOBIN · 75% WATER · 30-60 MIN 처럼). 길게 말할 것은 나레이션이 한다.")
+        if "photo_keyword_repeats_narration" in wcodes:
+            fixes.append(
+                "- 키워드 카드가 나레이션을 그대로 옮겨 적었다. 같은 말을 귀와 눈으로 두 번 하면"
+                " 화면만 복잡해진다. 카드에는 나레이션이 **말하지 않는** 이름·수치·단위를 적어라"
+                " (나레이션이 '근육의 대부분은 물'이라 말하면 카드는 `75% WATER`).")
+        if "photo_pointer_zone_unknown" in wcodes:
+            fixes.append(
+                "- 화살표의 구역 이름이 틀렸다. `payload.at` 에는 다음 중에서만 골라 적어라:"
+                f" {' / '.join(config.OVERLAY_POINTER_ZONES)}. 좌표(픽셀)를 적지 마라 —"
+                " 너는 그 그림을 본 적이 없다. 네가 아는 것은 네가 짠 구도뿐이다.")
         if "photo_mechanism_unlabeled" in wcodes:
             fixes.append(
                 "- 기전 시퀀스에 **범례·캡션이 없다.** 두 집단·전후를 나란히 그려도 어느 쪽이"

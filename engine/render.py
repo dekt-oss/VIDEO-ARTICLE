@@ -1438,7 +1438,7 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
     if overlay_out is not None and (config.EVIDENCE_OVERLAY_ENABLED
                                     or config.MECHANISM_LABEL_OVERLAYS_ENABLED):
         only_types = (None if config.EVIDENCE_OVERLAY_ENABLED
-                      else set(config.OVERLAY_STRUCTURED_TYPES))
+                      else set(config.OVERLAY_ANNOTATION_TYPES))
         # ★ 코드 보드 컷은 ASS 오버레이를 내보내지 않는다 — 보드가 그 텍스트를 이미 화면에
         #   그렸다. 둘 다 내면 같은 문장이 서로 다른 자리에 두 번 뜨고, full_bleed 에서는
         #   오버레이 카드가 나레이션 자막 위에 겹쳐 둘 다 못 읽는다(실측). 즉 `overlay_plan` 은

@@ -30,6 +30,8 @@ _STYLE_BY_TYPE: dict[str, str] = {
     # ★ 2026-09-18 기전 교육력(연구 T3). label_pair 는 위·아래 두 이벤트로 갈라지므로
     #   build_overlay_cues 가 따로 다룬다(LabelTop / LabelBottom).
     "legend": "Legend",
+    "keyword": "Keyword",
+    "pointer": "Pointer",
 }
 _DEFAULT_STYLE = "Evidence"
 _LABEL_TOP_STYLE = "LabelTop"
@@ -72,6 +74,65 @@ def _legend_items(item: dict[str, Any]) -> list[dict[str, str]]:
             if sep and label.strip():
                 out.append({"color": _color_key(color), "label": label.strip()})
     return out[:4]
+
+
+#: 구역 → (가로 비율, 세로 비율, 화살표가 도는 각도). ASS \frz 는 **반시계** 양수이고 화면 y 는
+#  아래로 간다 — 그래서 오른쪽=0, 위=90, 왼쪽=180, 아래=270 이다.
+_POINTER_ZONE: dict[str, tuple[float, float, int]] = {
+    "left":         (0.30, 0.50,   0),   # 왼쪽 밖에서 들어와 오른쪽을 가리킨다
+    "right":        (0.70, 0.50, 180),
+    "center":       (0.50, 0.50,   0),
+    "top":          (0.50, 0.28, 270),   # 위에서 내려와 아래를 가리킨다
+    "bottom":       (0.50, 0.72,  90),
+    "top_left":     (0.30, 0.28, 315),
+    "top_right":    (0.70, 0.28, 225),
+    "bottom_left":  (0.30, 0.72,  45),
+    "bottom_right": (0.70, 0.72, 135),
+}
+
+
+def _pointer_zones(item: dict[str, Any]) -> list[str]:
+    """이 화살표 오버레이가 가리킬 구역들. payload.at 가 정본이고 text 로도 받는다."""
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    raw = payload.get("at", payload.get("zone"))
+    if raw is None:
+        raw = item.get("text")
+    vals = raw if isinstance(raw, list) else re.split(r"[,\s]+", str(raw or ""))
+    out: list[str] = []
+    for v in vals:
+        z = str(v).strip().lower()
+        if z in _POINTER_ZONE and z not in out:
+            out.append(z)
+    return out[:config.OVERLAY_POINTER_MAX_PER_CUT]
+
+
+def content_band() -> tuple[int, int, int]:
+    """화살표가 놓일 영역 (왼쪽 x, 위 y, 높이). 레터박스면 중앙 밴드, 아니면 전체 프레임.
+
+    ★ 상하 바 위에 화살표를 그리면 검은 띠를 가리킨다 — 밴드 안에서만 논다.
+    """
+    if config.LAYOUT_MODE == "center_band":
+        return 0, config.LETTERBOX_TOP_PX, config.LETTERBOX_CONTENT_HEIGHT
+    return 0, 0, config.RENDER_HEIGHT
+
+
+def pointer_ass_text(zone: str) -> str:
+    r"""구역 하나 → ASS 도형 화살표 한 개.
+
+    ★ 회전 중심을 **화살촉**에 못박는다(`\org`). 안 그러면 각도마다 촉이 딴 데로 간다 —
+      libass 는 도형을 글리프처럼 다루고 기본 회전 중심이 위치 앵커이기 때문이다.
+    """
+    fx, fy, deg = _POINTER_ZONE[zone]
+    _, top, height = content_band()
+    tip_x = int(config.RENDER_WIDTH * fx)
+    tip_y = int(top + height * fy)
+    length, half = config.OVERLAY_POINTER_LENGTH_PX, config.OVERLAY_POINTER_HALF_HEIGHT_PX
+    # 촉이 (length, half) 에 오도록 그린다 → 좌상단 앵커(\an7)로 놓고 촉을 목표에 맞춘다.
+    barb, shaft = int(length * 0.4), int(half * 0.35)
+    shape = (f"m {length} {half} l {barb} 0 l {barb} {half - shaft} l 0 {half - shaft} "
+             f"l 0 {half + shaft} l {barb} {half + shaft} l {barb} {half * 2}")
+    return (rf"{{\an7\pos({tip_x - length},{tip_y - half})\org({tip_x},{tip_y})"
+            rf"\frz{deg}\p1}}{shape}{{\p0}}")
 
 
 def _label_pair(item: dict[str, Any]) -> tuple[str, str]:
@@ -155,6 +216,15 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
                 continue
             structured = {"items": legend}
             text = " / ".join(f"{it['color']}={it['label']}" for it in legend)
+        elif otype == "pointer":
+            zones = _pointer_zones(item)
+            if not zones:
+                continue
+            structured = {"zones": zones}
+            text = " · ".join(zones)
+        elif otype == "keyword":
+            # 낱말 카드는 payload 가 없다 — 글자 그대로다. 줄바꿈만 없앤다(한 줄 카드).
+            text = " ".join(str(item.get("text") or "").split())
         elif otype == "label_pair":
             top, bottom = _label_pair(item)
             if not (top and bottom):
@@ -182,7 +252,7 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
         claim_ids = item.get("claim_ids") or []
         if isinstance(claim_ids, str):
             claim_ids = [claim_ids]
-        if otype in config.OVERLAY_STRUCTURED_TYPES:
+        if otype in config.OVERLAY_ANNOTATION_TYPES:
             if otype in structured_used:
                 continue
             structured_used.add(otype)
@@ -263,6 +333,10 @@ def build_overlay_cues(
                 pair = item.get("payload") or {}
                 cues.append((start, end, str(pair.get("top") or ""), _LABEL_TOP_STYLE))
                 cues.append((start, end, str(pair.get("bottom") or ""), _LABEL_BOTTOM_STYLE))
+                continue
+            if item["type"] == "pointer":
+                for zone in (item.get("payload") or {}).get("zones") or []:
+                    cues.append((start, end, pointer_ass_text(zone), _STYLE_BY_TYPE["pointer"]))
                 continue
             if item["type"] == "legend":
                 cues.append((start, end, legend_ass_text((item.get("payload") or {}).get("items") or []),
