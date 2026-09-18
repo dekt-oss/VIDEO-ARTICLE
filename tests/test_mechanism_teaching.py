@@ -1,0 +1,273 @@
+"""기전 시퀀스 교육력 T1·T2·T3·T5 (2026-09-18, docs/연구_기전시퀀스_교육력_2026-09-17.md).
+
+운영자 판정: "원리 설명하는 시퀀스가 너무 별로야 … 의미없는 배경사진으로 채워져 있을 뿐이야."
+연구가 찾은 원인 넷 중 셋을 코드로 고친다 — 이 파일은 그 배선이 **실제로 이어졌는지**를 본다
+(이 저장소의 단골 실패: 만들어 놓고 부르지 않음).
+
+  T1  mechanism 구조가 이미지 프롬프트에 실린다 + 구조와 장면이 딴 말이면 차단
+  T2  상태가 바뀌는 stage 는 전·후 분할 스틸(I2V 대신)
+  T3  legend / label_pair 오버레이가 ASS 로 나간다 + 없으면 경고
+  T5  기전 컷 색 규약(앰버 + 비교용 두 색)이 프롬프트·범례·지시서 안내에서 같은 표를 읽는다
+"""
+
+from __future__ import annotations
+
+import os
+import tempfile
+
+from engine import (assemble, config, evidence_overlay as eo, photo_contract as pc, render,
+                    subtitles, visual_sequence as vs)
+from engine.providers import image as image_provider
+
+MECH = {
+    "subject": "cortical rewiring after hearing loss",
+    "components": ["a hearing brain", "a deaf brain", "the visual cortex"],
+    "relationship": "the idle auditory area is taken over by vision",
+    "initial_state": "both brains identical",
+    "transformation": "the visual cortex of the deaf brain grows into the idle auditory area",
+    "final_state": "the deaf brain has an enlarged visual cortex",
+    "highlighted_element": "the visual cortex",
+    "claim_ids": ["C01"],
+}
+
+
+def _cut(n, **kw):
+    base = {"cut_no": n, "visual_role": "MECHANISM", "motion_source": "video",
+            "visual_prompt": ("two brains side by side on a studio tabletop, the hearing brain "
+                              "muted blue, the deaf brain muted coral, its visual cortex enlarged"),
+            "mechanism": dict(MECH), "overlay_plan": []}
+    base.update(kw)
+    return base
+
+
+def _stage(sid, cut_no, *, ops=(), cont=""):
+    return {"stage_id": sid, "cut_refs": [cut_no], "continuity_mode": "MUTATE_STATE" if cont else "NEW_WORLD",
+            "continuity_from": cont, "entity_refs": ["BRAIN"],
+            "mutations": [{"entity_id": "BRAIN", "operation": op, "property": "shape",
+                           "visible_change": True, "result_state": "bigger"} for op in ops]}
+
+
+def _header(stages):
+    return {"version_type": "photo", "hook_ko": "훅",
+            "visual_sequences": [{"sequence_id": "SEQ1", "sequence_role": "MECHANISM_SEQUENCE",
+                                  "entities": [{"entity_id": "BRAIN"}], "stages": stages}]}
+
+
+# ── T1-a 구조가 프롬프트에 닿는다 ─────────────────────────────────────────
+def test_mechanism_prose_reaches_the_image_prompt():
+    got = image_provider._build_image_prompt(_cut(4), {"version_type": "photo"})
+    assert "a hearing brain, a deaf brain and the visual cortex all visible" in got
+    assert "before: both brains identical; after: the deaf brain has an enlarged visual cortex" in got
+    assert "the visual cortex is the part being explained" in got
+    # 구조가 장면 묘사보다 **앞**에 온다 — 무엇이 보여야 하는지가 먼저다.
+    assert got.index("all visible") < got.index("two brains side by side")
+
+
+def test_referenced_cut_only_carries_the_change_not_the_before_state():
+    """참조 컷에서 전·후를 다 말하면 '이것만 바꿔라'와 싸운다."""
+    got = image_provider._build_image_prompt(_cut(4), {"version_type": "photo"}, referenced=True)
+    assert "The change to show: the visual cortex of the deaf brain grows" in got
+    assert "both brains identical" not in got
+
+
+def test_korean_fields_are_not_sent_to_the_image():
+    """한글이 섞인 필드는 그림에 안 간다 — 글자로 구워질 위험, 언어판 공유."""
+    cut = _cut(4, mechanism={**MECH, "subject": "청각 상실 뒤 재배선",
+                              "components": ["a hearing brain", "a deaf brain"],
+                              "initial_state": "두 뇌가 같다", "final_state": "시각 피질이 커졌다"})
+    prose = vs.mechanism_prose(cut)
+    assert "청각" not in prose and "두 뇌" not in prose
+    assert "Show a hearing brain and a deaf brain all visible" in prose
+
+
+def test_cuts_without_mechanism_are_byte_for_byte_unchanged():
+    """만화식 등 mechanism 이 없는 컷·버전은 출력이 그대로다(비교 실험 불변식)."""
+    cut = {"cut_no": 1, "visual_prompt": "a red sphere"}
+    assert vs.mechanism_prose(cut) == ""
+    got = image_provider._build_image_prompt(cut, {"version_type": "comic"})
+    assert got.startswith("a red sphere, vertical 9:16")
+
+
+# ── T1-b 구조와 장면이 딴 말을 하면 차단 ─────────────────────────────────
+def test_detached_prompt_is_blocked_and_matching_prompt_is_not():
+    header = {"hook_ko": "훅", "total_estimated_sec": 12}
+    ok = pc.evaluate(header, [_cut(1), _cut(2, visual_role="REALITY", mechanism=None,
+                                             visual_prompt="a research lab bench")])
+    assert not any(r.startswith("photo_mechanism_prompt_detached") for r in ok["block_reasons"]), ok
+    # 실측에서 잡힌 꼴 그대로 — entity_id 를 구성요소라고 적고 장면은 딴 것을 그린다.
+    bad = pc.evaluate(header, [_cut(1, mechanism={**MECH, "components": ["HUMAN_GENERIC", "AI_GENERIC"]},
+                                    visual_prompt="a group of diverse people looking to the right")])
+    assert "photo_mechanism_prompt_detached:1" in bad["block_reasons"]
+
+
+def test_korean_components_count_as_detached():
+    """한글 구성요소는 그림에 못 가므로 영어 구성요소가 2개 미만이면 같은 사유다."""
+    got = pc.evaluate({"hook_ko": "훅"}, [_cut(1, mechanism={**MECH, "components": ["뇌", "시각 피질"]})])
+    assert "photo_mechanism_prompt_detached:1" in got["block_reasons"]
+
+
+def test_component_hits_measure():
+    assert vs.mechanism_component_hits(_cut(1)) == (3, 3)
+    assert vs.mechanism_component_hits({"mechanism": {"components": ["뇌", "the moon"]},
+                                        "visual_prompt": "a lunar surface"}) == (0, 1)
+
+
+def test_the_text_gates_see_the_mechanism_prose_too():
+    """구조 문장이 프롬프트에 실리므로 따옴표 라벨 검사도 그것을 봐야 한다."""
+    cut = _cut(1, mechanism={**MECH, "highlighted_element": "the 'Visual Cortex'"})
+    got = pc.evaluate({"hook_ko": "훅"}, [cut])
+    assert any(r.startswith("photo_quoted_label_in_prompt") for r in got["block_reasons"])
+
+
+# ── T3 범례·캡션 ─────────────────────────────────────────────────────────
+def test_legend_and_label_pair_normalize_and_become_ass_cues():
+    plan = eo.normalize_overlay_plan([
+        {"type": "legend", "payload": {"items": [{"color": "blue", "label": "정상 청각"},
+                                                {"color": "coral", "label": "청각 상실"},
+                                                {"color": "neon", "label": "모르는 색"}]}},
+        {"type": "label_pair", "payload": {"top": "변화 전", "bottom": "변화 후"}},
+    ])
+    assert [p["type"] for p in plan] == ["legend", "label_pair"]
+    assert plan[0]["payload"]["items"][2]["color"] == "white", "모르는 색은 흰색으로 — 조용히 버리지 않는다"
+    cues = eo.build_overlay_cues([{"cut_no": 1, "overlay_plan": plan}], [0.0], [5.0])
+    styles = [c[3] for c in cues]
+    assert styles == ["Legend", "LabelTop", "LabelBottom"]
+    legend_text = cues[0][2]
+    assert config.LEGEND_COLORS_ASS["blue"] in legend_text and "정상 청각" in legend_text
+    assert "\\N" in legend_text, "항목은 줄바꿈으로 쌓인다"
+    assert cues[1][2] == "변화 전" and cues[2][2] == "변화 후"
+
+
+def test_legend_survives_when_the_model_writes_text_instead_of_payload():
+    plan = eo.normalize_overlay_plan([{"type": "legend", "text": "amber=시각 피질 / blue=정상 뇌"}])
+    assert plan and plan[0]["payload"]["items"] == [
+        {"color": "amber", "label": "시각 피질"}, {"color": "blue", "label": "정상 뇌"}]
+    pair = eo.normalize_overlay_plan([{"type": "label_pair", "text": "전 / 후"}])
+    assert pair and pair[0]["payload"] == {"top": "전", "bottom": "후"}
+
+
+def test_label_pair_without_both_halves_is_dropped():
+    assert eo.normalize_overlay_plan([{"type": "label_pair", "payload": {"top": "전"}}]) == []
+
+
+def test_ass_defines_the_three_new_styles_only_when_overlays_exist():
+    cues = [(0.0, 2.0, "x", "Legend")]
+    with_ov = subtitles.build_ass([(0.0, 2.0, "자막")], header_title="t", header_hook="h", overlays=cues)
+    for name in ("Style: Legend,", "Style: LabelTop,", "Style: LabelBottom,"):
+        assert name in with_ov, name
+    # 범례는 좌하단(1), 캡션은 상단 기준(8) — 자리가 서로·자막과 겹치지 않게.
+    legend_line = next(l for l in with_ov.splitlines() if l.startswith("Style: Legend,"))
+    assert legend_line.split(",")[11] == "1"
+    top_line = next(l for l in with_ov.splitlines() if l.startswith("Style: LabelTop,"))
+    assert top_line.split(",")[11] == "8"
+    without = subtitles.build_ass([(0.0, 2.0, "자막")], header_title="t", header_hook="h")
+    assert "Style: Legend," not in without, "오버레이가 없으면 출력 바이트 불변"
+
+
+def test_new_overlay_types_are_offered_to_the_directive_model():
+    """게이트가 legend 를 요구하는데 프롬프트가 그 유형을 안 주면 함정이다(gate-prompt-feedback-parity)."""
+    from engine import directive
+    assert "legend" in config.OVERLAY_TEXT_TYPES and "label_pair" in config.OVERLAY_TEXT_TYPES
+    assert "legend|label_pair" in directive._OVERLAY_TYPES_HELP or "label_pair" in directive._OVERLAY_TYPES_HELP
+    assert "photo_mechanism_unlabeled" in config.RETRYABLE_QUALITY_WARNINGS
+
+
+def test_mechanism_sequence_without_legend_warns_on_its_first_cut():
+    header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")])
+    cuts = [_cut(3), _cut(4)]
+    got = pc.evaluate(header, cuts)
+    warned = [w for w in got["warnings"] if w.startswith("photo_mechanism_unlabeled")]
+    assert warned and "3" in warned[0] and "4" in warned[0], got["warnings"]
+    # legend 를 시퀀스 어딘가에, label_pair 를 바뀌는 stage 의 컷에 넣으면 조용하다.
+    cuts[0]["overlay_plan"] = [{"type": "legend", "payload": {"items": [{"color": "blue", "label": "정상"}]}}]
+    cuts[1]["overlay_plan"] = [{"type": "label_pair", "payload": {"top": "전", "bottom": "후"}}]
+    got = pc.evaluate(header, cuts)
+    assert not any(w.startswith("photo_mechanism_unlabeled") for w in got["warnings"])
+
+
+# ── T2 전·후 분할 스틸 ────────────────────────────────────────────────────
+def test_split_applies_only_to_state_changing_stages_with_a_before_image():
+    header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1"),
+                      _stage("S3", 5, ops=("MOVE",), cont="S2")])
+    assert render.split_before_after_applies(_cut(4), header) is True
+    assert render.split_before_after_applies(_cut(3), header) is False, "여는 stage 는 전이 없다"
+    assert render.split_before_after_applies(_cut(5), header) is False, "운동(MOVE)은 I2V 가 한다"
+    assert render.split_before_after_applies(_cut(4, visual_role="REALITY"), header) is False
+
+
+def test_split_changes_the_stage_video_cache_key():
+    """스위치를 켠 뒤 옛 Veo 영상이 캐시에서 되살아나면 안 된다."""
+    header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")])
+    cuts = [_cut(3), _cut(4)]
+    plan = {"stage_id": "S2", "indexes": [1], "total_sec": 6.0}
+    on = render.stage_video_hash(plan, cuts, header)
+    config.MECHANISM_SPLIT_BEFORE_AFTER = False
+    try:
+        off = render.stage_video_hash(plan, cuts, header)
+    finally:
+        config.MECHANISM_SPLIT_BEFORE_AFTER = True
+    assert on != off
+
+
+def test_compose_split_still_stacks_before_over_after():
+    from PIL import Image
+    with tempfile.TemporaryDirectory() as d:
+        before, after, out = (os.path.join(d, n) for n in ("b.png", "a.png", "split.png"))
+        Image.new("RGB", (540, 960), (0, 0, 255)).save(before)
+        Image.new("RGB", (540, 960), (255, 0, 0)).save(after)
+        assert render._compose_split_still(before, after, out) is True
+        img = Image.open(out)
+        assert (img.width, img.height) == (config.RENDER_WIDTH, config.RENDER_HEIGHT)
+        assert img.getpixel((10, 10)) == (0, 0, 255), "위가 전"
+        assert img.getpixel((10, config.RENDER_HEIGHT - 10)) == (255, 0, 0), "아래가 후"
+        mid = config.RENDER_HEIGHT // 2
+        assert img.getpixel((10, mid)) == tuple(config.MECHANISM_SPLIT_DIVIDER_RGB), "가운데 분할선"
+
+
+def test_compose_split_still_fails_soft():
+    with tempfile.TemporaryDirectory() as d:
+        assert render._compose_split_still(os.path.join(d, "nope.png"), os.path.join(d, "nope2.png"),
+                                           os.path.join(d, "out.png")) is False
+
+
+def test_still_video_command_has_no_audio_and_exact_length():
+    argv = assemble.build_still_video_command(image_path="s.png", duration=6.25,
+                                              effects=["ken_burns_zoom_in"], out_path="o.mp4")
+    assert "-an" in argv and "-t" in argv and argv[argv.index("-t") + 1] == "6.250"
+    assert "zoompan" in argv[argv.index("-vf") + 1]
+
+
+def test_the_split_is_actually_wired_into_the_stage_loop():
+    """만들어 놓고 안 부르는 것을 막는다(dead-wiring-audit)."""
+    import inspect
+    src = inspect.getsource(render)
+    assert "split_before_after_applies(cut, header)" in src
+    assert "_compose_split_still(split_ref, img0, split_img)" in src
+    assert 'decision["split_before_after"] = True' in src, "결정을 seq_decision 에 남겨야 화면이 안다"
+
+
+# ── T5 색 규약이 한 표에서 나온다 ─────────────────────────────────────────
+def test_color_code_is_one_table_read_by_prompt_legend_and_directive():
+    from engine import directive
+    style = config.VISUAL_ROLE_STYLE["MECHANISM"]
+    for color in config.MECHANISM_COLOR_CODE:
+        assert color in style, color
+        assert color in config.LEGEND_COLORS_ASS, color
+    src = inspect_src(directive)
+    assert "amber=설명하는 부분" in src and "coral=둘째 집단" in src
+    # 참조 컷에서도 비교색은 남는다(범례가 거짓이 되지 않게). 앰버 강조만 뗀다.
+    cont = image_provider._build_image_prompt(_cut(4), {"version_type": "photo"}, referenced=True)
+    assert "muted blue and muted coral" in cont
+    assert "amber accent on the part being explained" not in cont
+
+
+def inspect_src(mod):
+    import inspect
+    return inspect.getsource(mod)
+
+
+def test_prompt_is_recorded_in_asset_meta():
+    """연구 때 '구조가 그림에 닿았는가'를 확인할 기록이 없었다 — 이제 남긴다."""
+    import inspect
+    src = inspect.getsource(render)
+    assert 'asset_meta["prompt"]' in src

@@ -62,6 +62,8 @@ export const BLOCK_LABEL: Record<string, string> = {
     "따옴표로 이름을 붙임 — 생성 모델이 그 이름을 글자로 그려 넣습니다(언어 공유가 깨짐)",
   photo_style_word_in_prompt:
     "장면 묘사가 화풍·렌즈 기법을 지시함 — 화풍은 코드가 정하는데 여기가 이깁니다",
+  photo_mechanism_prompt_detached:
+    "도해 구조(components)와 장면(visual_prompt)이 서로 딴 것을 말함 — 구조가 그림에 닿지 않습니다",
   cut_detail_not_in_source: "확보한 원문이 지불하지 않는 구체 절차·장비·경로를 화면에 그리려 함",
 };
 
@@ -102,6 +104,7 @@ export const WARNING_LABEL: Record<string, string> = {
   photo_mechanism_thin: "도해가 장식적일 수 있음(근거 1개)",
   photo_mechanism_spec_inherited: "재사용 컷이 기준 컷의 구조를 물려받음(면제)",
   photo_mechanism_structured: "어휘는 장식적이나 단계가 진행을 구조로 선언함",
+  photo_mechanism_unlabeled: "기전 시퀀스에 범례·캡션이 없음(어느 쪽이 무엇인지 화면이 말하지 않는다)",
   photo_reuse_base_overused: "한 기준 컷에서 파생이 너무 많음(그 대상이 화면을 지배)",
   photo_undrawable_difference:
     "차이를 판정 어휘로 적음(healthier·improved 등) — 모델은 그것을 못 그려 두 화면이 같아집니다",

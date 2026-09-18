@@ -224,14 +224,15 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
       "novelty_event": "<이 컷이 주는 '새 정보' 한 구절(새 Claim/새 비교/새 시각 상태)>",
       "asset_strategy": "<{_ASSET_STRATEGIES_HELP} 중 1 — 새 이미지가 정말 필요한 컷만 new_asset>",
       "visual_role": "<MECHANISM|REALITY — 실사형에서만 쓴다. 그 외 버전은 빈값>",
-      "mechanism": {{ "subject": "<무엇의 원리인가(한 구절)>",
-                     "components": ["<화면에 보여야 하는 구성요소 2개 이상>"],
-                     "relationship": "<구성요소들이 서로 어떻게 맞물리는가>",
-                     "initial_state": "<변화 전 상태>",
-                     "transformation": "<무엇이 무엇을 어떻게 바꾸는가 — 이 컷의 핵심>",
-                     "final_state": "<변화 후 상태>",
-                     "highlighted_element": "<화면에서 강조할 하나>",
+      "mechanism": {{ "subject": "<무엇의 원리인가(한 구절, **영어**)>",
+                     "components": ["<화면에 보여야 하는 물체 2개 이상 — **영어, 보이는 물체 이름**(entity_id·데이터셋명 금지)>"],
+                     "relationship": "<구성요소들이 서로 어떻게 맞물리는가(영어)>",
+                     "initial_state": "<변화 전 상태(영어, 눈에 보이는 모습)>",
+                     "transformation": "<무엇이 무엇을 어떻게 바꾸는가 — 이 컷의 핵심(영어)>",
+                     "final_state": "<변화 후 상태(영어, 눈에 보이는 모습)>",
+                     "highlighted_element": "<화면에서 강조할 하나(영어)>",
                      "claim_ids": ["<이 도해가 지불하는 claim_id>"] }},
+      "mechanism_ko": "<위 구조를 한국어 한 문장으로 — 무엇이 무엇을 어떻게 바꾸는지(사람이 읽는 용도)>",
       "visual_reuse_group": "<같은 연구대상·같은 비교축을 공유하는 컷들의 그룹 태그(예: G01). 없으면 빈값>",
       "base_asset_ref": "<재사용 전략일 때 기준이 되는 **앞선** 컷 번호(예: '3'). 아니면 빈값>",
       "crop": {{ "cx": <0~1 가로 중심 비율>, "cy": <0~1 세로 중심 비율>,
@@ -241,6 +242,8 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
       "overlay_plan": [
         {{ "type": "<{_OVERLAY_TYPES_HELP} 중 1>",
            "text": "<화면에 뜰 짧은 문구(표본·기간·수치·단서). 나레이션과 중복하지 마라>",
+           "payload": {{ "<legend 일 때>": "items: [{{color: amber|blue|coral, label: 한글 낱말}}] (2~3개)",
+                        "<label_pair 일 때>": "top: 위 화면이 무엇인지 / bottom: 아래 화면이 무엇인지 (한글, 짧게)" }},
            "claim_ids": ["<이 카드가 근거하는 claim_id>"],
            "start_sec": <컷 시작 기준 초>, "duration_sec": <int, 최소 {config.OVERLAY_MIN_SEC}>,
            "priority": "primary|supporting" }}
@@ -619,6 +622,20 @@ VERSION_GUIDANCE: dict[str, str] = {
         " 파생시켜라(구조에 없는 물체를 그리지 마라). subject / components(2개 이상) /"
         " relationship / initial_state / transformation / final_state / highlighted_element."
         " 구조를 못 채우겠으면 그 컷은 MECHANISM 이 아니다 — REALITY 로 바꿔라."
+        " ★★ **mechanism 의 필드는 영어로 써라 — 그 문장이 그대로 이미지 프롬프트에 실린다.**"
+        " components 는 화면에 실제로 보일 **물체 이름**(a damaged neuron, a healthy neuron,"
+        " the visual cortex)이지 entity_id·데이터셋명·개념어가 아니다. 그리고 visual_prompt 는"
+        " 그 물체들을 **같은 이름으로** 그려라 — 구조에 있는 물체가 장면에 없으면 차단된다"
+        " (photo_mechanism_prompt_detached). 사람이 읽을 한 줄은 mechanism_ko 에 한글로."
+        " ★★ [기전 컷의 색 규약 — 세 색뿐이다] amber=설명하는 부분, blue=첫 집단·변화 전,"
+        " coral=둘째 집단·변화 후. 두 집단이나 전·후를 나란히 놓는 컷은 visual_prompt 에서"
+        " 한쪽을 muted blue, 다른 쪽을 muted coral 로 칠하고, 그 컷의 overlay_plan 에 legend"
+        " (payload.items=[{color, label(한글)}])를 넣어 어느 색이 무엇인지 말하라 —"
+        " 기전 시퀀스마다 legend 하나는 있어야 한다. 상태가 **바뀌는** stage(TRANSFORM·GROW·"
+        " SHRINK·SPLIT_OFF·MERGE_INTO·DISAPPEAR)의 컷은 코드가 앞 stage 의 그림(전)과 이 stage"
+        " 의 그림(후)을 **위·아래로 붙인 한 장**으로 만든다(영상은 의미 변화를 못 만든다). 그"
+        " 컷에는 label_pair(payload.top / payload.bottom, 한글 짧게)를 넣어 위·아래가 무엇인지"
+        " 말하라. **한 컷에 두 상태를 다 그리려 하지 마라** — 이 컷의 visual_prompt 는 '후'만 그린다."
         " ★ 모든 주제에 억지로 도해를 만들지 마라. 실제로 시각화 가능한 원리·구조·전후 변화가"
         " 있는 컷에만 쓴다."
         " ★★ **도해할 물리적 대상이 없는 문장**(메타분석·통계 재분석·연구 설계 언급·'효과가"
@@ -706,7 +723,7 @@ VERSION_GUIDANCE: dict[str, str] = {
         " 편중은 **물체의 양**으로 보여줘라(시료관 선반에서 한 색이 대부분인 장면 등)."
         " ★★ **라벨이 필요하다고 느껴지면 그건 오버레이가 할 일이다.** 금지만 있고 대안이"
         " 없으면 너는 결국 이미지에 글자를 굽게 된다. 아래로 옮겨라:"
-        " 두 그룹 비교 → overlay_plan 의 group_compare / 전후 변화 → before_after /"
+        " 두 그룹·두 색이 무엇인지 → overlay_plan 의 legend / 위·아래 분할 화면의 전후 → label_pair /"
         " 표본·기간·대상 → scope_tag / 수치 → number_punch / 출처 → source_card."
     " ★★ **훅 컷도 예외가 아니다**(실측: 두 번 연속 여기서 막혔다). 컷1 이 숫자를 말하면"
     " (\"수명을 92일 연장\") 그 컷의 overlay_plan 에도 number_punch 를 넣어라 —"
@@ -1908,6 +1925,8 @@ def normalize_directive(
             # 도해 구조(2026-08-29 리뷰 §5). enum 하나로는 "빛나는 큐브를 든 추상적 인간"을
             # 막을 수 없다 — 무엇이 무엇을 어떻게 바꾸는지를 **필드로** 받아 검사한다.
             "mechanism": sanitize_mechanism(c.get("mechanism")),
+            # 사람이 읽는 구조 요약(2026-09-18). 구조 필드는 영어(그림용), 이 줄은 한글(화면용).
+            "mechanism_ko": str(c.get("mechanism_ko") or "").strip(),
             # 연출 계약(v2 Phase E2). 클립 안의 작은 편집 시퀀스 — 8초를 **어떻게 쓸지**.
             #   길이는 등급이 정하므로 여기서는 invest 상한(8초)으로 정규화하고,
             #   실제 클립 길이는 렌더가 다시 확정한다.

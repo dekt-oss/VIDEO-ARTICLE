@@ -56,6 +56,12 @@ def _build_image_prompt(cut: dict[str, Any], header: dict[str, Any],
         looks = sequence_render.appearing_entity_prose(stage, stage.get("_sequence"))
         if looks:
             delta = f"{delta} ({looks})" if delta else looks
+        # ★ 도해 구조의 **변화·강조만** 덧붙인다(2026-09-18, 연구 T1-a). 전·후를 다 말하면
+        #   "이것만 바꿔라"와 싸운다 — 그래서 referenced 변형을 따로 둔다.
+        if config.IMAGE_PROMPT_CARRIES_MECHANISM:
+            mech = visual_sequence.mechanism_prose(cut, referenced=True)
+            if mech:
+                delta = f"{delta}. {mech}" if delta else mech
         head = (config.SEQUENCE_REFERENCE_INSTRUCTION_MOVING
                 if str(stage.get("camera_operation") or "HOLD") != "HOLD"
                 else config.SEQUENCE_REFERENCE_INSTRUCTION)
@@ -84,7 +90,15 @@ def _build_image_prompt(cut: dict[str, Any], header: dict[str, Any],
             stage = _stage_of(cut, header)
             world = visual_sequence.world_prose(
                 ((stage or {}).get("_sequence") or {}).get("world") or {})
-        parts = [p for p in (gs, world, vp) if p]
+        # ★★ **도해 구조를 프롬프트에 싣는다**(2026-09-18, 연구_기전시퀀스_교육력 T1-a).
+        #   `mechanism` 은 지시서가 채우고 게이트가 검사했지만 여기까지 **오지 않았다** —
+        #   world_prose 가 그랬던 것과 똑같은 "만들고 배선 안 함"이었다(연구 §3-1). 그래서
+        #   구조가 완벽한 컷도 화면은 visual_prompt 의 배경 사진이었다. 세계 다음, 장면 앞에
+        #   놓는다 — 무엇이 보여야 하고 무엇이 바뀌는지가 장면 묘사보다 먼저다.
+        #   mechanism 이 없는 컷·버전(comic 등)은 빈 문자열이라 출력이 바이트 단위로 같다.
+        mech = (visual_sequence.mechanism_prose(cut)
+                if config.IMAGE_PROMPT_CARRIES_MECHANISM else "")
+        parts = [p for p in (gs, world, mech, vp) if p]
         body = ", ".join(parts) if parts else "abstract conceptual illustration"
     version = str((header or {}).get("version_type") or "")
     # ★ 컷 화면 역할이 있으면 그것이 버전 접미사를 이긴다(2026-08-20). 같은 실사형 안에서도

@@ -25,7 +25,8 @@ from typing import Any, Callable
 from . import (assemble, board_render, clip_fit_types, config, cost as cost_ledger, crop, db,
                claim_viz, evidence_overlay, generation_spec, render_manifest as rm, render_qa,
                clip_candidates, sequence_tier,
-               sequence_render, stage_metrics as sm, stage_render, subtitles)
+               sequence_render, stage_metrics as sm, stage_render, subtitles,
+               visual_sequence)
 from . import continuity_qa
 from .providers import image as image_provider
 from .providers import tts as tts_provider
@@ -306,6 +307,13 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
     #   응답만 봐서는 알 수 없다 — 그래서 산출물을 직접 잰다. 어긋나도 **예외를 던지지 않는다**:
     #   던지면 유료 호출이 재시도된다. 대신 에러 로그 + 에셋 meta 플래그로 ⑥ 화면에 남긴다.
     asset_meta: dict[str, Any] = {}
+    # ★ 실제로 보낸 프롬프트를 남긴다(2026-09-18). 연구 때 "구조가 그림에 닿았는가"를 확인할
+    #   길이 없었다 — 에셋은 있는데 무엇을 시켰는지 기록이 없었다. 순수 함수라 비용 0.
+    try:
+        asset_meta["prompt"] = image_provider._build_image_prompt(
+            cut, header, referenced=bool(ref_path))[:2000]
+    except Exception:  # noqa: BLE001 — 기록은 렌더를 막지 않는다
+        pass
     size = image_provider.measure_aspect(img_path)
     if size is not None:
         asset_meta["aspect"] = [size[0], size[1]]
@@ -580,7 +588,72 @@ def stage_video_hash(plan: dict[str, Any], cuts: list[dict[str, Any]],
         c = cuts[idx]
         parts.append(assemble.content_hash(c, header))
         parts.append(json.dumps(c.get("temporal_plan") or [], ensure_ascii=False, sort_keys=True))
+    # ★ 전·후 분할 스틸로 나가는 stage 는 I2V 영상과 **다른 산출물**이다(2026-09-18). 키에
+    #   넣지 않으면 스위치를 켠 뒤에도 옛 Veo 영상이 캐시에서 되살아난다.
+    if plan.get("indexes") and split_before_after_applies(cuts[plan["indexes"][0]], header):
+        parts.append("split_before_after")
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def split_before_after_applies(cut: dict[str, Any], header: dict[str, Any]) -> bool:
+    """이 컷이 여는 stage 를 **전·후 분할 스틸**로 만들 것인가(연구 T2). 순수 판정.
+
+    조건: 스위치가 켜져 있고 · 컷이 MECHANISM 이고 · stage 가 의미 변화(TRANSFORM·GROW·…)를
+    선언하고 · 이어받을 앞 stage(continuity_from)가 있다. 참조 그림이 실제로 있는지는
+    렌더 시점에 `_compose_split_still` 이 다시 본다(없으면 I2V 로 되돌아간다).
+    """
+    if not config.MECHANISM_SPLIT_BEFORE_AFTER:
+        return False
+    if generation_spec.effective_visual_role(cut) != "MECHANISM":
+        return False
+    seqs = (header or {}).get("visual_sequences")
+    if not isinstance(seqs, list) or not seqs:
+        return False
+    stage = visual_sequence.cut_to_stage(seqs).get(int(cut.get("cut_no") or 0)) or {}
+    return bool(stage.get("continuity_from")) and visual_sequence.stage_changes_state(stage)
+
+
+def _compose_split_still(before_path: str, after_path: str, out_path: str) -> bool:
+    """전(위)·후(아래)를 세로로 붙인 9:16 한 장. 실패하면 False(호출부가 I2V 로 되돌아간다).
+
+    ★ 위·아래다(좌·우가 아니다) — 세로 화면에서 좌우 분할은 각각이 너무 좁아 도해가 안 읽힌다.
+      각 반쪽은 원본을 **가운데 기준으로 잘라**(cover) 채운다 — 늘리면 화풍이 깨진다.
+      어느 쪽이 전이고 후인지는 그림이 아니라 label_pair 오버레이가 말한다(언어별).
+    """
+    try:
+        from PIL import Image  # noqa: PLC0415 — 지연 import(엔진 순수 테스트는 Pillow 없이도 돈다)
+        w, h = int(config.RENDER_WIDTH), int(config.RENDER_HEIGHT)
+        gap = int(config.MECHANISM_SPLIT_DIVIDER_PX)
+        half = (h - gap) // 2
+
+        def fit(path: str):
+            img = Image.open(path).convert("RGB")
+            scale = max(w / img.width, half / img.height)
+            img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))))
+            left, top = (img.width - w) // 2, (img.height - half) // 2
+            return img.crop((left, top, left + w, top + half))
+
+        canvas = Image.new("RGB", (w, h), tuple(config.MECHANISM_SPLIT_DIVIDER_RGB))
+        canvas.paste(fit(before_path), (0, 0))
+        canvas.paste(fit(after_path), (0, half + gap))
+        canvas.save(out_path, "PNG")
+        return True
+    except Exception as exc:  # noqa: BLE001 — 합성 실패는 I2V 폴백이지 렌더 중단이 아니다
+        log.warning("전·후 분할 스틸 합성 실패(I2V 로 폴백): %s", str(exc)[:160])
+        return False
+
+
+def _build_split_stage_video(split_img: str, plan: dict[str, Any], work_dir: str, gi: int) -> str:
+    """분할 스틸 → stage 길이만큼의 켄번스 영상(영상 생성비 0)."""
+    out = os.path.join(work_dir, f"stage_{gi}_split.mp4")
+    assemble.run_ffmpeg(assemble.build_still_video_command(
+        image_path=split_img, duration=float(plan["total_sec"]),
+        effects=[config.MECHANISM_SPLIT_EFFECT], out_path=out))
+    return out
+
+
+class _SplitStillDone(Exception):
+    """stage 영상을 분할 스틸로 이미 만들었다 — 아래 캐시·I2V 블록을 건너뛰는 신호."""
 
 
 def _stage_lead_no(plan: dict[str, Any], cuts: list[dict[str, Any]]) -> int:
@@ -1212,7 +1285,28 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                     cut, header, img0, asset_index=asset_index, seq_decision=decision,
                     directive_id=directive_id, render_job_id=render_job_id,
                     render_job_kind=render_job_kind, reuse_out=reuse_out)
+                # ★★ 전·후 분할 스틸(2026-09-18, 연구 T2). 상태가 바뀌는 stage 는 I2V 에 맡기지
+                #   않는다 — 영상 모델은 카메라만 돌리고 대상을 못 바꾼다(실측: "재배선" 8초 동안
+                #   조명만 흔들렸다). 앞 stage 의 그림(전, 위)과 방금 만든 그림(후, 아래)을 한 장으로
+                #   붙여 켄번스로 잡는다. 참조 그림이 없으면(degraded) 그대로 I2V 경로다.
+                #   결정은 seq_decision 에 남긴다 — 조용히 갈리면 승인 화면·원장이 모른다.
+                split_ref = str(decision.get("ref_asset") or "")
+                if (split_before_after_applies(cut, header) and split_ref
+                        and os.path.exists(split_ref) and os.path.exists(img0)):
+                    split_img = os.path.join(work_dir, f"stage_{gi}_split.png")
+                    if _compose_split_still(split_ref, img0, split_img):
+                        try:
+                            stage_videos[gi] = _build_split_stage_video(split_img, plan, work_dir, gi)
+                            decision["split_before_after"] = True
+                            log.info("stage %s 전·후 분할 스틸로 렌더(영상 생성 0회): %s ← %s",
+                                     plan["stage_id"] or gi, os.path.basename(split_ref),
+                                     os.path.basename(img0))
+                        except Exception as exc:  # noqa: BLE001 — 실패하면 I2V 경로로
+                            log.warning("stage %s 분할 스틸 영상 실패(I2V 로 폴백): %s",
+                                        plan["stage_id"] or gi, str(exc)[:160])
                 try:
+                    if gi in stage_videos:
+                        raise _SplitStillDone
                     # ★★ [stage 영상은 언어가 공유한다] 2026-09-14 실측. 이 경로에는 캐시가 없어서
                     #   영어판을 만들면 Veo 클립을 **처음부터 다시 샀다**(한 편 약 $5.5). 컷 경로
                     #   (_gen_veo_clip)는 처음부터 클립을 캐시해 "언어 추가 비용 0"을 지켰는데
@@ -1231,6 +1325,8 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                         _store_stage_video(sv, plan, cuts, header, directive_id)
                     stage_videos[gi] = sv
                     cost += c2
+                except _SplitStillDone:
+                    pass
                 except Exception as exc:  # noqa: BLE001
                     # ★ stage 영상이 실패해도 렌더를 죽이지 않는다 — 그 그룹만 옛 컷 경로로.
                     log.error("stage %s 영상 실패 → 컷 단위로 폴백: %s",

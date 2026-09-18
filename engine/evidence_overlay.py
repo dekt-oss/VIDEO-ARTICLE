@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,8 +27,62 @@ _STYLE_BY_TYPE: dict[str, str] = {
     "scope_tag": "Evidence",
     "number_punch": "NumberPunch",
     "caveat_tag": "Caveat",
+    # ★ 2026-09-18 기전 교육력(연구 T3). label_pair 는 위·아래 두 이벤트로 갈라지므로
+    #   build_overlay_cues 가 따로 다룬다(LabelTop / LabelBottom).
+    "legend": "Legend",
 }
 _DEFAULT_STYLE = "Evidence"
+_LABEL_TOP_STYLE = "LabelTop"
+_LABEL_BOTTOM_STYLE = "LabelBottom"
+
+
+def _color_key(v: Any) -> str:
+    color = str(v or "").strip().lower()
+    return color if color in config.LEGEND_COLORS_ASS else "white"
+
+
+def _legend_items(item: dict[str, Any]) -> list[dict[str, str]]:
+    """legend 의 항목 [{color, label}]. payload.items 가 정본이고, 없으면 text 를
+    'amber=손상 뉴런 / blue=정상 뉴런' 꼴로 읽는다(모델이 payload 를 빼먹어도 살린다)."""
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    raw = payload.get("items") if isinstance(payload.get("items"), list) else None
+    out: list[dict[str, str]] = []
+    if raw:
+        for it in raw:
+            if not isinstance(it, dict):
+                continue
+            label = str(it.get("label") or "").strip()
+            if label:
+                out.append({"color": _color_key(it.get("color")), "label": label})
+    else:
+        for piece in re.split(r"\s*[/|·]\s*", str(item.get("text") or "")):
+            color, sep, label = piece.replace(":", "=", 1).partition("=")
+            if sep and label.strip():
+                out.append({"color": _color_key(color), "label": label.strip()})
+    return out[:4]
+
+
+def _label_pair(item: dict[str, Any]) -> tuple[str, str]:
+    """label_pair 의 (위, 아래). payload.top/bottom 이 정본, 없으면 text 를 '위 / 아래' 로 읽는다."""
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    top = str(payload.get("top") or "").strip()
+    bottom = str(payload.get("bottom") or "").strip()
+    if not (top or bottom):
+        parts = [x.strip() for x in re.split(r"\s*[/|]\s*", str(item.get("text") or ""), maxsplit=1)]
+        top = parts[0] if parts else ""
+        bottom = parts[1] if len(parts) > 1 else ""
+    return top, bottom
+
+
+def legend_ass_text(items: list[dict[str, str]]) -> str:
+    r"""범례 → ASS 한 줄(줄바꿈 \N). 색 견본은 ■ 글리프에 인라인 색 오버라이드({\c&H..&}) —
+    도형 그리기 없이 자막 레이어만으로 색 범례가 된다."""
+    white = config.LEGEND_COLORS_ASS["white"]
+    lines = []
+    for it in items:
+        color = config.LEGEND_COLORS_ASS.get(it.get("color", ""), white)
+        lines.append("{\\c" + color + "&}■{\\c" + white + "&} " + str(it.get("label", "")))
+    return "\\N".join(lines)
 
 
 @dataclass(frozen=True)
@@ -73,7 +128,23 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         otype = sanitize_overlay_type(item.get("type"))
-        text = _payload_text(item)
+        # ★ 구조형(legend / label_pair)은 payload 가 정본이다. text 는 사람이 읽는 요약으로
+        #   같이 만들어 둔다(화면 목록·옛 경로가 text 만 보므로).
+        structured: dict[str, Any] | None = None
+        if otype == "legend":
+            legend = _legend_items(item)
+            if not legend:
+                continue
+            structured = {"items": legend}
+            text = " / ".join(f"{it['color']}={it['label']}" for it in legend)
+        elif otype == "label_pair":
+            top, bottom = _label_pair(item)
+            if not (top and bottom):
+                continue
+            structured = {"top": top, "bottom": bottom}
+            text = f"{top} / {bottom}"
+        else:
+            text = _payload_text(item)
         if not text:
             continue
         if otype == "number_punch":
@@ -96,6 +167,7 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
         out.append({
             "type": otype,
             "text": text,
+            **({"payload": structured} if structured else {}),
             "claim_ids": [str(c).strip() for c in claim_ids if str(c).strip()],
             "start_sec": start,
             # 2초 미만으로 지나가는 카드는 읽히지 않는다 — 최소 노출을 코드가 보장한다.
@@ -156,6 +228,15 @@ def build_overlay_cues(
             start = cut_start + min(item["start_sec"], max(0.0, cut_dur - 0.1))
             end = min(cut_start + cut_dur, start + item["duration_sec"])
             if end - start <= 0:
+                continue
+            if item["type"] == "label_pair":
+                pair = item.get("payload") or {}
+                cues.append((start, end, str(pair.get("top") or ""), _LABEL_TOP_STYLE))
+                cues.append((start, end, str(pair.get("bottom") or ""), _LABEL_BOTTOM_STYLE))
+                continue
+            if item["type"] == "legend":
+                cues.append((start, end, legend_ass_text((item.get("payload") or {}).get("items") or []),
+                             _STYLE_BY_TYPE["legend"]))
                 continue
             cues.append((start, end, item["text"],
                          _STYLE_BY_TYPE.get(item["type"], _DEFAULT_STYLE)))

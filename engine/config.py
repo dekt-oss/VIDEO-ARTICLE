@@ -897,6 +897,9 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     #   거의 안 움직인다. 코드는 없는 변형을 지어낼 수 없으니(beats_from_stage) 되물어야 한다.
     #   실측: 재생성 뒤에도 13컷 중 12컷이 이 이유 하나로 standard 였다.
     "photo_stage_no_transformation",
+    # ★ 2026-09-18 — 기전 시퀀스에 범례·캡션이 없으면 두 집단을 그려도 어느 쪽이 무엇인지
+    #   시청자가 모른다. overlay_plan 에 legend/label_pair 를 넣으면 되는 종류라 되묻는다.
+    "photo_mechanism_unlabeled",
 )
 
 #: 역할 라벨이 **명백히 거짓인지**만 보는 필요조건표(의미 분류기가 아니다).
@@ -979,6 +982,13 @@ PHOTO_QUOTED_LABEL_PATTERN: str = (
 # ★★★ 참조 컷에는 붙지 않는다 — 첨부 그림이 이미 세계를 확정했고, 말로 다시 설명하면
 #   "이것만 바꿔라"와 싸운다.
 IMAGE_PROMPT_CARRIES_WORLD: bool = _get_bool("IMAGE_PROMPT_CARRIES_WORLD", True)
+
+# ★★ 도해 구조(mechanism)를 이미지 프롬프트에 싣는다(2026-09-18, 연구 T1-a).
+#   `mechanism` 은 게이트가 검사만 하고 **버렸다** — subject/components/transformation 이
+#   그림에 한 번도 닿지 않았다(연구 §3-1). 그래서 구조는 완벽한데 화면은 배경 사진이었다.
+#   이제 `visual_sequence.mechanism_prose` 가 영어 필드만 골라 한 문장으로 만들어 세계
+#   선언 다음에 붙인다. 한글이 섞인 필드는 싣지 않는다(글자로 구워질 위험·번역 어긋남).
+IMAGE_PROMPT_CARRIES_MECHANISM: bool = _get_bool("IMAGE_PROMPT_CARRIES_MECHANISM", True)
 
 #: 세계 선언과 **그 세계를 여는 컷**이 겹치는 낱말이 하나도 없을 때 경고할지.
 #
@@ -1170,7 +1180,7 @@ VEO_CONTINUATION_INSTRUCTION: str = (
     "do not replace or restyle any object. Only the following motion happens: ")
 
 STYLE_CLAUSES_DROPPED_WHEN_REFERENCED: tuple[str, ...] = (
-    "single amber accent color on the part being explained",
+    "amber accent on the part being explained",
 )
 
 # 참조 프레임을 못 만들었을 때 남기는 사유. **숨기지 않는다**(작업지시서 Paper §9).
@@ -1251,12 +1261,21 @@ HOOK_STRONG_CLAIM_WORDS: tuple[str, ...] = (
 #     ASS 는 언어별로 생성되므로 언어 독립 에셋 불변식(I1)도 자동으로 지켜진다.
 OVERLAY_TYPES: tuple[str, ...] = (
     "source_card", "evidence_card", "number_punch", "caveat_tag", "scope_tag",
+    # ★ 2026-09-18 기전 교육력(연구_기전시퀀스_교육력 T3). 도해가 "무엇이 무엇인지"를 말할 길이
+    #   없었다 — 이미지에 글자는 금지, overlay_plan 은 수치·출처 카드뿐. 그래서 두 뇌를 나란히
+    #   그려도 어느 쪽이 정상인지 시청자가 모른다. 둘 다 ASS 텍스트라 언어별로 나간다.
+    #     legend      색 견본 + 낱말 (■ 손상 뉴런 / ■ 정상 뉴런) — 기전 시퀀스당 1개
+    #     label_pair  상·하 분할 화면의 위/아래 캡션 (전 / 후)
+    "legend", "label_pair",
     # 아래 4종은 도형·차트가 필요해 M-E4(코드 시각화)에서 처리한다. 지금 지정되면 텍스트로 폴백.
     "before_after", "group_compare", "timeline", "mechanism_steps",
 )
 OVERLAY_TEXT_TYPES: tuple[str, ...] = (
     "source_card", "evidence_card", "number_punch", "caveat_tag", "scope_tag",
+    "legend", "label_pair",
 )
+#: 문구 하나가 아니라 **구조(payload)** 를 갖는 오버레이. normalize 가 payload 를 보존한다.
+OVERLAY_STRUCTURED_TYPES: tuple[str, ...] = ("legend", "label_pair")
 OVERLAY_PRIORITIES: tuple[str, ...] = ("primary", "supporting")
 DEFAULT_OVERLAY_PRIORITY: str = "supporting"
 OVERLAY_MIN_SEC: float = 2.0          # §11-4 2초 미만으로 지나가는 복잡한 카드 금지
@@ -1298,6 +1317,30 @@ OVERLAY_COLOR_ASS: str = "&H0000E0FF"  # 강조 노랑 R255 G224 B0 (자막 흰�
 OVERLAY_CAVEAT_COLOR_ASS: str = "&H00B0B0B0"  # 한계·단서는 회색(주장보다 약하게)
 # 오버레이 세로 위치: 자막(하단)·헤더(상단)와 겹치지 않는 중상단.
 OVERLAY_MARGIN_V: int = 520
+
+# ★ 기전 컷의 **색 규약**(2026-09-18, 운영자 승인 "T5 색까지 승인"). 화풍은 2026-09-08 에
+#   고정됐지만 그 화풍의 "앰버 강조 1색"으로는 두 집단·전후를 구별할 수 없었다(연구 §3-4).
+#   세 색을 **뜻과 함께** 고정한다 — 프롬프트(VISUAL_ROLE_STYLE)·범례(legend)·지시서 안내가
+#   전부 이 표를 읽는다. 한 곳에서 이름을 바꾸면 세 곳이 같이 바뀐다.
+MECHANISM_COLOR_CODE: dict[str, str] = {
+    "amber": "the part being explained",
+    "blue": "the first compared group, or the before state",
+    "coral": "the second compared group, or the after state",
+}
+#: 위 세 색의 ASS 표기(&HAABBGGRR — BGR 순서). 범례의 ■ 견본에 쓴다.
+LEGEND_COLORS_ASS: dict[str, str] = {
+    "amber": "&H0000B0FF",   # R255 G176 B0
+    "blue": "&H00E0A050",    # R80 G160 B224 (탁한 파랑)
+    "coral": "&H006078E8",   # R232 G120 B96 (탁한 산호)
+    "white": "&H00FFFFFF",
+    "gray": "&H00B0B0B0",
+}
+OVERLAY_LEGEND_FONT_SIZE: int = 40
+OVERLAY_LEGEND_MARGIN_V: int = 700     # 좌하단 기준(Alignment=1) — 근거 카드(520)보다 위, 자막 위
+OVERLAY_LABEL_FONT_SIZE: int = 44
+#: 상·하 분할 화면의 캡션 자리. 위 캡션은 헤더 아래, 아래 캡션은 분할선 바로 아래(둘 다 상단 기준).
+OVERLAY_LABEL_TOP_MARGIN_V: int = 330
+OVERLAY_LABEL_BOTTOM_MARGIN_V: int = 1000   # = RENDER_HEIGHT(1920)//2 + 40, 분할선 바로 아래
 
 # 【§14】 자기검증 3값 판정(해당 없음을 실패로 세지 않기 위해).
 SELFCHECK_TRISTATE: tuple[str, ...] = ("pass", "fail", "not_applicable")
@@ -1725,12 +1768,20 @@ VISUAL_ROLE_STYLE: dict[str, str] = {
     #   그리고 `engineering-diagram clarity` 가 "도해 = 선으로 그린 그림" 쪽으로 밀어
     #   세포 컷이 아웃라인 선화로 나왔다(실측 시도 2·3).
     #   ★ REALITY 와 **한 줄만 다르다**(isometric cutaway). 재질·조명·색은 같다.
+    # ★★★ 2026-09-18 색 규약(운영자 승인 "T5 색까지 승인"). 앞 문장의 "앰버 1색"은 설명할
+    #   **한 부분**을 가리키는 데는 옳았지만, 기전 컷의 절반은 **두 집단·전후를 나란히** 놓는
+    #   컷이라 색이 하나면 둘을 구별할 수 없었다(연구_기전시퀀스_교육력 §3-4 — 두 뇌가 같은
+    #   색이라 어느 쪽이 손상인지 화면이 말하지 못했다). 앰버는 그대로 두고 비교용 두 색을
+    #   **뜻과 함께** 더한다(MECHANISM_COLOR_CODE). 재질·조명·배경은 여전히 REALITY 와 같다.
+    #   tests/test_photo_style_is_locked.py 를 같이 갱신했다(의도한 변경).
     "MECHANISM": (
         "stylized 3D render, simplified geometric forms with clean silhouettes, "
         "matte surfaces with minimal micro-texture, "
         "isometric cutaway with crisp layer separation, "
         "even studio lighting, "
-        "single amber accent color on the part being explained, neutral background"
+        "amber accent on the part being explained, "
+        "muted blue and muted coral as the only two comparison colors, "
+        "no other saturated color, neutral background"
     ),
     # ★★ 2026-09-07 재작성(운영자 지시: "실사가 너무 실사 같아서 못 보겠다. 특히 쥐.
     #   벤치마킹하던 건축 도해처럼 반실사 CG 로 가자").
@@ -1820,6 +1871,26 @@ I2V_CHAIN_VERSIONS: tuple[str, ...] = tuple(
 #   나레이션에 8초 클립 → 4.7초 정지. 근거·설계는 docs/설계안_시퀀스단위_렌더_v1.md.
 # ★ 끄면 즉시 옛 컷 경로로 돌아간다 — 새 경로가 실패했을 때 되돌리는 스위치다.
 STAGE_RENDER_ENABLED: bool = _get_bool("STAGE_RENDER_ENABLED", True)
+
+# ★★ 전·후 분할 스틸(2026-09-18, 연구 T2). 상태가 **바뀌는** stage(TRANSFORM·GROW·SHRINK 등)를
+#   I2V 에 맡기면 카메라만 돌고 대상은 안 바뀐다 — 영상 모델은 의미 변화를 못 만든다(연구 §3-2,
+#   실측: 뇌가 "재배선"되는 8초 동안 조명만 흔들렸다). 그런 stage 는 앞 stage 의 그림(전)과
+#   이 stage 의 그림(후)을 **위·아래로 붙인 한 장**으로 만들고 켄번스로 잡는다. 영상비 0.
+#   MOVE·ROTATE·IMPACT 같은 **운동**은 I2V 가 할 수 있는 일이라 그대로 둔다.
+MECHANISM_SPLIT_BEFORE_AFTER: bool = _get_bool("MECHANISM_SPLIT_BEFORE_AFTER", True)
+MECHANISM_SPLIT_OPERATIONS: tuple[str, ...] = (
+    "TRANSFORM", "GROW", "SHRINK", "SPLIT_OFF", "MERGE_INTO", "DISAPPEAR",
+)
+MECHANISM_SPLIT_DIVIDER_PX: int = 8
+MECHANISM_SPLIT_DIVIDER_RGB: tuple[int, int, int] = (58, 58, 58)
+MECHANISM_SPLIT_EFFECT: str = "ken_burns_zoom_in"
+
+# ★ 도해 컷의 visual_prompt 가 구조와 **떨어져 있는가**(2026-09-18, 연구 T1-b).
+#   components 중 프롬프트에 한 번도 안 나오는 컷 — 실측 117컷 중 4컷(3.4%), 오탐 0
+#   (넷 다 entity_id 나 데이터셋 이름을 구성요소라고 적은 것). 그래서 처음부터 차단이다.
+#   한글 구성요소는 셀 수 없으므로 **영어 구성요소가 2개 미만이면 역시 떨어진 것**으로 본다 —
+#   그림은 영어로 그리고, 한글 구조는 그림에 닿지 못한다.
+PHOTO_MECHANISM_PROMPT_MIN_HITS: int = 1
 # ★ [혼자 서는 컷] 2026-09-14 운영자 실측 — stage_render.group_cuts 주석이 근거다.
 #   결론 컷이 앞 stage 영상의 한 구간으로 잘려 **자기 그림이 한 번도 안 그려졌다**
 #   (최근 16편 중 13편). 끄면 종전처럼 앞 묶음에 붙인다.

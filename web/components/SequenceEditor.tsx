@@ -259,6 +259,13 @@ export default function SequenceEditor({
         </div>
         <details className="seq-more">
           <summary>이 컷 더 보기 — 움직임 · 효과 · 전환</summary>
+          {/* 도해 구조의 한글 요약(2026-09-18). 구조 필드 자체는 영어(그림용)라 여기엔 한 줄만. */}
+          {Boolean((c as unknown as { mechanism_ko?: string }).mechanism_ko) && (
+            <p className="seq-mech-ko">
+              <span className="seq-label">도해가 보여주는 원리</span>{" "}
+              {(c as unknown as { mechanism_ko?: string }).mechanism_ko}
+            </p>
+          )}
           {c.motion_source === "video" && (
             <KoBox label="움직임 — 영상으로 어떻게 움직이나"
               koText={(c as unknown as { motion_prompt_ko?: string }).motion_prompt_ko}

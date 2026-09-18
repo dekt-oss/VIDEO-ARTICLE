@@ -119,6 +119,15 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
         f"&H00000000,&H64000000,1,0,1,4,0,2,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_MARGIN_V}\n"
         f"Style: Caveat,{font_name},{config.OVERLAY_FONT_SIZE},{config.OVERLAY_CAVEAT_COLOR_ASS},"
         f"&H00000000,&H64000000,0,0,1,2,0,2,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_MARGIN_V}\n"
+        # ★ 2026-09-18 기전 교육력(연구 T3). 범례는 좌하단(Alignment=1) — 근거 카드·자막과
+        #   자리를 나눈다. 분할 화면 캡션은 상단 기준(Alignment=8)으로 위 캡션은 헤더 아래,
+        #   아래 캡션은 분할선 바로 아래. 견본 색은 텍스트 안의 인라인 오버라이드가 정한다.
+        f"Style: Legend,{font_name},{config.OVERLAY_LEGEND_FONT_SIZE},{config.LEGEND_COLORS_ASS['white']},"
+        f"&H00000000,&H64000000,1,0,1,3,0,1,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_LEGEND_MARGIN_V}\n"
+        f"Style: LabelTop,{font_name},{config.OVERLAY_LABEL_FONT_SIZE},{config.LEGEND_COLORS_ASS['white']},"
+        f"&H00000000,&H64000000,1,0,1,3,0,8,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_LABEL_TOP_MARGIN_V}\n"
+        f"Style: LabelBottom,{font_name},{config.OVERLAY_LABEL_FONT_SIZE},{config.LEGEND_COLORS_ASS['white']},"
+        f"&H00000000,&H64000000,1,0,1,3,0,8,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_LABEL_BOTTOM_MARGIN_V}\n"
     ) if ov else ""
     header = (
         "[Script Info]\n"

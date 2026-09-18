@@ -13,14 +13,16 @@ from __future__ import annotations
 from engine import config, photo_contract as pc
 from engine.directive import normalize_directive
 
+# ★ 2026-09-18 부터 구조 필드는 **영어**다(그 문장이 이미지 프롬프트에 실린다 — 연구 T1-a).
+#   components 는 visual_prompt 에 실제로 나오는 물체여야 통과한다(photo_mechanism_prompt_detached).
 GOOD_MECH = {
-    "subject": "비강 투여 경로",
-    "components": ["비강 점막", "후각신경", "뇌 표적 영역"],
-    "relationship": "점막에서 흡수된 분자가 신경을 따라 이동한다",
-    "initial_state": "스프레이가 비강에 분사된 직후",
-    "transformation": "분자가 점막을 통과해 신경 경로로 올라간다",
-    "final_state": "표적 영역에 도달해 수용체에 결합",
-    "highlighted_element": "신경 경로",
+    "subject": "the intranasal delivery route",
+    "components": ["the nasal mucosa", "the olfactory nerve pathway", "the target brain region"],
+    "relationship": "molecules absorbed at the mucosa travel along the nerve",
+    "initial_state": "spray droplets sitting on the mucosa",
+    "transformation": "molecules pass through the mucosa and climb the nerve pathway",
+    "final_state": "molecules bound to receptors in the target region",
+    "highlighted_element": "the nerve pathway",
     "claim_ids": ["C01"],
 }
 
