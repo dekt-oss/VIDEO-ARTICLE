@@ -1444,8 +1444,11 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         #   오버레이 카드가 나레이션 자막 위에 겹쳐 둘 다 못 읽는다(실측). 즉 `overlay_plan` 은
         #   설명판형에서 **보드의 입력원**이지 자막 레이어의 입력원이 아니다.
         skip = {c.get("cut_no") for c in cuts if board_render.code_render_board(c, header)}
+        # ★ 컷의 **실제 그림**을 넘긴다 — 화살표가 격자가 아니라 물체를 가리키게(2026-09-18 실측:
+        #   격자만 쓰면 빈 벽을 가리켰다). asset_index 는 영상 컷도 첫 프레임 스틸을 들고 있다.
         overlay_out.extend(evidence_overlay.build_overlay_cues(
-            cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types))
+            cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types,
+            images={no: p for no, p in asset_index.items() if p}))
     if cut_map_out is not None:
         # ★ cut_no 가 정본이다. 예전 오버레이 경로는 결측 시 리스트 인덱스로 폴백했는데,
         #   그러면 지시서가 컷을 건너뛴 번호를 쓸 때 두 체계가 어긋난다. 여기서는 결측을

@@ -432,3 +432,55 @@ def test_the_model_is_told_about_both_new_types():
         assert code in config.RETRYABLE_QUALITY_WARNINGS, code
         assert code in pc.WARNING_REASONS, code
         assert pc.feedback_prompt([], [f"{code}:1"]).strip(), code
+
+
+def test_pointer_aims_at_the_object_not_the_grid(tmp_path):
+    """★★ 격자만 쓰면 화살표가 **빈 벽을 가리킨다**(2026-09-18 실측).
+
+    모델은 "오른쪽 뇌"라는 뜻으로 `right` 를 적는데 격자는 화면 오른쪽 한가운데를 찍는다 —
+    생성된 그림에서 대상은 아래쪽에 앉아 있었고 화살표는 그 위 허공에 떴다. 모델에게 좌표를
+    물을 수는 없으니(자기 그림을 본 적이 없다) **코드가 그림을 본다.**
+    """
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (config.RENDER_WIDTH, config.RENDER_HEIGHT), (200, 200, 200))
+    dr = ImageDraw.Draw(img)
+    # 오른쪽 **아래**에만 물체를 둔다 — 격자(가운데)와 확실히 다른 자리.
+    dr.ellipse([700, 1500, 1000, 1800], fill=(20, 20, 20))
+    p = tmp_path / "scene.png"
+    img.save(p)
+    grid = eo.pointer_ass_text("right")
+    aimed = eo.pointer_ass_text("right", str(p))
+    assert grid != aimed, "그림을 줬는데 격자 자리 그대로면 배선이 끊긴 것이다"
+    found = eo._edge_centroid(str(p), "right")
+    assert found is not None
+    assert found[0] > config.RENDER_WIDTH * 0.5, "오른쪽 절반에서 찾아야 한다"
+    assert found[1] > config._SPLIT_DIVIDER_Y, "물체는 아래쪽에 있다"
+
+
+def test_a_missing_or_broken_image_falls_back_to_the_grid():
+    """그림을 못 읽는다고 화살표를 통째로 버리지 않는다 — 격자로라도 가리킨다."""
+    assert eo._edge_centroid("없는파일.png", "right") is None
+    assert eo.pointer_ass_text("right", "없는파일.png") == eo.pointer_ass_text("right")
+
+
+def test_every_arrow_stays_fully_inside_the_frame():
+    """★ 촉만 클램프하면 **꼬리가 화면 밖으로 잘린다**(2026-09-18 실측: 오른쪽 끝에서 잘렸다)."""
+    import math
+    import re
+    _, top, height = eo.content_band()
+    length = config.OVERLAY_POINTER_LENGTH_PX
+    for zone in config.OVERLAY_POINTER_ZONES:
+        text = eo.pointer_ass_text(zone)
+        tip_x, tip_y = map(int, re.search(r"org\((-?\d+),(-?\d+)\)", text).groups())
+        deg = int(re.search(r"frz(-?\d+)", text).group(1))
+        rad = math.radians(deg)
+        tail_x, tail_y = tip_x - length * math.cos(rad), tip_y + length * math.sin(rad)
+        assert 0 <= min(tip_x, tail_x) and max(tip_x, tail_x) <= config.RENDER_WIDTH, zone
+        assert top <= min(tip_y, tail_y) and max(tip_y, tail_y) <= top + height, zone
+
+
+def test_the_render_hands_the_images_to_the_overlay_builder():
+    """만들어 놓고 안 넘기면 화살표는 영원히 격자를 가리킨다(dead-wiring)."""
+    import inspect
+    src = inspect.getsource(render)
+    assert "images={no: p for no, p in asset_index.items() if p}" in src

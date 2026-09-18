@@ -14,11 +14,13 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from typing import Any
 
 from . import config
+from .util import log
 
 # 오버레이 유형 → ASS 스타일 이름. 스타일 정의는 subtitles.build_ass 가 만든다.
 _STYLE_BY_TYPE: dict[str, str] = {
@@ -116,7 +118,68 @@ def content_band() -> tuple[int, int, int]:
     return 0, 0, config.RENDER_HEIGHT
 
 
-def pointer_ass_text(zone: str) -> str:
+#: 구역 → 그림에서 살펴볼 영역 (가로 시작, 가로 끝, 세로 시작, 세로 끝) 비율.
+_ZONE_BOX: dict[str, tuple[float, float, float, float]] = {
+    "left":         (0.00, 0.50, 0.00, 1.00),
+    "right":        (0.50, 1.00, 0.00, 1.00),
+    "center":       (0.25, 0.75, 0.00, 1.00),
+    "top":          (0.00, 1.00, 0.00, 0.50),
+    "bottom":       (0.00, 1.00, 0.50, 1.00),
+    "top_left":     (0.00, 0.50, 0.00, 0.55),
+    "top_right":    (0.50, 1.00, 0.00, 0.55),
+    "bottom_left":  (0.00, 0.50, 0.45, 1.00),
+    "bottom_right": (0.50, 1.00, 0.45, 1.00),
+}
+
+
+def _edge_centroid(path: str, zone: str) -> tuple[int, int] | None:
+    """그림에서 **그 구역에 실제로 있는 물체**의 무게중심(최종 프레임 좌표). 못 찾으면 None.
+
+    ★ 왜 필요한가(2026-09-18 실측): 구역 격자만 쓰면 화살표가 **빈 벽을 가리킨다.** 모델은
+      "오른쪽 뇌"라는 뜻으로 `right` 를 적는데 격자는 화면 오른쪽 **한가운데**를 찍는다 —
+      생성된 그림에서 뇌는 아래쪽에 앉아 있었고 화살표는 그 위 허공에 떴다.
+      모델에게 좌표를 물을 수는 없다(자기 그림을 본 적이 없다). 그러면 **코드가 그림을 보면 된다.**
+
+    ★ 판정은 윤곽 에너지다 — 물체에는 경계가 있고 빈 배경에는 없다. 밝기 임계값을 쓰면
+      밝은 배경/어두운 배경 중 한쪽에서 뒤집힌다(우리 화풍은 둘 다 쓴다).
+    """
+    try:
+        from PIL import Image, ImageFilter  # noqa: PLC0415 — 지연 import
+    except Exception:  # noqa: BLE001 — Pillow 가 없으면 격자 기본값으로 간다
+        return None
+    w, h = config.RENDER_WIDTH, (config.LETTERBOX_CONTENT_HEIGHT
+                                 if config.LAYOUT_MODE == "center_band" else config.RENDER_HEIGHT)
+    try:
+        img = Image.open(path).convert("L")
+        # 렌더와 **같은 방식**으로 잘라야 좌표가 맞는다(cover-crop, assemble.effect_filter 와 동일).
+        scale = max(w / img.width, h / img.height)
+        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))))
+        left, top = (img.width - w) // 2, (img.height - h) // 2
+        img = img.crop((left, top, left + w, top + h))
+        small = img.resize((160, max(1, round(160 * h / w))))
+        edges = small.filter(ImageFilter.FIND_EDGES)
+    except Exception as exc:  # noqa: BLE001 — 그림을 못 읽으면 격자로
+        log.warning("화살표 대상 탐색 실패(격자 기본값 사용): %s", str(exc)[:120])
+        return None
+    x0, x1, y0, y1 = _ZONE_BOX.get(zone, (0.0, 1.0, 0.0, 1.0))
+    sw, sh = small.size
+    px = edges.load()
+    total = sx = sy = 0
+    for yy in range(int(sh * y0), int(sh * y1)):
+        for xx in range(int(sw * x0), int(sw * x1)):
+            v = px[xx, yy]
+            if v > config.OVERLAY_POINTER_EDGE_THRESHOLD:
+                total += v
+                sx += xx * v
+                sy += yy * v
+    if total <= 0:
+        return None
+    cx, cy = sx / total / sw, sy / total / sh
+    band_top = config.LETTERBOX_TOP_PX if config.LAYOUT_MODE == "center_band" else 0
+    return int(cx * w), int(band_top + cy * h)
+
+
+def pointer_ass_text(zone: str, image_path: str = "") -> str:
     r"""구역 하나 → ASS 도형 화살표 한 개.
 
     ★ 회전 중심을 **화살촉**에 못박는다(`\org`). 안 그러면 각도마다 촉이 딴 데로 간다 —
@@ -124,9 +187,26 @@ def pointer_ass_text(zone: str) -> str:
     """
     fx, fy, deg = _POINTER_ZONE[zone]
     _, top, height = content_band()
-    tip_x = int(config.RENDER_WIDTH * fx)
-    tip_y = int(top + height * fy)
     length, half = config.OVERLAY_POINTER_LENGTH_PX, config.OVERLAY_POINTER_HALF_HEIGHT_PX
+    rad = math.radians(deg)
+    tip_x = float(config.RENDER_WIDTH * fx)
+    tip_y = float(top + height * fy)
+    # ★ 그림이 있으면 **격자가 아니라 물체**를 가리킨다(위 _edge_centroid 주석).
+    found = _edge_centroid(image_path, zone) if image_path else None
+    if found:
+        # 촉이 물체 한가운데를 덮지 않게 들어오는 쪽으로 조금 물린다.
+        back = config.OVERLAY_POINTER_TIP_BACKOFF_PX
+        tip_x = found[0] - back * math.cos(rad)
+        tip_y = found[1] + back * math.sin(rad)
+    # ★★ 화살표 **전체**가 화면 안에 있어야 한다(2026-09-18 실측: 꼬리가 오른쪽 밖으로 잘렸다).
+    #   촉만 클램프하면 꼬리가 나간다 — 꼬리 좌표까지 구해 둘 다 들어오도록 통째로 민다.
+    tail_x, tail_y = tip_x - length * math.cos(rad), tip_y + length * math.sin(rad)
+    m = config.OVERLAY_POINTER_EDGE_MARGIN_PX
+    dx = (max(0.0, m - min(tip_x, tail_x))
+          - max(0.0, max(tip_x, tail_x) - (config.RENDER_WIDTH - m)))
+    dy = (max(0.0, (top + m) - min(tip_y, tail_y))
+          - max(0.0, max(tip_y, tail_y) - (top + height - m)))
+    tip_x, tip_y = int(tip_x + dx), int(tip_y + dy)
     # 촉이 (length, half) 에 오도록 그린다 → 좌상단 앵커(\an7)로 놓고 촉을 목표에 맞춘다.
     barb, shaft = int(length * 0.4), int(half * 0.35)
     shape = (f"m {length} {half} l {barb} 0 l {barb} {half - shaft} l 0 {half - shaft} "
@@ -297,9 +377,11 @@ def build_overlay_cues(
     cuts: list[dict[str, Any]], starts: list[float], durations: list[float],
     skip_cut_nos: set[Any] | None = None,
     only_types: set[str] | None = None,
+    images: dict[Any, str] | None = None,
 ) -> list[tuple[float, float, str, str]]:
     """컷별 overlay_plan → 영상 전체 타임라인의 ASS 이벤트.
 
+    images: 컷 번호 → 그 컷의 그림 경로. 주면 화살표가 **격자가 아니라 그림 속 물체**를 가리킨다.
     only_types: 이 유형만 내보낸다(None = 전부). 수치·출처 카드는 꺼 둔 채 범례·캡션만 그릴 때
       쓴다(config.MECHANISM_LABEL_OVERLAYS_ENABLED, 2026-09-18).
 
@@ -335,8 +417,10 @@ def build_overlay_cues(
                 cues.append((start, end, str(pair.get("bottom") or ""), _LABEL_BOTTOM_STYLE))
                 continue
             if item["type"] == "pointer":
+                img = (images or {}).get(cut.get("cut_no"), "")
                 for zone in (item.get("payload") or {}).get("zones") or []:
-                    cues.append((start, end, pointer_ass_text(zone), _STYLE_BY_TYPE["pointer"]))
+                    cues.append((start, end, pointer_ass_text(zone, img),
+                                 _STYLE_BY_TYPE["pointer"]))
                 continue
             if item["type"] == "legend":
                 cues.append((start, end, legend_ass_text((item.get("payload") or {}).get("items") or []),
