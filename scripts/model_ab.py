@@ -96,8 +96,13 @@ def _score(run: dict[str, Any]) -> dict[str, Any]:
     findings = audit.get("findings") or []
     kw_a, kw_b = photo_contract.keyword_card_problems(cuts)
     split_a, split_b = photo_contract.split_composition_cuts(cuts)
-    seqs = header.get("sequences") or []
-    total_sec = int(header.get("total_sec") or 0)
+    # ★ 게이트가 쓰는 **그 유도식** 그대로 읽는다(photo_contract 1447·1624행). 처음엔
+    #   header["total_sec"] / header["sequences"] 로 읽었는데 그런 키는 없어서 네 항목이
+    #   전부 0 으로 나왔다 — 맥락 칸이라 판정을 틀리게 하진 않았지만, 0 을 사실처럼
+    #   보고할 뻔했다. 채점기가 채점 대상과 다른 키를 보면 조용히 거짓말을 한다.
+    seqs = [x for x in (header.get("visual_sequences") or []) if isinstance(x, dict)]
+    total_sec = int(header.get("total_estimated_sec") or 0) or sum(
+        int(c.get("estimated_sec") or 0) for c in cuts)
 
     return {
         # ── 재생성을 부르는가 (파이프라인의 자기 판정)
@@ -162,6 +167,11 @@ def main() -> None:
             print(f"[{rep + 1}/{args.repeat}] {model} ...", flush=True)
             try:
                 run = _generate(draft_row, args.version_type, model)
+                # ★ 지시서 원본을 남긴다. 채점기를 고칠 때마다 유료 호출을 다시 하는 것은
+                #   낭비이고, 무엇보다 **다시 뽑으면 다른 결과**라 예전 점수와 비교가 안 된다.
+                OUT.mkdir(parents=True, exist_ok=True)
+                (OUT / f"지시서-{model}-{rep + 1}.json").write_text(
+                    json.dumps(run["directive"], ensure_ascii=False, indent=2), encoding="utf-8")
                 sc = _score(run)
                 sc["_모델"], sc["_회차"] = model, rep + 1
                 sc["_초"] = round(run["elapsed_sec"], 1)
