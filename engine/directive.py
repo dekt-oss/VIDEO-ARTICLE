@@ -67,6 +67,65 @@ _OVERLAY_TYPES_HELP = "|".join(config.OVERLAY_TEXT_TYPES)
 _POINTER_ZONES_HELP = " / ".join(config.OVERLAY_POINTER_ZONES)
 _TONE_GRADES_HELP = "|".join((config.DEFAULT_TONE_GRADE, *config.TONE_GRADES))
 
+#: 시각 시퀀스 JSON 스키마 — **두 공장이 같은 것을 쓴다**(2026-09-19).
+#  예전엔 논문 프롬프트 안에만 있었다. 리포트는 시퀀스를 모델에게 묻지 않고 코드
+#  (equity_visual)가 찍었기 때문이다 — 그래서 컷이 무엇을 그리든 2번째 stage 부터
+#  무조건 CONTINUE_WORLD 였고, "파이프 단면을 그려라"는 컷에 앞 컷의 위성 그림이
+#  참조로 붙어 **파이프가 화면에 아예 안 나왔다**(2026-09-19 실물 렌더로 확인).
+#  이제 리포트도 모델이 쓴다. 스키마를 한 벌로 두어야 한쪽만 낡는 일이 없다.
+SEQUENCE_SCHEMA: str = f"""
+  "visual_sequences": [
+    {{ "sequence_id": "<SEQ1 …>",
+       "sequence_role": "<{_SEQUENCE_ROLES_HELP} 중 1>",
+       "world": {{ "world_id": "<이 시퀀스가 머무는 세계의 이름>",
+                  "style": "<이 세계가 **어디인가** 한 구절 — 장소·공간·거기 놓인 것."
+                  " 화풍·재질·렌더 방식은 쓰지 마라(코드가 정한다). 카메라 각도·렌즈 수치도 금지."
+                  " 좋음 'A cell culture room with incubators and a steel bench'."
+                  " 나쁨 'Microscopic, detailed 3D rendering of cellular structures'(장소가 아니라 그리는 방법)>",
+                  "lighting": "<그 장소의 **광원** 한 구절(창·형광등·작업등). 분위기·발광 효과 금지 —"
+                  " 'Soft, internal glow' 는 광원이 아니라 효과다. 발광하는 물체를 그리고 싶으면"
+                  " 그 물체를 lighting 이 아니라 장면에 적어라>",
+                  "background": "<뒤에 **무엇이 있는가** 한 구절."
+                  " ★ 'blurred'·'out of focus' 를 쓰지 마라. 흐림은 코드가 정한다."
+                  " 뒤에 있다는 것은 **거리**로 말한다 — 'blurred lab equipment' 가 아니라"
+                  " 'lab equipment further back along the far wall'. 배경이 부차적이라는 것은"
+                  " 위치로 충분히 전달된다>",
+                  "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — 이 토큰만 쓴다>",
+                  "style_ko": "<style 을 한국어로 — 운영자가 읽는 용도. 영어 원문은 그대로 둔다>",
+                  "lighting_ko": "<lighting 을 한국어로>",
+                  "background_ko": "<background 를 한국어로>" }},
+       "entities": [
+         {{ "entity_id": "<PARTICIPANT_A / TOKEN_SET 처럼 대문자 식별자>",
+            "entity_type": "<person|object|structure>",
+            "visual_identity": "<이 개체를 매 stage 같게 만들 외형 한 구절>",
+            "visual_identity_ko": "<위 외형을 한국어로 — 운영자가 읽는 용도>" }} ],
+       "stages": [
+         {{ "stage_id": "<S1 …>",
+            "cut_refs": [<이 stage 가 담당하는 컷 번호들>],
+            "operation": "<{_VISUAL_OPERATIONS_HELP} 중 1>",
+            "camera_operation": "<{_CAMERA_OPERATIONS_HELP} 중 1>",
+            "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — **이 stage 의 축척**. 세계가 하나여도"
+            " stage 마다 바꿔라. 최소 하나는 close_detail(근접)이어야 한다>",
+            "continuity_mode": "<{_CONTINUITY_MODES_HELP} 중 1>",
+            "continuity_from": "<이어받는 **앞선** stage_id. NEW_WORLD 면 빈값>",
+            "entity_refs": ["<이 stage 에서 유지되는 entity_id>"],
+            "representation_mode": "<{_REPRESENTATION_MODES_HELP} 중 1>",
+            "allow_connective": false,
+            "mutations": [
+              {{ "entity_id": "<위 entities 에 선언한 id>",
+                 "property": "<무엇이 바뀌는가 — position/size/state/rotation …>",
+                 "operation": "<{_MUTATION_OPERATIONS_HELP} 중 1>",
+                 "visible_change": true,
+                 "result_state": "<바뀐 뒤 그 개체가 어떻게 보이는가 한 구절>",
+                 "claim_ids": ["<이 변화가 지불하는 claim_id>"] }} ],
+            "state_before": {{ "<개체 id>": "<이전 상태>" }},
+            "state_after":  {{ "<개체 id>": "<이후 상태>" }},
+            "observable_change": "<화면에서 눈에 보이게 달라지는 것 한 문장(영어)>",
+            "observable_change_ko": "<바로 위 문장을 한국어로 — 운영자가 읽는 용도>",
+            "claim_ids": ["<이 stage 가 지불하는 claim_id>"] }} ] }}
+  ],
+"""
+
 DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 겸 스토리 작가다. 입력은
 "대본(script_md)" + "Fact Sheet" + 기존 "장면들(scenes 초안)"이다. 이것들만으로 지정된 버전 규격에 맞는
 "컷별 제작 지시서"를 JSON 으로만 출력한다.
@@ -163,56 +222,7 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
     "retention_plan": {{ "open_loop": "<끝까지 보게 만드는 미해결 질문 한 줄>",
       "pattern_interrupt_cut_nos": [<리듬을 끊어 주의를 되돌리는 컷 번호>] }}
   }},
-  "visual_sequences": [
-    {{ "sequence_id": "<SEQ1 …>",
-       "sequence_role": "<{_SEQUENCE_ROLES_HELP} 중 1>",
-       "world": {{ "world_id": "<이 시퀀스가 머무는 세계의 이름>",
-                  "style": "<이 세계가 **어디인가** 한 구절 — 장소·공간·거기 놓인 것."
-                  " 화풍·재질·렌더 방식은 쓰지 마라(코드가 정한다). 카메라 각도·렌즈 수치도 금지."
-                  " 좋음 'A cell culture room with incubators and a steel bench'."
-                  " 나쁨 'Microscopic, detailed 3D rendering of cellular structures'(장소가 아니라 그리는 방법)>",
-                  "lighting": "<그 장소의 **광원** 한 구절(창·형광등·작업등). 분위기·발광 효과 금지 —"
-                  " 'Soft, internal glow' 는 광원이 아니라 효과다. 발광하는 물체를 그리고 싶으면"
-                  " 그 물체를 lighting 이 아니라 장면에 적어라>",
-                  "background": "<뒤에 **무엇이 있는가** 한 구절."
-                  " ★ 'blurred'·'out of focus' 를 쓰지 마라. 흐림은 코드가 정한다."
-                  " 뒤에 있다는 것은 **거리**로 말한다 — 'blurred lab equipment' 가 아니라"
-                  " 'lab equipment further back along the far wall'. 배경이 부차적이라는 것은"
-                  " 위치로 충분히 전달된다>",
-                  "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — 이 토큰만 쓴다>",
-                  "style_ko": "<style 을 한국어로 — 운영자가 읽는 용도. 영어 원문은 그대로 둔다>",
-                  "lighting_ko": "<lighting 을 한국어로>",
-                  "background_ko": "<background 를 한국어로>" }},
-       "entities": [
-         {{ "entity_id": "<PARTICIPANT_A / TOKEN_SET 처럼 대문자 식별자>",
-            "entity_type": "<person|object|structure>",
-            "visual_identity": "<이 개체를 매 stage 같게 만들 외형 한 구절>",
-            "visual_identity_ko": "<위 외형을 한국어로 — 운영자가 읽는 용도>" }} ],
-       "stages": [
-         {{ "stage_id": "<S1 …>",
-            "cut_refs": [<이 stage 가 담당하는 컷 번호들>],
-            "operation": "<{_VISUAL_OPERATIONS_HELP} 중 1>",
-            "camera_operation": "<{_CAMERA_OPERATIONS_HELP} 중 1>",
-            "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — **이 stage 의 축척**. 세계가 하나여도"
-            " stage 마다 바꿔라. 최소 하나는 close_detail(근접)이어야 한다>",
-            "continuity_mode": "<{_CONTINUITY_MODES_HELP} 중 1>",
-            "continuity_from": "<이어받는 **앞선** stage_id. NEW_WORLD 면 빈값>",
-            "entity_refs": ["<이 stage 에서 유지되는 entity_id>"],
-            "representation_mode": "<{_REPRESENTATION_MODES_HELP} 중 1>",
-            "allow_connective": false,
-            "mutations": [
-              {{ "entity_id": "<위 entities 에 선언한 id>",
-                 "property": "<무엇이 바뀌는가 — position/size/state/rotation …>",
-                 "operation": "<{_MUTATION_OPERATIONS_HELP} 중 1>",
-                 "visible_change": true,
-                 "result_state": "<바뀐 뒤 그 개체가 어떻게 보이는가 한 구절>",
-                 "claim_ids": ["<이 변화가 지불하는 claim_id>"] }} ],
-            "state_before": {{ "<개체 id>": "<이전 상태>" }},
-            "state_after":  {{ "<개체 id>": "<이후 상태>" }},
-            "observable_change": "<화면에서 눈에 보이게 달라지는 것 한 문장(영어)>",
-            "observable_change_ko": "<바로 위 문장을 한국어로 — 운영자가 읽는 용도>",
-            "claim_ids": ["<이 stage 가 지불하는 claim_id>"] }} ] }}
-  ],
+{SEQUENCE_SCHEMA}
   "cuts": [
     {{
       "cut_no": <int>,
@@ -742,10 +752,15 @@ VERSION_GUIDANCE: dict[str, str] = {
         f"{config.OVERLAY_KEYWORD_MAX_CHARS}자를 넘기면 그건 카드가 아니라 자막이다."
         " ★ 나레이션을 옮겨 적지 마라 — 귀로 듣는 말을 눈으로 또 읽히면 화면만 복잡해진다."
         " 나레이션이 '근육의 대부분은 물'이라 말하면 카드는 `75% WATER` 다(같은 문장이 아니다)."
-        " ■■ **[지시 화살표] 설명 대상을 직접 찍어라.** `type: pointer`, payload.at 에 구역 이름을"
-        f" 1~3개: {_POINTER_ZONES_HELP}. **좌표(픽셀)를 적지 마라** — 너는 그 그림을 본 적이 없다."
-        " 네가 아는 것은 네가 짠 구도뿐이다('왼쪽이 청각인'이면 left)."
-        " 색·글자로 가리키는 것보다 화살표가 세다 — 원리를 설명하는 컷에는 되도록 붙여라."
+        # ★★ 2026-09-19 운영자 지시로 **화살표를 권하지 않는다.** 예전 문구는 "원리를 설명하는
+        #   컷에는 되도록 붙여라"였고, 그래서 모델이 거의 매 컷에 달았다(최근 지시서 11/113 컷).
+        #   화살표는 그림이 이미 말하고 있는 것을 못 믿을 때 쓰는 땜질이다 — 그림이 말하게
+        #   하는 것이 먼저고, 그게 안 되면 화살표가 아니라 그림을 고쳐야 한다.
+        #   렌더도 기본으로 안 그린다(config.OVERLAY_POINTER_ENABLED=False).
+        " ■■ **화살표(pointer)는 웬만하면 쓰지 마라.** 어디를 보라고 손가락질하기 전에,"
+        " 설명할 대상이 **화면에서 제일 크고 한가운데**에 오도록 구도를 짜라. 그래도 도저히"
+        " 가리킬 수 없을 때만 `type: pointer` 를 쓰고, 그때도 구역 이름"
+        f" ({_POINTER_ZONES_HELP})만 적어라 — **좌표(픽셀)는 적지 마라**(너는 그 그림을 본 적이 없다)."
     " ★★ **훅 컷도 예외가 아니다**(실측: 두 번 연속 여기서 막혔다). 컷1 이 숫자를 말하면"
     " (\"수명을 92일 연장\") 그 컷의 overlay_plan 에도 number_punch 를 넣어라 —"
     " 숫자를 말하는 **모든** 컷이 대상이고, 첫 컷이 가장 자주 빠진다."

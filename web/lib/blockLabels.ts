@@ -66,6 +66,9 @@ export const BLOCK_LABEL: Record<string, string> = {
     "장면 묘사가 화풍·렌즈 기법을 지시함 — 화풍은 코드가 정하는데 여기가 이깁니다",
   photo_mechanism_prompt_detached:
     "도해 구조(components)와 장면(visual_prompt)이 서로 딴 것을 말함 — 구조가 그림에 닿지 않습니다",
+  photo_split_composition:
+    "화면을 갈라 두 장면을 넣음 — 9:16 을 좌우로 나누면 둘 다 손톱만 해져 도해가 비교표가 됩니다. " +
+    "비교는 컷과 컷 사이에서(같은 장면, 상태만 바꾸기)",
   cut_detail_not_in_source: "확보한 원문이 지불하지 않는 구체 절차·장비·경로를 화면에 그리려 함",
 };
 
@@ -116,6 +119,9 @@ export const WARNING_LABEL: Record<string, string> = {
   photo_keyword_is_a_sentence: "키워드 카드가 문장임(카드는 낱말 하나여야 한다)",
   photo_keyword_repeats_narration: "키워드 카드가 나레이션을 그대로 옮겨 적음(같은 말을 두 번)",
   photo_pointer_zone_unknown: "화살표가 가리킬 구역 이름이 틀림(화살표가 사라진다)",
+  photo_side_by_side_layout:
+    "한 장면 안에서 왼쪽·오른쪽으로 갈라 견줌 — 한 장면이면 정상이고, 둘을 견주려고 " +
+    "구도를 만든 것이면 컷을 나누는 편이 낫습니다(눈으로 확인하세요)",
   photo_reuse_base_overused: "한 기준 컷에서 파생이 너무 많음(그 대상이 화면을 지배)",
   photo_undrawable_difference:
     "차이를 판정 어휘로 적음(healthier·improved 등) — 모델은 그것을 못 그려 두 화면이 같아집니다",

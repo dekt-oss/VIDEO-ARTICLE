@@ -393,12 +393,25 @@ def test_pointers_stay_inside_the_content_band():
         assert top <= y <= top + height, (zone, y)
 
 
-def test_unknown_zones_are_reported_not_silently_dropped():
-    """조용히 사라지면 운영자는 화살표를 시켰다고 믿는다(error-vs-empty)."""
+def test_unknown_zones_are_reported_not_silently_dropped(monkeypatch):
+    """조용히 사라지면 운영자는 화살표를 시켰다고 믿는다(error-vs-empty).
+
+    ★ 2026-09-19: 화살표가 **기본으로 꺼졌다**(운영자 지시). 그래서 이 검사도 스위치를 켠
+      때만 돈다 — 렌더가 아예 안 그리는 것을 두고 경고하면 운영자를 헛것으로 부른다.
+      스위치를 다시 켤 날을 위해 검사 자체는 살아 있어야 하므로 여기서 켜고 본다.
+    """
     assert eo.normalize_overlay_plan([{"type": "pointer", "payload": {"at": "nowhere"}}]) == []
+    monkeypatch.setattr(config, "OVERLAY_POINTER_ENABLED", True)
     got = pc.evaluate({"hook_ko": "훅"}, [_cut(1, overlay_plan=[
         {"type": "pointer", "payload": {"at": "nowhere"}}])])
     assert any(w.startswith("photo_pointer_zone_unknown") for w in got["warnings"])
+
+
+def test_the_zone_check_is_quiet_while_arrows_are_off():
+    """스위치가 꺼져 있으면 말하지 않는다 — 안 그리는 것을 고치라고 하면 함정이다."""
+    got = pc.evaluate({"hook_ko": "훅"}, [_cut(1, overlay_plan=[
+        {"type": "pointer", "payload": {"at": "nowhere"}}])])
+    assert not any(w.startswith("photo_pointer_zone_unknown") for w in got["warnings"])
 
 
 def test_a_sentence_card_is_flagged_but_a_word_card_is_not():

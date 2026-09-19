@@ -48,8 +48,10 @@ BLOCK_REASONS: tuple[str, ...] = (
     "photo_style_word_in_prompt",        # 장면 묘사가 화풍·렌즈 기법을 지시한다(화풍은 코드가 정한다)
     "photo_quoted_label_in_prompt",      # 따옴표 친 라벨 이름 — 그림에 글자로 구워진다
     "photo_mechanism_prompt_detached",   # 도해 구조와 visual_prompt 가 서로 딴 것을 말한다(연구 T1-b)
+    "photo_split_composition",           # 화면을 갈라 두 장면을 넣는다(비교는 컷 사이에서 한다)
 )
 WARNING_REASONS: tuple[str, ...] = (
+    "photo_side_by_side_layout",       # 한 장면 안에서 좌·우로 갈라 견준다(분할은 아니다)
     "photo_role_balance_off",          # 도해/실사 비율이 권장에서 벗어남
     "photo_video_cut_count_off",       # 영상 컷 수가 권장 범위 밖
     "photo_video_cuts_not_adjacent",   # 영상 컷이 흩어져 I2V 연쇄가 끊긴다
@@ -280,6 +282,56 @@ def _image_text_of(cut: dict[str, Any]) -> str:
     mech = visual_sequence.mechanism_prose(cut)
     base = _raw_text_of(cut)
     return f"{base} {mech}" if mech else base
+
+
+# ── 화면 분할 금지 (2026-09-19 운영자 판정) ──────────────────────────
+# ★★ 무엇이 문제였나: 실물 렌더 한 편이 **4칸짜리 비교표**로 나왔다. 지시서가 그림 한 장
+#   안에서 좌·우로 갈랐고(`"Split screen."` 으로 시작하는 visual_prompt), 코드가 그 위에
+#   전·후를 위·아래로 다시 나눴다(MECHANISM_SPLIT_BEFORE_AFTER). 운영자 판정은
+#   "뭘 억지로 비교하려고 원리나 구성은 하나도 생각 안 하고" 였고, 편을 통째로 폐기했다.
+#
+# ★ 한 장을 가르면 둘 다 작아진다. 9:16 세로 화면에서 좌·우로 나누면 각 반쪽이 가로
+#   540px 이고, 거기에 레터박스 밴드까지 걸리면 설명 대상이 손톱만 해진다. 그러면 화면은
+#   도해가 아니라 **비교표**가 된다 — 읽는 것이지 보는 것이 아니다.
+#
+# ★ 비교는 **컷과 컷 사이**에서 한다. 같은 파이프가 좁았다가 넓어지고, 같은 흐름이 막혔다가
+#   뚫린다. 두 상태를 나란히 보여 주는 일은 코드가 한다(전·후 분할 스틸) — 그 일을 그림이
+#   또 하면 두 겹이 된다.
+#
+# ★★ **차단과 경고를 가른다**(실측 2026-09-19, 리포트 74컷·논문 185컷):
+#   ▸ 차단 = 화면을 가르는 **장치**를 이름으로 부른 것. 리포트 4컷·논문 10컷(둘 다 5%), 오탐 0.
+#   ▸ 경고 = 한 장면 안에서 "왼쪽에는 …, 오른쪽에는 …" 로 배치만 말한 것. 리포트 4컷·논문 2컷.
+#     이쪽은 정상인 것이 섞인다 — "밤의 지구, 왼쪽 도시에서 전파가, 오른쪽 도시에서 빛줄기가"
+#     는 한 장면이다. 그래서 막지 않고 보이게만 한다.
+#   ▸ **"두 모형을 나란히 놓는다"(side by side)는 건드리지 않는다** — 한 장면에 물체 둘이
+#     놓인 것은 분할이 아니다. 논문 11컷이 여기 해당하고 전부 정상이었다.
+_SPLIT_DEVICE = re.compile(
+    r"split[- ]screen"
+    r"|side[- ]by[- ]side\s+comparison"
+    r"|\bdiptych\b"
+    r"|\btwo\s+(?:separate\s+)?panels?\b"
+    r"|\b(?:left|right)\s+half\s+of\s+the\s+(?:screen|frame|image)"
+    r"|\b(?:left|right)\s+side\s*:"
+    r"|화면을?\s*(?:반으로|좌우로)\s*(?:갈라|나눠|나누)",
+    re.I)
+_SPLIT_LAYOUT = re.compile(r"on the left[\s\S]{0,140}?on the right", re.I)
+
+
+def split_composition_cuts(cuts: list[dict[str, Any]]) -> tuple[list[int], list[int]]:
+    """(차단할 컷 번호, 경고할 컷 번호). 순수 판정 — 위 주석이 문턱의 근거다."""
+    blocked: list[int] = []
+    warned: list[int] = []
+    for c in cuts or []:
+        try:
+            no = int(c.get("cut_no") or 0)
+        except (TypeError, ValueError):
+            continue
+        text = _image_text_of(c)
+        if _SPLIT_DEVICE.search(text):
+            blocked.append(no)
+        elif _SPLIT_LAYOUT.search(text):
+            warned.append(no)
+    return blocked, warned
 
 
 def _text_of(cut: dict[str, Any]) -> str:
@@ -1457,10 +1509,21 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
         if kw_repeats:
             warns.append("photo_keyword_repeats_narration:"
                          + ",".join(str(x) for x in kw_repeats[:6]))
-        bad_zones = pointer_zone_problems(cuts)
-        if bad_zones:
-            warns.append("photo_pointer_zone_unknown:"
-                         + ",".join(str(x) for x in bad_zones[:6]))
+        # ★ 화살표가 기본으로 꺼졌으므로(2026-09-19) 구역 이름 검사도 그때만 한다 —
+        #   렌더가 안 그리는 것을 두고 경고하면 운영자를 헛것으로 부른다.
+        if config.OVERLAY_POINTER_ENABLED:
+            bad_zones = pointer_zone_problems(cuts)
+            if bad_zones:
+                warns.append("photo_pointer_zone_unknown:"
+                             + ",".join(str(x) for x in bad_zones[:6]))
+    # ⑧-D 화면 분할 금지(2026-09-19 운영자 판정). 실측 근거는 _SPLIT_DEVICE 위 주석.
+    split_blocked, split_warned = split_composition_cuts(cuts)
+    if split_blocked:
+        blocks.append("photo_split_composition:"
+                      + ",".join(str(x) for x in split_blocked[:6]))
+    if split_warned:
+        warns.append("photo_side_by_side_layout:"
+                     + ",".join(str(x) for x in split_warned[:6]))
     if unlabeled:
         warns.append("photo_mechanism_unlabeled:" + ",".join(str(x) for x in unlabeled[:6]))
 
@@ -1743,6 +1806,14 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
             "- 도해 컷의 visual_prompt 가 배경·분위기에 그친다. **무엇을 잘라서 무엇을 보여주는지**"
             " 를 적어라(cutaway / cross-section / exploded view / step sequence / before-and-after)."
             " 'abstract', 'glowing', 'wide shot of' 같은 분위기 어휘를 빼라.")
+    if "photo_split_composition" in codes:
+        fixes.append(
+            "- visual_prompt 에서 **화면을 가르는 말을 지워라**"
+            "('Split screen' · 'Side-by-side comparison' · 'Left side:' · 'two panels')."
+            " 9:16 세로 화면을 좌우로 나누면 각 반쪽이 손톱만 해져서 도해가 아니라 비교표가 된다."
+            " 비교는 **컷과 컷 사이**에서 한다: 같은 파이프가 좁았다가 넓어지고, 같은 흐름이"
+            " 막혔다가 뚫린다. 한 장면을 유지한 채 **상태를 바꿔라** — 두 상태를 나란히 놓는"
+            " 일은 코드가 한다(전·후 분할). 그림이 또 하면 화면이 네 칸이 된다.")
     if "photo_mechanism_prompt_detached" in codes:
         fixes.append(
             "- 도해 컷의 mechanism.components 와 visual_prompt 가 **서로 딴 것을 말한다.**"
