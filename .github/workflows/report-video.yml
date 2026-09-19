@@ -86,11 +86,14 @@ jobs:
           # 'claude-sonnet-4-6' 은 ANTHROPIC_API_KEY 시크릿이 없어 매 요청이
           # "필수 환경변수 누락: anthropic_api_key" 로 죽었다(잡 자체는 성공으로 보임 — 워커가
           # 요청 행에 error 를 적고 정상 종료하기 때문). claude 로 되돌리려면 저장소 변수
-          # MODEL_DIRECTIVE + ANTHROPIC_API_KEY 시크릿을 함께 넣는다.
+          # MODEL_REPORT_DIRECTIVE + ANTHROPIC_API_KEY 시크릿을 함께 넣는다.
           # ★ ANTHROPIC_API_KEY 를 넣어 두면 Gemini 과부하(503) 때 워커가 sonnet 으로 자동
           #   폴백한다(engine/llm._gemini_text). 안 넣어도 동작은 같지만, 과부하가 몇 분씩
           #   가는 날에는 요청이 "503 from gemini" 로 죽는다(실측 2026-08-04 2건).
-          MODEL_DIRECTIVE: ${{ vars.MODEL_DIRECTIVE || 'gemini-2.5-pro' }}
+          # ★ MODEL_DIRECTIVE 가 아니라 **리포트 전용 상수**다(2026-09-19). 논문 지시서가
+          #   deepseek-v4-pro 로 옮겨 갈 때 이 경로가 조용히 딸려 갔다 — 재지 않은 경로이고,
+          #   여기 출력 상한은 LLM_SCRIPT_MAX_TOKENS(16,384)라 거의 확실히 절단된다.
+          MODEL_REPORT_DIRECTIVE: ${{ vars.MODEL_REPORT_DIRECTIVE || 'gemini-2.5-pro' }}
         run: python -m engine.report_directive
 
       # 렌더(ffmpeg) — mode=render|poll 이고 렌더 잡이 있을 때.

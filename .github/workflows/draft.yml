@@ -9,7 +9,8 @@ name: draft
 # 대시보드 "초안 생성 요청" → 큐(draft_requests)에 적재 → 이 워크플로가 소비해 drafts 생성.
 # 로컬 워커 없이 클라우드에서 초안을 생성하기 위한 수동 트리거(D4 폴링을 Actions 로 대체).
 #
-# 필수 Secret: SUPABASE_SERVICE_KEY, 그리고 GEMINI_API_KEY 또는 ANTHROPIC_API_KEY.
+# 필수 Secret: SUPABASE_SERVICE_KEY, GEMINI_API_KEY 또는 ANTHROPIC_API_KEY,
+#   그리고 지시서 단계용 DEEPSEEK_API_KEY(MODEL_DIRECTIVE 기본값이 deepseek-v4-pro).
 # 기본 모델은 Gemini(기존 채점과 동일 키로 바로 동작). 품질을 높이려면 입력에서
 # 대본 모델을 claude-opus-4-8 로 바꾸고 ANTHROPIC_API_KEY Secret 을 추가한다.
 
@@ -26,8 +27,8 @@ on:
         description: "자기검증 모델"
         default: "gemini-2.5-flash"
       directive_model:
-        description: "지시서 생성 모델"
-        default: "gemini-2.5-pro"
+        description: "지시서 생성 모델 (실측 2026-09-19: deepseek-v4-pro 가 문제합 3/3 우세)"
+        default: "deepseek-v4-pro"
 
 # 크론과 수동 실행이 겹쳐 같은 큐를 두 워커가 처리하지 않게 직렬화한다
 # (2026-09-06 추가. c8b46fd 에서 중복 dispatch 로 분이 두 배 나갈 뻔했다).
@@ -47,11 +48,14 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # 지시서 생성(engine.directive)은 2026-09-19 부터 deepseek-v4-pro 로 간다.
+      # 이 키가 없으면 그 단계만 조용히 죽는다 — 대본까지는 GEMINI 로 멀쩡히 돈다.
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       MODEL_FACTSHEET: ${{ inputs.factsheet_model }}
       MODEL_SCRIPT: ${{ inputs.script_model }}
       MODEL_SELFCHECK: ${{ inputs.selfcheck_model }}
-      MODEL_DIRECTIVE: ${{ inputs.directive_model || 'gemini-2.5-pro' }}
+      MODEL_DIRECTIVE: ${{ inputs.directive_model || 'deepseek-v4-pro' }}
       # 누가 임대를 잡았는지 요청 행에 남는다(0043) — 중단 원인을 추적하는 유일한 단서다.
       WORKER_ID: ${{ github.run_id }}
       TIMEZONE: "Asia/Seoul"
@@ -63,6 +67,34 @@ jobs:
           cache: pip
       - name: Install deps
         run: python -m pip install -r engine/requirements.txt
+      # ★ 시크릿은 **등록됐는데 값이 틀린** 적이 두 번 있었다(`gh secret set --body -` 가
+      #   리터럴 '-' 를 넣은 것, Windows 개행이 붙은 것). `gh secret list` 는 이름만 보여
+      #   주므로 그때도 "등록됨"으로 보였다. 값은 못 찍으니 **길이와 모양만** 본다.
+      #   여기서 일찍 죽는 편이 낫다 — 안 그러면 초안까지 만들고 지시서 단계에서 죽는다.
+      - name: Secret 모양 점검 (값은 찍지 않는다)
+        env:
+          KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WANT_MODEL: ${{ inputs.directive_model || 'deepseek-v4-pro' }}
+        run: |
+          case "$WANT_MODEL" in
+            deepseek*) ;;
+            *) echo "지시서 모델이 $WANT_MODEL — DeepSeek 키 점검 건너뜀"; exit 0 ;;
+          esac
+          n=${#KEY}
+          if [ "$n" -eq 0 ]; then
+            echo "::error::DEEPSEEK_API_KEY 가 비었다. 저장소 Secret 에 등록하라."; exit 1
+          fi
+          if [ "$n" -lt 20 ]; then
+            echo "::error::DEEPSEEK_API_KEY 가 $n 자다 — 너무 짧다. '-' 나 빈 값이 들어갔을 수 있다."; exit 1
+          fi
+          case "$KEY" in
+            *[[:space:]]*) echo "::error::DEEPSEEK_API_KEY 에 공백/개행이 섞였다. 줄바꿈 없이 다시 등록하라."; exit 1 ;;
+          esac
+          case "$KEY" in
+            sk-*) : ;;
+            *) echo "::warning::DEEPSEEK_API_KEY 가 'sk-' 로 시작하지 않는다($n 자). 형식이 바뀐 것이 아니면 확인하라." ;;
+          esac
+          echo "DEEPSEEK_API_KEY 모양 정상 ($n 자)"
       - name: Draft (초안 큐 처리 — draft_requests 폴링)
         run: python -m engine.draft
       # ★ 초안 다음에 둔다. 지시서는 초안이 있어야 만들 수 있으므로 같은 실행에서 이어진다.

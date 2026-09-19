@@ -301,7 +301,11 @@ def generate(draft_row: dict[str, Any], version_type: str,
 def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> dict[str, Any]:
     """LLM 1회 → 시퀀스 컴파일 → 공용 정규화 → EQ-V 계약. generate 가 재생성에 한 번 더 부른다."""
     obj = call_json(
-        model=config.MODEL_DIRECTIVE,
+        # ★ MODEL_DIRECTIVE 가 아니라 **리포트 전용 상수**다(2026-09-19). 논문 지시서를
+        #   DeepSeek 으로 옮길 때 이 경로가 조용히 딸려 갔고, 여기 상한은
+        #   LLM_SCRIPT_MAX_TOKENS(16,384)라 거의 확실히 절단된다 — 재지 않은 경로에
+        #   측정 결과를 밀지 않는다. config.MODEL_REPORT_DIRECTIVE 주석 참조.
+        model=config.MODEL_REPORT_DIRECTIVE,
         system=REPORT_DIRECTIVE_SYSTEM,
         user=user,
         max_tokens=config.LLM_SCRIPT_MAX_TOKENS,
