@@ -1461,6 +1461,15 @@ def compute_cost_plan(cuts: list[dict[str, Any]], content_mode_name: str,
     # ★ 상한도 버전 상향을 반영한다. 안 하면 실사형 6클립×8초=48초가 모드 상한 8초를 넘겨
     #   directive_block_reasons 가 video_budget_exceeded 로 **정상 지시서를 승인 차단**한다.
     _v_sec, _v_cost = config.video_budget_for(version_type, plan)
+    # ★★ **실사형은 재사용 목표가 0 이다**(2026-09-20). 2026-09-05 에 실사형의 스틸 복사
+    #   재사용을 코드가 막았다(normalize_directive 가 reuse_* 를 new_asset 으로 되돌리고,
+    #   render._obtain_still 이 한 번 더 막는다). 그래서 재사용 비율은 **구조적으로 늘 0** 인데
+    #   목표는 만화식 표에서 물려받은 0.2 로 남아 있었다 — 지킬 방법이 없는 요구다.
+    #   실측: photo 리포트 8편 전부 비율 0.00, 그래서 `asset_reuse_below_target` 이 8/8.
+    #   통일성은 참조 조건 생성이 담당한다(같은 세계의 다음 상태를 **새로 그린다**) —
+    #   그 장치가 일하고 있는데 "복사를 안 했다"고 경고하는 것은 앞뒤가 안 맞는다.
+    if version_type == "photo":
+        plan["asset_reuse_target"] = 0.0
     plan.update({
         "max_unique_assets": config.unique_assets_max(
             version_type, plan["max_unique_assets"], len(cuts)),
@@ -1571,7 +1580,10 @@ def directive_warnings(header: dict[str, Any], cuts: list[dict[str, Any]]) -> li
         out.append("asset_reuse_below_target")
     if bold_hook_gate_violation(header):
         out.append("bold_hook_on_weak_evidence")
-    if header.get("hook_promise_check", {}).get("pass") is False:
+    # ★ 모델이 안 쓴 칸은 판정하지 않는다 — 기본값이 {"pass": false, "promise": ""} 라
+    #   묻지 않는 라인에서는 **매 편** 뜬다(리포트 photo 8/8 실측). 위 bold_hook 과 같은 이유.
+    if ("hook_promise_check" not in set(header.get("backfilled_fields") or ())
+            and header.get("hook_promise_check", {}).get("pass") is False):
         out.append("hook_promise_unpaid")
     for c in cuts:
         no = c.get("cut_no")
@@ -1831,6 +1843,12 @@ def bold_hook_gate_violation(header: dict[str, Any]) -> bool:
 
     게이트: evidence_strength=high AND generalization_risk=low 일 때만 대담 훅 허용.
     """
+    # ★ 둘 중 하나라도 **우리가 채운 값**이면 판정하지 않는다(2026-09-20). 모델이 "대담한
+    #   훅을 쓰겠다"고 말한 적이 없는데 기본값 H1 을 그 선언으로 읽으면, 이 경고는 그 라인의
+    #   모든 편에서 뜬다(리포트 photo 8/8 실측). 근거: normalize_directive 의 backfilled_fields.
+    backfilled = set(header.get("backfilled_fields") or ())
+    if {"hook_type", "science_reliability"} & backfilled:
+        return False
     if header.get("hook_type") not in ("H1", "H2"):
         return False
     sr = header.get("science_reliability") or {}
@@ -2020,6 +2038,17 @@ def normalize_directive(
             header_in.get("hook_reframe_angle"), config.HOOK_ANGLES, config.DEFAULT_HOOK_ANGLE),
         "hook_promise_check": normalize_hook_promise_check(header_in.get("hook_promise_check")),
         "science_reliability": normalize_science_reliability(header_in.get("science_reliability")),
+        # ★★ **모델이 준 것인가, 우리가 채운 것인가**(2026-09-20). 정규화는 빠진 자리를 기본값으로
+        #   메우는데, 그 기본값을 게이트가 **모델의 답으로 읽으면** 지킬 수 없는 경고가 된다.
+        #   실측: 리포트 프롬프트는 hook_type·science_reliability·hook_promise_check 를 **아예
+        #   묻지 않는다.** 그래서 hook_type 이 기본값 H1(대담 훅), science_reliability 가
+        #   medium/medium, hook_promise_check 가 {"pass": false, "promise": ""} 로 채워졌고 —
+        #   `bold_hook_on_weak_evidence` 와 `hook_promise_unpaid` 가 **photo 리포트 8편 전부**
+        #   에서 떴다. 100% 뜨는 경고는 정보가 0이고, 운영자는 그것을 읽지 않게 된다.
+        #   묻지 않은 것은 검사하지 않는다 — 그 판단을 여기 한 줄로 남긴다.
+        "backfilled_fields": sorted(
+            f for f in ("hook_type", "science_reliability", "hook_promise_check")
+            if not header_in.get(f)),
         "cta_type": _sanitize_enum(header_in.get("cta_type"), config.CTA_TYPES, config.DEFAULT_CTA_TYPE),
         "loop_match": bool(header_in.get("loop_match", False)),
         "series_id": str(header_in.get("series_id") or ""),
