@@ -657,3 +657,21 @@ def test_the_render_drops_the_legend_when_the_colour_code_is_broken():
     src = inspect.getsource(render)
     assert 'photo_contract.color_code_conflicts(header)' in src
     assert 'drop_types=drop_types' in src
+
+
+def test_the_reference_prompt_forbids_recolouring_without_naming_entities():
+    """★ 참조 컷에서 색이 갈아엎히는 것을 **프롬프트가 직접** 막는다(2026-09-19).
+
+    ★★ 개체 이름(entity_id)은 쓰지 않는다 — 프롬프트에 넣으면 그림에 글자로 구워질 위험이
+      있다(photo_quoted_label_in_prompt 가 막는 그것). 참조 그림이 이미 색을 확정했으므로
+      "붙어 있는 그림의 색 그대로"라고만 말하면 이름 없이도 불변식이 성립한다.
+    """
+    for text in (config.SEQUENCE_REFERENCE_INSTRUCTION,
+                 config.SEQUENCE_REFERENCE_INSTRUCTION_MOVING):
+        assert "do not recolour any object" in text
+        assert "do not swap colours between objects" in text
+        assert "use the amber accent" in text, "부위는 앰버로 가리키라고 대안을 줘야 한다"
+        assert "entity_id" not in text and "_MODEL_" not in text
+    # 실제 프롬프트에도 실린다(상수만 고치고 배선이 끊기면 화면은 안 바뀐다).
+    got = image_provider._build_image_prompt(_cut(4), {"version_type": "photo"}, referenced=True)
+    assert "do not swap colours between objects" in got
