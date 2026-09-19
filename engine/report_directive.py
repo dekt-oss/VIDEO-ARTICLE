@@ -47,6 +47,8 @@ REPORT_DIRECTIVE_SYSTEM = f"""너는 증권사 리포트 대중화 숏폼 영상
 2) 컷은 "의미 단위"로(한 컷=한 메시지): [후크]→[종목/테마]→[핵심 팩트·수치]→[증권사 논리(귀속)]→[리스크]→[마무리].
    그 역할을 render_notes 앞에 대괄호로 표기.
 3) 앞뒤 문맥 연결(그래서/하지만/즉…). 순서대로 읽으면 하나의 매끄러운 이야기.
+   ★ **컷마다 novelty_event 를 채워라** — 그 컷이 주는 새 정보 한 구절. 앞 컷과 같은 말을 다시
+     하는 컷은 지워라(실측 2026-09-19: 10컷 **전부** 비어 있었다. 프롬프트가 묻지 않았기 때문이다).
 4) 데이터 절제 — 한 컷에 소리 내 읽는 숫자는 대표값 1개. 세부 수치는 시각(text_overlay/그래프)이 담당.
 5) EN 은 KO 의 자연스러운 번역(직역 금지).
 6) 출처 구체화 — "OO증권에 따르면"처럼 증권사를 구체 지칭(source 에 있는 것만).
@@ -72,6 +74,7 @@ REPORT_DIRECTIVE_SYSTEM = f"""너는 증권사 리포트 대중화 숏폼 영상
       "narration_ko": "<한국어>", "narration_en": "<English>",
       "estimated_sec": <int, {config.CUT_MIN_SEC}~{config.CUT_MAX_SEC}>,
       "visual_prompt": "<이미지/클립 생성용 영문 프롬프트>",
+      "novelty_event": "<이 컷이 주는 '새 정보' 한 구절(새 수치/새 비교/새 시각 상태)>",
       "style_anchor_ref": "<일관성 참조 or 빈값>",
       "effects": ["<허용 토큰만>"], "transition": "cut|crossfade",
       "bgm_cue": "<or 빈값>", "source_facts": ["<Fact Sheet 키>"],

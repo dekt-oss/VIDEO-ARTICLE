@@ -92,7 +92,7 @@ def _world_of(unit: dict[str, Any], index: int) -> dict[str, Any]:
 
 
 def _stage_of(step: dict[str, Any], idx: int, unit: dict[str, Any],
-              prev_stage_id: str, repeat: int = 1) -> dict[str, Any]:
+              prev_stage_id: str, repeat: int = 1, seq_id: str = "") -> dict[str, Any]:
     """논증 단계 하나 → stage 하나. **1:1 이다** — 여기서 단계를 만들지도 합치지도 않는다.
 
     repeat: 이 시퀀스에서 같은 (개체, 사업 의미)가 **몇 번째로** 나오는가.
@@ -114,7 +114,14 @@ def _stage_of(step: dict[str, Any], idx: int, unit: dict[str, Any],
         prose["en"] = f"{prose['en']}, further than in the previous stage"
         prose["ko"] = f"{prose['ko']} — 앞 단계보다 한 번 더"
     entity = tr["entity"]
-    stage_id = f"S{idx}_{sem}"
+    # ★★ stage_id 에 **시퀀스 이름을 앞에 붙인다**(2026-09-19 실측으로 잡았다).
+    #   종전에는 `S{단계번호}_{의미}` 였다 — 논증 단위마다 단계 번호가 1부터 다시 시작하고
+    #   의미 낱말(DEMAND_INCREASE 등)도 되풀이되니, **다른 시퀀스가 같은 stage_id 를 갖는다.**
+    #   `visual_sequence.stage_index` 는 시퀀스를 가로질러 평평한 dict 라 나중 것이 앞 것을
+    #   덮어쓰고, `continuity_from` 이 **다른 시퀀스의 stage** 를 가리킨다 — 렌더가 엉뚱한 그림을
+    #   참조로 붙이는데 화면은 멀쩡해 보인다(조용히 어긋나는 종류).
+    #   실측: 리포트 지시서 efa58017 은 stage 6개 중 2개가 색인에서 사라졌다(3편 중 2편에서 발생).
+    stage_id = f"{seq_id}_S{idx}_{sem}" if seq_id else f"S{idx}_{sem}"
     # 첫 단계는 세계를 세우고, 이후는 **같은 세계의 다음 상태**다.
     #   ★ 여기서 CONTINUE_WORLD 를 쓰는 것이 v3 의 요점이다. NEW_WORLD 를 연달아 쓰면
     #     "시퀀스"라고 부르지만 실은 컷 나열이다(공용 지표 world_reset 이 그것을 센다).
@@ -172,6 +179,8 @@ def compile_unit(unit: dict[str, Any], index: int) -> dict[str, Any] | None:
     if len(steps) < config.EQUITY_MIN_STAGES:
         return None
 
+    # ★ 시퀀스 이름을 **먼저** 정한다 — stage_id 가 그것을 앞에 붙이기 때문이다(아래 주석).
+    seq_id = f"SEQ_{unit.get('reasoning_id') or index}"
     stages: list[dict[str, Any]] = []
     prev = ""
     seen: dict[str, int] = {}          # (개체·사업 의미) → 몇 번째 등장인가
@@ -179,7 +188,7 @@ def compile_unit(unit: dict[str, Any], index: int) -> dict[str, Any] | None:
         sem = semantic_operation(str(step.get("text") or ""))
         key = f"{translate(sem)['entity']}|{sem}"
         seen[key] = seen.get(key, 0) + 1
-        st = _stage_of(step, i, unit, prev, repeat=seen[key])
+        st = _stage_of(step, i, unit, prev, repeat=seen[key], seq_id=seq_id)
         stages.append(st)
         prev = st["stage_id"]
 
@@ -189,7 +198,7 @@ def compile_unit(unit: dict[str, Any], index: int) -> dict[str, Any] | None:
             if e not in entity_ids:
                 entity_ids.append(e)
     return {
-        "sequence_id": f"SEQ_{unit.get('reasoning_id') or index}",
+        "sequence_id": seq_id,
         "sequence_role": "MECHANISM_SEQUENCE",
         "world": _world_of(unit, index),
         "entities": [{"entity_id": e, "entity_type": "equity_business_object",

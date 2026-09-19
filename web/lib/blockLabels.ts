@@ -56,6 +56,8 @@ export const BLOCK_LABEL: Record<string, string> = {
   vseq_state_lineage_mismatch: "앞 단계에 없던 개체 상태를 물려받았다고 적음(있지도 않던 것을 이어받을 수 없다)",
   vseq_state_entity_undeclared: "선언하지 않은 개체가 상태·변화에 등장(단계마다 다른 모습으로 그려진다)",
   vseq_no_actual_mutation: "진행하는 시퀀스인데 변화 선언이 없음(달라졌다는 말이 모델 자기보고뿐)",
+  vseq_duplicate_stage_id:
+    "같은 단계 이름(stage_id)이 둘 — 색인이 덮어써서 이어받기가 엉뚱한 화면을 가리킵니다",
   vseq_literal_without_source: "실제 관측 장면이라고 선언했는데 확보한 근거가 관측 방식을 말하지 않음",
   photo_text_request_conflict: "프롬프트가 글자를 그리라고 하면서 같은 문장에서 글자를 금지함(모순)",
   photo_quoted_label_in_prompt:
