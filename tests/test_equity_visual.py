@@ -115,15 +115,19 @@ def test_the_same_business_meaning_twice_still_has_to_progress():
 
     화면 문장이 똑같아 **코드가 계산한 상태가 동일**해졌고 상태 원장이
     `vseq_no_progression` 으로 차단했다. 게이트가 옳다 — 같은 화면 두 번은 진행이 아니다.
-    2회차는 "앞 단계보다 한 번 더"가 된다. 게이트를 속이려고 문자열만 바꾸는 것이 아니라
+    2회차는 "첫 단계보다 N단계 더"가 된다. 게이트를 속이려고 문자열만 바꾸는 것이 아니라
     (코덱스 리뷰 S1 이 금지한 것), 흐름이 **실제로 앞보다 굵어지는** 것이다.
+
+    ★ 2026-09-19 문구 변경: 종전에는 회차와 무관하게 늘 "앞 단계보다 한 번 더"였다. 그래서
+      3회차와 4회차가 **글자 그대로 같아져** EQ-V6 이 그 둘을 진행 없음으로 차단했다
+      (실측 리포트 63812e90). 회차를 적어 구분한다 — 검사의 뜻은 그대로다.
     """
     unit = _unit([("전력 수요가 늘어난다", ["F01"]),
                   ("데이터센터 투자로 수요가 또 늘어난다", ["F02"])])
     seqs = ev.compile_sequences({"units": [unit]})
     assert vc.evaluate(seqs)["block_reasons"] == []
     a, b = (s["observable_change"] for s in seqs[0]["stages"])
-    assert a != b and "한 번 더" in b
+    assert a != b and "단계 더" in b
 
 
 def test_valuation_stays_code_viz_instead_of_becoming_a_3d_metaphor():
