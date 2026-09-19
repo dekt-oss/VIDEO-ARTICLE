@@ -816,3 +816,33 @@ def test_the_report_generator_prefixes_stage_ids_with_the_sequence():
     src = inspect.getsource(equity_visual)
     assert 'f"{seq_id}_S{idx}_{sem}"' in src, "시퀀스 이름을 앞에 붙여야 유일해진다"
     assert "seq_id=seq_id" in src, "만들어 놓고 안 넘기면 그대로다"
+
+
+def test_repeated_equity_stages_are_told_apart_by_count():
+    """★★ 2026-09-19 실측: 반복 표시가 회차와 무관하게 늘 같은 문자열이라, 3번째와 4번째 단계의
+    observable_change 가 **글자 그대로 같아져** EQ-V6 이 그 둘을 "진행 없음"으로 차단했다.
+    그 규칙의 짝이 되라고 만든 장치가 오히려 규칙을 어기고 있었다."""
+    from engine import equity_contract as ec, equity_visual as ev
+
+    step = {"text": "수요가 늘어난다", "fact_ids": []}
+    made = [ev._stage_of(step, i, {}, f"P{i}", repeat=i, seq_id="SEQ_X") for i in (2, 3, 4)]
+    changes = [m["observable_change"] for m in made]
+    assert len(set(changes)) == 3, changes
+    # 그 결과 시퀀스 안에서 차단이 안 난다.
+    seq = {"sequence_id": "SEQ_X", "stages": made}
+    assert not [b for b in ec.block_reasons([seq]) if b.startswith("eq_v6_no_progression")]
+
+
+def test_equity_progression_is_judged_inside_each_sequence():
+    """★ 차단은 **시퀀스 안에서만** 본다 — 짝이 되는 회차 세기가 논증 단위 안에서만 돌기 때문이다.
+    시퀀스를 가로지르는 반복은 편집 판단이라 경고로 남긴다(신호를 버리지 않는다)."""
+    from engine import equity_contract as ec
+
+    same = {"entity_refs": ["E"], "observable_change": "같은 변화"}
+    a = {"sequence_id": "A", "stages": [{**same, "stage_id": "A_S1"}]}
+    b = {"sequence_id": "B", "stages": [{**same, "stage_id": "B_S1"}]}
+    assert not [x for x in ec.block_reasons([a, b]) if x.startswith("eq_v6_no_progression")]
+    assert any(w.startswith("eq_v6_repeat_across_sequences") for w in ec.warnings([a, b]))
+    # 같은 시퀀스 안에서 겹치면 그대로 차단이다.
+    one = {"sequence_id": "A", "stages": [{**same, "stage_id": "A_S1"}, {**same, "stage_id": "A_S2"}]}
+    assert any(x.startswith("eq_v6_no_progression") for x in ec.block_reasons([one]))

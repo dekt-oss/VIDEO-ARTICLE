@@ -111,8 +111,14 @@ def _stage_of(step: dict[str, Any], idx: int, unit: dict[str, Any],
     prose = dict(config.EQUITY_CHANGE_PROSE.get(
         sem, config.EQUITY_CHANGE_PROSE[config.DEFAULT_EQUITY_SEMANTIC_OP]))
     if repeat > 1:
-        prose["en"] = f"{prose['en']}, further than in the previous stage"
-        prose["ko"] = f"{prose['ko']} — 앞 단계보다 한 번 더"
+        # ★★ **횟수를 적는다**(2026-09-19 실측으로 고쳤다). 종전에는 회차와 무관하게 늘 같은
+        #   문자열을 붙였다 — 3번째와 4번째 단계의 `observable_change` 가 **글자 그대로 같아져**
+        #   EQ-V6("같은 개체가 같은 상태로 다시 나온다")이 그 둘을 진행 없음으로 차단했다.
+        #   실측(리포트 63812e90): SEQ_R04 의 두 단계가 둘 다 "… — 앞 단계보다 한 번 더" 였다.
+        #   이 규칙의 짝이 되라고 만든 장치가 오히려 규칙을 어기고 있었던 셈이다.
+        more = repeat - 1
+        prose["en"] = f"{prose['en']}, {more} step(s) further than the first stage"
+        prose["ko"] = f"{prose['ko']} — 첫 단계보다 {more}단계 더"
     entity = tr["entity"]
     # ★★ stage_id 에 **시퀀스 이름을 앞에 붙인다**(2026-09-19 실측으로 잡았다).
     #   종전에는 `S{단계번호}_{의미}` 였다 — 논증 단위마다 단계 번호가 1부터 다시 시작하고

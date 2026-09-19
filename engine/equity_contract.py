@@ -36,6 +36,7 @@ BLOCK_REASONS: tuple[str, ...] = (
 WARNING_REASONS: tuple[str, ...] = (
     "eq_v2_attribution_lost",         # 애널리스트 추정인데 귀속이 끊겼다
     "eq_v3_forecast_as_actual",       # 전망을 실적처럼 그린다
+    "eq_v6_repeat_across_sequences",  # 다른 시퀀스가 같은 개체·같은 변화를 되풀이한다(반복이지 오류는 아니다)
     "eq_v7_metaphor_on_factual_claim",  # 은유와 사실 주장이 한 화면에 섞였다
 )
 
@@ -93,17 +94,28 @@ def block_reasons(sequences: list[dict[str, Any]] | None) -> list[str]:
     # EQ-V6 — 같은 개체가 **같은 상태로** 다시 나오면 진행이 아니다.
     #   ★ `_stage_of` 가 2회차부터 "앞 단계보다 한 번 더"를 붙이는 것이 이 규칙의 짝이다.
     #     그 장치가 꺼지거나 깨지면 여기서 드러난다.
-    seen: dict[tuple[str, str], str] = {}
-    dupes: list[str] = []
-    for s in stages:
-        key = (",".join(str(e) for e in (s.get("entity_refs") or [])),
-               str(s.get("observable_change") or ""))
-        if key in seen:
-            dupes.append(str(s.get("stage_id")))
-        else:
-            seen[key] = str(s.get("stage_id"))
-    if dupes:
-        out.append(f"eq_v6_no_progression:{','.join(dupes[:6])}")
+    #
+    # ★★ **시퀀스 안에서만 본다**(2026-09-19 실측으로 고쳤다). 종전에는 지시서 전체를 평평하게
+    #   놓고 비교했는데, 짝이 되는 `_stage_of` 의 회차 세기는 **논증 단위 안에서만** 돈다
+    #   (`seen` 이 단위 루프의 지역 변수다). 그래서 서로 다른 논증이 같은 개체·같은 의미를
+    #   말하면 **둘 다 1회차**라 같은 문장이 되고, 검사는 그것을 "진행 없음"이라 불렀다 —
+    #   실측(리포트 63812e90): 네 시퀀스에 걸쳐 5개가 그렇게 잡혔고, 각 시퀀스 안에서는
+    #   멀쩡히 진행하고 있었다. 규칙의 뜻도 "이 시퀀스가 진행하는가"이지 "영상 전체에서
+    #   같은 말을 두 번 했는가"가 아니다. 후자는 아래 경고가 따로 센다.
+    for seq in (sequences or []):
+        if not isinstance(seq, dict):
+            continue
+        seen: dict[tuple[str, str], str] = {}
+        dupes: list[str] = []
+        for s in (seq.get("stages") or []):
+            key = (",".join(str(e) for e in (s.get("entity_refs") or [])),
+                   str(s.get("observable_change") or ""))
+            if key in seen:
+                dupes.append(str(s.get("stage_id")))
+            else:
+                seen[key] = str(s.get("stage_id"))
+        if dupes:
+            out.append(f"eq_v6_no_progression:{','.join(dupes[:6])}")
     return out
 
 
@@ -113,6 +125,21 @@ def warnings(sequences: list[dict[str, Any]] | None) -> list[str]:
     if not stages:
         return []
     out: list[str] = []
+
+    # ★ 시퀀스를 **가로질러** 같은 개체·같은 변화가 되풀이되면 경고한다(2026-09-19).
+    #   차단은 시퀀스 안에서만 본다(EQ-V6 주석) — 하지만 영상 전체로 보면 같은 말을 두 번
+    #   하는 것이므로 신호를 버리지 않는다. 편집 판단이라 경고다.
+    _across: dict[tuple[str, str], str] = {}
+    _repeat: list[str] = []
+    for _s in stages:
+        _k = (",".join(str(e) for e in (_s.get("entity_refs") or [])),
+              str(_s.get("observable_change") or ""))
+        if _k in _across:
+            _repeat.append(str(_s.get("stage_id")))
+        else:
+            _across[_k] = str(_s.get("stage_id"))
+    if _repeat:
+        out.append("eq_v6_repeat_across_sequences:" + ",".join(_repeat[:6]))
 
     # EQ-V2 — 애널리스트 추정·의견을 그리는 stage 는 귀속을 잃지 않는다.
     #   귀속은 claim_ids(number_facts) 가 들고 있다 — 그것이 비면 화면만 남고 출처가 없다.
