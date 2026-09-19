@@ -107,6 +107,20 @@ def record(attempt: dict[str, Any]) -> None:
     except Exception as exc:  # noqa: BLE001 — 원장 기록 실패가 렌더 전체를 막으면 안 됨
         log.warning("비용 원장 기록 실패(무시): %s", exc)
 
+def _text_provider(model_id: str) -> str:
+    """모델 ID → 원장에 적을 공급자 이름. engine/llm._backend_for 와 **같은 규칙**이다.
+
+    ★ 여기가 틀리면 "공급자별 지출"이 조용히 거짓말을 한다 — 호출은 DeepSeek 으로 나갔는데
+      원장은 anthropic 으로 집계되는 식이다.
+    """
+    m = (model_id or "").lower()
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith("deepseek"):
+        return "deepseek"
+    return "anthropic"
+
+
 def text_attempt(*, model_id: str, purpose: str, input_tokens: int, output_tokens: int,
                  status: str = "succeeded", error_class: str | None = None,
                  directive_id: str | None = None, render_job_id: str | None = None,
@@ -135,7 +149,7 @@ def text_attempt(*, model_id: str, purpose: str, input_tokens: int, output_token
         "render_job_kind": render_job_kind,
         "cut_no": None,
         "asset_type": "llm",
-        "provider": "gemini" if model_id.startswith("gemini") else "anthropic",
+        "provider": _text_provider(model_id),
         "model_id": model_id,
         "generation_mode": purpose,          # factsheet | script | selfcheck | directive | judge
         "unit_type": "text_output_per_token",

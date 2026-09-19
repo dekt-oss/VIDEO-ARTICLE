@@ -230,6 +230,11 @@ LLM_JSON_RETRY: int = 1   # JSON 파싱 실패 시 재시도 횟수(명세 3-3)
 # Gemini(재미나이) 대체 백엔드: 모델 id 가 "gemini" 로 시작하면 이 경로로 라우팅(REST).
 # 무료 등급 비용 절감용. GEMINI_API_KEY 필요.
 GEMINI_BASE: str = "https://generativelanguage.googleapis.com/v1beta/models"
+
+# DeepSeek — OpenAI 호환 엔드포인트. 모델 ID 는 **라이브 /models 로 확인한 것만** 쓴다
+# (2026-09-19 실측: deepseek-flash, deepseek-v4-pro. 널리 알려진 deepseek-chat /
+#  deepseek-reasoner 는 이 계정에 존재하지 않는다 — 추측한 모델명을 넣으면 404 다).
+DEEPSEEK_BASE: str = os.getenv("DEEPSEEK_BASE", "https://api.deepseek.com")
 # 무료 등급 RPM 제한(예: flash 15 RPM) 대비 요청 간 최소 간격.
 GEMINI_MIN_INTERVAL_SEC: float = 4.5
 # ★ gemini-2.5* 는 추론 모델이라 사고(thinking) 토큰이 maxOutputTokens 를 잠식해 JSON 이 비거나
@@ -2130,6 +2135,13 @@ TEXT_PRICING: dict[str, dict[str, float]] = {
     "gemini-3-pro":     {"text_input_per_token": 1.25 / 1e6, "text_output_per_token": 10.00 / 1e6},
     "claude-opus-4-8":  {"text_input_per_token": 15.00 / 1e6, "text_output_per_token": 75.00 / 1e6},
     "claude-sonnet-4-6": {"text_input_per_token": 3.00 / 1e6, "text_output_per_token": 15.00 / 1e6},
+    # ★ DeepSeek 은 **시간대별로 단가가 다르다**(UTC 01–04·06–10 평일이 peak, off-peak 는 절반).
+    #   원장에는 **비싼 쪽(peak)**을 적는다 — 지출을 실제보다 작게 보이게 하는 것이 이 표에서
+    #   가장 위험한 실수다(2026-08-29 사고의 본질이 "원장이 작게 보였다"였다).
+    #   cache hit 단가는 훨씬 싸지만($0.006/$0.044) 지금은 miss 기준으로 보수적으로 잡는다.
+    #   출처: api-docs.deepseek.com/quick_start/pricing (2026-09-19 확인).
+    "deepseek-flash":   {"text_input_per_token": 0.30 / 1e6, "text_output_per_token": 1.20 / 1e6},
+    "deepseek-v4-pro":  {"text_input_per_token": 1.32 / 1e6, "text_output_per_token": 3.96 / 1e6},
 }
 
 PRICING: dict[str, dict[str, float]] = {
@@ -3625,6 +3637,7 @@ EXPLAINER_IMAGE_NEGATIVE_PROMPT: str = (
 class Secrets:
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
+    deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))
     elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
     higgsfield_api_key: str = field(default_factory=lambda: os.getenv("HIGGSFIELD_API_KEY", ""))
     supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))

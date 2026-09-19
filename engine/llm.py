@@ -263,6 +263,59 @@ def _gemini_create(*, model: str, system: str, user: str, max_tokens: int) -> st
         raise JSONParseError(f"Gemini 응답 형식 예상 밖: {exc}") from exc
 
 
+@retry(
+    reraise=True,
+    stop=stop_after_attempt(config.HTTP_MAX_RETRIES),
+    wait=wait_exponential(multiplier=config.HTTP_BACKOFF_BASE_SEC, min=config.HTTP_BACKOFF_BASE_SEC),
+    retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError)),
+)
+def _deepseek_create(*, model: str, system: str, user: str, max_tokens: int) -> str:
+    """DeepSeek 호출(OpenAI 호환 /chat/completions).
+
+    ★ 왜 어댑터가 필요한가: 모델 ID 만 바꿔서는 안 된다. 이 파일의 두 경로는 응답 **형태**에
+      맞춰 짜여 있다 — 절단 판정(stop_reason / finishReason), 사용량 키(input_tokens /
+      promptTokenCount), 텍스트 추출 방식이 전부 공급자마다 다르다. 그 셋을 여기서 번역하지
+      않으면 잘린 응답이 조용히 통과하고 원장에 0원으로 남는다(2026-08-29 사고의 그 구조).
+
+    ★ 폴백을 달지 않는다. Gemini 경로의 Anthropic 폴백은 2.5-pro 의 503 때문에 생긴 것이고,
+      그 비용이 정당화된 근거가 있었다. DeepSeek 에는 그런 실측이 아직 없다 — 근거 없이
+      폴백을 달면 조용히 비싼 쪽으로 새는 길만 하나 더 생긴다.
+    """
+    config.SECRETS.require("deepseek_api_key")
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": user}],
+        "max_tokens": max_tokens,
+        "temperature": 0.4,          # Gemini 경로와 같은 값 — 비교가 온도 차이로 오염되지 않게
+        "stream": False,
+    }
+    # ★ JSON 강제는 **프롬프트에 'json' 이라는 말이 있을 때만** 건다. DeepSeek 은 이 조건이
+    #   깨지면 빈 문자열이나 공백만 돌려주는 것으로 문서화돼 있다 — 켜는 것이 오히려 실패를
+    #   만든다. 조건을 못 맞추면 그냥 끄고 _extract_json 의 관용 파서에 맡긴다.
+    if "json" in (system + user).lower():
+        body["response_format"] = {"type": "json_object"}
+    headers = {"Authorization": f"Bearer {config.SECRETS.deepseek_api_key}",
+               "Content-Type": "application/json"}
+    with httpx.Client(timeout=config.LLM_HTTP_TIMEOUT_SEC) as client:
+        resp = client.post(f"{config.DEEPSEEK_BASE}/chat/completions", headers=headers, json=body)
+        if resp.status_code == 429 or resp.status_code >= 500:
+            raise httpx.TransportError(f"{resp.status_code} from deepseek")
+        resp.raise_for_status()
+        data = resp.json()
+    # ★ 기록이 절단 검사보다 **먼저**다 — Gemini 경로와 같은 이유(잘린 호출도 돈은 나간다).
+    _record_text_usage(model, data.get("usage") or {})
+    choice = (data.get("choices") or [{}])[0]
+    text = str((choice.get("message") or {}).get("content") or "")
+    if choice.get("finish_reason") == "length":
+        raise OutputTruncatedError(
+            f"출력이 max_tokens({max_tokens})에서 잘렸다 — 상한을 올려야 한다 (model={model})",
+            partial=text)
+    if not text.strip():
+        raise JSONParseError(f"DeepSeek 응답이 비어 있다 (finish_reason={choice.get('finish_reason')})")
+    return text
+
+
 def _gemini_text(*, model: str, system: str, user: str, max_tokens: int,
                  state: dict[str, Any] | None = None) -> str:
     """Gemini 호출 + 지속 실패 시 Anthropic 폴백.
@@ -315,6 +368,21 @@ def _gemini_text(*, model: str, system: str, user: str, max_tokens: int,
                        max_tokens=max_tokens)
 
 
+def _backend_for(model: str) -> str:
+    """모델 ID → 공급자. 판정을 **한 곳에만** 둔다.
+
+    ★ 종전에는 `startswith("gemini")` 한 줄이 call_json 안에 박혀 있었고, "gemini 가 아니면
+      Anthropic" 이라는 뜻이 되어 있었다. 공급자가 셋이 되는 순간 그 이분법은 틀린 기본값을
+      낸다 — 새 공급자를 Anthropic 으로 보내 버린다.
+    """
+    m = model.lower()
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith("deepseek"):
+        return "deepseek"
+    return "anthropic"
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     """코드펜스/잡텍스트를 관용적으로 벗겨 JSON 객체 파싱."""
     s = text.strip()
@@ -346,8 +414,11 @@ def call_json(
         먼저 일어나므로 normalize 단계의 방어는 이미 온전한 응답만 다듬는다(리뷰 지적).
     """
     mt = max_tokens or config.LLM_MAX_TOKENS
-    use_gemini = model.lower().startswith("gemini")
-    client = None if use_gemini else _client()
+    backend = _backend_for(model)
+    # ★ Anthropic 클라이언트는 **그 경로일 때만** 만든다. 종전 `None if use_gemini else _client()`
+    #   는 gemini 가 아니면 무조건 Anthropic 을 깨웠다 — deepseek 모델을 주면 차단 스위치에
+    #   걸려 엉뚱한 곳에서 죽는다.
+    client = _client() if backend == "anthropic" else None
     last_exc: Exception | None = None
     # ★ 이 요청이 폴백으로 갈아탄 공급자를 기억한다 — 아래 재시도 루프가 gemini 를 처음부터
     #   다시 기다리지 않게. 재시도의 목적은 **파싱 실패 복구**이므로, 망가진 응답을 낸 쪽을
@@ -358,9 +429,11 @@ def call_json(
             if state.get("provider"):
                 raw = _create(_client(), model=state["provider"], system=system,
                               user=user, max_tokens=mt)
-            elif use_gemini:
+            elif backend == "gemini":
                 raw = _gemini_text(model=model, system=system, user=user, max_tokens=mt,
                                    state=state)
+            elif backend == "deepseek":
+                raw = _deepseek_create(model=model, system=system, user=user, max_tokens=mt)
             else:
                 raw = _create(client, model=model, system=system, user=user, max_tokens=mt)
         except OutputTruncatedError as exc:
@@ -403,8 +476,12 @@ def set_text_purpose(purpose: str) -> None:
 
 def _record_text_usage(model: str, usage: dict[str, Any]) -> None:
     try:
-        cin = int(usage.get("promptTokenCount") or usage.get("input_tokens") or 0)
-        cout = int(usage.get("candidatesTokenCount") or usage.get("output_tokens") or 0)
+        # 공급자마다 키 이름이 다르다. 하나라도 빠뜨리면 그 공급자의 호출이 원장에서
+        # **통째로 사라진다**(0 이면 아래에서 return 한다) — 이번 사고의 재발 경로다.
+        cin = int(usage.get("promptTokenCount") or usage.get("input_tokens")
+                  or usage.get("prompt_tokens") or 0)
+        cout = int(usage.get("candidatesTokenCount") or usage.get("output_tokens")
+                   or usage.get("completion_tokens") or 0)
         # 사고(thinking) 토큰도 출력으로 과금된다 — 빼먹으면 pro 비용이 실제보다 작게 보인다.
         cout += int(usage.get("thoughtsTokenCount") or 0)
         if not (cin or cout):
