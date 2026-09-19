@@ -42,6 +42,7 @@ BLOCK_REASONS: tuple[str, ...] = (
     "vseq_state_entity_undeclared",  # 선언 없는 개체가 상태·변이에 등장한다
     "vseq_no_actual_mutation",       # 진행 시퀀스인데 변이 선언이 없다(자기보고만 남는다)
     "vseq_literal_without_source",   # 실제 관측이라고 선언했는데 근거가 그것을 지불하지 않는다
+    "vseq_duplicate_stage_id",       # 같은 stage_id 가 둘 — 색인이 덮어써 참조가 엉뚱한 곳을 본다
 )
 WARNING_REASONS: tuple[str, ...] = (
     "vseq_static_repeat",         # 같은 세계·같은 상태·같은 operation 이 반복된다
@@ -224,6 +225,24 @@ def evaluate(sequences: list[dict[str, Any]],
     entity_named = 0
     entity_resolved = 0
     seen_signature: set[tuple[str, str, str]] = set()
+
+    # ★★ **stage_id 는 지시서 전체에서 유일해야 한다**(2026-09-19 리포트 리뷰에서 잡았다).
+    #   `visual_sequence.stage_index` 는 시퀀스를 가로질러 **평평한 dict** 라, 같은 id 가 둘이면
+    #   나중 것이 앞 것을 덮어쓴다. 그러면 `continuity_from` 이 **다른 시퀀스의 stage** 를 가리키고
+    #   렌더는 엉뚱한 그림을 참조로 붙인다 — 화면은 멀쩡해 보이는데 이어지지 않는다.
+    #   실측: 리포트 지시서 efa58017 은 stage 6개 중 **2개가 색인에서 사라졌다**(3편 중 2편에서 발생).
+    #   오탐이 있을 수 없다(중복은 객관적으로 틀린 것이다) — 그래서 처음부터 차단이다.
+    _seen_stage_ids: dict[str, str] = {}
+    for _seq in sequences:
+        for _st in (_seq.get("stages") or []):
+            _sid = str(_st.get("stage_id") or "")
+            if not _sid:
+                continue
+            if _sid in _seen_stage_ids:
+                blocks.append(f"vseq_duplicate_stage_id:{_sid}"
+                              f"({_seen_stage_ids[_sid]}·{_seq.get('sequence_id')})")
+            else:
+                _seen_stage_ids[_sid] = str(_seq.get("sequence_id") or "?")
 
     for seq in sequences:
         sid = seq.get("sequence_id")
@@ -466,6 +485,11 @@ def feedback_prompt(block_reasons: list[str]) -> str:
         # ★★ 이것만 처방이 비어 있었다(2026-08-31). 차단 사유 10개 중 9개에만 문장이
         #   있었고, 하필 재생성 실측에서 실제로 막힌 것이 이것이었다 — 재시도는 무엇을
         #   고쳐야 하는지 듣지 못했다. `test_feedback_covers_every_block_reason` 로 고정한다.
+        "vseq_duplicate_stage_id":
+            "같은 stage_id 를 두 시퀀스가 쓰고 있다. stage_id 는 **지시서 전체에서 유일해야 한다** —"
+            " 색인이 나중 것으로 덮어써서 continuity_from 이 **다른 시퀀스의 stage** 를 가리키고,"
+            " 렌더가 엉뚱한 그림을 참조로 붙인다. 시퀀스 이름을 앞에 붙여 구분하라"
+            "(SEQ_R01_S1_… / SEQ_R04_S1_… 처럼). 논증 단위 이름을 그대로 돌려 쓰지 마라.",
         "vseq_literal_without_source":
             "실제 관측 장면(LITERAL_OBSERVATION)이라고 선언했는데 **그렇게 주장할 근거가"
             " 없다.** 초록은 \"무엇을 알아냈는가\"를 말하지 \"어떻게 봤는가\"를 말하지 않는다."

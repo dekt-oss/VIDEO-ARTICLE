@@ -779,3 +779,40 @@ def test_captions_are_asked_only_where_a_split_actually_happens():
     assert 3 not in got, "분할되지 않는 컷에 캡션을 요구하면 오탐이다"
     assert render.split_before_after_applies(cuts[1], header) is True
     assert render.split_before_after_applies(cuts[0], header) is False
+
+
+# ── stage_id 중복이 참조를 조용히 망가뜨린다 (2026-09-19 리포트 리뷰) ──────
+#
+# `visual_sequence.stage_index` 는 시퀀스를 가로질러 **평평한 dict** 다. 같은 id 가 둘이면
+# 나중 것이 앞 것을 덮어쓰고, `continuity_from` 이 다른 시퀀스의 stage 를 가리킨다 —
+# 렌더는 엉뚱한 그림을 참조로 붙이는데 화면은 멀쩡해 보인다. 실측: 리포트 지시서 efa58017 의
+# stage 6개 중 2개가 색인에서 사라졌다(리포트 3편 중 2편, 논문 44편 중 0편).
+
+def test_duplicate_stage_ids_are_blocked():
+    from engine import visual_sequence_contract as vc
+    seqs = [{"sequence_id": "A", "stages": [{"stage_id": "S1", "continuity_mode": "NEW_WORLD",
+             "mutations": [{"entity_id": "E", "operation": "APPEAR", "visible_change": True}]}]},
+            {"sequence_id": "B", "stages": [{"stage_id": "S1", "continuity_mode": "NEW_WORLD",
+             "mutations": [{"entity_id": "E", "operation": "APPEAR", "visible_change": True}]}]}]
+    got = vc.evaluate(seqs, [], None, None)
+    assert any(b.startswith("vseq_duplicate_stage_id") for b in got["block_reasons"]), got
+    assert "vseq_duplicate_stage_id" in vc.BLOCK_REASONS
+    assert vc.feedback_prompt(["vseq_duplicate_stage_id:S1(A·B)"]).strip()
+
+
+def test_unique_stage_ids_pass_and_the_index_keeps_them_all():
+    seqs = [{"sequence_id": "A", "stages": [{"stage_id": "A_S1"}, {"stage_id": "A_S2"}]},
+            {"sequence_id": "B", "stages": [{"stage_id": "B_S1"}]}]
+    assert len(vs.stage_index(seqs)) == 3, "색인이 모든 stage 를 들고 있어야 한다"
+
+
+def test_the_report_generator_prefixes_stage_ids_with_the_sequence():
+    """★★ 이것이 **진짜 원인**이었다 — 모델이 아니라 코드가 이름을 지었다.
+    종전 `S{단계번호}_{의미}` 는 논증 단위마다 번호가 1부터 다시 시작하고 의미 낱말도
+    되풀이되니 다른 시퀀스가 같은 이름을 갖는다."""
+    import inspect
+
+    from engine import equity_visual
+    src = inspect.getsource(equity_visual)
+    assert 'f"{seq_id}_S{idx}_{sem}"' in src, "시퀀스 이름을 앞에 붙여야 유일해진다"
+    assert "seq_id=seq_id" in src, "만들어 놓고 안 넘기면 그대로다"
