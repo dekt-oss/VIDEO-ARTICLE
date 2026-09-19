@@ -109,7 +109,8 @@ PHOTO_CONTRACT = f"""
         그 편의 주인공 기업이 어느 칸에 있는지 강조한다.
       · 제품 단면 — 그 회사가 만드는 물건을 잘라 구조를 보여준다(셀의 층 구조, 모듈 결합 방식).
       · 수요 전이 경로 — 수요가 A 에서 B 로 옮겨가는 과정(전기차용 → ESS용).
-      · 전후 비교 — 리포트가 말하는 변화의 전과 후를 나란히.
+      · 전후 비교 — 리포트가 말하는 변화의 전과 후. ★ **한 장에 둘을 넣지 마라** —
+        같은 장면을 두 컷으로 두고 상태만 바꾼다(나란히 놓는 일은 코드가 한다).
       · 원가·마진 구조 — 무엇이 얼마를 차지하는지 블록으로.
     ★ 도해에 **숫자를 그리지 마라.** 숫자는 overlay_plan 이 얹는다. 도해는 구조와 방향만 보여준다.
   ★ [REALITY 소재] 공장·생산라인·물류·항만·제품 실물. 훅과 마무리, 그리고 도해가 추상적으로
@@ -157,7 +158,17 @@ PHOTO_CONTRACT = f"""
      'rendered in'·'glow' 는 화풍 어휘라 차단된다) 그 컷에 legend 를 넣어 무슨 색이 무엇인지 말하라.
   ★★ 그 두 색은 **영상 내내 같은 뜻**이다 — 한 개체는 처음부터 끝까지 한 색만 갖는다. 그 색을
      개체 **안의 부위**를 나누는 데 다시 쓰지 마라(화면의 범례가 거짓말이 된다). 부위를 가리키려면
-     amber 강조나 화살표(pointer)를 쓰고, 커지고 작아지는 것은 **크기·모양**으로 보여라.
+     amber 강조를 쓰고, 커지고 작아지는 것은 **크기·모양**으로 보여라.
+  ★★★ [비교는 **컷과 컷 사이**에서 한다 — 그림 한 장을 반으로 가르지 마라]
+     'Split screen' · 'Side-by-side comparison' · '왼쪽에는 …, 오른쪽에는 …' 로 시작하는
+     visual_prompt 는 차단된다. 한 장 안에 두 장면을 넣으면 둘 다 작아지고, 화면은 도해가
+     아니라 **비교표**가 된다 — 게다가 코드가 전·후를 위아래로 다시 나누므로 4칸이 된다
+     (2026-09-19 실측: 그렇게 나온 영상을 운영자가 통째로 폐기했다).
+     비교하고 싶으면 **한 장면을 유지한 채 상태를 바꿔라**: 같은 파이프가 좁았다가 넓어지고,
+     같은 흐름이 막혔다가 뚫린다. 두 상태를 나란히 보여 주는 일은 코드가 한다.
+
+{dv.SEQUENCE_SCHEMA}
+{dv._SEQUENCE_GUIDANCE}
 """
 
 
@@ -255,21 +266,27 @@ def generate(draft_row: dict[str, Any], version_type: str,
     ★★ 2026-09-14 되살렸다(운영자: "증권 리포트에도 바로 다 적용돼 있는 거지"). 논문 라인
       (directive.generate)과 같은 모양 — **실사형 화면 계약(photo_gate) 차단이 있을 때만** 처방을
       되먹여 1회 재생성하고, 결과를 다시 검사해 차단이 적은 쪽을 남긴다.
-      ★ 시퀀스·EQ-V 차단은 되먹이지 않는다 — 리포트 시퀀스는 LLM 이 아니라 코드
-        (equity_visual)가 만든다. 모델에게 자기가 안 쓴 것을 고치라고 하면 구조만 갈아엎는다.
+      ★ (옛 규칙) 시퀀스 차단은 되먹이지 않았다 — 리포트 시퀀스를 LLM 이 아니라 코드
+        (equity_visual)가 만들었기 때문이다. 자기가 안 쓴 것을 고치라고 하면 구조만 갈아엎는다.
+      ★★ **2026-09-19 그 이유가 사라졌다**(운영자: "리포트도 모델이 시퀀스 쓰게 해").
+        이제 시퀀스를 모델이 쓰므로 시퀀스 차단도 **자기가 쓴 것**이다 — 되먹여야 한다.
+        되먹이지 않으면 모델이 쓴 구조에 대해 아무 말도 안 하고 같은 결함을 다시 받는다.
+        처방은 논문 라인과 같은 함수를 쓴다(`directive._contract_feedback`) — 두 벌로
+        만들면 한쪽만 고쳐지는 날이 온다.
     """
     user = report_directive_user_prompt(draft_row, version_type)
     first = _generate_once(draft_row, version_type, user)
-    blocks = list((first["header"].get("photo_gate") or {}).get("block_reasons") or [])
+    blocks = sorted({*((first["header"].get("photo_gate") or {}).get("block_reasons") or []),
+                     *((first["header"].get("visual_sequence_gate") or {})
+                       .get("block_reasons") or [])})
     if not (config.DIRECTIVE_CONTRACT_RETRY and version_type == "photo" and blocks):
         return first
-    from . import photo_contract
     log.warning("리포트 실사형 계약 위반 → 사유를 되먹여 1회 재생성: %s", ", ".join(blocks))
-    retry = _generate_once(
-        draft_row, version_type,
-        user + photo_contract.feedback_prompt(
-            blocks, (first["header"].get("photo_gate") or {}).get("warnings")))
-    retry_blocks = list((retry["header"].get("photo_gate") or {}).get("block_reasons") or [])
+    retry = _generate_once(draft_row, version_type,
+                           user + dv._contract_feedback(first))
+    retry_blocks = sorted({*((retry["header"].get("photo_gate") or {}).get("block_reasons") or []),
+                           *((retry["header"].get("visual_sequence_gate") or {})
+                             .get("block_reasons") or [])})
     record = {"attempted": True, "first_block_reasons": blocks,
               "retry_block_reasons": retry_blocks,
               "new_violations": sorted({r.split(":", 1)[0] for r in retry_blocks}
@@ -294,8 +311,21 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     #   stage_mutations·공용 게이트를 이미 전부 돌리므로, 여기 한 줄로 금융 라인이 그
     #   기계를 통째로 물려받는다 — 금융 파이프라인을 새로 만들지 않는다(equity §1).
     #   LLM 호출은 0이다: 논증은 이미 `report_reasoning` 이 만들었고 다시 추출하지 않는다(§4).
-    seqs = equity_visual.build_for_directive(
-        obj.get("cuts"), draft_row.get("financial_reasoning"))
+    #   ★★★ 2026-09-19 운영자 지시("리포트도 모델이 시퀀스 쓰게 해") — **정본이 뒤집혔다.**
+    #     예전엔 이 줄이 모델이 쓴 것을 덮어썼다. 그 결과 컷이 무엇을 그리든 2번째 stage
+    #     부터 무조건 CONTINUE_WORLD 였고("파이프 단면"이라고 적힌 컷에 앞 컷의 위성 그림이
+    #     참조로 붙어 파이프가 화면에 아예 안 나왔다 — 실물 렌더로 확인), 세 컷이 사실상
+    #     같은 그림이 됐다. 세계를 이어갈지 새로 세울지는 **자기가 그릴 것을 아는 쪽**이
+    #     정해야 한다. 이제 equity_visual 은 만들지 않고 **꼬리표만 붙인다**(annotate).
+    #   ★ 모델이 아예 안 썼으면 옛 경로로 물러선다 — 시퀀스 0개보다는 낫다(마이그레이션 없음).
+    model_seqs = [s for s in (obj.get("visual_sequences") or []) if isinstance(s, dict)]
+    if model_seqs:
+        seqs = equity_visual.annotate(
+            model_seqs, obj.get("cuts"), draft_row.get("financial_reasoning"))
+    else:
+        log.warning("모델이 visual_sequences 를 안 썼다 — 코드 컴파일로 물러선다(옛 경로)")
+        seqs = equity_visual.build_for_directive(
+            obj.get("cuts"), draft_row.get("financial_reasoning"))
     obj["visual_sequences"] = seqs
     # ★ 컷 상한을 명시적으로 CUT_MAX_SEC(8) 로 고정한다. 논문 라인은 근거밀도 개정으로
     #   종류별 완화(10/12초)를 받았지만, 이 프롬프트의 계약은 여전히 3~8초다(§2 위 스키마).

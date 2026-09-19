@@ -357,6 +357,100 @@ def screen_warnings(sequences: list[dict[str, Any]]) -> list[str]:
     return warns
 
 
+def annotate(sequences: list[dict[str, Any]] | None,
+             cuts: list[dict[str, Any]] | None,
+             reasoning: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """**모델이 쓴** 시퀀스에 논증 원장의 꼬리표를 붙인다 (2026-09-19).
+
+    ★★ 왜 생성에서 대조로 바뀌었나. 2026-09-19 이전에는 이 모듈이 리포트 시퀀스를 통째로
+      만들었다(`build_for_directive`). 그 구조에서는 stage 가 논증 단계와 1:1 이라
+      reasoning_id·reasoning_text·precision_layer 가 공짜로 따라왔다 — 대신 **컷이 무엇을
+      그리는지는 한 번도 보지 않았다.** `_stage_of` 와 `project_to_screen` 이 둘 다
+      "2번째부터 무조건 CONTINUE_WORLD" 를 찍었기 때문이다.
+
+      실물 렌더로 그 대가가 드러났다(리포트 da1a6b96, 운영자 판정): 컷3 지시서는 "좁은
+      투명 파이프의 3D 단면, 데이터 입자가 입구에서 막힘"을 그리라고 했는데 **화면에
+      파이프가 없었다.** 코드가 찍은 이어받기 때문에 렌더가 앞 컷(위성)의 그림을 참조로
+      물려줬고, 모델은 위성을 유지한 채 파이프를 그리지 않았다. 세 컷이 사실상 같은
+      그림이 됐다 — 설명이 진행되지 않는다.
+
+      이제 **모델이 시퀀스를 쓴다**(논문 라인과 같은 스키마·같은 규칙). 세계를 이어갈지
+      새로 세울지는 자기가 그릴 것을 아는 쪽이 정하는 것이 맞다.
+
+    ★ 그러면 꼬리표가 없으므로 여기서 붙인다 — **컷이 스스로 말한** (reasoning_id,
+      reasoning_step)으로 원장의 단계를 찾아 얹는다. 지어내지 않는다: 원장에 없으면 빈 채로
+      두고 EQ-V1 이 그것을 차단한다. 이 모듈이 검사기로 남는 이유가 그것이다.
+
+    ★★ **continuity_mode·continuity_from 은 건드리지 않는다.** 그것이 이 변경의 요점이다.
+      여기서 다시 찍으면 모델에게 시퀀스를 쓰게 한 의미가 사라진다.
+    """
+    seqs = [s for s in (sequences or []) if isinstance(s, dict)]
+    if not seqs:
+        return []
+    units = {str(u.get("reasoning_id") or ""): u
+             for u in ((reasoning or {}).get("units") or [])}
+    steps_of = {rid: {int(s.get("step") or i): s
+                      for i, s in enumerate(u.get("steps") or [], 1)}
+                for rid, u in units.items()}
+    cut_tag = {}
+    for c in cuts or []:
+        try:
+            cut_tag[int(c.get("cut_no"))] = (str(c.get("reasoning_id") or "").strip(),
+                                             int(c.get("reasoning_step") or 0))
+        except (TypeError, ValueError):
+            continue
+
+    for seq in seqs:
+        rids: list[str] = []
+        for st in seq.get("stages") or []:
+            # 이 stage 가 맡은 컷들이 가리키는 논증 단계. 먼저 해소되는 것 하나를 쓴다
+            #   (한 stage 를 여러 컷이 나눠 맡아도 논증 단계는 하나다).
+            rid, step_no, step = "", 0, None
+            for n in st.get("cut_refs") or []:
+                try:
+                    tag = cut_tag.get(int(n))
+                except (TypeError, ValueError):
+                    continue
+                if not tag or not tag[0]:
+                    continue
+                cand = (steps_of.get(tag[0]) or {}).get(tag[1])
+                if cand is not None:
+                    rid, step_no, step = tag[0], tag[1], cand
+                    break
+            st["reasoning_id"] = rid
+            st["reasoning_step"] = step_no
+            if rid:
+                rids.append(rid)
+            text = str((step or {}).get("text") or "")
+            st["reasoning_text"] = text
+            st["equity_semantic_operation"] = semantic_operation(text) if text else ""
+            st["equity_semantic_matched"] = semantic_matched(text) if text else False
+            facts = list((step or {}).get("fact_ids") or [])
+            # ★ 정밀 레이어: 정확한 수치를 든 단계는 세계를 끊지 않고 오버레이를 얹는다(R1).
+            st["precision_layer"] = "CODE_OVERLAY" if facts else ""
+            # ★ 컷이 스스로 선언했으면 건드리지 않는다(assign_cuts 와 같은 규율).
+            if not (st.get("claim_ids") or []):
+                st["claim_ids"] = facts
+
+        rid = max(set(rids), key=rids.count) if rids else ""
+        unit = units.get(rid) or {}
+        seq["reasoning_id"] = rid
+        seq["attributed_to"] = str(unit.get("attributed_to") or "")
+        seq["carries_thesis"] = bool(unit.get("carries_thesis"))
+        # ★ 화면에 못 나간 단계를 숫자로 남긴다 — `project_to_screen` 이 하던 진단을 그대로
+        #   유지한다. 다만 **단계를 버리거나 이어받기를 다시 찍지는 않는다**(위 주석).
+        on = [int(s.get("reasoning_step") or 0) for s in (seq.get("stages") or [])
+              if s.get("reasoning_step")]
+        total = len(steps_of.get(rid) or {}) or len(seq.get("stages") or [])
+        seq["coverage"] = {
+            "steps_total": total,
+            "steps_on_screen": len(on),
+            "steps_skipped": max(0, total - len(on)),
+            "out_of_order": on != sorted(on),
+        }
+    return seqs
+
+
 def build_for_directive(cuts: list[dict[str, Any]] | None,
                         reasoning: dict[str, Any] | None) -> list[dict[str, Any]]:
     """지시서 정규화에 **넣을** 시퀀스. `report_directive.generate` 가 부른다.
@@ -371,6 +465,10 @@ def build_for_directive(cuts: list[dict[str, Any]] | None,
 
     순서: 컴파일(논증 전체) → 컷 배정 → **화면 투영**(컷이 붙은 것만, 화면 순서로).
     마지막 단계가 없으면 세계가 이어지지 않는다(`project_to_screen` 주석 참조).
+
+    ★★ **2026-09-19부터 이것은 폴백이다.** 정본은 모델이 쓴 시퀀스이고(`annotate` 참조),
+      이 경로는 모델이 `visual_sequences` 를 아예 안 썼을 때만 탄다. 이유는 `annotate`
+      독스트링에 적었다 — 이 경로는 컷이 무엇을 그리는지 보지 않고 이어받기를 찍는다.
     """
     return project_to_screen(assign_cuts(compile_sequences(reasoning), cuts))
 
