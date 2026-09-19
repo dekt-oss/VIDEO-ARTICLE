@@ -184,7 +184,18 @@ LLM_SCRIPT_MAX_TOKENS: int = _get_int("LLM_SCRIPT_MAX_TOKENS", 16384)
 #   4만 자를 넘는다. Fact Sheet 때처럼 "개수를 묶는" 답은 여기엔 안 맞는다 — 컷 수는
 #   이미 목표 길이에서 역산돼 묶여 있고, 잘린 것은 개수가 아니라 컷당 계약의 두께다.
 #   flash 2.5 의 출력 상한은 65,536 이라 여유가 있다.
-LLM_DIRECTIVE_MAX_TOKENS: int = _get_int("LLM_DIRECTIVE_MAX_TOKENS", 32768)
+# ★★ 32768 → 49152 (2026-09-19 실측, DeepSeek 전환과 함께): 같은 프롬프트에서 출력량이
+#   **백엔드마다 2배 넘게 다르다.** 지시서 3벌씩 실측한 값이다:
+#       gemini-2.5-pro   12,616 / 13,063 / 13,104  (상한의 55%까지)
+#       deepseek-v4-pro  28,403 / 29,403 / 30,928  (상한의 **94%**)
+#       deepseek-flash   32,768 / 32,768 / 32,768  (**정확히 상한 — 3/3 절단 실패**)
+#   deepseek-flash 가 상한을 정확히 채웠다는 것이 이 상한에 **닿을 수 있다는 증거**다.
+#   v4-pro 는 94% 까지 갔다 — 한 번만 길게 쓰면 잘리고, 절단은 재시도가 소용없는
+#   하드 에러라 파이프라인이 선다. 이건 위 2026-08-29 주석이 말한 바로 그 상황이다:
+#   "같은 프롬프트가 백엔드에 따라 죽고 살았다 … 상한이 잘못 놓였다는 뜻이다."
+#   상한은 사고를 막는 안전장치이지 비용 조절 수단이 아니다 — 출력은 쓴 만큼만 과금되므로
+#   올려 둔다고 비싸지지 않는다. Gemini 쪽은 55% 밖에 안 쓰므로 영향이 없다.
+LLM_DIRECTIVE_MAX_TOKENS: int = _get_int("LLM_DIRECTIVE_MAX_TOKENS", 49152)
 # Fact Sheet 추출 전용 출력 상한. ★ 실측(2026-08-03, 운영): 대본이 아니라 **여기가** 먼저
 #   잘리고 있었다 — 새 진단이 그것을 바로 말해 줬다:
 #     `출력이 maxOutputTokens(8192)에서 잘렸다 — 상한을 올려야 한다 (model=gemini-2.5-flash)`
@@ -390,8 +401,23 @@ VERSION_VISUAL_TYPE: dict[str, str] = {
     # 실사형은 생성 실사 사진 + 코드 오버레이. 만화 패널이 아니므로 image.
     "photo": "image",
 }
-# 지시서 생성 모델(엔진 기본 sonnet, 엣지함수 기본 gemini). id 가 'gemini' 면 Gemini 라우팅.
-MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", "gemini-2.5-pro")
+# 지시서 생성 모델. 라우팅은 engine/llm._backend_for (gemini* / deepseek* / 그 외 Anthropic).
+# ★ gemini-2.5-pro → deepseek-v4-pro (2026-09-19, 운영자 승인). 같은 논문·같은 프롬프트로
+#   3벌씩 뽑아 **렌더 파이프라인의 게이트로** 채점한 결과다(scripts/model_ab.py):
+#       문제합   gemini 14·10·13   vs   deepseek 8·9·6      — 3/3 DeepSeek 우세
+#       계약위반 gemini  7· 3· 4   vs   deepseek 1·2·2      — 구간이 겹치지도 않는다
+#       3회차는 **컷 수가 7 로 같은데** 문제가 6 대 13 이었다 — "컷이 적어 문제가 적다"가
+#       설명이 안 되는 짝이다.
+#       1벌 비용  $0.220 (3벌에 4번 호출 — JSON 파싱 재시도 1회) vs $0.149 (3/3 무재시도)
+#   ★ 값은 레이턴시다: 126초 → 309초로 **2.4배 느리다**(편차는 오히려 작다, 297–315초).
+#     지시서 생성은 사람이 기다리는 경로이므로 이건 실제 비용이고, 알고 바꿨다.
+#   ★ deepseek-flash 는 후보가 아니다 — 같은 실측에서 3/3 절단 실패했다.
+#   ★ flash 티어(MODEL_SCORING/FACTSHEET/SELFCHECK/SCRIPT)는 **바꾸지 않았다.** 같은
+#     하네스로 재 보니 정반대였다(deepseek-flash 가 3회 중 1회 절단으로 죽었다).
+#     티어가 다르면 따로 재야 한다.
+#   ★ MODEL_REPORT_SCRIPT 도 pro 티어지만 **미측정이라 그대로 둔다.** 지시서 결과를
+#     재지 않은 자리에 밀지 않는다.
+MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", "deepseek-v4-pro")
 
 # 총길이 예산(DV6). 1분 기준이되 내용에 따라 유연(실제 길이는 나레이션 실측을 따른다).
 TARGET_TOTAL_SEC: int = _get_int("TARGET_TOTAL_SEC", 60)
@@ -3057,6 +3083,17 @@ MODEL_REPORT_SCORING: str = os.getenv("MODEL_REPORT_SCORING", "gemini-2.5-flash"
 # ─ PF1 초안 파이프라인 모델 (논문 MODEL_FACTSHEET/SCRIPT/SELFCHECK 대응) ─
 MODEL_REPORT_FACTSHEET: str = os.getenv("MODEL_REPORT_FACTSHEET", "gemini-2.5-flash")
 MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-2.5-pro")     # 대본 합성
+# ★★ 리포트 지시서 모델 — **재지 않은 자리에 밀지 않는다**(2026-09-19).
+#   종전에 `report_directive._generate_once` 는 `MODEL_DIRECTIVE` 를 그대로 썼다. 그래서
+#   논문 지시서를 DeepSeek 으로 바꾸면 **리포트 지시서까지 같이 딸려 간다** — 내가 재지
+#   않은 경로다. 그냥 두면 안 되는 이유가 하나 더 있다: 이 경로의 출력 상한은
+#   `LLM_SCRIPT_MAX_TOKENS`(16,384)이고, deepseek-v4-pro 는 논문 지시서에서 28,403~30,928
+#   토큰을 썼다. 상한의 거의 2배다 — 거의 확실히 절단되고, 절단은 재시도가 소용없는
+#   하드 에러라 리포트 라인이 선다.
+#   그래서 이 자리를 **명시 상수로 분리하고 현행값(gemini-2.5-pro)을 지킨다.** 바꾸려면
+#   `scripts/model_ab.py` 로 이 경로를 먼저 재라. MODEL_REPORT_* 가족에 이 멤버만
+#   없었던 것은 설계 의도가 아니라 빠진 자리로 보인다.
+MODEL_REPORT_DIRECTIVE: str = os.getenv("MODEL_REPORT_DIRECTIVE", "gemini-2.5-pro")
 MODEL_REPORT_SELFCHECK: str = os.getenv("MODEL_REPORT_SELFCHECK", "gemini-2.5-flash")
 MODEL_REPORT_COMPLIANCE: str = os.getenv("MODEL_REPORT_COMPLIANCE", "gemini-2.5-flash")
 
