@@ -846,3 +846,23 @@ def test_equity_progression_is_judged_inside_each_sequence():
     # 같은 시퀀스 안에서 겹치면 그대로 차단이다.
     one = {"sequence_id": "A", "stages": [{**same, "stage_id": "A_S1"}, {**same, "stage_id": "A_S2"}]}
     assert any(x.startswith("eq_v6_no_progression") for x in ec.block_reasons([one]))
+
+
+def test_the_annotation_layer_holds_for_the_whole_cut():
+    """★ 이름표·화살표·범례는 **그 화면이 있는 동안** 떠 있어야 한다. 모델이 정한 길이는 짐작이고,
+    실측(리포트 da1a6b96)에서 8초 컷에 카드 3초·화살표 2초라 중간부터 둘 다 사라졌다.
+    수치·출처 카드는 '말하는 순간'에 뜨는 것이라 그대로 둔다."""
+    plan = eo.normalize_overlay_plan([
+        {"type": "keyword", "text": "BOTTLENECK", "start_sec": 1, "duration_sec": 3},
+        {"type": "pointer", "payload": {"at": "center"}, "start_sec": 2, "duration_sec": 2},
+        {"type": "number_punch", "text": "1Tbps", "start_sec": 1, "duration_sec": 3},
+    ])
+    by = {p["type"]: p for p in plan}
+    assert by["keyword"]["duration_sec"] == config.OVERLAY_ANNOTATION_HOLD_SEC
+    assert by["pointer"]["duration_sec"] == config.OVERLAY_ANNOTATION_HOLD_SEC
+    assert by["number_punch"]["duration_sec"] == 3, "수치 카드는 말하는 순간에 뜬다 — 그대로"
+    # 컷 경계에서 잘린다: 8초 컷이면 시작 시각부터 8초까지.
+    cues = eo.build_overlay_cues([{"cut_no": 1, "overlay_plan": plan}], [0.0], [8.0])
+    for start, end, _t, style in cues:
+        if style in ("Keyword", "Pointer"):
+            assert end == 8.0, (style, start, end)
