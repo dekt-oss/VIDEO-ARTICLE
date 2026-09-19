@@ -1582,6 +1582,10 @@ BGM_DUCK_RATIO: int = 8             # 나레이션 구간 감쇠 비율
 
 # 제공자 선택(DV3). placeholder 는 키 불필요(조립 검증). 무료 실배선: edge(TTS).
 IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "placeholder")
+#: IMAGE_PROVIDER=reuse 일 때 그림을 꺼내 올 폴더(생성 호출 0·비용 0).
+#  돈 드는 것은 그림 생성 하나뿐이라, 지난 렌더의 진짜 그림을 재사용하면 나머지 전부
+#  (자막·범례·화살표·전후 분할·조립)를 사실대로 검증할 수 있다. 근거: providers/image._reuse_image.
+IMAGE_REUSE_DIR: str = os.getenv("IMAGE_REUSE_DIR", "")
 TTS_PROVIDER: str = os.getenv("TTS_PROVIDER", "placeholder")
 VIDEO_PROVIDER: str = os.getenv("VIDEO_PROVIDER", "placeholder")
 # Edge TTS 음성(무료, 키 불필요). 한국어 여성 SunHi 기본.
@@ -2015,6 +2019,11 @@ MECHANISM_SPLIT_EFFECT: str = ""
 #: 분할 화면에 **캡션이 없으면 코드가 채운다**(2026-09-19 첫 실전 분할에서 잡았다).
 #  모델이 label_pair 를 빼먹으면 위·아래가 무엇인지 알 길이 없어 분할 자체가 무의미해진다.
 #  경고만 하고 넘기면 그 화면이 그대로 나간다 — 기계가 확실히 아는 것은 기계가 적는다.
+#: 분할 캡션은 **컷이 끝날 때까지** 떠 있어야 한다(2026-09-19 실측으로 잡았다).
+#  기본값 OVERLAY_MIN_SEC(2초)로 뒀더니 6초짜리 컷의 중간부터 이름표가 사라졌다 —
+#  비교 화면은 끝까지 비교하는 화면이라, 후반을 보는 사람은 어느 쪽이 전인지 알 수 없다.
+#  큰 값을 주고 컷 경계에서 자르게 둔다(build_overlay_cues 가 이미 컷 끝에서 자른다).
+MECHANISM_SPLIT_LABEL_SEC: float = 600.0
 MECHANISM_SPLIT_DEFAULT_LABELS: dict[str, tuple[str, str]] = {
     "ko": ("변화 전", "변화 후"),
     "en": ("Before", "After"),

@@ -119,6 +119,10 @@ def main() -> None:
     ap.add_argument("--sequence", default="", help="시퀀스 id(기본: 기전 컷이 가장 많은 것)")
     ap.add_argument("--stages", type=int, default=4, help="앞에서 몇 단계까지(기본 4)")
     ap.add_argument("--stills", action="store_true", help="그림만 만든다(영상 생성 0)")
+    ap.add_argument("--reuse", default="", metavar="폴더",
+                    help="그 폴더의 PNG 를 그림으로 **재사용**한다(생성 호출 0·비용 0). "
+                         "자막·범례·화살표·전후분할·조립을 진짜 그림 위에서 확인하는 모드다 — "
+                         "새 프롬프트가 그리는 그림 자체는 이걸로 알 수 없다")
     ap.add_argument("--free", action="store_true",
                     help="placeholder 로 돌린다(비용 0). 그림은 회색 판이고 영상 stage 는 "
                          "스틸로 폴백된다 — 자막·범례·캡션·전후분할 **배선**만 확인하는 모드다")
@@ -132,7 +136,11 @@ def main() -> None:
         #   시퀀스 렌더 자체를 끈다. 참조 연쇄는 컷 경로에도 있으므로 그대로 이어진다
         #   (전·후 분할 스틸은 stage 경로에만 있으니 이 모드에서는 안 나온다).
         config.STAGE_RENDER_ENABLED = False
-    if args.free:
+    if args.reuse:
+        config.IMAGE_PROVIDER = "reuse"
+        config.IMAGE_REUSE_DIR = args.reuse
+        config.VIDEO_PROVIDER = "placeholder"   # 영상도 안 산다(stage 는 스틸로 폴백)
+    elif args.free:
         config.IMAGE_PROVIDER = "placeholder"
         config.VIDEO_PROVIDER = "placeholder"
     else:
@@ -151,11 +159,11 @@ def main() -> None:
     mini = slice_directive(directive, seq_id, args.stages, want_video=not args.stills)
     describe(mini)
 
-    est = Decimal("0") if args.free else estimate(mini)
+    est = Decimal("0") if (args.free or args.reuse) else estimate(mini)
     print(f"\n시퀀스 {seq_id} · 컷 {len(mini['cuts'])}개")
     print(f"예상 비용(상한): ${est}   그림={config.IMAGE_PROVIDER} 영상={config.VIDEO_PROVIDER} "
           f"범례·캡션={config.MECHANISM_LABEL_OVERLAYS_ENABLED} 분할스틸={config.MECHANISM_SPLIT_BEFORE_AFTER}")
-    if not args.free:
+    if not (args.free or args.reuse):
         # ★ 미리보기는 **에셋 캐시를 타지 않는다.** 컷 번호를 1..N 으로 다시 매기기 때문에
         #   (directive, cut_no) 키가 본 지시서의 것과 겹쳐서, 캐시에 넣으면 본 렌더가 미리보기
         #   그림을 물려받는다. 그래서 일부러 안 쓴다 — 대신 **돌릴 때마다 새로 산다**는 것을
