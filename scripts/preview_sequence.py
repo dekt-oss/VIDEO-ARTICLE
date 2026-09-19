@@ -152,9 +152,14 @@ def main() -> None:
     from engine import assemble, db, render, render_qa, sequence_render, subtitles
     from scripts.mini_render import estimate, slice_directive
 
-    directive = db.get_directive(args.directive_id)
+    # ★ 두 공장을 **둘 다** 찾는다(2026-09-19). 운영자가 리포트 지시서를 미리 보려 했는데
+    #   이 도구가 논문 테이블만 읽어서 "지시서 없음"이 났다 — 화면 계약·렌더 경로는 공용인데
+    #   도구만 한쪽을 못 보고 있었다.
+    from engine import report_db
+
+    directive = db.get_directive(args.directive_id) or report_db.get_report_directive(args.directive_id)
     if not directive:
-        raise SystemExit(f"지시서 없음: {args.directive_id}")
+        raise SystemExit(f"지시서 없음(논문·리포트 양쪽에서 못 찾음): {args.directive_id}")
     seq_id = pick_sequence(directive, args.sequence)
     mini = slice_directive(directive, seq_id, args.stages, want_video=not args.stills)
     describe(mini)

@@ -762,3 +762,20 @@ def test_the_split_caption_lasts_the_whole_cut():
     for start, end, _text, style in cues:
         if style in ("LabelTop", "LabelBottom"):
             assert (start, end) == (0.0, 6.0), (style, start, end)
+
+
+def test_captions_are_asked_only_where_a_split_actually_happens():
+    """★ 2026-09-19 리포트 리뷰에서 잡은 **오탐**: 상태가 바뀌어도 이어받을 앞 stage 가 없으면
+    (NEW_WORLD) 분할이 일어나지 않는다. 그런 컷에 "위/아래가 무엇인지 적어라"고 요구하면
+    있지도 않은 화면을 설명하라는 말이 된다 — 조건을 split_before_after_applies 와 맞춘다."""
+    opening = _stage("S1", 3, ops=("TRANSFORM",))            # NEW_WORLD — 분할 안 함
+    following = _stage("S2", 4, ops=("TRANSFORM",), cont="S1")  # 분할 함
+    header = _header([opening, following])
+    cuts = [_cut(3, overlay_plan=[{"type": "legend", "payload": {
+        "items": [{"color": "blue", "label": "가"}, {"color": "coral", "label": "나"}]}}]),
+        _cut(4)]
+    got = pc.mechanism_unlabeled_cuts(header, cuts)
+    assert 4 in got, "실제로 분할되는 컷은 캡션을 요구해야 한다"
+    assert 3 not in got, "분할되지 않는 컷에 캡션을 요구하면 오탐이다"
+    assert render.split_before_after_applies(cuts[1], header) is True
+    assert render.split_before_after_applies(cuts[0], header) is False

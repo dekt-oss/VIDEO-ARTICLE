@@ -510,7 +510,8 @@ def mechanism_unlabeled_cuts(header: dict[str, Any], cuts: list[dict[str, Any]])
       ★ 색을 안 쓴 시퀀스에는 요구하지 않는다(2026-09-18 재리뷰) — 한 대상을 잘라 보여주는
         컷에 범례를 강요하면 "앰버=설명하는 부분" 같은 뻔한 카드가 붙는다. 운영자가 9/8 에
         뺀 것이 바로 그런 군더더기였다. 설명할 색이 없으면 설명할 것도 없다.
-    ▸ stage 단위: 상태가 바뀌는 stage(`stage_changes_state`)의 컷에 `label_pair` 가 없으면 적는다 —
+    ▸ stage 단위: **실제로 전·후 분할되는** 컷(상태가 바뀌고 `continuity_from` 이 있는 stage)에
+      `label_pair` 가 없으면 적는다 —
       그 컷은 전·후 분할 스틸로 나가므로 위·아래가 무엇인지 캡션이 있어야 한다.
     """
     seqs = [x for x in (header.get("visual_sequences") or []) if isinstance(x, dict)]
@@ -533,8 +534,12 @@ def mechanism_unlabeled_cuts(header: dict[str, Any], cuts: list[dict[str, Any]])
                 seen_colors |= {col for col in compare_colors if col in low}
                 types = _overlay_types_of(c)
                 has_legend = has_legend or ("legend" in types)
-                if (visual_sequence.stage_changes_state(st) and "label_pair" not in types
-                        and c["cut_no"] not in out):
+                # ★ **실제로 분할되는 컷에만** 캡션을 요구한다(2026-09-19 리포트 리뷰에서 잡았다).
+                #   상태가 바뀌어도 이어받을 앞 stage 가 없으면(NEW_WORLD) 분할이 일어나지 않는다 —
+                #   그런 컷에 "위/아래가 무엇인지 적어라"고 하면 있지도 않은 화면을 설명하라는 말이다.
+                #   조건을 render.split_before_after_applies 와 같은 것으로 맞춘다.
+                if (visual_sequence.stage_changes_state(st) and st.get("continuity_from")
+                        and "label_pair" not in types and c["cut_no"] not in out):
                     out.append(c["cut_no"])
         if (len(mech_cuts) >= 2 and len(seen_colors) >= 2 and not has_legend
                 and mech_cuts[0]["cut_no"] not in out):
