@@ -117,6 +117,24 @@ def slice_keep(directive: dict, sequence_id: str, n_stages: int,
             "header": header, "cuts": cuts}
 
 
+def frame_text(kind: str, header: dict, lang: str) -> tuple[str, str]:
+    """이 공장의 **화면 테두리** — 상단 시리즈 제목과 하단 고정 자막.
+
+    ★ 왜 갈라야 하나(2026-09-19 실측): 이 도구는 논문 제목 하나를 박아 놨다. 그래서
+      증권 리포트 미리보기 세 컷에 **"하루 논문 한 편"** 이 떠 있었고, 리포트가 반드시
+      달아야 하는 **면책 자막이 아예 없었다**. 미리보기의 존재 이유는 "최종본이 이렇게
+      나온다"를 보여 주는 것이다 — 테두리가 다르면 그 자리에서 거짓말을 한다.
+
+    ★ 문구는 `report_render._disclaimer_footer` 를 **그대로 부른다**. 여기에 다시 적으면
+      본 렌더와 미리보기가 다른 면책을 달게 되고, 그 어긋남은 아무도 못 본다.
+    """
+    if str(kind) == "report":
+        from engine import report_render
+        return (config.REPORT_SERIES_TITLE_BY_LANG.get(lang, config.REPORT_SERIES_TITLE),
+                report_render._disclaimer_footer(str(header.get("broker") or ""), lang))
+    return config.SERIES_TITLE_BY_LANG.get(lang, config.SERIES_TITLE), ""
+
+
 def estimate_plan(mini: dict) -> tuple[Decimal, list[str]]:
     """이 미리보기가 **실제로 사게 될 것**의 추정 + 줄 단위 내역.
 
@@ -334,10 +352,11 @@ def main() -> None:
         raise SystemExit("컷을 하나도 못 만들었다")
 
     header = mini["header"]
+    title, footer = frame_text(kind, header, "ko")
     ass = subtitles.build_ass(
-        cues, header_title=config.SERIES_TITLE_BY_LANG.get("ko", config.SERIES_TITLE),
+        cues, header_title=title,
         header_hook=str(header.get("hook_ko") or ""), total_sec=total, lang="ko",
-        platform=config.DEFAULT_PLATFORM, overlays=overlays)
+        platform=config.DEFAULT_PLATFORM, overlays=overlays, footer_text=footer)
     mp4 = str(out_dir / "preview_ko.mp4")
     assemble.assemble_full(cut_files, str(work), mp4, ass_text=ass, total_sec=total,
                            duck_spans=duck)
