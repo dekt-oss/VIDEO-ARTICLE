@@ -2235,6 +2235,15 @@ def normalize_directive(
             header["mode_warnings"] = sorted(set([
                 *header.get("mode_warnings", []),
                 "photo_glow_normalized:" + ", ".join(glow_fixed[:6])]))
+        # ★★ 비교색은 **코드가 배정한다**(2026-09-19 운영자 결정). 모델이 컷마다 색의 뜻을
+        #   다시 정해 영상 중간에 범례가 거짓이 됐다 — 고지도 되먹임도 통하지 않았다(실측 2회).
+        #   개체의 색은 **처음 붙은 것**으로 고정하고, 어긋난 언급은 앰버(부위 표시색)로 바꾼다.
+        #   근거: photo_contract.assign_comparison_colors 주석.
+        color_fixed = photo_contract.assign_comparison_colors(header)
+        if color_fixed:
+            header["mode_warnings"] = sorted(set([
+                *header.get("mode_warnings", []),
+                "photo_color_code_assigned:" + ", ".join(color_fixed[:6])]))
         # ★ 카드가 이미 그리는 퍼센트 수치는 이미지 프롬프트에서 코드가 지운다(2026-09-14 —
         #   같은 논문 세 편 연속 같은 차단, 세 번 다 손으로 숫자만 지웠다. 함수 주석).
         numbers_fixed = photo_contract.normalize_prompt_numbers(cuts)

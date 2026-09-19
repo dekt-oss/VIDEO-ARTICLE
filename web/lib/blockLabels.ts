@@ -105,6 +105,8 @@ export const WARNING_LABEL: Record<string, string> = {
   photo_mechanism_spec_inherited: "재사용 컷이 기준 컷의 구조를 물려받음(면제)",
   photo_mechanism_structured: "어휘는 장식적이나 단계가 진행을 구조로 선언함",
   photo_mechanism_unlabeled: "기전 시퀀스에 범례·캡션이 없음(어느 쪽이 무엇인지 화면이 말하지 않는다)",
+  photo_color_code_assigned:
+    "개체별 비교색을 코드가 확정함(어긋난 색 언급은 앰버로 바꿨습니다)",
   photo_color_code_reused:
     "비교색(파랑·산호)을 개체 안의 부위 구분으로 다시 씀 — 화면 범례가 거짓이 됩니다",
   photo_keyword_is_a_sentence: "키워드 카드가 문장임(카드는 낱말 하나여야 한다)",
