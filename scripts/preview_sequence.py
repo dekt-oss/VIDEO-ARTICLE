@@ -117,6 +117,43 @@ def slice_keep(directive: dict, sequence_id: str, n_stages: int,
             "header": header, "cuts": cuts}
 
 
+def narration_sec(cut: dict, lang: str) -> float:
+    """이 컷의 나레이션이 **몇 초짜리인가** — 글자 수로 센다.
+
+    ★ 지시서의 `estimated_sec` 을 쓰지 않는 이유(2026-09-19 첫 실물 렌더 실측): 모델이 적은
+      값이라 짧게 나온다. 컷2 는 `estimated_sec=5` 인데 실제 나레이션은 **6.8초**였고,
+      그 1.8초가 Veo 티어를 6초에서 8초로 밀어 비용이 $0.10 늘었다. 글자 수 추정은 6.2초로
+      **같은 티어**를 골랐다 — 발주 전에 말하는 숫자는 이쪽이 맞다.
+
+    ★ 문턱은 `config.STORY_SPEAK_CHARS_PER_SEC`(말하기 속도) 하나다. 나레이션이 비어 있으면
+      그때만 `estimated_sec` 으로 물러선다(옛 지시서 대비).
+    """
+    text = str(cut.get(f"narration_{lang}") or cut.get("narration_ko")
+               or cut.get("narration") or "")
+    rate = float(config.STORY_SPEAK_CHARS_PER_SEC or 0)
+    if text and rate > 0:
+        return len(text) / rate
+    return float(cut.get("estimated_sec") or 0)
+
+
+def frame_text(kind: str, header: dict, lang: str) -> tuple[str, str]:
+    """이 공장의 **화면 테두리** — 상단 시리즈 제목과 하단 고정 자막.
+
+    ★ 왜 갈라야 하나(2026-09-19 실측): 이 도구는 논문 제목 하나를 박아 놨다. 그래서
+      증권 리포트 미리보기 세 컷에 **"하루 논문 한 편"** 이 떠 있었고, 리포트가 반드시
+      달아야 하는 **면책 자막이 아예 없었다**. 미리보기의 존재 이유는 "최종본이 이렇게
+      나온다"를 보여 주는 것이다 — 테두리가 다르면 그 자리에서 거짓말을 한다.
+
+    ★ 문구는 `report_render._disclaimer_footer` 를 **그대로 부른다**. 여기에 다시 적으면
+      본 렌더와 미리보기가 다른 면책을 달게 되고, 그 어긋남은 아무도 못 본다.
+    """
+    if str(kind) == "report":
+        from engine import report_render
+        return (config.REPORT_SERIES_TITLE_BY_LANG.get(lang, config.REPORT_SERIES_TITLE),
+                report_render._disclaimer_footer(str(header.get("broker") or ""), lang))
+    return config.SERIES_TITLE_BY_LANG.get(lang, config.SERIES_TITLE), ""
+
+
 def estimate_plan(mini: dict) -> tuple[Decimal, list[str]]:
     """이 미리보기가 **실제로 사게 될 것**의 추정 + 줄 단위 내역.
 
@@ -130,9 +167,14 @@ def estimate_plan(mini: dict) -> tuple[Decimal, list[str]]:
       총액이 우연히 가까웠을 뿐이다. **틀린 값이 맞는 값과 가까운 것은 고칠 이유가 없다는
       뜻이 아니다** — 다음 지시서에서는 안 가깝다.
 
-    ★ stage 길이는 나레이션 실측의 합인데 그것은 TTS 를 돌려야 안다. 여기서는 지시서의
-      `estimated_sec` 으로 대신하고, 렌더가 쓰는 것과 **같은 함수**(`stage_render.plan_stage`)
-      로 티어를 나눈다 — 셈을 두 벌로 만들면 한쪽만 고쳐지는 날이 온다.
+    ★ stage 길이는 나레이션 실측의 합인데 그것은 TTS 를 돌려야 안다. **글자 수로 센다**
+      (`narration_sec`) — 지시서의 `estimated_sec` 을 쓰면 안 된다. 실측(2026-09-19 첫 실물
+      렌더): 컷2 는 `estimated_sec=5` 라고 적혀 있었지만 실제 나레이션은 **6.8초**였고,
+      그 차이가 Veo 티어를 6초에서 8초로 밀어 **$0.702 라고 말해 놓고 $0.802 를 썼다.**
+      글자 수 추정은 6.2초로 같은 티어를 골랐다. 모델이 적은 숫자보다 글자 수가 정확하다
+      ("기계가 확실히 아는 것은 기계가 적는다").
+      티어를 나누는 것은 렌더와 **같은 함수**(`stage_render.plan_stage`)다 — 셈을 두 벌로
+      만들면 한쪽만 고쳐지는 날이 온다.
 
     ★ 그림은 컷당 1장으로 센다(상한). 참조 파생·재사용으로 실제 생성이 줄어들 수 있지만
       그것은 렌더 중에 정해진다 — 비용은 **넉넉히** 말하는 쪽이 안전하다.
@@ -160,7 +202,7 @@ def estimate_plan(mini: dict) -> tuple[Decimal, list[str]]:
             lines.append(f"  컷{c['cut_no']} 영상 ${cv}  ({sec}초)")
         return total, lines
 
-    durs = [float(c.get("estimated_sec") or 0) for c in mini["cuts"]]
+    durs = [narration_sec(c, "ko") for c in mini["cuts"]]
     for g in stage_render.plan_stage(mini["cuts"], durs):
         lead = mini["cuts"][g["indexes"][0]]
         nos = [mini["cuts"][i]["cut_no"] for i in g["indexes"]]
@@ -334,10 +376,11 @@ def main() -> None:
         raise SystemExit("컷을 하나도 못 만들었다")
 
     header = mini["header"]
+    title, footer = frame_text(kind, header, "ko")
     ass = subtitles.build_ass(
-        cues, header_title=config.SERIES_TITLE_BY_LANG.get("ko", config.SERIES_TITLE),
+        cues, header_title=title,
         header_hook=str(header.get("hook_ko") or ""), total_sec=total, lang="ko",
-        platform=config.DEFAULT_PLATFORM, overlays=overlays)
+        platform=config.DEFAULT_PLATFORM, overlays=overlays, footer_text=footer)
     mp4 = str(out_dir / "preview_ko.mp4")
     assemble.assemble_full(cut_files, str(work), mp4, ass_text=ass, total_sec=total,
                            duck_spans=duck)

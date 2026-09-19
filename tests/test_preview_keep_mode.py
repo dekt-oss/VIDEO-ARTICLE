@@ -182,3 +182,61 @@ def test_the_estimate_is_itemised_so_the_operator_sees_what_is_being_bought():
     assert sum(1 for ln in lines if "그림 $" in ln) == 3, "컷마다 그림 한 줄"
     assert any("영상 $" in ln for ln in lines)
     assert all(ln.startswith("  ") for ln in lines)
+
+
+# ── ⑤ 화면 테두리도 공장을 따라간다 ────────────────────────────────
+def test_the_preview_uses_the_right_series_title_and_disclaimer():
+    """★ 2026-09-19 실측: 증권 리포트 미리보기 세 컷에 **"하루 논문 한 편"** 이 떠 있었고
+    리포트가 반드시 달아야 하는 **면책 자막이 없었다**. 미리보기의 존재 이유는 "최종본이
+    이렇게 나온다"를 보여 주는 것이라, 테두리가 다르면 그 자리에서 거짓말을 한다."""
+    from engine import config
+    from scripts.preview_sequence import frame_text
+
+    title, footer = frame_text("report", {"broker": "유진투자증권"}, "ko")
+    assert title == config.REPORT_SERIES_TITLE
+    assert "하루 논문" not in title
+    assert "유진투자증권" in footer and config.REPORT_DISCLAIMER_TEXT in footer
+
+    title, footer = frame_text("paper", {}, "ko")
+    assert title == config.SERIES_TITLE
+    assert footer == "", "논문 라인에는 면책 바가 없다(종전 그대로)"
+
+
+def test_the_disclaimer_comes_from_the_render_worker_not_a_second_copy():
+    """문구를 여기에 다시 적으면 본 렌더와 미리보기가 **다른 면책**을 달게 된다."""
+    assert "report_render._disclaimer_footer(" in SRC
+
+
+# ── ⑥ 나레이션 길이는 글자 수로 센다(모델이 적은 숫자가 아니라) ────
+def test_narration_seconds_come_from_the_text_not_the_model_guess():
+    """★★ 2026-09-19 첫 실물 렌더 실측. 컷2 는 `estimated_sec=5` 라고 적혀 있었는데 실제
+    나레이션은 **6.8초**였다. 그 1.8초가 Veo 티어를 6초→8초로 밀어, 도구가 **$0.702 라고
+    말해 놓고 $0.802 를 썼다.** 글자 수 추정은 6.2초로 같은 티어를 골랐다.
+
+    "기계가 확실히 아는 것은 기계가 적는다" — 글자 수는 확실하고, 모델의 초 단위 추정은 아니다.
+    """
+    from engine import config
+    from scripts.preview_sequence import narration_sec
+
+    cut = {"estimated_sec": 5,
+           "narration_ko": "유진투자증권에 따르면, 이 우주 인터넷이 기존 전파 방식의 한계에 부딪히고 있습니다."}
+    sec = narration_sec(cut, "ko")
+    assert sec == len(cut["narration_ko"]) / config.STORY_SPEAK_CHARS_PER_SEC
+    assert sec > 5, "모델이 적은 5초보다 길다 — 이 차이가 티어를 밀었다"
+    # 실측된 6.8초와 같은 Veo 티어를 골라야 한다(그것이 이 함수의 존재 이유다).
+    from engine import stage_render
+    assert stage_render.plan_clips(sec) == stage_render.plan_clips(6.8)
+
+
+def test_it_falls_back_to_estimated_sec_only_when_there_is_no_narration():
+    from scripts.preview_sequence import narration_sec
+
+    assert narration_sec({"estimated_sec": 7}, "ko") == 7.0
+    assert narration_sec({}, "ko") == 0.0
+
+
+def test_the_estimate_no_longer_reads_estimated_sec_for_stage_videos():
+    """stage 영상 길이에 `estimated_sec` 이 다시 들어오면 같은 과소평가가 재발한다."""
+    body = SRC.split("def estimate_plan")[1].split("def frame_text")[0]
+    assert "narration_sec(c," in body
+    assert 'durs = [float(c.get("estimated_sec")' not in body
