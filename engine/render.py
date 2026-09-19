@@ -678,7 +678,7 @@ def _ensure_split_labels(cut: dict[str, Any], lang: str) -> bool:
     top, bottom = config.MECHANISM_SPLIT_DEFAULT_LABELS.get(
         lang, config.MECHANISM_SPLIT_DEFAULT_LABELS["ko"])
     plan.append({"type": "label_pair", "payload": {"top": top, "bottom": bottom},
-                 "start_sec": 0, "duration_sec": config.OVERLAY_MIN_SEC})
+                 "start_sec": 0, "duration_sec": config.MECHANISM_SPLIT_LABEL_SEC})
     log.warning("컷 %s 분할 캡션이 없어 코드가 채웠다(%s / %s) — 지시서가 label_pair 를 넣는 편이 낫다",
                 cut.get("cut_no"), top, bottom)
     return True

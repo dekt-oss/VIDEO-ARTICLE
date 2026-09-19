@@ -7,6 +7,7 @@ placeholder 라벨은 CI 폰트 의존을 피하려 ASCII 만 쓴다(한글 자�
 from __future__ import annotations
 
 import base64
+import os
 from typing import Any
 
 import httpx
@@ -279,6 +280,31 @@ def _placeholder_image(cut: dict[str, Any], header: dict[str, Any], out_path: st
     img.save(out_path, "PNG")
 
 
+def _reuse_image(cut: dict[str, Any], out_path: str) -> None:
+    """**이미 만들어 둔 그림**을 그대로 쓴다(생성 호출 0, 비용 0).
+
+    ★ 왜 필요한가(2026-09-19 운영자: "너가 그냥 테스트하는 방법은 없나?? 돈쓰기 싫은데"):
+      돈이 드는 것은 **그림 생성 하나뿐**이다. 자막·범례·화살표·전후 분할·조립은 전부 공짜다.
+      그런데 placeholder 는 회색 판이라 그 위에 얹힌 것이 실제로 어떻게 보이는지 알 수 없다.
+      지난 렌더의 **진짜 그림**을 재사용하면 생성 말고 **나머지 전부**를 사실대로 볼 수 있다.
+
+    ★ 이것이 검증하지 **못하는** 것: 새 프롬프트가 그리는 **그림 자체**. 그건 사는 수밖에 없다.
+      그래서 이 경로는 `placeholder` 와 나란히 두고 이름을 `reuse` 로 못박는다 — 무엇을
+      검증하고 무엇을 검증하지 못하는지 이름으로 드러난다.
+
+    컷 번호 순서대로 `config.IMAGE_REUSE_DIR` 의 PNG 를 하나씩 쓴다(모자라면 앞으로 돌아간다).
+    """
+    import glob  # noqa: PLC0415 — 이 경로에서만 쓴다
+    import shutil  # noqa: PLC0415
+
+    pool = sorted(glob.glob(os.path.join(config.IMAGE_REUSE_DIR, "*.png")))
+    if not pool:
+        raise RuntimeError(f"재사용할 그림이 없다: {config.IMAGE_REUSE_DIR}")
+    idx = max(0, int(cut.get("cut_no") or 1) - 1) % len(pool)
+    shutil.copyfile(pool[idx], out_path)
+    log.info("컷 %s 그림 재사용(생성 0회): %s", cut.get("cut_no"), os.path.basename(pool[idx]))
+
+
 def generate_image(cut: dict[str, Any], header: dict[str, Any], out_path: str,
                    model: str = "", ref_path: str | None = None) -> tuple[str, float]:
     """컷 → 이미지 파일. model 을 주면 **그 모델로 강제**한다(역할 상향 실패 시 폴백용).
@@ -289,6 +315,9 @@ def generate_image(cut: dict[str, Any], header: dict[str, Any], out_path: str,
     provider = config.IMAGE_PROVIDER
     if provider == "placeholder":
         _placeholder_image(cut, header, out_path)
+        return out_path, 0.0
+    if provider == "reuse":
+        _reuse_image(cut, out_path)
         return out_path, 0.0
     if provider == "gemini":
         _gemini_image(cut, header, out_path, model=model, ref_path=ref_path)

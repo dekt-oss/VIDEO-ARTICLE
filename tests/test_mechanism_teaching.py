@@ -746,3 +746,19 @@ def test_the_pipeline_assigns_before_it_judges_and_says_so():
     assert src.index("assign_comparison_colors") < src.index("photo_contract.evaluate("), \
         "배정이 판정보다 먼저여야 한다"
     assert "photo_color_code_assigned" in pc.WARNING_REASONS, "조용히 고치지 않는다"
+
+
+def test_the_split_caption_lasts_the_whole_cut():
+    """★ 2초만 띄웠더니 6초 컷의 중간부터 이름표가 사라졌다(2026-09-19 실측).
+    비교 화면은 끝까지 비교하는 화면이다 — 후반을 보는 사람도 어느 쪽이 전인지 알아야 한다.
+    큰 값을 주고 컷 경계에서 잘리게 둔다(build_overlay_cues 가 이미 컷 끝에서 자른다)."""
+    cut = _cut(4, overlay_plan=[])
+    render._ensure_split_labels(cut, "ko")
+    pair = next(o for o in cut["overlay_plan"] if o["type"] == "label_pair")
+    assert pair["duration_sec"] == config.MECHANISM_SPLIT_LABEL_SEC
+    assert pair["duration_sec"] > 60, "컷보다 길어야 컷 끝까지 남는다"
+    # 컷 경계에서 실제로 잘리는지 — 6초 컷이면 6초까지만.
+    cues = eo.build_overlay_cues([cut], [0.0], [6.0])
+    for start, end, _text, style in cues:
+        if style in ("LabelTop", "LabelBottom"):
+            assert (start, end) == (0.0, 6.0), (style, start, end)
