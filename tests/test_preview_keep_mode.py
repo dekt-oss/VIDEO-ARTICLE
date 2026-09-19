@@ -25,6 +25,9 @@ SRC = (pathlib.Path(__file__).resolve().parents[1] / "scripts" / "preview_sequen
        ).read_text(encoding="utf-8")
 
 
+_STAGE_OF = {5: "SEQ_A_S1_setup", 6: "SEQ_A_S2_change", 7: "SEQ_A_S2_change"}
+
+
 def _directive() -> dict:
     """컷 5·6·7 을 쓰는 시퀀스 하나. S2 는 S1 을 이어받는다(참조 키가 생긴다)."""
     return {
@@ -39,15 +42,20 @@ def _directive() -> dict:
                     {"stage_id": "SEQ_A_S2_change", "continuity_mode": "MUTATE_STATE",
                      "continuity_from": "SEQ_A_S1_setup", "cut_refs": [6, 7],
                      "camera_operation": "HOLD",
-                     "mutations": [{"entity_id": "beam", "operation": "HIGHLIGHT",
-                                    "property": "glow", "visible_change": True}]},
+                     # GROW 는 **의미 변화**다 — 전·후 분할 스틸의 조건이다
+                     #   (HIGHLIGHT 같은 강조는 조건이 아니다, visual_sequence.stage_changes_state).
+                     "mutations": [{"entity_id": "beam", "operation": "GROW",
+                                    "property": "width", "visible_change": True}]},
                 ]},
             ],
         },
         "cuts": [
             {"cut_no": n, "visual_role": "MECHANISM", "motion_source": "video",
              "visual_prompt": f"scene {n}", "estimated_sec": 6,
-             "resolved_visual_plan": {"base": "MECHANISM_SEQUENCE"}}
+             # ★ stage 묶음은 **컷의 `stage_ref`** 로 정해진다(stage_render.stage_of) —
+             #   header 의 cut_refs 가 아니다. 둘 다 있어야 렌더가 실제로 도는 모습이 된다.
+             "resolved_visual_plan": {"base": "MECHANISM_SEQUENCE",
+                                      "stage_ref": _STAGE_OF[n]}}
             for n in (5, 6, 7)
         ],
     }
@@ -133,3 +141,44 @@ def test_it_tells_the_operator_which_factory_and_whether_it_will_be_kept():
     """리포트 지시서를 논문 표에 쓰면 FK 위반이다 — 어느 공장인지 도구가 알고 말해야 한다."""
     assert 'kind = "report"' in SRC and 'kind = "paper"' in SRC
     assert '"factory": kind, "cached": bool(args.keep)' in SRC
+
+
+# ── ④ 비용을 사실대로 말한다 ───────────────────────────────────────
+def test_the_estimate_counts_stage_videos_not_cut_videos():
+    """★ 옛 셈(`mini_render.estimate`)은 **컷 단위**였다 — `motion_source == "video"` 인
+    컷마다 Veo 하나. 실사형 렌더는 **stage 단위**라 둘이 어긋난다:
+      · stage 는 `motion_source` 를 읽지 않는다 — 스틸 컷만 있는 stage 도 영상을 산다
+      · 전·후 분할 스틸로 나가는 stage 는 영상을 **아예 안 산다**
+    실측(리포트 SEQ_R01)에서 두 오차가 서로 반대라 총액이 우연히 비슷했다. 그래서 더 위험하다.
+    """
+    from decimal import Decimal
+
+    from engine import config, stage_render
+    from scripts.preview_sequence import estimate_plan
+    from scripts.mini_render import estimate
+
+    d = _directive()
+    # 컷5(=S1, NEW_WORLD)는 still 로 둔다 — 컷 단위 셈은 여기서 영상을 0으로 센다.
+    d["cuts"][0]["motion_source"] = "still"
+    mini = slice_keep(d, "SEQ_A", 4, want_video=True)
+    assert stage_render.enabled(mini["header"]), "이 픽스처는 stage 모드여야 의미가 있다"
+
+    total, lines = estimate_plan(mini)
+    joined = "\n".join(lines)
+    # S1 은 스틸 컷만 있는데도 stage 영상을 산다 — 컷 단위 셈은 이것을 놓친다.
+    assert "SEQ_A_S1_setup 영상 $0.3" in joined, joined
+    # S2 는 MUTATE_STATE + 의미 변화 + 이어받기 → 전·후 분할 스틸이라 영상을 안 산다.
+    assert joined.count("영상 $0  (전·후 분할 스틸") == 2, joined
+    # 그림 3장 + S1 영상 한 편. 컷 단위 셈은 이 구성을 못 만든다.
+    assert total == Decimal("0.402000") + Decimal("0.300000"), total
+    assert total != estimate(slice_directive(_directive(), "SEQ_A", 4, want_video=True))
+
+
+def test_the_estimate_is_itemised_so_the_operator_sees_what_is_being_bought():
+    """총액 하나만 찍으면 '왜 이 값이지'를 물을 수 없다 — 이 도구는 발주 직전에 읽힌다."""
+    from scripts.preview_sequence import estimate_plan
+
+    _, lines = estimate_plan(slice_keep(_directive(), "SEQ_A", 4, want_video=True))
+    assert sum(1 for ln in lines if "그림 $" in ln) == 3, "컷마다 그림 한 줄"
+    assert any("영상 $" in ln for ln in lines)
+    assert all(ln.startswith("  ") for ln in lines)

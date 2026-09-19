@@ -117,6 +117,64 @@ def slice_keep(directive: dict, sequence_id: str, n_stages: int,
             "header": header, "cuts": cuts}
 
 
+def estimate_plan(mini: dict) -> tuple[Decimal, list[str]]:
+    """이 미리보기가 **실제로 사게 될 것**의 추정 + 줄 단위 내역.
+
+    ★ 왜 `mini_render.estimate` 를 그대로 쓰지 않나(2026-09-19): 그것은 **컷 단위**로 센다 —
+      `motion_source == "video"` 인 컷마다 Veo 를 한 번씩. 그런데 실사형 렌더는 **stage 단위**다:
+        · `motion_source` 는 읽히지 않는다 — stage 가 통째로 영상 하나를 산다(스틸 컷이 그
+          stage 에 있어도 산다)
+        · 전·후 분할 스틸로 나가는 stage 는 **영상을 아예 안 산다**
+      실측(리포트 SEQ_R01): 옛 셈은 $0.902 를 찍었는데 실제로 살 것은 그 구성이 아니었다 —
+      컷 영상 2개($0.50)를 있다고 세고 stage 영상 1개를 없다고 셌다. 두 오차가 서로 반대라
+      총액이 우연히 가까웠을 뿐이다. **틀린 값이 맞는 값과 가까운 것은 고칠 이유가 없다는
+      뜻이 아니다** — 다음 지시서에서는 안 가깝다.
+
+    ★ stage 길이는 나레이션 실측의 합인데 그것은 TTS 를 돌려야 안다. 여기서는 지시서의
+      `estimated_sec` 으로 대신하고, 렌더가 쓰는 것과 **같은 함수**(`stage_render.plan_stage`)
+      로 티어를 나눈다 — 셈을 두 벌로 만들면 한쪽만 고쳐지는 날이 온다.
+
+    ★ 그림은 컷당 1장으로 센다(상한). 참조 파생·재사용으로 실제 생성이 줄어들 수 있지만
+      그것은 렌더 중에 정해진다 — 비용은 **넉넉히** 말하는 쪽이 안전하다.
+    """
+    from engine import cost, generation_spec, render, stage_render
+
+    header = mini["header"]
+    total = Decimal("0")
+    lines: list[str] = []
+    for c in mini["cuts"]:
+        spec = generation_spec.image_spec(c, header, generation_mode="realtime")
+        ci = cost.compute_cost(spec.model, spec.unit_type, 1)
+        total += ci
+        lines.append(f"  컷{c['cut_no']} 그림 ${ci}  ({spec.model.split('/')[-1]})")
+
+    if not stage_render.enabled(header):
+        for c in mini["cuts"]:
+            if c.get("motion_source") != "video":
+                continue
+            sec = min(int(c.get("estimated_sec") or config.VEO_CLIP_SEC),
+                      config.clip_tier_max(mini["version_type"]))
+            cv = cost.compute_cost(config.VEO_MODEL,
+                                   f"video_{config.VEO_RESOLUTION}_per_sec", sec)
+            total += cv
+            lines.append(f"  컷{c['cut_no']} 영상 ${cv}  ({sec}초)")
+        return total, lines
+
+    durs = [float(c.get("estimated_sec") or 0) for c in mini["cuts"]]
+    for g in stage_render.plan_stage(mini["cuts"], durs):
+        lead = mini["cuts"][g["indexes"][0]]
+        nos = [mini["cuts"][i]["cut_no"] for i in g["indexes"]]
+        if render.split_before_after_applies(lead, header):
+            lines.append(f"  {g['stage_id']} 영상 $0  (전·후 분할 스틸 — 생성 0회, 컷 {nos})")
+            continue
+        sec = sum(g["clips"])
+        cv = cost.compute_cost(config.VEO_MODEL,
+                               f"video_{config.VEO_RESOLUTION}_per_sec", sec)
+        total += cv
+        lines.append(f"  {g['stage_id']} 영상 ${cv}  ({sec:g}초, 컷 {nos})")
+    return total, lines
+
+
 def describe(mini: dict) -> None:
     """무엇을 만들 것인지 사람 말로. **발주 전에** 본다."""
     from engine import render
@@ -211,7 +269,7 @@ def main() -> None:
         config.VIDEO_PROVIDER = os.getenv("VIDEO_PROVIDER") or "veo"
 
     from engine import assemble, db, render, render_qa, sequence_render, subtitles
-    from scripts.mini_render import estimate, slice_directive
+    from scripts.mini_render import slice_directive
 
     # ★ 두 공장을 **둘 다** 찾는다(2026-09-19). 운영자가 리포트 지시서를 미리 보려 했는데
     #   이 도구가 논문 테이블만 읽어서 "지시서 없음"이 났다 — 화면 계약·렌더 경로는 공용인데
@@ -232,9 +290,11 @@ def main() -> None:
     mini = slicer(directive, seq_id, args.stages, want_video=not args.stills)
     describe(mini)
 
-    est = Decimal("0") if (args.free or args.reuse) else estimate(mini)
+    est, est_lines = ((Decimal("0"), []) if (args.free or args.reuse) else estimate_plan(mini))
     print(f"\n시퀀스 {seq_id} · 컷 {len(mini['cuts'])}개")
-    print(f"예상 비용(상한): ${est}   그림={config.IMAGE_PROVIDER} 영상={config.VIDEO_PROVIDER} "
+    for ln in est_lines:
+        print(ln)
+    print(f"예상 비용: ${est}   그림={config.IMAGE_PROVIDER} 영상={config.VIDEO_PROVIDER} "
           f"범례·캡션={config.MECHANISM_LABEL_OVERLAYS_ENABLED} 분할스틸={config.MECHANISM_SPLIT_BEFORE_AFTER}")
     if args.keep:
         print(f"  ※ --keep: 컷 번호를 그대로 두고 **{kind} 에셋 캐시에 남긴다** — "
