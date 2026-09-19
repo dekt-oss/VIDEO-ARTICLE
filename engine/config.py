@@ -815,9 +815,23 @@ PHOTO_OPTICS_REWRITES: tuple[tuple[str, str], ...] = (
 #   stylized 만 지우면 "3D render of a brain" 이 남아 여전히 차단된다.
 # ★ 게이트 목록(PHOTO_RENDER_STYLE_TERMS)에서는 빼지 않는다. 치환이 놓친 변형이 있으면
 #   게이트가 계속 잡아야 한다.
+#
+# ★★ **`photorealistic` 계열도 넣는다**(2026-09-19). 같은 기준에 정확히 해당한다 — 형용사라
+#   지워도 장면이 그대로 남는다. 그리고 `stylized` 와 달리 **삽화로 구상했다는 증거도
+#   아니다**: 모델은 사실적으로 그려 달라고 말한 것이고, 그 결정은 어차피 코드가 한다
+#   (무광 CG, VISUAL_ROLE_STYLE). 지워도 잃는 정보가 없다.
+#   실측(저장된 photo 지시서 54편·572컷): 화풍어휘 차단 59자리 중
+#     photorealistic 32 · photoreal 3 (**59%**) · 3d render 15 · stylized 13 · 그 외 6.
+#   `3d render`·`illustration` 은 그대로 둔다 — 장면 전체를 그림체로 바꾸는 **명사**라
+#   지운다고 구상이 바뀌지 않는다(위 주석).
 PHOTO_STYLE_WORD_REWRITES: tuple[tuple[str, str], ...] = (
     # "A stylized 3D render of a brain" → "a brain"(관사까지 먹어야 "A a brain" 이 안 된다).
     (r"\b(?:an?\s+)?stylized\s+3d\s+render(?:ing)?\s+of\s+", ""),
+    # 같은 이유로 복합어를 먼저 — "a photorealistic 3D rendering of X" 에서 형용사만 빼면
+    # "3D rendering of X" 가 남아 **여전히 차단된다**(stylized 규칙이 이미 겪은 자리).
+    (r"\b(?:an?\s+)?photo-?real(?:istic)?\s+3d\s+render(?:ing)?\s+of\s+", ""),
+    (r",?\s*\bphoto-?realistic\b", ""),
+    (r",?\s*\bphoto-?real\b", ""),
     (r",?\s*\bstylized\b", ""),
 )
 

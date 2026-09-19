@@ -255,7 +255,9 @@ def test_the_actual_cut8_sentence_is_blocked():
               "'Semaglutide'. New areas stand for 'Exploratory Behavior', 'Spatial Memory', "
               "and 'Glucose Control'.")
     got = pc.quoted_label_cuts([_cut(8, prompt)])
-    assert got and got[0].startswith("컷8("), got
+    # ★ 2026-09-19 부터 **어느 칸인지** 붙는다(컷8.visual_prompt) — 그 칸 이름이 없어서
+    #   되먹임을 받은 모델이 visual_prompt 만 고치고 motion_prompt 를 놔둔 실측이 있다.
+    assert got and got[0].startswith("컷8.visual_prompt("), got
     assert "Calorie Restriction" in got[0]
 
 
@@ -389,3 +391,30 @@ def test_versions_without_a_world_are_unchanged(monkeypatch):
     before = ip._build_image_prompt(cut, {"version_type": "comic"})
     monkeypatch.setattr(config, "IMAGE_PROMPT_CARRIES_WORLD", False)
     assert ip._build_image_prompt(cut, {"version_type": "comic"}) == before
+
+
+# ── photorealistic 은 코드가 지운다 (2026-09-19) ────────────────────
+def test_photorealistic_is_stripped_like_stylized():
+    """★ 근거: `stylized` 예외가 세운 기준 그대로다 — **형용사라 지워도 장면이 남는다.**
+    게다가 `stylized` 와 달리 삽화로 구상했다는 증거도 아니다(사실적으로 그리라는 말이고,
+    그 결정은 어차피 코드가 한다). 실측: photo 지시서 54편·572컷에서 화풍어휘 차단 59자리
+    중 photorealistic 32 · photoreal 3 = **59%** 가 이 한 낱말이었다."""
+    assert pc.strip_style_words("A photorealistic model of a pipe.") == "A model of a pipe."
+    assert pc.strip_style_words("A photo-realistic cutaway of a cell.") == "A cutaway of a cell."
+
+
+def test_the_compound_form_goes_first_or_the_noun_survives():
+    """'photorealistic 3D render of X' 에서 형용사만 빼면 '3D render of X' 가 남아 여전히
+    막힌다 — stylized 규칙이 이미 겪은 자리다."""
+    out = pc.strip_style_words("A photorealistic 3D render of a satellite over Earth.")
+    assert out == "A satellite over Earth."
+    assert not pc._RENDER_STYLE_RE.search(out)
+
+
+def test_nouns_that_change_the_whole_conception_are_still_blocked_not_stripped():
+    """'illustration'·'3d render' 는 장면 전체를 그림체로 바꾸는 **명사**다. 낱말을 지워도
+    모델이 그렇게 구상했다는 사실은 남으므로 돌려보내야 한다(config 주석의 원칙)."""
+    for text in ("An illustration of a cell.", "A 3D render of a brain.",
+                 "A watercolor of a lab bench."):
+        assert pc.strip_style_words(text) == text, text
+        assert pc._RENDER_STYLE_RE.search(text), text

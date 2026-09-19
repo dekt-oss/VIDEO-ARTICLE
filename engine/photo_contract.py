@@ -334,6 +334,17 @@ def split_composition_cuts(cuts: list[dict[str, Any]]) -> tuple[list[int], list[
     return blocked, warned
 
 
+def _image_text_fields(cut: dict[str, Any]) -> list[tuple[str, str]]:
+    """이미지에 가는 문장을 **칸 이름과 함께**. `_image_text_of` 와 같은 범위여야 한다 —
+    한쪽만 늘리면 검사는 잡는데 어디인지 못 말하는 상태가 된다."""
+    out = [(k, str(cut.get(k) or "")) for k in ("visual_prompt", "motion_prompt")
+           if str(cut.get(k) or "").strip()]
+    mech = visual_sequence.mechanism_prose(cut)
+    if mech:
+        out.append(("mechanism", mech))
+    return out
+
+
 def _text_of(cut: dict[str, Any]) -> str:
     """검사 대상 텍스트. **부정문 구간은 지운 뒤** 본다."""
     return _NEGATED.sub(" ", _raw_text_of(cut))
@@ -1083,12 +1094,21 @@ def quoted_label_cuts(cuts: list[dict[str, Any]]) -> list[str]:
     for c in cuts:
         if not isinstance(c, dict):
             continue
+        # ★★ **어느 칸인지 말한다**(2026-09-19). 예전에는 컷 번호와 낱말만 적었다 — 그래서
+        #   되먹임을 받은 모델이 `visual_prompt` 만 고치고 `motion_prompt` 의 따옴표는
+        #   그대로 뒀고, 재생성을 해도 같은 사유로 또 막혔다(리포트 dfc74dec 컷9,
+        #   `avoid the 'bad weather' spots`). 검사가 어디인지 말하지 않으면 고칠 수 없다.
         # ★ 도해 구조 문장도 본다 — 그 문장이 이미지에 가므로(2026-09-18) 거기 따옴표가 있으면
         #   장면에 있는 것과 똑같이 글자로 구워진다.
-        text = _image_text_of(c)
-        hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)})
-        if hits:
-            out.append(f"컷{c.get('cut_no')}({', '.join(hits[:3])})")
+        found: dict[str, list[str]] = {}
+        for field, text in _image_text_fields(c):
+            hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)})
+            if hits:
+                found.setdefault(field, []).extend(hits)
+        if found:
+            where = "·".join(sorted(found))
+            words = sorted({w for v in found.values() for w in v})
+            out.append(f"컷{c.get('cut_no')}.{where}({', '.join(words[:3])})")
     return out
 
 
@@ -1861,7 +1881,14 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
             " 영어가 구워지면 언어 공유가 깨진다."
             " 따옴표와 이름을 **지우고**, 두 대상을 **생김새로** 구별되게 적어라"
             " (왼쪽은 낮고 평평한 접시, 오른쪽은 높고 칸이 나뉜 접시). 어느 쪽이 무엇인지는"
-            " overlay_plan 의 group_compare 카드가 말한다 — 그건 코드가 그리고 언어마다 바뀐다.")
+            " overlay_plan 의 group_compare 카드가 말한다 — 그건 코드가 그리고 언어마다 바뀐다."
+            " ★★ **세 칸을 모두 보라: visual_prompt · motion_prompt · mechanism 구조 필드.**"
+            " 셋 다 이미지 모델에 간다. 사유 끝에 어느 칸인지 적혀 있다"
+            " (예: `컷9.motion_prompt(bad weather)`). 실측 2026-09-19: 장면만 고치고"
+            " motion_prompt 를 놔둬서 재생성이 같은 사유로 또 막혔다."
+            " ★ 겁따옴표도 마찬가지다 — `avoid the 'bad weather' spots` 처럼 이름을 붙일"
+            " 뜻이 없어도 모델은 그 낱말을 글자로 그린다. 따옴표를 그냥 빼라"
+            " (avoid the cloud-covered spots).")
     if "photo_text_request_conflict" in codes:
         fixes.append(
             "- 같은 프롬프트가 글자를 **요구하면서 동시에 금지**한다"
