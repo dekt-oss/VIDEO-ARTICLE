@@ -347,7 +347,12 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
             "claim_ids": [str(c).strip() for c in claim_ids if str(c).strip()],
             "start_sec": start,
             # 2초 미만으로 지나가는 카드는 읽히지 않는다 — 최소 노출을 코드가 보장한다.
-            "duration_sec": max(config.OVERLAY_MIN_SEC, dur),
+            # ★ 주석 레이어(이름표·화살표·범례·전후 캡션)는 **그 컷 내내** 떠 있는다. 모델이 정한
+            #   길이는 짐작이고, 물체가 화면에 있는 동안 이름표가 사라지면 후반이 이름 없는 화면이
+            #   된다(실측: 8초 컷에 카드 3초·화살표 2초). 근거: config.OVERLAY_ANNOTATION_HOLD_SEC.
+            "duration_sec": (config.OVERLAY_ANNOTATION_HOLD_SEC
+                             if otype in config.OVERLAY_ANNOTATION_TYPES
+                             else max(config.OVERLAY_MIN_SEC, dur)),
             "priority": (str(item.get("priority") or "").strip().lower()
                          if str(item.get("priority") or "").strip().lower()
                          in config.OVERLAY_PRIORITIES else config.DEFAULT_OVERLAY_PRIORITY),

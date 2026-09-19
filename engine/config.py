@@ -2024,6 +2024,14 @@ MECHANISM_SPLIT_EFFECT: str = ""
 #  비교 화면은 끝까지 비교하는 화면이라, 후반을 보는 사람은 어느 쪽이 전인지 알 수 없다.
 #  큰 값을 주고 컷 경계에서 자르게 둔다(build_overlay_cues 가 이미 컷 끝에서 자른다).
 MECHANISM_SPLIT_LABEL_SEC: float = 600.0
+#: **주석 레이어는 그 컷 내내 떠 있는다**(2026-09-19 실측으로 정했다).
+#  키워드 카드는 화면 속 물체의 **이름표**이고 화살표는 그 물체를 가리킨다 — 물체가 화면에
+#  있는 동안 이름표가 사라지면 그 컷의 후반은 이름 없는 화면이 된다. 범례도 같다(색이 화면에
+#  있는 내내 뜻이 필요하다). 실측(리포트 da1a6b96): 8초 컷에 카드 3초·화살표 2초라 중간부터
+#  둘 다 사라졌다. 참고 영상은 카드를 컷 내내 붙여 둔다.
+#  수치·출처 카드(number_punch·source_card)는 **말하는 순간**에 뜨는 것이라 여기 해당하지 않는다.
+#  큰 값을 주고 컷 경계에서 자르게 둔다(build_overlay_cues 가 이미 컷 끝에서 자른다).
+OVERLAY_ANNOTATION_HOLD_SEC: float = 600.0
 MECHANISM_SPLIT_DEFAULT_LABELS: dict[str, tuple[str, str]] = {
     "ko": ("변화 전", "변화 후"),
     "en": ("Before", "After"),
