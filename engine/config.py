@@ -1190,11 +1190,26 @@ SEQUENCE_REFERENCE_FORCES_REALTIME: bool = _get_bool(
 #   파생이 더 정확하고(같은 픽셀에서 나온다) 생성 호출이 0이다. 끄면 매번 새로 생성한다.
 RETURN_WORLD_PREFERS_DERIVE: bool = _get_bool("RETURN_WORLD_PREFERS_DERIVE", True)
 
+#: **색 불변식** — 참조 컷에서 물체의 색을 바꾸거나 서로 바꿔 달지 못하게 한다.
+#
+# ★ 왜(2026-09-19 실측, 지시서 fa58ed10·4851eb41): 비교색은 "이 물체가 어느 집단인가"를 말하는
+#   **이름**인데, 참조 컷에서 모델이 그 색을 **물체 안의 부위 구분**으로 다시 썼다
+#   ("청각장애인 뇌: 주변부 coral, 중심부 blue"). 그러면 화면의 범례가 거짓말이 된다.
+# ★★ 여기서는 **개체 이름을 쓰지 않는다.** entity_id 를 프롬프트에 넣으면 그림에 글자로 구워질
+#   위험이 있다(photo_quoted_label_in_prompt 가 막는 그것). 참조 그림이 이미 색을 확정했으므로
+#   "붙어 있는 그림의 색 그대로"라고만 말하면 이름 없이도 불변식이 성립한다.
+_COLOUR_INVARIANT: str = (
+    "Every object keeps exactly the colour it has in the attached image: "
+    "do not recolour any object and do not swap colours between objects. "
+    "To point at one part inside an object, use the amber accent — "
+    "never the two comparison colours. ")
+
 SEQUENCE_REFERENCE_INSTRUCTION: str = (
     "Use the attached image as the exact starting frame. "
     "Keep the SAME subjects (same faces, same clothing, same placement), "
     "the SAME setting, the SAME camera angle, the SAME lighting and the SAME materials. "
-    "Do not redraw the scene from scratch. Change ONLY the following: ")
+    "Do not redraw the scene from scratch. " + _COLOUR_INVARIANT +
+    "Change ONLY the following: ")
 # 카메라가 움직이는 stage 용. 각도는 풀되 **피사체·세계·조명·재질은 그대로** 잠근다.
 #   ★ 왜 나눴나(2026-08-30 채팅 실측): 하나만 쓰니 "SAME camera angle" 이라고 못박아 놓고
 #     컷 프롬프트는 "extreme close-up" · "low-angle shot" 을 요구했다. 서로 반대말이다.
@@ -1203,7 +1218,7 @@ SEQUENCE_REFERENCE_INSTRUCTION_MOVING: str = (
     "Use the attached image as the exact starting frame. "
     "Keep the SAME subjects (same objects, same design, same materials), "
     "the SAME setting and the SAME lighting. The camera may move as described. "
-    "Do not redraw the scene from scratch and do not replace the subjects. "
+    "Do not redraw the scene from scratch and do not replace the subjects. " + _COLOUR_INVARIANT +
     "Change ONLY the following: ")
 # ★★ 참조가 붙은 컷은 **장면 전체가 아니라 변화만** 말한다(2026-08-30 채팅 실측).
 #
