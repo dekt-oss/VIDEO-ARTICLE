@@ -1,7 +1,13 @@
-"""작업명세서 모델 실측 — 같은 입력·같은 프롬프트로 **모델만** 바꿔 지시서를 뽑고 코드로 채점한다.
+"""텍스트 모델 실측 — 같은 입력·같은 프롬프트로 **모델만** 바꿔 뽑고 코드로 채점한다.
 
 무엇을 푸는가(운영자 지시 2026-09-19): "딥시크와 재미나이의 동일한 기준으로 작업명세서
 결과 각각 뽑아서 비교해봅시다. 어느정도 성능차이인지 보구요."
+
+두 작업을 잰다. **티어가 다르면 따로 재야 한다** — 지시서에서 나온 결과가 flash 티어에도
+적용된다는 보장이 없다(운영자 판단 2026-09-19: "먼저 재보고 결정").
+
+  · `--job directive` — pro 티어. 현행 gemini-2.5-pro.  채점: 렌더 게이트(아래)
+  · `--job factsheet` — flash 티어. 현행 gemini-2.5-flash. 채점: 정규화기가 고친 횟수
 
 ★★ 채점은 **렌더 파이프라인이 쓰는 바로 그 함수**로 한다 — scripts/quality_experiment.py 가
   세운 원칙 그대로다. 눈으로 "이게 더 좋아 보인다"는 인상평이고, 그것으로 공급자를 바꾸면
@@ -31,10 +37,10 @@
   지시서 1벌은 수십 원 수준이지만, 공짜가 아니라는 것은 말해 둔다.
 
 사용:
-    python -m scripts.model_ab --paper <paper_id>                       # 기본 2모델 1회
-    python -m scripts.model_ab --paper <id> --repeat 2                  # 권장
-    python -m scripts.model_ab --paper <id> --models gemini-2.5-pro,deepseek-v4-pro
-    python -m scripts.model_ab --list                                   # 후보 draft 목록
+    python -m scripts.model_ab --paper <paper_id> --repeat 3             # 지시서(기본)
+    python -m scripts.model_ab --paper <id> --job factsheet --repeat 3   # Fact Sheet
+    python -m scripts.model_ab --paper <id> --models deepseek-flash      # 팔 직접 지정
+    python -m scripts.model_ab --list                                    # 후보 draft 목록
 """
 
 from __future__ import annotations
@@ -49,15 +55,19 @@ from typing import Any
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from engine import (  # noqa: E402
-    config, cut_skeleton, db, directive as D, directive_audit,
+    config, cut_skeleton, db, directive as D, directive_audit, factsheet as F,
     photo_contract, sequence_tier,
 )
 from engine.llm import call_json, set_text_purpose  # noqa: E402
 
 OUT = pathlib.Path("docs/실측_모델")
 
-# 기본 두 팔. 지시서는 지금 gemini-2.5-pro 가 만든다 — 그 자리를 놓고 겨룬다.
-DEFAULT_MODELS = ["gemini-2.5-pro", "deepseek-v4-pro"]
+# 작업마다 겨루는 자리가 다르다. 지시서는 pro 티어(gemini-2.5-pro), Fact Sheet 는
+# flash 티어(gemini-2.5-flash)다 — **그 자리의 현행 모델**을 기준 팔로 세운다.
+DEFAULT_MODELS = {
+    "directive": ["gemini-2.5-pro", "deepseek-v4-pro"],
+    "factsheet": ["gemini-2.5-flash", "deepseek-flash"],
+}
 
 
 def _generate(draft_row: dict[str, Any], version_type: str, model: str) -> dict[str, Any]:
@@ -133,6 +143,86 @@ def _score(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ─────────────────────────────────────────────────────────────
+# Fact Sheet — flash 티어의 대표 작업
+# ─────────────────────────────────────────────────────────────
+# ★ 왜 Fact Sheet 인가: flash 티어의 네 작업(채점·추출·자기검증·대본) 가운데 **코드가 혼자
+#   채점할 수 있는** 것이 이것뿐이다. 자기검증은 그 자체가 LLM 판정이라 심사관 모델을 하나 더
+#   끌어들이고, 그러면 무엇을 재는지 흐려진다.
+#
+# ★★ 채점 방법이 이 작업의 핵심이다: **정규화기가 얼마나 고쳐야 했는가**를 센다.
+#   `normalize_factsheet` 는 모델이 스키마를 어겨도 조용히 고쳐 준다 — enum 을 기본값으로
+#   되돌리고, 빠진 claim_id 를 지어 주고, 중복을 떼어 낸다. 그래서 최종 산출물만 보면 두
+#   모델이 똑같아 보인다. 고친 **횟수**가 곧 "이 모델이 지시를 얼마나 안 지켰는가"이고,
+#   그건 공짜로·객관적으로 셀 수 있다.
+_ENUM_FIELDS = (
+    ("claim_kind", config.CLAIM_KINDS, config.DEFAULT_CLAIM_KIND),
+    ("effect_direction", config.EFFECT_DIRECTIONS, config.DEFAULT_EFFECT_DIRECTION),
+    ("causal_strength", config.CAUSAL_STRENGTHS, config.DEFAULT_CAUSAL_STRENGTH),
+)
+
+
+def _generate_factsheet(paper: dict[str, Any], model: str) -> dict[str, Any]:
+    """한 발. factsheet.extract 와 **같은 프롬프트**로 부르되 원본 응답도 함께 들고 온다."""
+    set_text_purpose("factsheet")
+    t0 = time.time()
+    raw = call_json(model=model, system=F.FACTSHEET_SYSTEM,
+                    user=F.factsheet_user_prompt(paper.get("title") or "",
+                                                 paper.get("venue"),
+                                                 paper.get("abstract") or ""))
+    elapsed = time.time() - t0
+    return {"raw": raw, "normalized": F.normalize_factsheet(raw), "elapsed_sec": elapsed}
+
+
+def _score_factsheet(run: dict[str, Any], paper: dict[str, Any]) -> dict[str, Any]:
+    raw_claims = [c for c in (run["raw"].get("claims") or []) if isinstance(c, dict)]
+    norm = run["normalized"]
+    claims = norm.get("claims") or []
+
+    # ① enum 위반 — 모델이 허용 토큰 밖의 값을 냈고 코드가 기본값으로 되돌린 횟수.
+    enum_fixed = sum(
+        1 for c in raw_claims for name, allowed, _ in _ENUM_FIELDS
+        if str(c.get(name) or "").strip().lower() not in allowed)
+    # ② claim_id 를 아예 안 붙인 항목.
+    id_missing = sum(1 for c in raw_claims if not str(c.get(name := "claim_id") or "").strip())
+    # ③ claim_id 중복 — 같은 ID 를 두 번 썼다.
+    ids = [str(c.get("claim_id") or "").strip() for c in raw_claims]
+    ids = [i for i in ids if i]
+    id_dup = len(ids) - len(set(ids))
+    # ④ evidence_grade 가 허용 밖.
+    grade_bad = sum(1 for c in raw_claims
+                    if str(c.get("evidence_grade") or "").strip().upper()
+                    not in config.EVIDENCE_GRADES)
+
+    return {
+        "enum위반": enum_fixed,
+        "claim_id누락": id_missing,
+        "claim_id중복": id_dup,
+        "등급값오류": grade_bad,
+        # ⑤ 원문의 숫자를 원장이 지불하지 못한다 — 하류에서 그 숫자를 말하면 red 가 된다.
+        #   ★★ **게이트가 보는 것과 같은 것을 본다**: `source_numbers` 는 Fact Sheet 를
+        #     통째로 훑으므로 최상위 `numbers` 키가 비어도 claims 본문에 있으면 지불된다.
+        #     처음엔 `len(norm["numbers"])` 를 맥락으로 찍었는데, 그게 0 인 것을 보고
+        #     "숫자를 놓쳤다"고 읽을 뻔했다 — 실제로는 다섯 벌 모두 커버리지 1/1 이었다.
+        #     **키 개수는 게이트가 쓰는 값이 아니다.**
+        "숫자미지불": len(_source_nums(paper) - directive_audit.source_numbers(norm)),
+        # ── 맥락: 얼마나 뽑았는가. 많이 뽑는 것이 곧 좋은 것은 아니다(프롬프트가
+        #   "많이 뽑는 것이 아니라 고르는 것"이라고 말한다) — 그래서 점수가 아니라 맥락이다.
+        #   더 뽑는 성질이 곧 출력 상한 절단의 원인이기도 하다(2026-09-19 실측).
+        "_claim수": len(claims),
+        "_미확인필드합": sum(len(c.get("missing_fields") or []) for c in claims),
+        "_source_quote": sum(1 for c in claims if c.get("source_quote")),
+        "_what_found": len(norm.get("what_found") or []),
+        "_숫자커버": f"{len(_source_nums(paper) & directive_audit.source_numbers(norm))}/{len(_source_nums(paper))}",
+        "_limitations": len(norm.get("limitations") or []),
+    }
+
+
+def _source_nums(paper: dict[str, Any]) -> set[str]:
+    """초록이 지불하는 숫자. audit 이 쓰는 그 추출기로 뽑는다."""
+    return directive_audit._numbers(paper.get("abstract") or "")
+
+
 def _problem_total(sc: dict[str, Any]) -> int:
     """문제 개수 항목만 합산. `_` 로 시작하는 맥락 항목은 더하지 않는다."""
     return sum(v for k, v in sc.items() if not k.startswith("_") and isinstance(v, int))
@@ -141,8 +231,10 @@ def _problem_total(sc: dict[str, Any]) -> int:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--paper", default="")
+    ap.add_argument("--job", default="directive", choices=sorted(DEFAULT_MODELS),
+                    help="directive=pro 티어 지시서, factsheet=flash 티어 근거 추출")
     ap.add_argument("--version-type", default="photo")
-    ap.add_argument("--models", default=",".join(DEFAULT_MODELS))
+    ap.add_argument("--models", default="", help="비우면 그 작업의 현행 모델 + DeepSeek 대응 티어")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--list", action="store_true", help="대본 있는 draft 목록만 보고 끝낸다")
     args = ap.parse_args()
@@ -156,28 +248,43 @@ def main() -> None:
 
     if not args.paper:
         ap.error("--paper 를 주거나 --list 로 고르세요")
-    draft_row = db.get_draft_full(args.paper)
-    if not draft_row:
-        raise SystemExit(f"draft 없음: {args.paper}")
 
-    models = [m.strip() for m in args.models.split(",") if m.strip()]
+    if args.job == "directive":
+        source = db.get_draft_full(args.paper)
+        if not source:
+            raise SystemExit(f"draft 없음: {args.paper}")
+    else:
+        resp = db.client().table("papers").select(
+            "id, title, venue, abstract").eq("id", args.paper).maybe_single().execute()
+        source = (resp.data if resp else None) or {}
+        if not (source.get("abstract") or "").strip():
+            raise SystemExit(f"초록 없음: {args.paper}")
+
+    models = ([m.strip() for m in args.models.split(",") if m.strip()]
+              or list(DEFAULT_MODELS[args.job]))
     results: list[dict[str, Any]] = []
     for rep in range(args.repeat):
         for model in models:
-            print(f"[{rep + 1}/{args.repeat}] {model} ...", flush=True)
+            print(f"[{rep + 1}/{args.repeat}] {args.job} / {model} ...", flush=True)
             try:
-                run = _generate(draft_row, args.version_type, model)
-                # ★ 지시서 원본을 남긴다. 채점기를 고칠 때마다 유료 호출을 다시 하는 것은
+                # ★ 산출물 원본을 남긴다. 채점기를 고칠 때마다 유료 호출을 다시 하는 것은
                 #   낭비이고, 무엇보다 **다시 뽑으면 다른 결과**라 예전 점수와 비교가 안 된다.
                 OUT.mkdir(parents=True, exist_ok=True)
-                (OUT / f"지시서-{model}-{rep + 1}.json").write_text(
-                    json.dumps(run["directive"], ensure_ascii=False, indent=2), encoding="utf-8")
-                sc = _score(run)
+                if args.job == "directive":
+                    run = _generate(source, args.version_type, model)
+                    keep, sc = run["directive"], _score(run)
+                else:
+                    run = _generate_factsheet(source, model)
+                    keep, sc = run["raw"], _score_factsheet(run, source)
+                (OUT / f"{args.job}-{model}-{rep + 1}.json").write_text(
+                    json.dumps(keep, ensure_ascii=False, indent=2), encoding="utf-8")
                 sc["_모델"], sc["_회차"] = model, rep + 1
                 sc["_초"] = round(run["elapsed_sec"], 1)
                 sc["_문제합"] = _problem_total(sc)
                 results.append(sc)
-                print(f"    문제합 {sc['_문제합']:>3}  컷 {sc['_컷수']:>2}  {sc['_초']}s")
+                extra = (f"컷 {sc['_컷수']:>2}" if args.job == "directive"
+                         else f"claim {sc['_claim수']:>2}")
+                print(f"    문제합 {sc['_문제합']:>3}  {extra}  {sc['_초']}s")
             except Exception as exc:     # noqa: BLE001 — 한 팔이 죽어도 다른 팔은 본다
                 print(f"    실패: {type(exc).__name__}: {str(exc)[:200]}")
                 results.append({"_모델": model, "_회차": rep + 1,
@@ -185,9 +292,9 @@ def main() -> None:
 
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    path = OUT / f"모델실측-{stamp}.json"
+    path = OUT / f"모델실측-{args.job}-{stamp}.json"
     path.write_text(json.dumps(
-        {"paper_id": args.paper, "version_type": args.version_type,
+        {"paper_id": args.paper, "job": args.job, "version_type": args.version_type,
          "models": models, "repeat": args.repeat, "results": results},
         ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n저장: {path}")
@@ -198,7 +305,9 @@ def main() -> None:
         keys = [k for k in ok[0] if not k.startswith("_")]
         head = "".join(f"{(r['_모델'][:13] + '#' + str(r['_회차'])):>18}" for r in ok)
         print(f"\n{'항목':<16}{head}")
-        for k in keys + ["_문제합", "_컷수", "_총초", "_invest컷", "_초"]:
+        ctx = (["_컷수", "_총초", "_invest컷"] if args.job == "directive"
+               else ["_claim수", "_숫자커버", "_미확인필드합", "_source_quote"])
+        for k in keys + ["_문제합"] + ctx + ["_초"]:
             print(f"{k:<16}" + "".join(f"{str(r.get(k, '-')):>18}" for r in ok))
     for r in results:
         if "_실패" in r:
