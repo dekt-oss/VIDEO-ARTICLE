@@ -22,7 +22,8 @@ import tempfile
 import time
 from typing import Any, Callable
 
-from . import (assemble, board_render, clip_fit_types, config, cost as cost_ledger, crop, db,
+from . import (assemble, asset_cache, board_render, clip_fit_types, config, cost as cost_ledger,
+               crop, db,
                claim_viz, evidence_overlay, generation_spec, render_manifest as rm, render_qa,
                clip_candidates, sequence_tier,
                sequence_render, stage_metrics as sm, stage_render, subtitles,
@@ -195,7 +196,7 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
     #   generation_attempts 가 0행이었던 이유가 이 불린 하나다(report_render.py 가
     #   directive_id=None 으로 부른다). 캐시는 directive_id 로 키를 잡아야 하지만
     #   원장은 그럴 이유가 없다.
-    paid = config.IMAGE_PROVIDER not in ("placeholder", "")
+    paid = config.image_is_paid()
     use_cache = bool(directive_id) and paid
     record_ledger = paid
     # ★ 이 컷을 **실제로** 무엇으로 만드는가. 캐시 키·원장·로그가 전부 이 하나를 읽는다
@@ -207,7 +208,7 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
     cut_no = int(cut.get("cut_no") or 0)
 
     if use_cache:
-        existing = db.get_render_asset(directive_id, cut_no, "image")
+        existing = asset_cache.get(render_job_kind, directive_id, cut_no, "image")
         if assemble.cache_hit(existing, content_h) and existing.get("asset_url"):
             try:
                 _download_to(existing["asset_url"], img_path)
@@ -333,9 +334,9 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
             attempt_no=attempts_used))
     if use_cache:
         try:
-            dest = f"{directive_id}/assets/cut_{cut_no}.png"
-            url = db.upload_render(img_path, dest, "image/png")
-            db.upsert_render_asset({
+            dest = f"{asset_cache.storage_prefix(render_job_kind, directive_id)}/assets/cut_{cut_no}.png"
+            url = asset_cache.upload(render_job_kind, img_path, dest, "image/png")
+            asset_cache.put(render_job_kind, {
                 "directive_id": directive_id, "cut_no": cut_no, "asset_type": "image",
                 "asset_url": url, "content_hash": content_h, "meta": asset_meta,
             })
@@ -468,7 +469,7 @@ def _gen_veo_clip(cut: dict[str, Any], header: dict[str, Any], clip_path: str,
       start_asset_key 가 되어 연쇄를 잇기 때문이다.
     """
     # ★ 이미지 경로와 같은 이유로 캐시/원장을 쪼갠다(v3 §8-4 P3-c).
-    paid = config.VIDEO_PROVIDER not in ("placeholder", "")
+    paid = config.video_is_paid()
     use_cache = bool(directive_id) and paid
     record_ledger = paid
     cut_no = int(cut.get("cut_no") or 0)
@@ -501,7 +502,7 @@ def _gen_veo_clip(cut: dict[str, Any], header: dict[str, Any], clip_path: str,
         start_asset_hash=generation_spec.asset_logical_hash(start_asset_key))
 
     if use_cache:
-        existing = db.get_render_asset(directive_id, cut_no, "clip")
+        existing = asset_cache.get(render_job_kind, directive_id, cut_no, "clip")
         if assemble.cache_hit(existing, content_h) and existing.get("asset_url"):
             try:
                 _download_to(existing["asset_url"], clip_path)
@@ -563,9 +564,9 @@ def _gen_veo_clip(cut: dict[str, Any], header: dict[str, Any], clip_path: str,
                                  if _n > 1 else None)))
     if use_cache:
         try:
-            dest = f"{directive_id}/assets/cut_{cut_no}.mp4"
-            url = db.upload_render(clip_path, dest, "video/mp4")
-            db.upsert_render_asset({
+            dest = f"{asset_cache.storage_prefix(render_job_kind, directive_id)}/assets/cut_{cut_no}.mp4"
+            url = asset_cache.upload(render_job_kind, clip_path, dest, "video/mp4")
+            asset_cache.put(render_job_kind, {
                 "directive_id": directive_id, "cut_no": cut_no, "asset_type": "clip",
                 "asset_url": url, "content_hash": content_h, "meta": {},
             })
@@ -693,13 +694,15 @@ def _stage_lead_no(plan: dict[str, Any], cuts: list[dict[str, Any]]) -> int:
 
 
 def _cached_stage_video(plan: dict[str, Any], cuts: list[dict[str, Any]], header: dict[str, Any],
-                        work_dir: str, gi: int, directive_id: str | None) -> tuple[str | None, float]:
+                        work_dir: str, gi: int, directive_id: str | None,
+                        render_job_kind: str = "paper") -> tuple[str | None, float]:
     """캐시된 stage 영상이 있으면 (경로, 0.0), 없으면 (None, 0.0). 실패는 조용히 재생성으로 넘긴다."""
-    paid = config.VIDEO_PROVIDER not in ("placeholder", "")
+    paid = config.video_is_paid()
     if not (directive_id and paid and config.STAGE_VIDEO_CACHE_ENABLED):
         return None, 0.0
     try:
-        existing = db.get_render_asset(directive_id, _stage_lead_no(plan, cuts), "stage_video")
+        existing = asset_cache.get(render_job_kind, directive_id,
+                                   _stage_lead_no(plan, cuts), "stage_video")
         h = stage_video_hash(plan, cuts, header)
         if not (assemble.cache_hit(existing, h) and existing.get("asset_url")):
             return None, 0.0
@@ -725,15 +728,18 @@ def _cached_stage_video(plan: dict[str, Any], cuts: list[dict[str, Any]], header
 
 
 def _store_stage_video(path: str, plan: dict[str, Any], cuts: list[dict[str, Any]],
-                       header: dict[str, Any], directive_id: str | None) -> None:
+                       header: dict[str, Any], directive_id: str | None,
+                       render_job_kind: str = "paper") -> None:
     """방금 만든 stage 영상을 캐시에 남긴다. 실패는 무시(렌더를 막지 않는다)."""
-    paid = config.VIDEO_PROVIDER not in ("placeholder", "")
+    paid = config.video_is_paid()
     if not (directive_id and paid and config.STAGE_VIDEO_CACHE_ENABLED and path):
         return
     try:
         lead = _stage_lead_no(plan, cuts)
-        url = db.upload_render(path, f"{directive_id}/assets/stage_{lead}.mp4", "video/mp4")
-        db.upsert_render_asset({
+        prefix = asset_cache.storage_prefix(render_job_kind, directive_id)
+        url = asset_cache.upload(render_job_kind, path,
+                                 f"{prefix}/assets/stage_{lead}.mp4", "video/mp4")
+        asset_cache.put(render_job_kind, {
             "directive_id": directive_id, "cut_no": lead, "asset_type": "stage_video",
             "asset_url": url, "content_hash": stage_video_hash(plan, cuts, header),
             "meta": {"stage_id": plan.get("stage_id") or "", "total_sec": plan.get("total_sec")},
@@ -1073,7 +1079,7 @@ def _build_stage_video(plan: dict[str, Any], cuts: list[dict[str, Any]],
     # 클립 i 가 덮는 시간대 → 그 시간대를 여는 컷(프롬프트 출처)
     windows = plan["windows"]
     elapsed = 0.0
-    paid = config.VIDEO_PROVIDER not in ("placeholder", "")
+    paid = config.video_is_paid()
     for i, (sec, chained) in enumerate(zip(plan["clips"], plan["chained"])):
         # 이 클립이 시작하는 시각에 해당하는 컷을 찾는다(없으면 stage 의 첫 컷).
         owner = lead
@@ -1346,7 +1352,8 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                     #   (_gen_veo_clip)는 처음부터 클립을 캐시해 "언어 추가 비용 0"을 지켰는데
                     #   시퀀스 렌더를 붙이면서 그 약속이 빠졌다. 화면은 언어와 무관하므로 같은 stage 의
                     #   영상은 재사용한다. 길이가 모자라면 _pad_stage_video 가 마지막 프레임으로 메운다.
-                    sv, c2 = _cached_stage_video(plan, cuts, header, work_dir, gi, directive_id)
+                    sv, c2 = _cached_stage_video(plan, cuts, header, work_dir, gi, directive_id,
+                                                 render_job_kind)
                     if sv is None:
                         # ★ 잡·지시서 번호를 넘긴다(2026-09-11 실측). 빠져 있어서 stage 영상 원장
                         #   9행($3.10)이 render_job_id·directive_id 가 비어 기록됐다 — 잡 기준으로
@@ -1356,7 +1363,7 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                             clip_metrics_out=clip_metrics_out,
                             directive_id=directive_id, render_job_id=render_job_id,
                             render_job_kind=render_job_kind, qa_out=stage_qa_out)
-                        _store_stage_video(sv, plan, cuts, header, directive_id)
+                        _store_stage_video(sv, plan, cuts, header, directive_id, render_job_kind)
                     stage_videos[gi] = sv
                     cost += c2
                 except _SplitStillDone:

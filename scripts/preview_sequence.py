@@ -8,6 +8,7 @@
     python -m scripts.preview_sequence <directive_id> --yes        # 실제로 만든다(유료)
     python -m scripts.preview_sequence <directive_id> --stills --yes   # 그림만(영상비 0)
     python -m scripts.preview_sequence <directive_id> --free --yes     # placeholder(비용 0, 배선 확인)
+    python -m scripts.preview_sequence <directive_id> --keep --yes     # 캐시에 남긴다(최종본이 물려받음)
 
 ★ 기본 대상은 **기전 컷이 가장 많은 시퀀스**다(--sequence 로 지정 가능).
 ★ `--yes` 없이는 아무것도 만들지 않는다. 이 저장소는 승인 없이 1.7만원을 쓴 적이 있다.
@@ -64,6 +65,56 @@ def pick_sequence(directive: dict, wanted: str = "") -> str:
     if score(best)[0] == 0:
         log.warning("기전 컷이 있는 시퀀스가 없다 — 첫 시퀀스로 간다")
     return str(best.get("sequence_id") or "")
+
+
+def slice_keep(directive: dict, sequence_id: str, n_stages: int,
+               want_video: bool) -> dict:
+    """원본 컷 번호를 **그대로 둔** 미니 지시서 — 만든 그림이 최종본에 그대로 들어간다.
+
+    `mini_render.slice_directive` 와의 차이는 셋뿐이고, 셋 다 **캐시 키를 본 렌더와 같게**
+    만들기 위한 것이다(캐시 키 = `(directive_id, cut_no)` + `content_hash` + `reference_key`):
+
+      ① **컷 번호를 다시 매기지 않는다.** 1..N 으로 바꾸면 같은 지시서의 다른 컷과 키가
+         겹쳐서, 캐시에 넣는 순간 본 렌더가 엉뚱한 그림을 물려받는다. 그래서 종전 미리보기는
+         일부러 캐시를 껐고, 그 대가로 **돌릴 때마다 다시 샀다**.
+      ② **stage 의 cut_refs 를 건드리지 않는다.** 번호를 그대로 두므로 고칠 이유가 없다.
+      ③ **정규화하지 않는다.** `sequence_render.stage_index` 는 지시서의 **날것** stage 를
+         읽는다. 여기서 `normalize_all` 을 태우면 `state_after_computed` 같은 필드가 붙어
+         `reference_key` 가 달라지고, 본 렌더가 캐시를 **못 맞힌다** — 돈을 두 번 내고도
+         "캐시를 켰는데 왜 또 사지"가 된다.
+
+    stage 대표 컷 하나만 남기는 축약도 하지 않는다. 최종본에 들어갈 컷을 사는 것이므로
+    그 stage 가 맡은 컷을 **전부** 만든다.
+    """
+    header = dict(directive["header"])
+    raw = [s for s in (header.get("visual_sequences") or []) if isinstance(s, dict)]
+    seq = next((s for s in raw if str(s.get("sequence_id") or "") == sequence_id), None)
+    if seq is None:
+        raise SystemExit(f"시퀀스 없음: {sequence_id} "
+                         f"(있는 것: {[s.get('sequence_id') for s in raw]})")
+    stages = (seq.get("stages") or [])[:n_stages]
+    keep: list[int] = []
+    for st in stages:
+        for n in st.get("cut_refs") or []:
+            if int(n) not in keep:
+                keep.append(int(n))
+    by_no = {int(c.get("cut_no") or 0): c for c in directive.get("cuts") or []}
+    cuts = []
+    for no in keep:
+        if no not in by_no:
+            log.warning("컷 %s 가 지시서에 없다 — 건너뛴다", no)
+            continue
+        c = dict(by_no[no])
+        c["_origin_cut_no"] = no          # 번호를 안 바꾸므로 원본과 같다(표시용)
+        if not want_video:
+            c["motion_source"] = "still"
+        cuts.append(c)
+    if not cuts:
+        raise SystemExit(f"시퀀스 {sequence_id} 의 앞 {n_stages}단계에 컷이 없다")
+    header["visual_sequences"] = [{**seq, "stages": stages}]
+    header["hook_ko"] = header.get("hook_ko") or ""
+    return {"version_type": directive.get("version_type", "photo"),
+            "header": header, "cuts": cuts}
 
 
 def describe(mini: dict) -> None:
@@ -126,9 +177,19 @@ def main() -> None:
     ap.add_argument("--free", action="store_true",
                     help="placeholder 로 돌린다(비용 0). 그림은 회색 판이고 영상 stage 는 "
                          "스틸로 폴백된다 — 자막·범례·캡션·전후분할 **배선**만 확인하는 모드다")
+    ap.add_argument("--keep", action="store_true",
+                    help="만든 그림·클립을 **에셋 캐시에 남긴다**(컷 번호를 그대로 둔다). "
+                         "나중에 편 전체를 렌더하면 이 시퀀스는 다시 사지 않고 그대로 들어간다. "
+                         "--free/--reuse 와는 같이 못 쓴다 — 가짜 그림이 캐시에 앉는다")
     ap.add_argument("--yes", action="store_true", help="비용을 확인했고 진행한다")
     args = ap.parse_args()
 
+    if args.keep and (args.free or args.reuse):
+        # ★ 캐시는 "이 그림이 이 컷의 정본"이라는 선언이다. placeholder 회색 판이나 다른
+        #   지시서에서 빌려 온 그림을 그 자리에 앉히면, 나중에 편 전체를 렌더할 때 **아무도
+        #   모르게** 그 그림이 최종본에 들어간다. 도구가 막는다.
+        raise SystemExit("--keep 은 --free·--reuse 와 같이 쓸 수 없다 "
+                         "(가짜·빌려온 그림이 캐시에 남아 최종본에 들어간다)")
     if args.stills:
         # ★★ 컷의 motion_source 를 still 로 바꾸는 것만으로는 **영상비가 안 줄어든다.**
         #   시퀀스 렌더(stage_render.enabled)는 motion_source 를 보지 않고 stage 단위로 Veo 를
@@ -157,23 +218,35 @@ def main() -> None:
     #   도구만 한쪽을 못 보고 있었다.
     from engine import report_db
 
-    directive = db.get_directive(args.directive_id) or report_db.get_report_directive(args.directive_id)
+    directive = db.get_directive(args.directive_id)
+    # ★ 어느 공장의 지시서인가. 에셋 캐시 표가 갈리므로(render_assets vs report_render_assets)
+    #   이것을 틀리면 FK 위반으로 캐시가 통째로 실패한다.
+    kind = "paper"
+    if not directive:
+        directive = report_db.get_report_directive(args.directive_id)
+        kind = "report"
     if not directive:
         raise SystemExit(f"지시서 없음(논문·리포트 양쪽에서 못 찾음): {args.directive_id}")
     seq_id = pick_sequence(directive, args.sequence)
-    mini = slice_directive(directive, seq_id, args.stages, want_video=not args.stills)
+    slicer = slice_keep if args.keep else slice_directive
+    mini = slicer(directive, seq_id, args.stages, want_video=not args.stills)
     describe(mini)
 
     est = Decimal("0") if (args.free or args.reuse) else estimate(mini)
     print(f"\n시퀀스 {seq_id} · 컷 {len(mini['cuts'])}개")
     print(f"예상 비용(상한): ${est}   그림={config.IMAGE_PROVIDER} 영상={config.VIDEO_PROVIDER} "
           f"범례·캡션={config.MECHANISM_LABEL_OVERLAYS_ENABLED} 분할스틸={config.MECHANISM_SPLIT_BEFORE_AFTER}")
-    if not (args.free or args.reuse):
-        # ★ 미리보기는 **에셋 캐시를 타지 않는다.** 컷 번호를 1..N 으로 다시 매기기 때문에
-        #   (directive, cut_no) 키가 본 지시서의 것과 겹쳐서, 캐시에 넣으면 본 렌더가 미리보기
-        #   그림을 물려받는다. 그래서 일부러 안 쓴다 — 대신 **돌릴 때마다 새로 산다**는 것을
-        #   여기서 밝힌다(2026-09-18: 세 번 돌려 세 번 결제된 뒤에 알았다).
+    if args.keep:
+        print(f"  ※ --keep: 컷 번호를 그대로 두고 **{kind} 에셋 캐시에 남긴다** — "
+              f"편 전체를 렌더하면 이 컷들은 다시 사지 않는다.")
+    elif not (args.free or args.reuse):
+        # ★ 미리보기는 기본적으로 **에셋 캐시를 타지 않는다.** 컷 번호를 1..N 으로 다시 매기기
+        #   때문에 (directive, cut_no) 키가 본 지시서의 것과 겹쳐서, 캐시에 넣으면 본 렌더가
+        #   미리보기 그림을 물려받는다. 그래서 일부러 안 쓴다 — 대신 **돌릴 때마다 새로 산다**는
+        #   것을 여기서 밝힌다(2026-09-18: 세 번 돌려 세 번 결제된 뒤에 알았다).
+        #   번호를 지키면서 캐시에 남기고 싶으면 `--keep` 이다.
         print("  ※ 미리보기는 캐시를 쓰지 않는다 — **다시 돌리면 그림값이 또 나간다.**")
+        print("     한 번만 사서 최종본에 그대로 쓰려면 --keep 을 붙인다.")
     if not args.yes:
         print("\n  --yes 를 붙이면 실제로 만든다. 지금은 아무것도 만들지 않았다.")
         return
@@ -192,7 +265,11 @@ def main() -> None:
     overlays: list[tuple[float, float, str, str]] = []
     seq_log: list[dict] = []
     cut_files, cues, total, duck = render._render_cut_clips(
-        mini, str(work), lang="ko", fit_log=fit_log, overlay_out=overlays, seq_out=seq_log)
+        mini, str(work), lang="ko", fit_log=fit_log, overlay_out=overlays, seq_out=seq_log,
+        # ★ --keep 일 때만 directive_id 를 넘긴다. 이 인자 하나가 캐시 스위치다
+        #   (render._gen_still: `use_cache = bool(directive_id) and paid`).
+        directive_id=(args.directive_id if args.keep else None),
+        render_job_kind=kind)
     if not cut_files:
         raise SystemExit("컷을 하나도 못 만들었다")
 
@@ -212,6 +289,7 @@ def main() -> None:
 
     report = {
         "directive_id": args.directive_id, "sequence_id": seq_id,
+        "factory": kind, "cached": bool(args.keep),
         "estimate_usd": float(est), "total_sec": round(total, 2), "cuts": len(cut_files),
         "overlays": [{"start": round(s, 2), "end": round(e, 2), "style": st, "text": tx}
                      for s, e, tx, st in overlays],

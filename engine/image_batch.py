@@ -7,6 +7,10 @@ content_hash)이라, 이 모듈이 지시서 승인 직후 Batch 를 제출·폴
 폴백이 그대로 동작한다(전체 중단 없음, 회귀 없음) — Batch 는 "늦게 도착하면 이미 Realtime 이 채운 캐시를
 덮어써 낭비"될 수 있는 최적화 레이어일 뿐, 필수 경로가 아니다(1인·배치 규모에 맞는 경량 트레이드오프).
 
+★ **논문 라인 전용이다**(2026-09-19). `db.get_render_asset`·`image_batch_jobs` 를 직접 쓰는데
+  두 표의 FK 가 논문 `directives` 하나뿐이라 리포트 지시서 id 를 넣으면 거부된다. 리포트에
+  Batch 를 붙일 일이 생기면 `engine/asset_cache.py` 처럼 표를 가르는 자리를 먼저 만든다.
+
 실행:
   python -m engine.image_batch <directive_id>   # 해당 지시서 Batch 제출
   python -m engine.image_batch                  # 대기 중 Batch 잡 폴링(1회)

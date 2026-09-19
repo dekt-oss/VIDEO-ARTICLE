@@ -60,7 +60,7 @@ def enabled() -> bool:
       판정할 것이 없고, 그런데도 호출하면 데모 렌더마다 돈이 나간다.
       `_gen_still` 의 `record_ledger = paid` 와 같은 기준이다.
     """
-    paid = config.IMAGE_PROVIDER not in ("placeholder", "")
+    paid = config.image_is_paid()
     return bool(config.CONTINUITY_QA_ENABLED and paid and config.SECRETS.gemini_api_key)
 
 

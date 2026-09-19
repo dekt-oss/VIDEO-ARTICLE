@@ -1588,6 +1588,24 @@ IMAGE_PROVIDER: str = os.getenv("IMAGE_PROVIDER", "placeholder")
 IMAGE_REUSE_DIR: str = os.getenv("IMAGE_REUSE_DIR", "")
 TTS_PROVIDER: str = os.getenv("TTS_PROVIDER", "placeholder")
 VIDEO_PROVIDER: str = os.getenv("VIDEO_PROVIDER", "placeholder")
+
+#: **한 푼도 나가지 않는** 제공자들. 캐시·원장·연속성 QA 가 전부 이 하나를 읽는다.
+#  ★ `reuse` 가 여기 들어가야 하는 이유(2026-09-19): 이 판정은 예전에 `("placeholder", "")`
+#    를 각자 적은 여섯 자리에 흩어져 있었고, 그래서 나중에 들어온 `reuse` 가 **유료로
+#    취급**됐다 — 지난 렌더의 그림을 복사만 하는데 비용 원장에 정가가 쌓이고, 캐시를 켜면
+#    빌려 온 그림이 진짜 에셋 자리에 저장될 수 있었다. 무료 경로가 돈 기록을 만드는 것은
+#    이 저장소가 가장 경계하는 종류의 거짓말이다.
+FREE_PROVIDERS: tuple[str, ...] = ("placeholder", "reuse", "")
+
+
+def image_is_paid() -> bool:
+    """이번 실행의 그림 생성이 **실제로 과금되는가**."""
+    return IMAGE_PROVIDER not in FREE_PROVIDERS
+
+
+def video_is_paid() -> bool:
+    """이번 실행의 영상 생성이 **실제로 과금되는가**."""
+    return VIDEO_PROVIDER not in FREE_PROVIDERS
 # Edge TTS 음성(무료, 키 불필요). 한국어 여성 SunHi 기본.
 # ★ 기본 음성을 Hyunsu 로 바꿨다(2026-09-09 운영자 청취 판정: "hyunsu 버전이 제일 나은데?").
 #   후보는 한국어 Edge 음성 3종 전부 + 기존 일래븐랩스 영어 음성(George)이었다.
