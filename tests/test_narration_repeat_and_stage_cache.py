@@ -95,7 +95,7 @@ def test_stage_hash_changes_when_the_picture_changes():
 
 
 def test_the_renderer_checks_the_cache_before_buying_and_stores_after():
-    i_cache = RENDER_SRC.index("_cached_stage_video(plan, cuts, header, work_dir, gi, directive_id)")
+    i_cache = RENDER_SRC.index("sv, c2 = _cached_stage_video(plan, cuts, header, work_dir, gi,")
     i_build = RENDER_SRC.index("sv, c2 = _build_stage_video(")
-    i_store = RENDER_SRC.index("_store_stage_video(sv, plan, cuts, header, directive_id)")
+    i_store = RENDER_SRC.index("_store_stage_video(sv, plan, cuts, header, directive_id,")
     assert i_cache < i_build < i_store

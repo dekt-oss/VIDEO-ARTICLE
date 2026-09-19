@@ -3,8 +3,10 @@
 렌더 엔진(render._render_cut_clips·assemble·subtitles·providers)은 그대로 재사용하고, 리포트 전용으로
 ① 시리즈 제목 ② 하단 고정 면책/출처 자막(footer) ③ 'report/' 업로드 경로만 제어한다.
 
-★ directive_id=None 으로 _render_cut_clips 호출 → 논문 render_assets FK/캐시 미접촉(완전 격리, v1).
-  하루 ~1편이라 재렌더 시 에셋 재생성 허용. report_render_assets 배선은 후속.
+★ 에셋 캐시는 `report_render_assets` 로 간다(2026-09-19 배선, engine/asset_cache.py).
+  v1 은 `directive_id=None` 으로 불러 **캐시를 통째로 포기**했다 — 논문 표의 FK 때문이었는데,
+  그 대가로 다시 렌더할 때마다 그림값을 다시 냈고 언어 간 공유도 없었다. 이제 kind 로 표를
+  가른다. 논문 `render_assets` 는 여전히 미접촉이다.
 
 실행: python -m engine.report_render                # report_render_jobs 큐 1회 폴링
      python -m engine.report_render <directive_id>  # 단건 렌더(디버그, DB 업데이트 없음)
@@ -92,7 +94,7 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
 
     work_dir = tempfile.mkdtemp(prefix=f"report_render_{job_id}_")
     report_db.update_report_render_job(job_id, status="assets", progress=20)
-    # ★ directive_id=None → 논문 render_assets 캐시/ FK 미접촉(격리).
+    # ★ 에셋 캐시는 report_render_assets 로 간다(engine/asset_cache.py) — 논문 표 미접촉.
     # ★ overlay_out/overlays 를 넘기지 않으면 근거 카드·출처 카드가 ASS 에 스타일조차 정의되지
     #   않아 **화면에서 사라진다**. 지시서는 만드는데 렌더가 버리고 있었다(논문 라인은 넘긴다).
     overlays: list[tuple[float, float, str, str]] = []
@@ -101,11 +103,16 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     # §10 관측성 — 단계별 소요시간. 8분 걸린 렌더의 8분이 어디서 갔는지 지금까지 알 수 없었다.
     metrics: dict[str, Any] = {}
     with _explainer_layout(version_type), sm.stage(metrics, "asset"):
-        # ★ directive_id=None 은 그대로다(논문 render_assets FK/캐시 미접촉 — 격리 유지).
-        #   대신 render_job_id 를 넘겨 **비용 원장에는 남게** 한다. 예전엔 directive_id 가
-        #   없으면 원장 기록이 통째로 건너뛰어져 리포트 라인 비용이 0행이었다(v3 §8-4).
+        # ★★ 2026-09-19: directive_id 를 **넘긴다.** 예전엔 None 이었다 — 논문
+        #   `render_assets.directive_id` 가 `directives(id)` 를 참조해서 리포트 id 를 넣으면
+        #   FK 위반이었기 때문이다. 대가는 **다시 렌더할 때마다 그림을 다시 사는 것**이었고,
+        #   언어를 늘려도 공유가 되지 않았다(논문 라인은 공유한다).
+        #   이제 캐시는 `render_job_kind` 를 보고 `report_render_assets`(0020, FK 는
+        #   report_directives) 로 간다. 원장(generation_attempts)은 그 표 하나만 참조하므로
+        #   `cost.build_attempt` 가 kind 를 보고 directive_id 를 떨군다 — 종전과 같이
+        #   render_job_id 로 묶인다.
         cut_files, cues, total, duck_spans = render._render_cut_clips(
-            directive, work_dir, on_cost=_on_cost, directive_id=None, lang=lang,
+            directive, work_dir, on_cost=_on_cost, directive_id=directive_id, lang=lang,
             render_job_kind="report",
             overlay_out=overlays, cut_map_out=cut_map, render_job_id=job_id,
             board_qa_out=board_qa, stage_out=metrics)

@@ -65,6 +65,13 @@ def build_attempt(
         billed = billed_units
     else:
         billed = requested_units if status == "succeeded" else 0.0
+    # ★★ FK 경계 (2026-09-19). `generation_attempts.directive_id` 는 **논문 `directives`
+    #   하나만** 참조한다(0016). 리포트 지시서 id 를 실으면 insert 가 통째로 거부돼 원장이
+    #   끊긴다 — 이 저장소가 이미 겪은 실패다(0039 주석: "$1.47 을 쓰고 원장은 0행").
+    #   리포트 에셋 캐시를 배선하면서 렌더가 리포트 지시서 id 를 들고 다니게 됐으므로,
+    #   원장에 들어가기 직전인 **여기서** 떨군다. 리포트 행은 render_job_id 로 묶인다.
+    if str(render_job_kind) != "paper":
+        directive_id = None
     price = unit_price(model_id, unit_type)
     estimated = compute_cost(model_id, unit_type, requested_units)
     actual = compute_cost(model_id, unit_type, billed)

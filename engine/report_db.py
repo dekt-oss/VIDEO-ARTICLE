@@ -422,6 +422,27 @@ def get_report_hook(report_id: str) -> str:
     return ((s.data or {}).get("one_liner_ko") if s else "") or ""
 
 
+def get_render_asset(directive_id: str, cut_no: int, asset_type: str) -> dict[str, Any] | None:
+    """리포트 에셋 캐시 조회 — db.get_render_asset 의 미러(표만 report_render_assets).
+
+    ★ 표는 0020 이 만들어 뒀는데 **읽고 쓰는 코드가 없었다**(그 마이그레이션이 직접 적었다:
+      "PF2 v1 미배선 — 워커가 directive_id=None 으로 캐시 미접촉"). 그래서 리포트는 다시
+      렌더할 때마다 그림값을 다시 냈다. 배선하는 자리가 여기다(engine/asset_cache.py 참조).
+    """
+    resp = client().table("report_render_assets").select(
+        "id, asset_url, content_hash, meta"
+    ).eq("directive_id", directive_id).eq("cut_no", cut_no).eq(
+        "asset_type", asset_type
+    ).maybe_single().execute()
+    return resp.data if resp else None
+
+
+def upsert_render_asset(row: dict[str, Any]) -> None:
+    client().table("report_render_assets").upsert(
+        row, on_conflict="directive_id,cut_no,asset_type"
+    ).execute()
+
+
 def upload_render(local_path: str, dest_path: str, content_type: str = "video/mp4") -> str:
     """리포트 mp4 업로드 — 논문과 같은 'renders' 버킷(경로만 report/ 접두). db.upload_render 위임."""
     from . import db
