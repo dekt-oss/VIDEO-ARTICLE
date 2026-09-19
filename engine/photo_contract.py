@@ -77,6 +77,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_role_claim_mismatch",       # 컷의 역할 라벨이 가리키는 근거와 맞지 않는다
     "photo_mechanism_unlabeled",       # 기전 시퀀스에 범례·캡션이 없다(어느 쪽이 무엇인지 화면이 안 말한다)
     "photo_color_code_reused",         # 비교색을 부위 구분으로 다시 썼다(범례가 거짓이 된다)
+    "photo_color_code_assigned",       # 코드가 개체별 비교색을 확정하고 어긋난 언급을 앰버로 바꿨다
     "photo_keyword_is_a_sentence",     # 키워드 카드가 낱말이 아니라 문장이다(9/8 에 뺀 그 카드다)
     "photo_keyword_repeats_narration",  # 카드가 나레이션을 그대로 옮겨 적었다(같은 말을 두 번)
     "photo_pointer_zone_unknown",      # 화살표가 가리킬 구역 이름이 틀렸다(화살표가 통째로 사라진다)
@@ -362,6 +363,83 @@ def pointer_zone_problems(cuts: list[dict[str, Any]]) -> list[Any]:
                 if not evidence_overlay._pointer_zones(item) and c.get("cut_no") not in out:
                     out.append(c.get("cut_no"))
     return out
+
+
+def assign_comparison_colors(header: dict[str, Any]) -> list[str]:
+    """개체마다 비교색을 **코드가 확정**하고 어긋난 색 언급을 앰버로 바꾼다 → 고친 자리 목록.
+
+    ★ 왜 코드가 가져오나(2026-09-19 운영자 결정 "색 배정을 코드가 가져오는 걸로 해줘"):
+      비교색(blue·coral)은 "이 물체가 어느 집단인가"를 말하는 **이름**이다. 그런데 모델이
+      컷마다 그 이름을 다시 정하면서 영상 중간에 뜻이 바뀌었다 — 청각장애인 뇌를 "주변부 coral,
+      중심부 blue" 라고 적어 색을 **부위 구분**으로 재사용했고, 그러면 화면의 범례가 거짓말이 된다.
+      프롬프트 고지도 재생성 되먹임도 통하지 않았다(둘 다 실측으로 확인). 이 저장소의 답은
+      정해져 있다 — **기계가 확실히 아는 것은 기계가 적는다**(normalize_optics 이래의 자세).
+
+    ★ 배정 규칙(전부 결정론적이다):
+        · 개체의 비교색 = 그 개체에 **처음 붙은** 색(stage 순서 → 문자열 안 위치 순).
+        · 한 개체가 두 색을 다 쓰면 **앞의 것**만 남기고 나머지는 앰버로 바꾼다.
+        · 한 색을 두 개체가 claim 하면 **먼저 claim 한 쪽**이 갖고, 나중 쪽은 앰버로 바꾼다.
+      앰버로 바꾸는 이유: 개체 **안의 한 부분**을 가리키는 일은 원래 앰버가 한다(색 규약).
+
+    ★ **두 비교색이 다 쓰인 시퀀스에만** 손댄다(게이트와 같은 전제). 색 규약 이전 지시서는
+      파랑을 그냥 사물 색으로 썼고, 거기까지 배정하면 멀쩡한 묘사를 앰버로 바꾼다(실측 2편).
+
+    ★ 보는 자리는 **개체에 붙은 글**뿐이다 — `entities[].visual_identity` 와
+      `stages[].mutations[].result_state`. 컷의 `visual_prompt` 는 어느 개체 얘기인지 알 수
+      없으므로 건드리지 않는다(모르는 것을 고치면 그게 더 나쁘다).
+    """
+    compare = [c for c in config.MECHANISM_COLOR_CODE if c != "amber"]
+    patterns = {c: re.compile("(?<![A-Za-z])" + re.escape(c) + "(?![A-Za-z])", re.I)
+                for c in compare}
+    touched: list[str] = []
+    for seq in (header.get("visual_sequences") or []):
+        if not isinstance(seq, dict):
+            continue
+        sid = str(seq.get("sequence_id") or "?")
+        # (개체, 텍스트를 읽고 쓰는 자리) 를 **선언 순서 → stage 순서** 로 모은다.
+        slots: list[tuple[str, dict[str, Any], str]] = []
+        for e in (seq.get("entities") or []):
+            if isinstance(e, dict) and e.get("entity_id"):
+                slots.append((str(e["entity_id"]), e, "visual_identity"))
+        for st in (seq.get("stages") or []):
+            if not isinstance(st, dict):
+                continue
+            for mu in (st.get("mutations") or []):
+                if isinstance(mu, dict) and mu.get("entity_id"):
+                    slots.append((str(mu["entity_id"]), mu, "result_state"))
+        # ★ **두 비교색이 다 쓰인 시퀀스에만 손댄다** — color_code_conflicts 와 같은 전제다.
+        #   색 규약(2026-09-18) 이전 지시서는 파랑을 그냥 사물 색으로 썼다("파란 DNA 가닥").
+        #   거기까지 배정하면 멀쩡한 장면 묘사를 앰버로 바꿔 버린다(실측: 45편 중 2편이 그랬다).
+        seen_colors: set[str] = set()
+        for _eid, holder, key in slots:
+            text = str(holder.get(key) or "")
+            seen_colors.update(c for c in compare if patterns[c].search(text))
+        if len(seen_colors) < 2:
+            continue
+        canonical: dict[str, str] = {}      # 개체 → 확정된 색
+        owner: dict[str, str] = {}          # 색 → 그 색을 가진 개체
+        for eid, holder, key in slots:
+            text = str(holder.get(key) or "")
+            if not text:
+                continue
+            found = sorted(((m.start(), c) for c in compare
+                            for m in [patterns[c].search(text)] if m))
+            if not found:
+                continue
+            if eid not in canonical:
+                for _pos, c in found:
+                    if owner.get(c) in (None, eid):
+                        canonical[eid], owner[c] = c, eid
+                        break
+            keep = canonical.get(eid)
+            after = text
+            for c in compare:
+                if c != keep:
+                    after = patterns[c].sub("amber", after)
+            if after != text:
+                holder[key] = after
+                touched.append(f"{sid}/{eid}→{keep or 'amber'}")
+    return sorted(set(touched))
 
 
 def color_code_conflicts(header: dict[str, Any]) -> list[str]:

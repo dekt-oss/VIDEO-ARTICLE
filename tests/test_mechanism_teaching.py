@@ -675,3 +675,74 @@ def test_the_reference_prompt_forbids_recolouring_without_naming_entities():
     # 실제 프롬프트에도 실린다(상수만 고치고 배선이 끊기면 화면은 안 바뀐다).
     got = image_provider._build_image_prompt(_cut(4), {"version_type": "photo"}, referenced=True)
     assert "do not swap colours between objects" in got
+
+
+# ── 비교색은 코드가 배정한다 (2026-09-19 운영자 결정) ──────────────────────
+#
+# "색 배정을 코드가 가져오는 걸로 해줘". 모델이 컷마다 색의 뜻을 다시 정해 영상 중간에 범례가
+# 거짓이 됐고, 프롬프트 고지도 재생성 되먹임도 통하지 않았다(실측 2회). 이 저장소의 답은
+# 정해져 있다 — **기계가 확실히 아는 것은 기계가 적는다**(normalize_optics 이래의 자세).
+
+def _colour_seq(pairs: list[tuple[str, str, str]]) -> dict:
+    """[(stage, entity, result_state)] → header."""
+    ents = sorted({e for _s, e, _t in pairs})
+    stages: dict[str, list] = {}
+    for sid, eid, text in pairs:
+        stages.setdefault(sid, []).append({"entity_id": eid, "result_state": text})
+    return {"visual_sequences": [{
+        "sequence_id": "SEQ1",
+        "entities": [{"entity_id": e, "visual_identity": "a glass model"} for e in ents],
+        "stages": [{"stage_id": s, "mutations": m} for s, m in stages.items()]}]}
+
+
+def test_code_pins_each_entity_to_the_colour_it_got_first():
+    """★ 실측 실패 그대로 — 청각장애인 뇌를 '주변부 coral, 중심부 blue' 라고 적어 색을
+    **부위 구분**으로 재사용했다. 처음 붙은 색만 남기고 나머지는 앰버(부위 표시색)로."""
+    header = _colour_seq([
+        ("S1", "HEARING", "stays muted blue"),
+        ("S1", "DEAF", "stays muted coral"),
+        ("S2", "DEAF", "the peripheral region turns coral, the central region a dimmed blue"),
+    ])
+    touched = pc.assign_comparison_colors(header)
+    assert touched == ["SEQ1/DEAF→coral"], touched
+    s2 = header["visual_sequences"][0]["stages"][1]["mutations"][0]["result_state"]
+    assert "coral" in s2 and "blue" not in s2 and "amber" in s2
+    assert pc.color_code_conflicts(header) == [], "배정 뒤에는 충돌이 남지 않아야 한다"
+
+
+def test_a_colour_already_taken_by_another_entity_becomes_amber():
+    header = _colour_seq([("S1", "A", "muted blue"), ("S1", "B", "muted coral"),
+                          ("S2", "B", "now also muted blue")])
+    pc.assign_comparison_colors(header)
+    b2 = header["visual_sequences"][0]["stages"][1]["mutations"][0]["result_state"]
+    assert "blue" not in b2 and "amber" in b2
+    assert pc.color_code_conflicts(header) == []
+
+
+def test_sequences_that_do_not_use_the_code_are_never_touched():
+    """★★ 색 규약(2026-09-18) 이전 지시서는 파랑을 그냥 사물 색으로 썼다("파란 DNA 가닥").
+    거기까지 배정하면 멀쩡한 장면 묘사를 앰버로 바꾼다 — 실측에서 45편 중 2편이 그렇게 됐고,
+    게이트와 **같은 전제**(두 색이 다 쓰인 시퀀스만)를 붙여 막았다."""
+    header = _colour_seq([("S1", "A", "a blue DNA strand"), ("S1", "B", "another blue strand")])
+    assert pc.assign_comparison_colors(header) == []
+    assert "blue" in header["visual_sequences"][0]["stages"][0]["mutations"][0]["result_state"]
+
+
+def test_assignment_is_idempotent_and_leaves_clean_directives_alone():
+    header = _colour_seq([("S1", "A", "muted blue"), ("S1", "B", "muted coral")])
+    assert pc.assign_comparison_colors(header) == []
+    once = _colour_seq([("S1", "A", "muted blue"), ("S1", "B", "muted coral"),
+                        ("S2", "A", "turns muted coral")])
+    assert pc.assign_comparison_colors(once)
+    assert pc.assign_comparison_colors(once) == [], "두 번째 실행에서는 바뀔 것이 없어야 한다"
+
+
+def test_the_pipeline_assigns_before_it_judges_and_says_so():
+    """★ 배정이 게이트보다 **먼저** 돌아야 한다 — 거꾸로면 코드가 고칠 수 있는 것으로 막는다."""
+    from engine import directive
+    src = inspect_src(directive)
+    assert "photo_contract.assign_comparison_colors(header)" in src
+    assert "photo_color_code_assigned" in src
+    assert src.index("assign_comparison_colors") < src.index("photo_contract.evaluate("), \
+        "배정이 판정보다 먼저여야 한다"
+    assert "photo_color_code_assigned" in pc.WARNING_REASONS, "조용히 고치지 않는다"
