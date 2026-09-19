@@ -47,3 +47,4 @@ client_secret*.json
 # 시퀀스 미리보기 산출물(scripts/preview_sequence.py) — 실측 확인용이지 저장소 자산이 아니다.
 #   남길 만한 그림은 docs/review-<날짜>/ 로 골라서 옮긴다(2026-09-18).
 docs/preview-*/
+docs/실측_모델/
