@@ -1486,9 +1486,14 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         #   실측(지시서 4851eb41): 되먹임으로 처방을 줬는데도 모델이 재생성 뒤에도 같은 실수를
         #   했다 — 모델에게 반복시키는 대신, 뜻이 깨진 카드는 화면에서 뺀다. 경고는 남는다
         #   (photo_color_code_reused) 이므로 운영자는 왜 없는지 알 수 있다.
-        drop_types = ({"legend"} if photo_contract.color_code_conflicts(header) else None)
+        drop_types = {"legend"} if photo_contract.color_code_conflicts(header) else set()
         if drop_types:
             log.warning("색 코드가 어긋나 범례를 그리지 않는다 — 지시서를 고쳐야 한다")
+        # ★ 화살표는 **기본으로 안 그린다**(2026-09-19 운영자 지시, config 주석 참조).
+        #   지시서에 남아 있어도 화면에는 안 나간다 — 옛 지시서를 다시 렌더할 때도 같다.
+        if not config.OVERLAY_POINTER_ENABLED:
+            drop_types.add("pointer")
+        drop_types = drop_types or None
         overlay_out.extend(evidence_overlay.build_overlay_cues(
             cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types,
             images={no: p for no, p in asset_index.items() if p}, drop_types=drop_types))
