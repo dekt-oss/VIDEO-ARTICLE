@@ -46,3 +46,36 @@ def test_both_factories_tell_the_model_to_compose_instead():
     for name in ("directive.py", "report_directive.py"):
         src = (ENGINE / name).read_text(encoding="utf-8")
         assert "제일 크고 한가운데" in src, name
+
+
+# ── 검사가 **어느 칸인지** 말하지 않으면 고칠 수 없다 ──────────────
+def test_the_quoted_label_gate_says_which_field_it_found_it_in():
+    """★★ 2026-09-19 실측. 되먹임을 받은 모델이 `visual_prompt` 만 고치고 `motion_prompt` 의
+    따옴표는 그대로 뒀다 — 재생성을 하고도 **같은 사유로 또 막혔다**
+    (리포트 dfc74dec 컷9, `avoid the 'bad weather' spots`).
+    사유가 "컷9(bad weather)" 라고만 말했기 때문이다. 어디인지 모르면 고칠 수 없다."""
+    from engine import photo_contract as pc
+
+    got = pc.quoted_label_cuts([
+        {"cut_no": 9, "visual_prompt": "A clean wide shot of the Earth model.",
+         "motion_prompt": "the camera avoids the 'bad weather' spots"}])
+    assert got == ["컷9.motion_prompt(bad weather)"]
+
+
+def test_it_names_every_field_that_carries_quotes():
+    from engine import photo_contract as pc
+
+    got = pc.quoted_label_cuts([
+        {"cut_no": 3, "visual_prompt": "a dish labeled 'Control'",
+         "motion_prompt": "the 'treated' dish grows"}])
+    assert got[0].startswith("컷3.motion_prompt·visual_prompt(")
+
+
+def test_the_prescription_names_all_three_fields():
+    """처방이 칸을 말하지 않으면 모델은 눈에 띄는 칸만 고친다(실측된 실패 모드)."""
+    from engine import photo_contract as pc
+
+    fix = pc.feedback_prompt(["photo_quoted_label_in_prompt:컷9.motion_prompt(bad weather)"])
+    for field in ("visual_prompt", "motion_prompt", "mechanism"):
+        assert field in fix, field
+    assert "겁따옴표" in fix, "이름 붙일 뜻이 없어도 글자로 그려진다는 것을 말해야 한다"
