@@ -512,7 +512,15 @@ CONTENT_MODE_ASSET_REUSE_TARGET: dict[str, float] = {
 #   ※ 재사용을 금지하지는 않는다(운영자 지시 2026-08-29): 같은 인물·부품이 **서사·단계가
 #     진행돼서** 다시 나오는 것은 옳다. 막아야 하는 것은 **아무것도 안 변한 반복**이고,
 #     그것은 상한이 아니라 state_delta 검증(REUSE_REQUIRES_VISIBLE_DELTA)이 잡는다.
-PHOTO_UNIQUE_ASSET_RATIO: float = _get_float("PHOTO_UNIQUE_ASSET_RATIO", 0.8)
+# ★★ **1.0 이다**(2026-09-20 실측으로 올렸다). 0.8 은 실사형에서 재사용이 **아직 가능하던 때**
+#   잡은 값이다. 2026-09-05 에 스틸 복사 재사용을 코드가 막으면서(바로 위 ※ 주석의 그 결정)
+#   모든 실사형 컷이 new_asset 이 됐다 — 10컷 지시서의 고유 에셋은 **항상 10** 이고 상한 8은
+#   넘길 수밖에 없다. photo 리포트 8편 전부가 `unique_assets_over_budget` 이었다(8/8).
+#   지킬 수 없는 상한은 예산 장치가 아니라 잡음이다. 100% 뜨는 경고는 정보가 0이고,
+#   운영자는 그것을 읽지 않게 된다 — 그러면 **진짜 초과를 놓친다.**
+#   돈을 막는 자리는 따로 있다: `render_budget_cap`(잡 단위 총액)과 컷 수 게이트.
+#   실사형에서 재사용을 되살리는 날 이 값을 다시 내린다.
+PHOTO_UNIQUE_ASSET_RATIO: float = _get_float("PHOTO_UNIQUE_ASSET_RATIO", 1.0)
 PHOTO_MIN_UNIQUE_ASSETS: int = _get_int("PHOTO_MIN_UNIQUE_ASSETS", 8)
 # 【§6-4】 모드 자동선택 임계 — 필수 Evidence Unit 개수 기준.
 MODE_UNITS_FLASH_MAX: int = 3
