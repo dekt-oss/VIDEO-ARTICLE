@@ -66,6 +66,7 @@ OUT = pathlib.Path("docs/실측_모델")
 # flash 티어(gemini-2.5-flash)다 — **그 자리의 현행 모델**을 기준 팔로 세운다.
 DEFAULT_MODELS = {
     "directive": ["gemini-2.5-pro", "deepseek-v4-pro"],
+    "report_directive": ["gemini-2.5-pro", "deepseek-v4-pro"],
     "factsheet": ["gemini-2.5-flash", "deepseek-flash"],
 }
 
@@ -223,6 +224,59 @@ def _source_nums(paper: dict[str, Any]) -> set[str]:
     return directive_audit._numbers(paper.get("abstract") or "")
 
 
+# ─────────────────────────────────────────────────────────────
+# 리포트 지시서 — pro 티어의 **둘째** 자리
+# ─────────────────────────────────────────────────────────────
+# ★ 왜 `directive` 로 같이 못 재나: 프롬프트·스키마·게이트가 다르다. 리포트는 논증 단위
+#   (financial_reasoning)를 화면으로 옮기고 EQ-V 계약을 추가로 받는다. 논문에서 나온
+#   결과가 이 자리에도 적용된다는 보장이 없다 — flash 티어에서 실제로 **정반대**가
+#   나왔다(2026-09-19: deepseek-flash 가 3회 중 1회 절단으로 죽었다).
+#
+# ★★ 채점은 논문과 **같은 함수**를 쓴다(`_score`). 그래야 두 자리의 숫자를 같은 눈으로
+#   읽을 수 있다. 리포트에만 있는 계약(EQ-V)은 아래에서 더한다.
+def _generate_report(draft_row: dict[str, Any], version_type: str,
+                     model: str) -> dict[str, Any]:
+    """한 발. `report_directive._generate_once` 와 **같은 순서**로 하되 재생성은 하지 않는다."""
+    from engine import equity_visual, report_directive as RD
+
+    user = RD.report_directive_user_prompt(draft_row, version_type)
+    set_text_purpose("directive")
+    t0 = time.time()
+    obj = call_json(model=model, system=RD.REPORT_DIRECTIVE_SYSTEM, user=user,
+                    max_tokens=config.LLM_DIRECTIVE_MAX_TOKENS)
+    elapsed = time.time() - t0
+
+    # 본 경로와 같은 순서: 모델이 쓴 시퀀스 우선 → 꼬리표 → 공용 정규화.
+    model_seqs = [s for s in (obj.get("visual_sequences") or []) if isinstance(s, dict)]
+    if model_seqs:
+        seqs = equity_visual.annotate(model_seqs, obj.get("cuts"),
+                                      draft_row.get("financial_reasoning"))
+    else:
+        seqs = equity_visual.build_for_directive(obj.get("cuts"),
+                                                 draft_row.get("financial_reasoning"))
+    obj["visual_sequences"] = seqs
+    d = D.normalize_directive(obj, version_type, cut_max_sec=config.CUT_MAX_SEC)
+    return {"directive": d, "fact_sheet": draft_row.get("fact_sheet") or {},
+            "skeleton": [], "seqs": seqs, "elapsed_sec": elapsed,
+            "prompt_chars": len(RD.REPORT_DIRECTIVE_SYSTEM) + len(user)}
+
+
+def _score_report(run: dict[str, Any]) -> dict[str, Any]:
+    """논문 채점 + 리포트 전용 계약(EQ-V). 낮을수록 좋다."""
+    from engine import equity_contract, equity_visual
+
+    sc = _score(run)
+    seqs = run["seqs"]
+    # ★ `seqs` 를 본다 — 정규화가 진단 필드(reasoning_id·precision_layer)를 버리므로
+    #   헤더에서 읽으면 이 검사가 영영 0건이 된다(report_directive 주석과 같은 이유).
+    sc["EQ계약위반"] = len(equity_contract.block_reasons(seqs))
+    sc["EQ경고"] = len(equity_contract.warnings(seqs))
+    sc["화면투영경고"] = len(equity_visual.screen_warnings(seqs))
+    # 맥락: 모델이 시퀀스를 **직접 썼는가**(2026-09-19부터 그게 정본이다). 폴백이면 0.
+    sc["_모델이쓴시퀀스"] = len(seqs)
+    return sc
+
+
 def _problem_total(sc: dict[str, Any]) -> int:
     """문제 개수 항목만 합산. `_` 로 시작하는 맥락 항목은 더하지 않는다."""
     return sum(v for k, v in sc.items() if not k.startswith("_") and isinstance(v, int))
@@ -230,9 +284,10 @@ def _problem_total(sc: dict[str, Any]) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--paper", default="")
+    ap.add_argument("--paper", default="", help="논문 id, 또는 report_directive 면 리포트 id")
     ap.add_argument("--job", default="directive", choices=sorted(DEFAULT_MODELS),
-                    help="directive=pro 티어 지시서, factsheet=flash 티어 근거 추출")
+                    help="directive=논문 지시서(pro), report_directive=리포트 지시서(pro), "
+                         "factsheet=flash 티어 근거 추출")
     ap.add_argument("--version-type", default="photo")
     ap.add_argument("--models", default="", help="비우면 그 작업의 현행 모델 + DeepSeek 대응 티어")
     ap.add_argument("--repeat", type=int, default=1)
@@ -240,6 +295,13 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.list:
+        if args.job == "report_directive":
+            from engine import report_db
+            rows = report_db.client().table("report_drafts").select(
+                "report_id, created_at").order("created_at", desc=True).limit(15).execute().data or []
+            for r in rows:
+                print(f"  {r['report_id']}  {str(r.get('created_at'))[:19]}")
+            return
         rows = db.client().table("drafts").select("paper_id, created_at").order(
             "created_at", desc=True).limit(15).execute().data or []
         for r in rows:
@@ -253,6 +315,11 @@ def main() -> None:
         source = db.get_draft_full(args.paper)
         if not source:
             raise SystemExit(f"draft 없음: {args.paper}")
+    elif args.job == "report_directive":
+        from engine import report_db
+        source = report_db.get_report_draft(args.paper)
+        if not source:
+            raise SystemExit(f"report_draft 없음: {args.paper} (--paper 에 report_id 를 준다)")
     else:
         resp = db.client().table("papers").select(
             "id, title, venue, abstract").eq("id", args.paper).maybe_single().execute()
@@ -273,6 +340,9 @@ def main() -> None:
                 if args.job == "directive":
                     run = _generate(source, args.version_type, model)
                     keep, sc = run["directive"], _score(run)
+                elif args.job == "report_directive":
+                    run = _generate_report(source, args.version_type, model)
+                    keep, sc = run["directive"], _score_report(run)
                 else:
                     run = _generate_factsheet(source, model)
                     keep, sc = run["raw"], _score_factsheet(run, source)
@@ -282,7 +352,7 @@ def main() -> None:
                 sc["_초"] = round(run["elapsed_sec"], 1)
                 sc["_문제합"] = _problem_total(sc)
                 results.append(sc)
-                extra = (f"컷 {sc['_컷수']:>2}" if args.job == "directive"
+                extra = (f"컷 {sc['_컷수']:>2}" if args.job.endswith("directive")
                          else f"claim {sc['_claim수']:>2}")
                 print(f"    문제합 {sc['_문제합']:>3}  {extra}  {sc['_초']}s")
             except Exception as exc:     # noqa: BLE001 — 한 팔이 죽어도 다른 팔은 본다
