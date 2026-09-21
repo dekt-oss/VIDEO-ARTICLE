@@ -285,9 +285,19 @@ def generate(draft_row: dict[str, Any], version_type: str,
     blocks = sorted({*((first["header"].get("photo_gate") or {}).get("block_reasons") or []),
                      *((first["header"].get("visual_sequence_gate") or {})
                        .get("block_reasons") or [])})
-    if not (config.DIRECTIVE_CONTRACT_RETRY and version_type == "photo" and blocks):
+    # ★★ **차단이 없어도 되묻는 경고가 있다**(2026-09-21). 지금까지는 `blocks` 가 있을 때만
+    #   재생성했다. 그런데 `report_sequences_from_code_fallback` 은 **차단을 만들지 않는다** —
+    #   폴백이 멀쩡한 지시서를 만들어 내기 때문이다. 문제는 그 지시서가 어제 고친 "강제
+    #   이어받기" 경로로 돌아간다는 것이고, 화면이 나빠지는 것은 승인 화면에 안 보인다.
+    #   되물으면 되는 종류다(A/B 9벌에서 세 모델 모두 3/3 으로 시퀀스를 썼다).
+    #   논문 라인도 같은 개념을 쓴다 — config.RETRYABLE_QUALITY_WARNINGS.
+    retryable = [w for w in (first["header"].get("mode_warnings") or [])
+                 if str(w).split(":", 1)[0] in config.RETRYABLE_QUALITY_WARNINGS]
+    if not (config.DIRECTIVE_CONTRACT_RETRY and version_type == "photo"
+            and (blocks or retryable)):
         return first
-    log.warning("리포트 실사형 계약 위반 → 사유를 되먹여 1회 재생성: %s", ", ".join(blocks))
+    log.warning("리포트 실사형 재생성 1회 → 차단 %s · 되물을 경고 %s",
+                ", ".join(blocks) or "없음", ", ".join(retryable) or "없음")
     retry = _generate_once(draft_row, version_type,
                            user + dv._contract_feedback(first))
     retry_blocks = sorted({*((retry["header"].get("photo_gate") or {}).get("block_reasons") or []),
@@ -337,10 +347,17 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     #     정해야 한다. 이제 equity_visual 은 만들지 않고 **꼬리표만 붙인다**(annotate).
     #   ★ 모델이 아예 안 썼으면 옛 경로로 물러선다 — 시퀀스 0개보다는 낫다(마이그레이션 없음).
     model_seqs = [s for s in (obj.get("visual_sequences") or []) if isinstance(s, dict)]
+    fell_back = not model_seqs
     if model_seqs:
         seqs = equity_visual.annotate(
             model_seqs, obj.get("cuts"), draft_row.get("financial_reasoning"))
     else:
+        # ★★ **조용히 떨어지지 않는다**(2026-09-21 실측). 폴백은 컷이 무엇을 그리든 2번째
+        #   stage 부터 무조건 CONTINUE_WORLD 를 찍는 그 경로다 — 운영자가 통째로 폐기한
+        #   "네 칸 비교표"와 "파이프가 화면에 안 나온" 편이 거기서 나왔다.
+        #   그런데 로그만 찍으면 승인 화면에는 아무것도 안 뜬다. 운영자는 로그를 안 본다.
+        #   실측: A/B 9벌은 세 모델 모두 3/3 으로 시퀀스를 썼는데(즉 어려운 요구가 아니다)
+        #   운영 경로의 첫 재생성에서 한 번 빠뜨렸다. 모델이 잊은 것이므로 **다시 물으면 된다.**
         log.warning("모델이 visual_sequences 를 안 썼다 — 코드 컴파일로 물러선다(옛 경로)")
         seqs = equity_visual.build_for_directive(
             obj.get("cuts"), draft_row.get("financial_reasoning"))
@@ -363,6 +380,8 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     #   ★ `seqs` 를 본다 — 정규화가 진단 필드(reasoning_id·precision_layer)를 버리므로
     #     헤더에서 읽으면 검사가 영영 0건이 된다(위 screen_warnings 와 같은 이유다).
     warns = [*equity_visual.screen_warnings(seqs), *equity_contract.warnings(seqs)]
+    if fell_back:
+        warns.append("report_sequences_from_code_fallback")
     if warns:
         d["header"]["mode_warnings"] = sorted(set([*(d["header"].get("mode_warnings") or []),
                                                    *warns]))

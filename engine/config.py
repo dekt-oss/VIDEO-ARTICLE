@@ -1014,6 +1014,12 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_keyword_is_a_sentence",
     "photo_keyword_repeats_narration",
     "photo_pointer_zone_unknown",
+    # ★★ 2026-09-21 — 리포트 모델이 `visual_sequences` 를 안 쓰면 코드 폴백이 돈다. 그 경로는
+    #   컷이 무엇을 그리든 2번째 stage 부터 무조건 CONTINUE_WORLD 를 찍는다 — 운영자가 통째로
+    #   폐기한 "네 칸 비교표"와 "파이프가 화면에 안 나온" 편이 거기서 나왔다.
+    #   되물으면 되는 종류다: A/B 9벌에서 세 모델 **모두 3/3** 으로 썼다(어려운 요구가 아니다).
+    #   그런데 운영 경로의 한 회차가 빠뜨렸고, 폴백은 조용해서 승인 화면에 아무것도 안 떴다.
+    "report_sequences_from_code_fallback",
 )
 
 #: 역할 라벨이 **명백히 거짓인지**만 보는 필요조건표(의미 분류기가 아니다).

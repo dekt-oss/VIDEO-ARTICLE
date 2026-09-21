@@ -187,10 +187,58 @@ def test_report_photo_block_triggers_one_retry_with_prescription(monkeypatch):
     assert not any(r.startswith("photo_hook_missing") for r in out["header"]["block_reasons"])
 
 
+def _with_sequences(raw):
+    """모델이 `visual_sequences` 를 쓴 응답. 2026-09-21 부터 이게 "정상"의 일부다 —
+    안 쓰면 코드 폴백이 돌고, 그 경로는 컷 내용과 무관하게 이어받기를 찍는다."""
+    return {**raw, "visual_sequences": [{
+        "sequence_id": "SEQ1", "sequence_role": "MECHANISM_SEQUENCE",
+        "world": {"world_id": "BENCH", "style": "an optical bench with a beam splitter",
+                  "lighting": "a work lamp overhead", "background": "a wall further back"},
+        "entities": [{"entity_id": "BEAM", "entity_type": "object",
+                      "visual_identity": "a narrow coral beam"}],
+        "stages": [
+            {"stage_id": "S1", "cut_refs": [1], "continuity_mode": "NEW_WORLD",
+             "continuity_from": "", "entity_refs": ["BEAM"],
+             "representation_mode": "SCHEMATIC_PRINCIPLE",
+             # ★ APPEAR·HIGHLIGHT 만으로는 안 된다 — 정지 화면으로도 성립해서 원리를
+             #   설명하지 못한다(photo_stage_no_transformation). 실제 변형을 하나 둔다.
+             "mutations": [{"entity_id": "BEAM", "property": "shape",
+                            "operation": "TRANSFORM", "visible_change": True,
+                            "result_state": "the beam narrows into a thin line"}],
+             "state_after": {"BEAM": "narrow"},
+             "observable_change": "the beam narrows into a thin line on the bench"},
+            {"stage_id": "S2", "cut_refs": [2], "continuity_mode": "MUTATE_STATE",
+             "continuity_from": "S1", "entity_refs": ["BEAM"],
+             "representation_mode": "SCHEMATIC_PRINCIPLE",
+             "mutations": [{"entity_id": "BEAM", "property": "size",
+                            "operation": "GROW", "visible_change": True,
+                            "result_state": "the beam is wide"}],
+             "state_before": {"BEAM": "narrow"}, "state_after": {"BEAM": "wide"},
+             "observable_change": "the beam widens across the bench"}]}]}
+
+
 def test_report_no_retry_when_clean_or_not_photo(monkeypatch):
     from engine import report_directive as rd
     from tests.test_photo_contract import _raw
     calls = []
-    monkeypatch.setattr(rd, "call_json", lambda **kw: (calls.append(1), _raw("좋은 훅"))[1])
+    monkeypatch.setattr(rd, "call_json",
+                        lambda **kw: (calls.append(1), _with_sequences(_raw("좋은 훅")))[1])
     rd.generate(_report_row(), "photo")
     assert len(calls) == 1, "정상인데 재생성하면 비용이 두 배다"
+
+
+def test_report_retries_when_the_model_skipped_the_sequences(monkeypatch):
+    """★ 2026-09-21: 시퀀스를 안 쓰면 **차단은 안 나지만** 코드 폴백이 돈다. 그 경로는
+    컷이 무엇을 그리든 2번째 stage 부터 무조건 CONTINUE_WORLD 를 찍는다 — 운영자가 통째로
+    폐기한 편("파이프 단면"이라고 적힌 컷에 위성 그림이 붙은 그 편)이 거기서 나왔다.
+    조용히 떨어지는 대신 한 번 되묻는다. A/B 9벌에서 세 모델 모두 3/3 으로 썼으니
+    되물으면 거의 언제나 고쳐진다."""
+    from engine import report_directive as rd
+    from tests.test_photo_contract import _raw
+    calls = []
+    monkeypatch.setattr(rd, "call_json",
+                        lambda **kw: (calls.append(kw["user"]), _raw("좋은 훅"))[1])
+    out = rd.generate(_report_row(), "photo")
+    assert len(calls) == 2, "시퀀스가 없으면 되물어야 한다"
+    assert "visual_sequences" in calls[1], "처방이 되먹임에 실려야 한다"
+    assert "report_sequences_from_code_fallback" in (out["header"].get("mode_warnings") or [])

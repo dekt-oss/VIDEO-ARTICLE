@@ -1966,6 +1966,15 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 "- 키워드 카드가 나레이션을 그대로 옮겨 적었다. 같은 말을 귀와 눈으로 두 번 하면"
                 " 화면만 복잡해진다. 카드에는 나레이션이 **말하지 않는** 이름·수치·단위를 적어라"
                 " (나레이션이 '근육의 대부분은 물'이라 말하면 카드는 `75% WATER`).")
+        if "report_sequences_from_code_fallback" in wcodes:
+            # ★ `wfix` 다 — 이건 경고이지 차단이 아니다. `fixes` 에 넣으면 차단이 있을 때만
+            #   나가서, 정작 이 경고만 떴을 때 모델에게 한 마디도 안 하게 된다.
+            wfix.append(
+                "- **`visual_sequences` 를 네가 직접 채워라.** 비워 두면 코드가 논증 단계로"
+                " 시퀀스를 만드는데, 그 경로는 컷이 무엇을 그리는지 보지 않고 2번째 stage 부터"
+                " 무조건 이어받기를 찍는다 — '좁은 파이프 단면'이라고 적은 컷에 앞 컷의 위성"
+                " 그림이 참조로 붙어 **파이프가 화면에 아예 안 나온다**(실측, 그 편은 폐기됐다)."
+                " 세계를 이어갈지 새로 세울지는 **네가 그릴 것을 아는 네가** 정해야 한다.")
         if "photo_pointer_zone_unknown" in wcodes:
             fixes.append(
                 "- 화살표의 구역 이름이 틀렸다. `payload.at` 에는 다음 중에서만 골라 적어라:"
