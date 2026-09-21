@@ -308,13 +308,21 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     """LLM 1회 → 시퀀스 컴파일 → 공용 정규화 → EQ-V 계약. generate 가 재생성에 한 번 더 부른다."""
     obj = call_json(
         # ★ MODEL_DIRECTIVE 가 아니라 **리포트 전용 상수**다(2026-09-19). 논문 지시서를
-        #   DeepSeek 으로 옮길 때 이 경로가 조용히 딸려 갔고, 여기 상한은
-        #   LLM_SCRIPT_MAX_TOKENS(16,384)라 거의 확실히 절단된다 — 재지 않은 경로에
-        #   측정 결과를 밀지 않는다. config.MODEL_REPORT_DIRECTIVE 주석 참조.
+        #   DeepSeek 으로 옮길 때 이 경로가 조용히 딸려 갔다 — 재지 않은 경로에 측정
+        #   결과를 밀지 않는다. config.MODEL_REPORT_DIRECTIVE 주석 참조.
         model=config.MODEL_REPORT_DIRECTIVE,
         system=REPORT_DIRECTIVE_SYSTEM,
         user=user,
-        max_tokens=config.LLM_SCRIPT_MAX_TOKENS,
+        # ★★ **지시서 상한을 쓴다**(2026-09-20). 여기는 `LLM_SCRIPT_MAX_TOKENS`(16,384)였다 —
+        #   대본용 상한이다. 그런데 이 호출이 만드는 것은 대본이 아니라 **논문과 같은 종류의
+        #   지시서**이고, 논문 쪽은 49,152 를 쓴다. 같은 산출물에 상한이 3배 다른 것은 설계가
+        #   아니라 빠진 자리다.
+        #   ★ 상한은 **안전장치이지 비용 조절 수단이 아니다** — 출력은 쓴 만큼만 과금된다
+        #     (2026-09-19 DeepSeek 배선이 같은 결론에 도달했다). 낮게 잡아 얻는 것은 없고,
+        #     잃는 것은 절단이다. 절단은 재시도가 소용없는 하드 에러라 라인이 선다.
+        #   ★ 이 한 줄이 없으면 리포트 지시서 모델 A/B 자체가 불가능하다: deepseek-v4-pro 는
+        #     논문 지시서에서 28,403~30,928 토큰을 썼다(상한의 거의 2배).
+        max_tokens=config.LLM_DIRECTIVE_MAX_TOKENS,
     )
     # ★★ Equity Visual Planner (v3 Phase 5) — 논증을 **공용 시각 시퀀스로 컴파일**해서
     #   정규화 **앞에** 꽂는다. 정규화는 시퀀스가 있으면 라우팅·resolved_visual_plan·
