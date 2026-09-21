@@ -231,17 +231,17 @@ def test_draft_token_budgets_match_python():
     프롬프트가 길어질 때 잘리는 쪽은 **예산이 작은 쪽**이므로 숫자를 직접 대조한다.
     """
     factsheet_src = (ROOT / "engine" / "factsheet.py").read_text(encoding="utf-8")
-    # ★ 2026-08-29: factsheet.py 가 max_tokens 를 **조건부로** 지정하게 됐다. 원문을 확보한
-    #   경우에만 LLM_FACTSHEET_MAX_TOKENS 를 쓰고, 원문이 없으면 예전처럼 None 을 넘겨
-    #   config.LLM_MAX_TOKENS 를 쓴다. 엣지 함수는 원문을 확보하지 않으므로(초록만 본다)
-    #   대조 기준은 **원문 없는 경로**의 예산이다 — 그래서 아래 기대값은 그대로 LLM_MAX_TOKENS.
-    #   이 두 줄이 그 전제를 고정한다: 조건이 사라지면(=엣지도 원문을 받게 되면) 여기서 깨진다.
-    assert 'config.LLM_FACTSHEET_MAX_TOKENS if (packet or {}).get("text") else None' \
-        in factsheet_src, "factsheet.py 의 조건부 상한이 바뀌었다 — 엣지 예산을 다시 맞춰라"
+    # ★ 2026-08-29 ~ 2026-09-22 의 이력. 한동안 factsheet.py 가 상한을 **조건부로** 지정했다 —
+    #   원문이 있을 때만 LLM_FACTSHEET_MAX_TOKENS, 없으면 None → LLM_MAX_TOKENS(8,192).
+    #   그 조건을 뗐다. 출력 크기를 정하는 것은 **입력에 원문이 있느냐**가 아니라 **모델이
+    #   얼마나 길게 쓰느냐**이고, 실측에서 deepseek-flash 가 초록만 있는 경로에서 8,192 정각에
+    #   잘렸다(그걸 보고 "그 모델이 claim_id 를 빠뜨린다"고 오판했다).
+    assert "max_tokens=config.LLM_FACTSHEET_MAX_TOKENS," in factsheet_src, (
+        "factsheet.py 가 config 상한을 안 쓴다 — 엣지 예산 대조 기준이 무너진다")
     assert config.LLM_FACTSHEET_MAX_TOKENS >= config.LLM_MAX_TOKENS, (
         "원문 경로의 상한이 기본보다 작다 — 원문을 줄수록 먼저 잘린다")
     expected = {
-        "MAX_TOKENS_FACTSHEET": config.LLM_MAX_TOKENS,
+        "MAX_TOKENS_FACTSHEET": config.LLM_FACTSHEET_MAX_TOKENS,
         "MAX_TOKENS_SCRIPT": _python_max_tokens("scriptgen.py"),
         "MAX_TOKENS_SELFCHECK": _python_max_tokens("selfcheck.py"),
     }
@@ -255,10 +255,18 @@ def test_draft_token_budgets_match_python():
 
 
 def _python_max_tokens(module: str) -> int:
+    """그 모듈이 실제로 쓰는 출력 상한. **config 상수를 통해** 읽는다.
+
+    ★ 2026-09-22: 예전에는 `max_tokens=<숫자>` 리터럴을 읽었다. 상한을 config 로 빼면서
+      (매직넘버 금지) 그 정규식이 0건이 되어 **드리프트 가드가 조용히 죽을 뻔했다** —
+      드리프트를 막는 장치가, 드리프트를 막으려는 리팩터링에 걸려 넘어지는 꼴이다.
+      이제 `max_tokens=config.X` 를 찾아 config 에서 값을 꺼낸다. 리터럴이 남아 있으면
+      그것도 못 읽으므로 `tests/test_ceilings_are_not_hardcoded.py` 가 함께 막는다.
+    """
     src = (ROOT / "engine" / module).read_text(encoding="utf-8")
-    found = {int(x) for x in re.findall(r"max_tokens=(\d+)", src)}
-    assert len(found) == 1, f"{module}: max_tokens 가 유일하지 않다({found})"
-    return found.pop()
+    names = set(re.findall(r"max_tokens=config\.([A-Z_]+)", src))
+    assert len(names) == 1, f"{module}: config 출력 상한이 유일하지 않다({names})"
+    return int(getattr(config, names.pop()))
 
 
 def test_draft_call_timeout_matches_python():

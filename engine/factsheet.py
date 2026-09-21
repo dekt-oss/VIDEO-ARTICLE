@@ -244,6 +244,14 @@ def extract(title: str, venue: str | None, abstract: str,
         model=config.MODEL_FACTSHEET,
         system=FACTSHEET_SYSTEM,
         user=factsheet_user_prompt(title, venue, abstract, packet),
-        max_tokens=(config.LLM_FACTSHEET_MAX_TOKENS if (packet or {}).get("text") else None),
+        # ★★ **조건을 뗀다**(2026-09-22 실측). 예전엔 원문이 있을 때만 이 상한을 썼고
+        #   없으면 `None` → 기본 8,192 로 떨어졌다. 그런데 출력 크기를 정하는 것은 **입력에
+        #   원문이 있느냐**가 아니라 **모델이 얼마나 길게 쓰느냐**다.
+        #   실측: 같은 초록만 주고 뽑은 Fact Sheet 가 gemini-2.5-flash 는 최대 5,291 토큰인데
+        #   deepseek-flash 는 **8,192 에서 정확히 잘렸다**(3회 중 1회). 그걸 보고 "deepseek-flash
+        #   가 claim_id 를 빠뜨린다"고 판정했는데, 빠뜨린 게 아니라 **말을 하다 끊긴** 것이었다.
+        #   공급자를 우리 천장으로 떨어뜨려 놓고 그 모델이 못한다고 적으면 측정이 거짓말을 한다.
+        #   상한은 안전장치이지 비용 조절 수단이 아니다 — 출력은 쓴 만큼만 과금된다.
+        max_tokens=config.LLM_FACTSHEET_MAX_TOKENS,
     )
     return normalize_factsheet(obj)

@@ -236,6 +236,7 @@ def check(
         # ★ 한국어 축(korean_natural·awkward_spans·fluency_issues)이 씬마다 더 붙었고
         #   awkward_spans 는 원문 구절을 **그대로 옮겨 적으므로** 길어진다 → 6144.
         #   잘리면 파싱 실패 → 재시도 1회 → 하드 에러라 소프트 저하가 아니다.
-        max_tokens=6144,
+        # ★ 2026-09-22: 6144 하드코딩을 config 로 뺐다(근거: LLM_SELFCHECK_MAX_TOKENS 주석).
+        max_tokens=config.LLM_SELFCHECK_MAX_TOKENS,
     )
     return normalize_selfcheck(obj, fact_sheet, content_plan, total_sec)

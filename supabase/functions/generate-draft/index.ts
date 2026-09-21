@@ -46,9 +46,14 @@ const CALL_TIMEOUT_MS = 180_000;
 //    출력이 예산을 넘겨 잘렸고, 잘린 JSON 이 "Expected ',' or ']' after array element" 로 터졌다.
 //    Python(engine/factsheet.py)은 max_tokens 를 안 넘겨 config.LLM_MAX_TOKENS(8192)를 쓰므로
 //    로컬 워커는 멀쩡했다 — 이중관리 지점이 갈라진 전형적 사고다.
-const MAX_TOKENS_FACTSHEET = 8192; // = engine/config.py:LLM_MAX_TOKENS (engine/factsheet.py 기본값)
-const MAX_TOKENS_SCRIPT = 8192; // = engine/scriptgen.py 의 max_tokens
-const MAX_TOKENS_SELFCHECK = 6144; // = engine/selfcheck.py 의 max_tokens (한국어 축이 붙어 4096 → 6144)
+//  ★★ 2026-09-22: 셋 다 올렸다. 파이썬 쪽 상한이 **제미나이 씀씀이에 맞춰져 있었고**,
+//    말이 2.4배 긴 공급자(DeepSeek)를 붙이는 순간 잘린다는 것이 원장 실측으로 드러났다
+//    (deepseek-flash 가 지시서 32,768 정각 3회, Fact Sheet 8,192 정각 — 그걸 보고 "모델이
+//    못한다"고 오판했다). 근거는 engine/config.py 의 LLM_PAPER_SCRIPT_MAX_TOKENS 주석.
+//    엣지가 낮은 채로 남으면 **엣지 경로만** 잘린다 — 2026-07-29 사고가 정확히 그 모양이었다.
+const MAX_TOKENS_FACTSHEET = 16384; // = engine/config.py:LLM_FACTSHEET_MAX_TOKENS
+const MAX_TOKENS_SCRIPT = 32768; // = engine/config.py:LLM_PAPER_SCRIPT_MAX_TOKENS
+const MAX_TOKENS_SELFCHECK = 16384; // = engine/config.py:LLM_SELFCHECK_MAX_TOKENS
 
 // ─────────────────────────────────────────────────────────────
 // 프롬프트 (engine 의 시스템 프롬프트 verbatim 복사)
