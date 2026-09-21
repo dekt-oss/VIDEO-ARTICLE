@@ -178,11 +178,26 @@ def source_depth_of(fact_sheet: dict[str, Any] | None) -> str:
 
     ★ paper_evidence.attach_evidence 가 `source_provenance` 를 남긴다. 그것이 없는
       Fact Sheet(엣지 경로로 만들어진 초안)는 대조 자체가 안 돈 것이므로 'none' 이 맞다.
+
+    ★★ **두 공장이 같은 것을 다른 칸에 적는다**(2026-09-20 실측). 리포트 라인은
+      `report_source.attach` 가 Fact Sheet **최상위**에 `source_depth` 를 적는다
+      (`source_chars` 와 짝이다). 논문 형식만 보던 이 함수는 그것을 못 봐서 리포트를
+      전부 `"none"` 으로 읽었고 — 리포트 초안 41건 **전부** 그랬다 —
+      `vseq_literal_without_source` 가 **저장된 리포트 지시서 17/17 을 차단**했다.
+      원문은 실제로 있었다: `report_sources` 373행 중 341행이 `full_text` 다.
+      게이트가 근거를 못 본 것이지 근거가 없던 것이 아니다.
+
+    ★ 논문 형식을 **먼저** 본다. 그쪽은 대조(attach_evidence)를 실제로 돌린 결과이고,
+      리포트 최상위 값은 수집 단계의 선언이다 — 더 센 근거가 있으면 그것을 쓴다.
+    ★ 여전히 모르면 'none' 이다. 리포트 41건 중 21건이 그렇다(수집이 원문을 못 받은 건).
+      그 건들은 계속 막혀야 한다 — 이 수정은 **볼 수 있는 근거를 보게 하는 것**이지
+      게이트를 무르게 하는 것이 아니다.
     """
-    prov = (fact_sheet or {}).get("source_provenance")
-    if not isinstance(prov, dict):
-        return "none"
-    return str(prov.get("source_depth") or "none")
+    fs = fact_sheet or {}
+    prov = fs.get("source_provenance")
+    if isinstance(prov, dict) and prov.get("source_depth"):
+        return str(prov["source_depth"])
+    return str(fs.get("source_depth") or "none")
 
 
 def routing_summary(routed: list[dict[str, Any]]) -> dict[str, Any]:

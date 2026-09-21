@@ -48,6 +48,9 @@ export const BLOCK_LABEL: Record<string, string> = {
   photo_reuse_identical_render: "재사용 컷이 기준 컷과 사실상 같은 그림(진행 없는 반복)",
   // ── 시각 시퀀스 계약(engine/visual_sequence_contract.py BLOCK_REASONS) ──
   vseq_too_few_stages: "시퀀스인데 단계가 1개뿐(한 장면으로 끝나는 설명)",
+  vseq_screen_world:
+    "시퀀스의 \"세계\"가 화면·인터페이스·추상 공간임 — 세계가 화면이면 그 시퀀스의 모든 컷이 " +
+    "UI 렌더가 됩니다. 실제로 가 볼 수 있는 곳이나 만질 수 있는 실물로 바꿔야 합니다",
   vseq_no_progression: "단계에 상태 변화가 없음(화면이 멈춰 있다)",
   vseq_dangling_continuity: "이어받을 단계를 가리켰는데 그 단계가 없음",
   vseq_missing_entity: "참조한 개체가 선언 목록에 없음",

@@ -43,11 +43,15 @@ BLOCK_REASONS: tuple[str, ...] = (
     "vseq_no_actual_mutation",       # 진행 시퀀스인데 변이 선언이 없다(자기보고만 남는다)
     "vseq_literal_without_source",   # 실제 관측이라고 선언했는데 근거가 그것을 지불하지 않는다
     "vseq_duplicate_stage_id",       # 같은 stage_id 가 둘 — 색인이 덮어써 참조가 엉뚱한 곳을 본다
+    # ★ 2026-09-20: **등록 자리가 틀려 있었다.** `evaluate` 는 이것을 `blocks` 에 넣는데
+    #   (214행 `blocks.extend(screen_world_reasons(...))`) 목록만 WARNING 쪽에 있었다.
+    #   그래서 승인 화면이 이 코드를 경고로 취급했고 차단 라벨도 없었다 — 운영자에게는
+    #   `vseq_screen_world:SEQ2:abstract` 라는 코드가 날것으로 떴다.
+    "vseq_screen_world",             # 시퀀스가 머무는 "세계"가 화면·인터페이스·추상 공간이다
 )
 WARNING_REASONS: tuple[str, ...] = (
     "vseq_static_repeat",         # 같은 세계·같은 상태·같은 operation 이 반복된다
     "vseq_world_reset_high",      # 세계를 너무 자주 새로 만든다(시퀀스의 의미가 옅다)
-    "vseq_screen_world",          # 시퀀스가 머무는 "세계"가 화면·인터페이스·추상 공간이다
     "vseq_stage_without_cut",     # stage 가 어느 컷도 담당하지 않는다
     "vseq_claim_unlinked",        # stage 가 근거를 가리키지 않는다
     "vseq_cut_claim_mismatch",    # stage 에 든 컷인데 주장이 겹치지 않는다(물려받지 못함)
@@ -459,6 +463,19 @@ def feedback_prompt(block_reasons: list[str]) -> str:
         "vseq_too_few_stages":
             "MECHANISM_SEQUENCE 인데 stage 가 하나뿐이다. 한 장면으로 끝나는 설명은 시퀀스가"
             " 아니다 — 무엇이 먼저 보이고 그다음 무엇이 달라지는지 단계로 나눠라.",
+        # ★ 2026-09-20: 이 사유만 **처방이 없었다.** 막기는 하는데 어떻게 고치는지 말하지
+        #   않으면 재생성이 같은 자리에서 또 막힌다(gate-prompt-feedback-parity).
+        #   문구는 `directive._SEQUENCE_GUIDANCE` 가 이미 가진 실측 결론을 짧게 옮긴 것이다.
+        "vseq_screen_world":
+            "시퀀스가 머무는 **세계**가 화면·인터페이스·추상 공간이다(예: DATA_CHANNEL_SPACE)."
+            " 세계가 화면이면 **그 시퀀스의 모든 컷이 UI 렌더가 된다** — 컷에서 글자를"
+            " 금지해도 소용이 없다. 실측(2026-09-03): 세계 5개 중 3개를 그렇게 잡았다가"
+            " 게이지·막대그래프·아이콘으로 채워져 통째로 폐기됐다."
+            " 세계는 **실제로 가 볼 수 있는 곳이나 만질 수 있는 실물**로 바꿔라 —"
+            " 실험실·공장 라인·현장, 또는 단면을 연 장치·시료·부품."
+            " 소재 자체가 데이터·신호·화면이면, 그것을 **다루는 사람과 자리**를 세계로 잡아라"
+            " (예: DATA_CHANNEL_SPACE → 광학 벤치 위의 도파관 단면과 그것을 들여다보는 손)."
+            " 추상 개념은 세계가 아니라 **그 세계 안의 물건**으로 그린다.",
         "vseq_no_progression":
             "state_before 와 state_after 가 같거나 observable_change 가 비었다. 그 stage 는"
             " 화면이 멈춰 있다는 뜻이다. 무엇이 눈에 보이게 달라지는지 적어라.",

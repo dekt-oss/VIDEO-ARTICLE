@@ -93,7 +93,7 @@ jobs:
           # ★ MODEL_DIRECTIVE 가 아니라 **리포트 전용 상수**다(2026-09-19). 논문 지시서가
           #   deepseek-v4-pro 로 옮겨 갈 때 이 경로가 조용히 딸려 갔다 — 재지 않은 경로이고,
           #   여기 출력 상한은 LLM_SCRIPT_MAX_TOKENS(16,384)라 거의 확실히 절단된다.
-          MODEL_REPORT_DIRECTIVE: ${{ vars.MODEL_REPORT_DIRECTIVE || 'gemini-2.5-pro' }}
+          MODEL_REPORT_DIRECTIVE: ${{ vars.MODEL_REPORT_DIRECTIVE || 'gemini-3.8-flash' }}
         run: python -m engine.report_directive
 
       # 렌더(ffmpeg) — mode=render|poll 이고 렌더 잡이 있을 때.

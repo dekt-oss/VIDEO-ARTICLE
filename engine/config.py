@@ -2167,6 +2167,18 @@ TEXT_PRICING: dict[str, dict[str, float]] = {
     "gemini-2.5-pro":   {"text_input_per_token": 1.25 / 1e6, "text_output_per_token": 10.00 / 1e6},
     "gemini-2.5-flash": {"text_input_per_token": 0.30 / 1e6, "text_output_per_token": 2.50 / 1e6},
     "gemini-3-pro":     {"text_input_per_token": 1.25 / 1e6, "text_output_per_token": 10.00 / 1e6},
+    # ★★ Gemini 3.x (2026-09-20 ai.google.dev/gemini-api/docs/pricing 확인).
+    #   ★ **정가를 적는다.** 3.8-flash 는 2026-12-31 까지 $0.75/$3.75 프로모가인데, 그 값을
+    #     넣으면 내년 1월 1일부터 원장이 실제 지출의 절반을 적는다. DeepSeek 항목과 같은
+    #     규율이다 — 지출을 작게 보이게 하는 것이 이 표에서 가장 위험한 실수다.
+    #   ★ 3.8-flash 는 이름이 flash 지만 단가가 pro 급이다. 출력 $7.50 으로 **2.5-pro($10)보다
+    #     싸다** — 지시서는 출력이 비용의 80% 라(실측: 입력 28,433 · 출력 14,160) 이 한 칸이
+    #     편당 비용을 정한다.
+    #   ★ 3.1-pro 는 `-preview` 뿐이다. 매일 도는 파이프라인의 기본값으로 쓰지 않는다 —
+    #     예고 없이 바뀌거나 사라지는 자리다. 재보기용으로만 표에 둔다.
+    "gemini-3.8-flash":      {"text_input_per_token": 1.50 / 1e6, "text_output_per_token": 7.50 / 1e6},
+    "gemini-3.5-flash":      {"text_input_per_token": 1.50 / 1e6, "text_output_per_token": 9.00 / 1e6},
+    "gemini-3.1-pro-preview": {"text_input_per_token": 2.00 / 1e6, "text_output_per_token": 12.00 / 1e6},
     "claude-opus-4-8":  {"text_input_per_token": 15.00 / 1e6, "text_output_per_token": 75.00 / 1e6},
     "claude-sonnet-4-6": {"text_input_per_token": 3.00 / 1e6, "text_output_per_token": 15.00 / 1e6},
     # ★ DeepSeek 은 **시간대별로 단가가 다르다**(UTC 01–04·06–10 평일이 peak, off-peak 는 절반).
@@ -3101,7 +3113,20 @@ MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-2.5-pro")   
 #   그래서 이 자리를 **명시 상수로 분리하고 현행값(gemini-2.5-pro)을 지킨다.** 바꾸려면
 #   `scripts/model_ab.py` 로 이 경로를 먼저 재라. MODEL_REPORT_* 가족에 이 멤버만
 #   없었던 것은 설계 의도가 아니라 빠진 자리로 보인다.
-MODEL_REPORT_DIRECTIVE: str = os.getenv("MODEL_REPORT_DIRECTIVE", "gemini-2.5-pro")
+#   ★★★ **2026-09-20: gemini-3.8-flash 로 옮긴다.** 같은 하네스로 3벌씩 쟀다
+#     (`scripts/model_ab.py --job report_directive`, 이 자리를 재라고 위에 적어 둔 그것이다):
+#         문제합   2.5-pro 8·17·18(평균 14.3) · deepseek 14·8·14(12.0) · 3.8-flash 17·9·8(11.3)
+#         시간     78~118초          · 312~325초            · **26~31초**
+#         1벌 비용 $0.144~0.202      · $0.159~0.164          · **$0.114~0.121**
+#     ★ **품질로는 못 가른다** — 셋 다 8~18 을 오가고 구간이 겹친다. 세 벌로는 운과 실력이
+#       안 갈린다. 그러니 "3.8-flash 가 더 낫다"고 적지 않는다.
+#     ★ 바꾸는 근거는 **겹치지 않는 두 축**이다: 3.5배 빠르고 25% 싸다(정가 기준. 출력이
+#       편당 비용의 80% 인데 출력 단가가 $10.00 → $7.50 이다). 품질이 같다면 빠르고 싼 쪽이다.
+#     ⚠ 지켜볼 것: 1회차에 `근거red` 2건이 나왔다(2.5-pro 는 3회 다 0건). 증권 라인에서 근거는
+#       가장 민감한 축이다 — 초반 몇 편은 승인 화면의 근거 경고를 눈으로 본다.
+#     ★ **논문 지시서(MODEL_DIRECTIVE)는 건드리지 않는다.** 3.8-flash 를 그 자리에서 잰 적이
+#       없다. 재지 않은 자리에 측정 결과를 미는 것이 바로 이 상수가 생긴 이유다.
+MODEL_REPORT_DIRECTIVE: str = os.getenv("MODEL_REPORT_DIRECTIVE", "gemini-3.8-flash")
 MODEL_REPORT_SELFCHECK: str = os.getenv("MODEL_REPORT_SELFCHECK", "gemini-2.5-flash")
 MODEL_REPORT_COMPLIANCE: str = os.getenv("MODEL_REPORT_COMPLIANCE", "gemini-2.5-flash")
 
