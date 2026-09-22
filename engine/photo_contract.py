@@ -1102,7 +1102,8 @@ def quoted_label_cuts(cuts: list[dict[str, Any]]) -> list[str]:
         #   장면에 있는 것과 똑같이 글자로 구워진다.
         found: dict[str, list[str]] = {}
         for field, text in _image_text_fields(c):
-            hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)})
+            hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)
+                           if not _quote_is_only_a_scare_quote(text, m)})
             if hits:
                 found.setdefault(field, []).extend(hits)
         if found:
@@ -1110,6 +1111,33 @@ def quoted_label_cuts(cuts: list[dict[str, Any]]) -> list[str]:
             words = sorted({w for v in found.values() for w in v})
             out.append(f"컷{c.get('cut_no')}.{where}({', '.join(words[:3])})")
     return out
+
+
+# ★ 명백한 라벨 동사 — 이게 앞에 붙으면 **Jev 에게 묻지 않고 그대로 막는다.**
+#   근거는 실측이다: `represents 'Calorie Restriction'` 에 Jev 는 0.42(라벨 아님)를 줬는데,
+#   그 문장은 2026-09-07 에 **다섯 개가 그대로 그림에 글자로 박힌** 바로 그 문장이다.
+#   확실한 것은 코드가 막고, Jev 는 애매한 구간만 **풀어 준다**(engine/decide.py 참조).
+_LABEL_VERB = re.compile(
+    r"(?<![A-Za-z])(label(l?ed|s|ing)?|titled|marked|named|reading|represents?"
+    r"|representing|stands? for|says?|written|engraved|printed|text|caption|sign)"
+    r"(?![A-Za-z])[^'\"]{0,40}$", re.I)
+
+
+def _quote_is_only_a_scare_quote(text: str, m: "re.Match[str]") -> bool:
+    """이 따옴표가 **그릴 글자가 아닌가**. 기본은 False(=차단 유지).
+
+    순수 함수가 아니다 — `config.JEV_ENABLED` 가 켜져 있을 때만 판단 모델에 묻는다.
+    꺼져 있으면 네트워크 호출이 0이고 종전(정규식) 판정 그대로다.
+
+    ★ 문턱과 실측 근거는 `config.JEV_LABEL_RELEASE_BELOW` 주석에 있다:
+      저장된 photo 지시서 31건 중 정규식 차단 31 → 14 (오탐 17건 제거), 비용 $0.0004.
+    """
+    if _LABEL_VERB.search(text[:m.start()].rstrip()):
+        return False                      # 동사가 있으면 묻지 않는다
+    from . import decide                  # 지연 import — 순수 테스트는 이 경로를 안 탄다
+    if not decide.enabled():
+        return False
+    return decide.quoted_label_is_scare_quote(text)
 
 
 def _content_words(text: str) -> set[str]:

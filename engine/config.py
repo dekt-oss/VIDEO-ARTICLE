@@ -2201,6 +2201,11 @@ TEXT_PRICING: dict[str, dict[str, float]] = {
     "gemini-3.8-flash":      {"text_input_per_token": 1.50 / 1e6, "text_output_per_token": 7.50 / 1e6},
     "gemini-3.5-flash":      {"text_input_per_token": 1.50 / 1e6, "text_output_per_token": 9.00 / 1e6},
     "gemini-3.1-pro-preview": {"text_input_per_token": 2.00 / 1e6, "text_output_per_token": 12.00 / 1e6},
+    # ★ Jev(TypeSafe System One) — 판단 전용. **출력은 과금되지 않는다**(문장을 안 만든다).
+    #   0 을 적는 것은 "모르는 값"이 아니라 **확인한 값**이다 — 단가표에 아예 없으면
+    #   원장이 호출을 0원으로 적고, 그건 "안 불렀다"와 구별되지 않는다.
+    "jev-latest":       {"text_input_per_token": 0.042 / 1e6, "text_output_per_token": 0.0},
+    "jev-1.13.0":       {"text_input_per_token": 0.042 / 1e6, "text_output_per_token": 0.0},
     "claude-opus-4-8":  {"text_input_per_token": 15.00 / 1e6, "text_output_per_token": 75.00 / 1e6},
     "claude-sonnet-4-6": {"text_input_per_token": 3.00 / 1e6, "text_output_per_token": 15.00 / 1e6},
     # ★ DeepSeek 은 **시간대별로 단가가 다르다**(UTC 01–04·06–10 평일이 peak, off-peak 는 절반).
@@ -2568,6 +2573,45 @@ CANDIDATE_TEXT_TMIX_FRAMES: int = int(
 STORAGE_LIMIT_BYTES: int = int(
     os.getenv("STORAGE_LIMIT_BYTES", str(1024 ** 3)) or str(1024 ** 3))
 STORAGE_WARN_RATIO: float = float(os.getenv("STORAGE_WARN_RATIO", "0.8") or "0.8")
+
+
+# ── 판단 전용 모델 Jev (TypeSafe AI System One) — 2026-09-22 ────────────
+#
+# 무엇에 쓰나: **생성이 아니라 게이트의 애매한 판정**이다. 이 저장소의 게이트는 대부분
+#   정규식인데, 정규식으로는 못 가르는 자리가 실측으로 두 번 드러났다:
+#     ① "따옴표가 라벨 요구인가, 겁따옴표인가" — 159건에 대고 규칙을 세워 봤지만
+#        `bars for 'NASDAQ'`(라벨)과 `the 'cost' of`(겁따옴표)가 같은 형태라 못 갈랐다.
+#     ② "이 컷이 연결 컷인가" — 라우터 판정과 어긋나 기각했다.
+#   둘 다 "이 문장이 X인가?" 라는 예·아니오 질문이고, LLM 한 번 부르기엔 과한 자리다.
+#
+# 실측(2026-09-22, 저장된 photo 지시서 31건):
+#   · 같은 문장 3회 반복 시 흔들림(표준편차) 0.005~0.031 — 무작위가 아니다.
+#   · 정규식이 차단한 31건 중 **17건이 오탐**이었고 Jev 가 갈라냈다(54% 감소).
+#   · 입력 8,862 토큰 = **$0.00037**. 출력은 과금되지 않는다.
+#
+# ★★ **Jev 는 게이트를 풀기만 한다 — 새로 막지 않는다.** 이유는 실측이다:
+#     `represents 'Calorie Restriction'` → 0.42 (라벨 아님으로 판정)
+#   그 문장은 2026-09-07 에 **다섯 개가 그대로 그림에 글자로 박힌** 바로 그 문장이다.
+#   Jev 에게 최종 판정을 맡기면 그 사고가 돌아온다. 그래서 명백한 라벨 동사
+#   (labeled/titled/represents…)는 정규식이 **먼저 무조건 막고**, 동사가 없는 애매한
+#   구간만 Jev 에게 묻는다. Jev 가 틀려도 게이트가 약해지지 않는 구조다.
+#
+# ★ 꺼져 있거나 키가 없으면 **네트워크 호출이 0** 이고 판정은 종전(정규식) 그대로다.
+#   테스트는 기본 꺼짐으로 돈다 — 게이트 순수성을 지킨다.
+JEV_ENABLED: bool = _get_bool("JEV_ENABLED", False)
+JEV_BASE: str = os.getenv("JEV_BASE", "https://api.typesafe.ai/v1/systemone")
+JEV_MODEL: str = os.getenv("JEV_MODEL", "jev-latest")
+JEV_TIMEOUT_SEC: int = _get_int("JEV_TIMEOUT_SEC", 20)
+#: 이 확률 **미만**이면 "라벨이 아니다"로 보고 차단을 푼다.
+#  ★ 0.35 의 근거(위 실측 31건): 겁따옴표들이 0.04~0.15 에 몰려 있고, 사람이 봐도
+#    라벨인 것들은 0.62~0.93 이다. 그 사이가 비어 있어 문턱을 어디 두든 같은 답이 나온다.
+#    애매한 0.35~0.6 구간(`Kepler`·`Laser Downlink`·`Experience`)은 **차단을 유지**한다 —
+#    확신이 없으면 막는 쪽이 이 저장소의 기본 자세다.
+JEV_LABEL_RELEASE_BELOW: float = _get_float("JEV_LABEL_RELEASE_BELOW", 0.35)
+#: 판정에 보낼 문장 길이 상한. Jev 의 컨텍스트는 32,000 토큰이라 여유가 크지만,
+#  입력 토큰이 곧 비용이고 판정에 필요한 것은 따옴표 주변 문맥이다. 프롬프트 한 컷이
+#  실측 400~1,500자라 넉넉하다.
+JEV_STATE_MAX_CHARS: int = _get_int("JEV_STATE_MAX_CHARS", 4000)
 
 # 연속성 멀티모달 QA (계획서 Phase 3 D2) — stage 전후 그림이 같은 세계인가.
 #   ★ 기본 켜짐. 끄고 싶으면 환경에서 0 을 준다. 다만 유료 이미지 경로에서만 실제로
@@ -3730,6 +3774,7 @@ class Secrets:
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))
+    jev_api_key: str = field(default_factory=lambda: os.getenv("JEV_API_KEY", ""))
     elevenlabs_api_key: str = field(default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", ""))
     higgsfield_api_key: str = field(default_factory=lambda: os.getenv("HIGGSFIELD_API_KEY", ""))
     supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))

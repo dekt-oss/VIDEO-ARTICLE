@@ -68,6 +68,7 @@ DEFAULT_MODELS = {
     "directive": ["gemini-2.5-pro", "deepseek-v4-pro"],
     "report_directive": ["gemini-2.5-pro", "deepseek-v4-pro"],
     "factsheet": ["gemini-2.5-flash", "deepseek-flash"],
+    "scoring": ["gemini-2.5-flash", "deepseek-flash"],
 }
 
 
@@ -277,6 +278,64 @@ def _score_report(run: dict[str, Any]) -> dict[str, Any]:
     return sc
 
 
+# ─────────────────────────────────────────────────────────────
+# 5축 채점 — flash 티어에서 **호출이 가장 많은** 자리
+# ─────────────────────────────────────────────────────────────
+# ★ 왜 이 자리를 따로 재나(2026-09-22 운영자 지시): 딥시크는 제미나이보다 2.4배 느린데
+#   (지시서 실측 309초 vs 110초) **채점은 밤 21:10 크론이 혼자 돈다** — 아무도 안 기다린다.
+#   그리고 호출이 제일 많다(원장 998회 중 대부분). 느려도 되는 자리 × 호출 최다 =
+#   단가 차이가 가장 크게 작동하는 자리다.
+#
+# ★★ 채점법: **정규화기가 얼마나 고쳐야 했는가**를 센다 — Fact Sheet 하네스와 같은 규율이다.
+#   `scoring.parse_axes` 는 모델이 스키마를 어겨도 조용히 고쳐 준다(범위 밖 점수를 자르고,
+#   빠진 축을 0 으로 채우고, 없는 enum 을 기본값으로 되돌린다). 그래서 최종 산출물만 보면
+#   두 모델이 똑같아 보인다. **고친 횟수가 곧 "지시를 얼마나 안 지켰는가"** 이고 공짜로 셀 수 있다.
+#
+# ★ 축 점수 자체의 옳고 그름은 여기서 판정하지 않는다 — 그건 사람 판단이고, 심사관 모델을
+#   하나 더 끌어들이면 무엇을 재는지 흐려진다(Fact Sheet 하네스 주석과 같은 이유).
+#   대신 **두 모델이 같은 논문에 얼마나 다른 점수를 주는가**를 맥락으로 남긴다.
+def _generate_scoring(paper: dict[str, Any], model: str) -> dict[str, Any]:
+    """한 발. `score._score_one` 과 **같은 순서**로 하되 저장하지 않는다."""
+    from engine import scoring
+
+    set_text_purpose("judge")
+    t0 = time.time()
+    raw = call_json(
+        model=model,
+        system=scoring.SCORING_SYSTEM,
+        user=scoring.scoring_user_prompt(
+            paper.get("title") or "", paper.get("venue"), paper.get("abstract") or ""),
+    )
+    elapsed = time.time() - t0
+    return {"raw": raw, "axes": scoring.parse_axes(raw), "elapsed_sec": elapsed}
+
+
+_AXES = ("surprise", "explainability", "relatability", "significance")
+
+
+def _score_scoring(run: dict[str, Any]) -> dict[str, Any]:
+    """낮을수록 좋다(문제 개수). `_` 항목은 점수가 아니라 맥락."""
+    raw, axes = run["raw"], run["axes"]
+
+    missing = [a for a in _AXES if not isinstance(raw.get(a), (int, float))]
+    # 범위를 벗어난 축 — 정규화기가 잘라 준다(그래서 산출물만 보면 안 보인다).
+    out_of_range = [a for a in _AXES
+                    if isinstance(raw.get(a), (int, float)) and not 0 <= float(raw[a]) <= 10]
+    # 사람이 읽는 칸이 비었는가. 승인 화면이 이걸 보여 준다.
+    empty_text = [k for k in ("title_ko", "one_liner_ko", "rationale")
+                  if not str(raw.get(k) or "").strip()]
+    prod = raw.get("production")
+    return {
+        "축누락": len(missing),
+        "축범위벗어남": len(out_of_range),
+        "설명칸빔": len(empty_text),
+        "제작준비도누락": 0 if isinstance(prod, dict) and prod else 1,
+        # ── 맥락(점수 아님)
+        "_축점수": [axes.get(a) for a in _AXES],
+        "_한줄": str(axes.get("one_liner_ko") or "")[:34],
+    }
+
+
 def _problem_total(sc: dict[str, Any]) -> int:
     """문제 개수 항목만 합산. `_` 로 시작하는 맥락 항목은 더하지 않는다."""
     return sum(v for k, v in sc.items() if not k.startswith("_") and isinstance(v, int))
@@ -287,7 +346,7 @@ def main() -> None:
     ap.add_argument("--paper", default="", help="논문 id, 또는 report_directive 면 리포트 id")
     ap.add_argument("--job", default="directive", choices=sorted(DEFAULT_MODELS),
                     help="directive=논문 지시서(pro), report_directive=리포트 지시서(pro), "
-                         "factsheet=flash 티어 근거 추출")
+                         "factsheet=flash 티어 근거 추출, scoring=5축 채점(호출 최다)")
     ap.add_argument("--version-type", default="photo")
     ap.add_argument("--models", default="", help="비우면 그 작업의 현행 모델 + DeepSeek 대응 티어")
     ap.add_argument("--repeat", type=int, default=1)
@@ -320,6 +379,12 @@ def main() -> None:
         source = report_db.get_report_draft(args.paper)
         if not source:
             raise SystemExit(f"report_draft 없음: {args.paper} (--paper 에 report_id 를 준다)")
+    elif args.job == "scoring":
+        resp = db.client().table("papers").select(
+            "id, title, venue, abstract").eq("id", args.paper).maybe_single().execute()
+        source = (resp.data if resp else None) or {}
+        if not (source.get("abstract") or "").strip():
+            raise SystemExit(f"초록 없음: {args.paper}")
     else:
         resp = db.client().table("papers").select(
             "id, title, venue, abstract").eq("id", args.paper).maybe_single().execute()
@@ -343,6 +408,9 @@ def main() -> None:
                 elif args.job == "report_directive":
                     run = _generate_report(source, args.version_type, model)
                     keep, sc = run["directive"], _score_report(run)
+                elif args.job == "scoring":
+                    run = _generate_scoring(source, model)
+                    keep, sc = run["raw"], _score_scoring(run)
                 else:
                     run = _generate_factsheet(source, model)
                     keep, sc = run["raw"], _score_factsheet(run, source)
@@ -353,7 +421,8 @@ def main() -> None:
                 sc["_문제합"] = _problem_total(sc)
                 results.append(sc)
                 extra = (f"컷 {sc['_컷수']:>2}" if args.job.endswith("directive")
-                         else f"claim {sc['_claim수']:>2}")
+                         else (f"축 {sc['_축점수']}" if args.job == "scoring"
+                               else f"claim {sc['_claim수']:>2}"))
                 print(f"    문제합 {sc['_문제합']:>3}  {extra}  {sc['_초']}s")
             except Exception as exc:     # noqa: BLE001 — 한 팔이 죽어도 다른 팔은 본다
                 print(f"    실패: {type(exc).__name__}: {str(exc)[:200]}")
