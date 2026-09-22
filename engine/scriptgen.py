@@ -436,6 +436,9 @@ def generate(
         user=script_user_prompt(fact_sheet, instruction),
         # content_plan·hook_candidates·씬별 근거 필드로 출력이 약 900토큰 늘었다. 6144 로 두면
         # 잘림 → JSON 파싱 실패 → 재시도 1회 → 하드 에러(파이프라인 정지)라 소프트 저하가 아니다.
-        max_tokens=8192,
+        # ★ 2026-09-22: 8192 하드코딩을 config 로 뺐다. 원장 실측에서 제미나이도 최대
+        #   5,955(옛 상한의 73%)를 썼고, 딥시크는 같은 일에 2.4배를 쓴다 — 붙이는 순간 잘린다.
+        #   근거는 config.LLM_PAPER_SCRIPT_MAX_TOKENS 주석에 있다.
+        max_tokens=config.LLM_PAPER_SCRIPT_MAX_TOKENS,
     )
     return normalize_script(obj, fact_sheet)

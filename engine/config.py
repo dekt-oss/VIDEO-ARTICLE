@@ -171,6 +171,22 @@ LLM_MAX_TOKENS: int = 8192
 #   Opus 는 훨씬 큰 출력을 지원하므로 여유를 둔다 — 상한은 사고를 막는 안전장치이지
 #   비용 조절 수단이 아니다(출력 토큰은 실제 쓴 만큼만 과금된다).
 LLM_SCRIPT_MAX_TOKENS: int = _get_int("LLM_SCRIPT_MAX_TOKENS", 16384)
+# 논문 대본 전용 출력 상한. ★ `scriptgen.py:439` 에 **8192 로 박혀 있던 것**을 꺼낸다
+#   (매직넘버 금지 — config 밖에 있으면 env 로 못 바꾸고 근거도 안 남는다).
+#   ★ 값을 32768 로 올리는 근거(2026-09-22, 원장 실측):
+#       gemini-2.5-flash 의 논문 대본 출력 최대 **5,955** = 옛 상한 8,192 의 **73%**
+#     제미나이조차 4분의 3을 쓴다. 그리고 같은 일에 **DeepSeek 은 2.4배를 쓴다**
+#     (지시서 실측: 제미나이 12,738 vs 딥시크 30,085). 5,955 × 2.4 ≈ 14,300 —
+#     옛 상한으로는 **딥시크를 붙이는 순간 확실히 잘린다.**
+#   ★★ 이 저장소는 그 사고를 이미 두 번 겪었고 두 번 다 "모델이 못한다"고 오판했다:
+#     deepseek-flash 가 지시서에서 3/3 절단(32,768 정각), Fact Sheet 에서 8,192 정각.
+#     천장이 공급자를 떨어뜨린 것을 그 공급자의 실력으로 읽으면 측정이 거짓말을 한다.
+LLM_PAPER_SCRIPT_MAX_TOKENS: int = _get_int("LLM_PAPER_SCRIPT_MAX_TOKENS", 32768)
+# 자기검증 전용 출력 상한. ★ `selfcheck.py:239` 에 **6144 로 박혀 있던 것**을 꺼낸다.
+#   실측: gemini-2.5-flash 최대 3,016(상한의 49%). × 2.4 ≈ 7,240 — 옛 상한을 넘는다.
+#   2026-09-10 에 `korean_natural`·`awkward_spans`·`fluency_issues` 축이 같은 호출에
+#   얹히면서 출력이 더 두꺼워졌다(§대본 한국어 검수). 여유를 둔다.
+LLM_SELFCHECK_MAX_TOKENS: int = _get_int("LLM_SELFCHECK_MAX_TOKENS", 16384)
 # 지시서 생성 전용 출력 상한. ★ 코드에 8192 로 박혀 있던 것을 꺼낸다(매직넘버 금지).
 #   실측(2026-08-29): 11컷 실사형에서 **Anthropic 경로만** 잘렸다. Gemini pro 는
 #   `max(max_tokens, GEMINI_PRO_MAX_OUTPUT_TOKENS)` 로 자체 하한을 받아 살아남는데,
@@ -1014,6 +1030,12 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_keyword_is_a_sentence",
     "photo_keyword_repeats_narration",
     "photo_pointer_zone_unknown",
+    # ★★ 2026-09-21 — 리포트 모델이 `visual_sequences` 를 안 쓰면 코드 폴백이 돈다. 그 경로는
+    #   컷이 무엇을 그리든 2번째 stage 부터 무조건 CONTINUE_WORLD 를 찍는다 — 운영자가 통째로
+    #   폐기한 "네 칸 비교표"와 "파이프가 화면에 안 나온" 편이 거기서 나왔다.
+    #   되물으면 되는 종류다: A/B 9벌에서 세 모델 **모두 3/3** 으로 썼다(어려운 요구가 아니다).
+    #   그런데 운영 경로의 한 회차가 빠뜨렸고, 폴백은 조용해서 승인 화면에 아무것도 안 떴다.
+    "report_sequences_from_code_fallback",
 )
 
 #: 역할 라벨이 **명백히 거짓인지**만 보는 필요조건표(의미 분류기가 아니다).

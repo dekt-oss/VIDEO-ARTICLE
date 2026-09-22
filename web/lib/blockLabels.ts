@@ -122,6 +122,9 @@ export const WARNING_LABEL: Record<string, string> = {
   photo_keyword_is_a_sentence: "키워드 카드가 문장임(카드는 낱말 하나여야 한다)",
   photo_keyword_repeats_narration: "키워드 카드가 나레이션을 그대로 옮겨 적음(같은 말을 두 번)",
   photo_pointer_zone_unknown: "화살표가 가리킬 구역 이름이 틀림(화살표가 사라진다)",
+  report_sequences_from_code_fallback:
+    "모델이 시각 시퀀스를 안 써서 코드가 대신 만듦 — 컷 내용과 무관하게 이어받기가 " +
+    "찍히므로 선언한 도해가 화면에 안 나올 수 있습니다(재생성 권장)",
   photo_side_by_side_layout:
     "한 장면 안에서 왼쪽·오른쪽으로 갈라 견줌 — 한 장면이면 정상이고, 둘을 견주려고 " +
     "구도를 만든 것이면 컷을 나누는 편이 낫습니다(눈으로 확인하세요)",
