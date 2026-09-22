@@ -34,9 +34,21 @@ def _cut(no, prompt):
     return {"cut_no": no, "visual_prompt": prompt}
 
 
-# ── ① 기본은 꺼짐 — 테스트·로컬은 네트워크 0 ──────────────────────
-def test_it_is_off_by_default_so_the_gate_stays_pure():
-    assert config.JEV_ENABLED is False
+# ── ① 배포 기본은 꺼짐 · 테스트는 **무조건** 네트워크 0 ────────────
+#
+# ★ 2026-09-22 에 여기가 한 번 깨졌다. 운영자가 Jev 를 켜라고 해서 `.env` 에
+#   `JEV_ENABLED=1` 을 넣었더니 `config` 가 그걸 읽어 **테스트 스위트가 라이브 API 를
+#   때리기 시작했다.** 그래서 둘을 갈랐다:
+#     · 배포 기본값(코드에 적힌 값)은 여전히 꺼짐인가 → 소스를 읽어 확인한다
+#     · 테스트가 실제로 부르지 않는가 → conftest 가 `decide.enabled` 를 막는다
+def test_the_shipped_default_is_off_so_a_fresh_checkout_calls_nothing():
+    src = (ROOT / "engine" / "config.py").read_text(encoding="utf-8")
+    assert '_get_bool("JEV_ENABLED", False)' in src, \
+        "배포 기본값이 켜짐이 되면, 키만 있으면 아무 데서나 호출이 나간다"
+
+
+def test_tests_never_reach_the_live_judge(monkeypatch):
+    """운영자가 .env 로 켜 두어도 테스트는 네트워크를 안 탄다(conftest 가 막는다)."""
     assert decide.enabled() is False
 
 
