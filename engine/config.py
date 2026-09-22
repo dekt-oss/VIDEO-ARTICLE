@@ -141,9 +141,35 @@ BUZZ_SCORE_MAX: float = 10.0
 # ─────────────────────────────────────────────────────────────
 DAILY_BATCH_SIZE: int = _get_int("DAILY_BATCH_SIZE", 20)
 SORT_MODES: tuple[str, ...] = ("fun", "importance", "golden")  # 재미 / 중요 / 황금(곱)
+
+# 한 바퀴에 각 정렬이 가져가는 자리 수. 목록 **순서**가 아니라 **구성**을 정한다
+# (화면은 이미 황금순으로 보여 준다 — `web/components/CandidateList.tsx`).
+#
+# ★ 왜 균등이 아닌가(2026-09-22 실측, `scripts/score_axis_audit.py`).
+#   사람 판정 256건에 대고 재 보니 세 정렬의 성적이 다르다:
+#       golden 이 데려온 후보의 낙점률 20.8%(71/342)
+#       fun        13.3%(53/399)   ·   importance 12.0%(48/399)
+#   낙점/탈락 판별력도 황금지수 AUC 0.695 로 재미 0.623·중요 0.609 보다 높다.
+#   그런데 균등 라운드로빈이라 **가장 잘 맞히는 정렬이 자리의 1/3만** 받고 있었다.
+#
+# ★ 셋을 유지하는 이유: 황금은 곱이라 한쪽이 낮으면 통째로 깎인다. "재미는 없지만
+#   중요한" 논문은 황금 단독 정렬에서 영영 안 올라온다 — 다양성의 값을 0으로 만들지 않는다.
+BATCH_MODE_SLOTS: dict[str, int] = {"golden": 2, "fun": 1, "importance": 1}
 # 신선도: 이전 후보 리스트(과거 daily_batch)에 오른 논문은 다음 리스트 후보에서 제외.
 # 매일 선별하되 날마다 같은 논문이 반복 등장하는 것을 막는다. env 로 끌 수 있다.
 BATCH_EXCLUDE_PRIOR: bool = os.getenv("BATCH_EXCLUDE_PRIOR", "1").strip() not in ("0", "false", "False", "")
+
+# 후보(그리고 채점) 대상의 나이 상한. **오늘 새로 생긴 규칙이 아니라, 원래 있던 것을
+# 글로 적은 것이다.**
+#
+# ★★ 그동안 이 창은 코드에 없었고 **버그가 대신 하고 있었다**(2026-09-22 실측).
+#   `fetch_papers_to_score` 가 조건 없는 select 로 papers 를 읽었고 PostgREST 가 그것을
+#   1,000행에서 잘랐다. 정렬이 `published_date desc` 라 결과적으로 "가장 최근 1,000편"만
+#   후보가 됐고, 그 경계가 마침 **약 21일**이었다(6,016편 중 1,000번째 = 21일 전).
+#   잘림을 고치면 후보 풀이 2007년까지 열린다 — 그래서 같은 창을 **명시로** 둔다.
+#
+# ★ 이 창은 채점 대상에도 건다. 화면에 못 올라갈 논문을 채점하는 것은 그냥 돈이다.
+BATCH_MAX_AGE_DAYS: int = _get_int("BATCH_MAX_AGE_DAYS", 21)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -315,6 +341,10 @@ HTTP_TIMEOUT_SEC: float = 30.0
 LLM_HTTP_TIMEOUT_SEC: float = float(os.getenv("LLM_HTTP_TIMEOUT_SEC", "180"))
 HTTP_MAX_RETRIES: int = 4                 # API 5xx/타임아웃 지수 백오프
 HTTP_BACKOFF_BASE_SEC: float = 2.0
+
+# PostgREST 가 조건 없는 select 를 조용히 자르는 지점. 이 값으로 페이징한다
+# (`db.select_all`). 1,000 은 서버 기본값이라 **올려도 소용없다** — 나눠 읽는 수밖에 없다.
+DB_PAGE_ROWS: int = 1000
 
 
 # ─────────────────────────────────────────────────────────────
