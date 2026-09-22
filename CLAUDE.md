@@ -52,6 +52,19 @@
     `select()` 는 **1,000행에서 조용히 잘린다**(→ range 페이징). 호출부가 error 를 버려서
     실패가 "데이터 없음"으로 보였다(실측: `/scored` 가 프로덕션에서 1,000행 전부 "(제목 없음)").
     **새 조회를 쓸 때 id 목록은 반드시 `selectIn`, 전체 목록은 `selectAll` 을 쓴다.**
+    **정정(2026-09-22) — 엔진 쪽은 그때 안 막혔고, 1년 가까이 돈이 새고 있었다.**
+    같은 1,000행 잘림이 `engine/db.py` 에 그대로 있었다. 실측 시점 papers 6,016행 ·
+    scores 4,650행 · daily_batch 1,140행이 전부 1,000행으로 보였고, 그래서
+    `fetch_papers_to_score` 의 "이미 채점된 것" 집합이 1,000개뿐이라
+    **이미 채점한 3,650편이 '미채점'으로 보여 실행마다 다시 채점됐다.** 저장된 채점의
+    7.6%(353행)가 그 과정에서 `429 from gemini` 로 0점이 된 것이고, 0점은 영영 후보에
+    못 오르는데 화면에서는 그냥 점수 낮은 논문으로 보인다(사장님이 그중 하나를 낙점한
+    기록이 남아 있다). **엔진에서 조건 없는 `.select()` 를 쓰지 마라 — `db.select_all`
+    을 쓴다.** 곁가지 둘이 함께 드러났다: ⓐ 잘림이 우연히 **나이 창(≈21일)** 노릇을 하고
+    있어서, 고치면 후보 풀이 2007년까지 열린다 → `config.BATCH_MAX_AGE_DAYS` 로 명시했다.
+    ⓑ 사고(429·타임아웃)로 실패한 채점은 이제 **행을 만들지 않는다** — 다음 실행이 다시
+    집어 간다(`score.TransientScoringError`). 옛 실패 행은 `python -m engine.score
+    --retry-failed` 로만 되살린다(돈이 든다).
     ② 논문 라인 실사형(photo)이 계획대로 안 나오던 원인은 **엣지 함수**였다 —
     지시서를 실제로 만드는 것은 `supabase/functions/generate-directive` 인데 거기 photo 계약이
     한 줄 스텁이었고 컷의 `visual_role` 을 버렸다(→ 3D 도해 컷 소멸). 계약 전문·역할 필드·
@@ -230,6 +243,10 @@ python -m engine.collect      # 수집 (주 수집 + 플래그십 created_date �
 python -m engine.collect backfill  # 플래그십 초기 백필 1회(과거 누락 구제, docs/deviation-collection-coverage-v2.md)
 python -m engine.diagnose <doi>    # 누락 DOI 원인 진단(등록지연/매핑오류/유형탈락)
 python -m engine.score        # 5축 채점 + daily_batch (+ 채점 시 title_ko 폴백)
+                              #   대상 = 미채점 ∩ 최근 BATCH_MAX_AGE_DAYS(21)일.
+                              #   사고(429/타임아웃)로 실패한 것은 저장하지 않고 다음 실행에 넘긴다.
+python -m engine.score --retry-failed   # 옛 '채점 실패' 0점 행을 다시 채점(비용 발생)
+python -m scripts.score_axis_audit      # 채점이 사람 판정을 맞히나 — 읽기 전용·0원
 python -m engine.translate    # title_ko 백필 (배치/낙점 논문 중 한글 제목 빈 것만, 멱등)
 python -m engine.paper_source <paper_id>   # 낙점 논문 원문 확보·보관(paper_sources, 0041)
                                            #   체인: arXiv→OpenAlex OA→PMC→Unpaywall. 멱등(doc_hash).

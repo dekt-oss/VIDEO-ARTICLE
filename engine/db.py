@@ -25,6 +25,41 @@ def client() -> "Client":
     return create_client(config.SECRETS.supabase_url, config.SECRETS.supabase_service_key)
 
 
+def select_all(table: str, cols: str, *, order: str | None = None,
+               desc: bool = False, where: Any = None) -> list[dict[str, Any]]:
+    """표 전체를 **끝까지** 읽는다. 조건 없는 `.select()` 를 직접 쓰지 마라.
+
+    ★★ 왜 이 함수가 있나(2026-09-22 실측). PostgREST 는 조건 없는 select 를
+      **1,000행에서 조용히 자른다.** 오류도 경고도 없고, 호출부에는 "그게 전부"로 보인다.
+      웹 쪽은 이미 막아 뒀는데(`web/lib/supabase/chunked.ts`) **엔진 쪽은 안 막혀 있었다.**
+
+      그 사이에 무슨 일이 있었냐면:
+        · `papers` 6,016행 → 1,000행만 보임
+        · `scores` 4,650행 → 1,000행만 보임
+        → `fetch_papers_to_score` 의 "이미 채점된 것" 집합이 1,000개뿐이라
+          **이미 채점한 3,650편이 '미채점'으로 보여 매 실행마다 다시 채점됐다.**
+          그게 곧 gemini 429 의 진짜 원인이고(저장된 채점 4,650행 중 353행이 429 실패),
+          "지시서 한 장에 돈이 왜 이렇게 드냐"의 답이기도 하다.
+        · `daily_batch` 1,140행 → 신선도 필터가 옛 배치를 못 봐서 같은 논문이 재등장.
+
+    ★ 표가 1,000행을 넘는 날 조용히 틀리기 시작한다 — 지금 작은 표에도 이걸 쓴다.
+      "아직 작으니 괜찮다"는 판단은 **틀릴 날짜만 미루는 것**이다.
+    """
+    out: list[dict[str, Any]] = []
+    off = 0
+    while True:
+        q = client().table(table).select(cols)
+        if where is not None:
+            q = where(q)
+        if order:
+            q = q.order(order, desc=desc)
+        rows = (q.range(off, off + config.DB_PAGE_ROWS - 1).execute().data or [])
+        out.extend(rows)
+        if len(rows) < config.DB_PAGE_ROWS:
+            return out
+        off += config.DB_PAGE_ROWS
+
+
 def existing_external_ids(external_ids: Iterable[str]) -> set[str]:
     """이미 papers 에 존재하는 external_id 집합(재탕 방지용 사전 조회)."""
     ids = [e for e in external_ids if e]
@@ -99,19 +134,34 @@ def upsert_unresolved_buzz(items: list[dict[str, Any]]) -> None:
     log.info("미매칭 화제성 큐: %d건", len(items))
 
 
-def fetch_papers_to_score(only_unscored: bool = True, limit: int | None = None) -> list[dict[str, Any]]:
-    """채점 대상 papers 조회. only_unscored 면 scores 에 없는 것만."""
-    resp = client().table("papers").select(
-        "id, external_id, title, abstract, venue, buzz_raw, published_date"
-    ).order("published_date", desc=True).execute()
-    papers = resp.data or []
+def fetch_papers_to_score(only_unscored: bool = True, limit: int | None = None,
+                          retry_failed: bool = False) -> list[dict[str, Any]]:
+    """채점 대상 papers 조회. only_unscored 면 scores 에 없는 것만.
+
+    ★ `retry_failed` 는 **채점이 실패해 0점으로 저장된 행**을 대상에 다시 넣는다.
+      옛 행 353개(전부 gemini 429)가 그 상태로 남아 있고, 0점은 영영 후보에 못 오른다.
+      돈이 드는 재채점이라 기본값은 False 다 — 운영자가 명시로 켠다.
+    """
+    papers = select_all(
+        "papers", "id, external_id, title, abstract, venue, buzz_raw, published_date",
+        order="published_date", desc=True)
     if only_unscored:
-        scored = client().table("scores").select("paper_id").execute()
-        scored_ids = {r["paper_id"] for r in (scored.data or [])}
-        papers = [p for p in papers if p["id"] not in scored_ids]
+        scored = select_all("scores", "paper_id, red_flag")
+        done = {r["paper_id"] for r in scored
+                if not (retry_failed and scoring_failed(r.get("red_flag")))}
+        papers = [p for p in papers if p["id"] not in done]
     if limit:
         papers = papers[:limit]
     return papers
+
+
+def scoring_failed(red_flag: Any) -> bool:
+    """이 채점 행이 **모델의 판정이 아니라 사고**인가.
+
+    `scoring.zero_axes` 가 red_flag 에 `[채점 실패: …]` 를 남긴다. 그 표식이 정본이다 —
+    0점 자체로는 "모델이 정말 0을 줬다"와 구별되지 않는다.
+    """
+    return str(red_flag or "").lstrip().startswith("[채점 실패")
 
 
 def fetch_scores_for_papers(paper_ids: Iterable[str]) -> list[dict[str, Any]]:
@@ -141,10 +191,10 @@ def fetch_papers_needing_title_ko(limit: int | None = None) -> list[dict[str, An
     반환: [{"id": paper_uuid, "title": 원제}]. 표시 대상만 겨냥해 불필요한 번역 비용을 막는다.
     """
     # 표시 대상 후보 = 배치에 편성됐거나 사람이 결정(낙점/후보/탈락)한 논문.
-    batch = client().table("daily_batch").select("paper_id").execute()
-    decs = client().table("decisions").select("paper_id").execute()
-    candidate_ids = {r["paper_id"] for r in (batch.data or [])}
-    candidate_ids |= {r["paper_id"] for r in (decs.data or [])}
+    batch = select_all("daily_batch", "paper_id")
+    decs = select_all("decisions", "paper_id")
+    candidate_ids = {r["paper_id"] for r in batch}
+    candidate_ids |= {r["paper_id"] for r in decs}
     if not candidate_ids:
         return []
 
@@ -175,11 +225,9 @@ def fetch_papers_needing_title_ko(limit: int | None = None) -> list[dict[str, An
 
 def recent_batch_dates(limit: int = 7) -> list[str]:
     """최근 배치 날짜(내림차순) 목록."""
-    resp = client().table("daily_batch").select("batch_date").order(
-        "batch_date", desc=True
-    ).execute()
+    rows = select_all("daily_batch", "batch_date", order="batch_date", desc=True)
     seen: list[str] = []
-    for r in (resp.data or []):
+    for r in rows:
         d = r["batch_date"]
         if d not in seen:
             seen.append(d)
@@ -211,8 +259,9 @@ def fetch_prior_batch_paper_ids(before_date: str) -> set[str]:
     '이전 후보 리스트에 오른 논문은 다음 리스트에서 제외'(신선도)를 위해 쓴다.
     같은 날 재실행은 그날 배치를 재생성하므로 before_date=오늘 로 호출해 오늘 것은 제외 대상에서 뺀다(멱등).
     """
-    resp = client().table("daily_batch").select("paper_id").lt("batch_date", before_date).execute()
-    return {r["paper_id"] for r in (resp.data or [])}
+    rows = select_all("daily_batch", "paper_id",
+                      where=lambda q: q.lt("batch_date", before_date))
+    return {r["paper_id"] for r in rows}
 
 
 def replace_daily_batch(batch_date: str, rows: list[dict[str, Any]]) -> int:

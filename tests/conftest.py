@@ -62,3 +62,24 @@ def _no_ledger_writes_from_tests(monkeypatch):
     monkeypatch.setattr(db, "real_insert_generation_attempt",
                         db.insert_generation_attempt, raising=False)
     monkeypatch.setattr(db, "insert_generation_attempt", _blocked)
+
+
+@pytest.fixture(autouse=True)
+def _no_live_judge_calls_from_tests(monkeypatch):
+    """★ 테스트가 **판정 모델(Jev)을 실제로 부르지 못하게** 막는다 (2026-09-22).
+
+    무슨 일이 있었나: 운영자가 Jev 를 켜라고 해서 `.env` 에 `JEV_ENABLED=1` 을 넣었다.
+    `config` 가 `.env` 를 읽으므로 **그 순간 테스트 스위트가 라이브 API 를 때리기
+    시작했다** — 실제로 `tests/test_jev_only_relaxes.py` 두 건이 깨지면서 드러났고,
+    비용 원장에 쓰려다 위 가드에 걸린 경고가 로그에 남았다.
+
+    위 원장 사고와 **같은 종류**다: 운영 설정이 테스트 결과를 바꾸면 테스트는
+    "코드가 맞나"가 아니라 "오늘 .env 가 어떤가"를 재게 된다. 게다가 느리고 돈이 든다.
+
+    ★ 막는 것은 `decide.enabled()` 다 — config 값이 아니라 **문**이다. 그래야
+      `config.JEV_ENABLED` 를 읽는 테스트(기본값 검사)는 그대로 살아 있고,
+      켜진 상태를 보고 싶은 테스트는 `decide.enabled` 를 스스로 덮어써서 볼 수 있다.
+    """
+    from engine import decide
+
+    monkeypatch.setattr(decide, "enabled", lambda: False)
