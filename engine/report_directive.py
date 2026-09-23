@@ -22,6 +22,7 @@ from . import equity_visual
 from . import equity_contract
 from . import report_reasoning
 from . import directive as dv
+from . import visual_router
 from .llm import call_json
 from . import script_revision
 from .util import log
@@ -365,7 +366,13 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     # ★ 컷 상한을 명시적으로 CUT_MAX_SEC(8) 로 고정한다. 논문 라인은 근거밀도 개정으로
     #   종류별 완화(10/12초)를 받았지만, 이 프롬프트의 계약은 여전히 3~8초다(§2 위 스키마).
     #   빠뜨리면 논문 전용 완화가 범위 밖인 금융 라인으로 새어 들어온다.
-    d = dv.normalize_directive(obj, version_type, cut_max_sec=config.CUT_MAX_SEC)
+    # ★★ 원문 확보 수준을 **넘긴다**(2026-09-23 라이브 실측). 안 넘기면 정규화기가 "none" 으로
+    #   보고 원문 전문이 있는 리포트에서도 LITERAL_OBSERVATION 을 전부 막았다 — 그러면
+    #   되먹임이 모델에게 "실제 장면을 그리지 마라"고 시키고, 실사형이 도해로만 남는다.
+    #   Fact Sheet 전체는 아직 안 넘긴다(논문 모양 검사 6개가 리포트 모양에 맞는지 안 쟀다).
+    d = dv.normalize_directive(
+        obj, version_type, cut_max_sec=config.CUT_MAX_SEC,
+        source_depth=visual_router.source_depth_of(draft_row.get("fact_sheet")))
     # ★ 화면 투영에서 드러난 것(단계 역순·화면에 못 나간 단계)을 **기존 경고 키에 합류**
     #   시킨다. 승인 화면과 라우트가 이미 mode_warnings 를 보므로 새 표면을 만들지 않는다.
     #   차단하지 않는 이유: 순서가 어긋나도 렌더는 돌아간다(세계가 덜 이어질 뿐이다).
