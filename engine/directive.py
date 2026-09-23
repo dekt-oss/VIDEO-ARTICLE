@@ -1861,6 +1861,7 @@ def normalize_directive(
     content_plan: dict[str, Any] | None = None,
     cut_max_sec: int | None = None,
     source_text: str = "",
+    source_depth: str | None = None,
 ) -> dict[str, Any]:
     """LLM 출력 → 명세 §4 지시서 shape 보장. visual_type 은 버전에서 강제,
     total_estimated_sec 은 컷 합으로 재계산(모델 자기보고 불신).
@@ -1868,6 +1869,15 @@ def normalize_directive(
     `fact_sheet`·`content_plan` 을 주면 Claim 대조·모드 예산·근거 커버리지까지 강제한다.
     안 주면 기존 동작(전역 캡)으로 폴백 — 레거시 지시서가 그대로 정규화된다.
 
+    `source_depth` 를 주면 원문 확보 수준을 **그 값으로** 본다(fact_sheet 에서 읽지 않는다).
+      ★★ 리포트 라인이 쓴다(2026-09-23 실측). 리포트는 이 함수에 fact_sheet 를 넘기지
+        않는다 — 논문 모양의 Claim 대조·자기검증이 리포트 Fact Sheet 에는 맞지 않아서다.
+        그러자 `source_depth_of(None)` = "none" 이 됐고, 원문 전문(full_text)이 있는
+        리포트에서도 LITERAL_OBSERVATION 이 전부 `vseq_literal_without_source` 로 막혔다.
+        #46 이 `source_depth_of` 를 리포트 모양도 읽게 고쳤지만, **이 함수에 닿지 않아**
+        운영 경로에서는 그대로였다(라이브 실행 첫 시도에서 3건 차단으로 확인).
+        Fact Sheet 전체를 넘기는 것은 다른 게이트 6개를 리포트 모양에 대고 켜는 일이라
+        따로 잰 뒤에 한다 — 지금은 깊이 하나만 넘긴다.
     `cut_max_sec` 를 주면 컷 길이 상한을 그 값으로 **평탄하게** 건다(종류별 규칙 미적용).
     금융 라인(engine/report_directive.py)이 자기 프롬프트의 3~8초 계약을 유지하려고 쓴다 —
     논문 전용 완화(10/12초)가 범위 밖 라인으로 새지 않게 하는 장치다.
@@ -2112,7 +2122,7 @@ def normalize_directive(
                                               "vseq_lineage_appear_inserted:"
                                               + "; ".join(lineage_fixed[:6])]))
     vseq: dict[str, Any] = {}
-    depth = visual_router.source_depth_of(fact_sheet)
+    depth = source_depth or visual_router.source_depth_of(fact_sheet)
     routed = visual_router.route_all(cuts, source_depth=depth, sequences=sequences)
 
     # ★ 라우팅은 **코드가 정한다**(v3 Phase 2). LLM 은 beat 라벨만 달았다.
