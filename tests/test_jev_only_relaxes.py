@@ -125,3 +125,26 @@ def test_the_call_is_priced_so_the_ledger_never_says_zero_by_accident():
     # 출력 0 은 **확인한 값**이다(문장을 만들지 않는다) — 모르는 값이 아니다.
     assert config.TEXT_PRICING["jev-latest"]["text_output_per_token"] == 0.0
     assert config.TEXT_PRICING["jev-latest"]["text_input_per_token"] > 0
+
+
+# ── ⑥ 같은 문장은 한 번만 묻는다 (2026-09-23 리뷰) ─────────────────
+def test_one_field_with_several_quotes_is_asked_once(monkeypatch):
+    """Jev 에게 가는 것은 따옴표가 아니라 **문장 전체**다 — 따옴표가 셋이면 같은 질문을
+    세 번 보내고 있었다(같은 답에 요금·지연 세 배)."""
+    calls = []
+    monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(decide, "quoted_label_is_scare_quote",
+                        lambda t: calls.append(t) or True)
+    text = "the 'cost' and the 'speed' of the 'model' both shrink"
+    assert pc.quoted_label_cuts([_cut(1, text)]) == []
+    assert calls == [text], f"같은 문장을 {len(calls)}번 물었다"
+
+
+def test_the_memo_does_not_leak_across_calls(monkeypatch):
+    """기억은 **한 번의 검사 안에서만**. 전역 캐시면 다음 지시서가 옛 답을 받는다."""
+    monkeypatch.setattr(decide, "enabled", lambda: True)
+    text = "the 'cost' of the model shrinks"
+    monkeypatch.setattr(decide, "quoted_label_is_scare_quote", lambda _t: True)
+    assert pc.quoted_label_cuts([_cut(1, text)]) == []
+    monkeypatch.setattr(decide, "quoted_label_is_scare_quote", lambda _t: False)
+    assert pc.quoted_label_cuts([_cut(1, text)]), "앞 호출의 답이 새어 들어왔다"

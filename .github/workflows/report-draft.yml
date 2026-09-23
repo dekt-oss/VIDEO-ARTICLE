@@ -52,6 +52,11 @@ jobs:
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # ★ 판정 전용 모델 Jev — 실사형 따옴표 게이트의 오탐만 푼다(engine/decide.py).
+      #   지시서를 만드는 **모든** 워크플로에 같이 실어야 한다 — 한 곳만 빠지면 같은 지시서가
+      #   어느 버튼·크론으로 만들어졌느냐에 따라 다른 판정을 받는다(tests/test_workflow_wiring.py).
+      JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+      JEV_ENABLED: "1"
       TIMEZONE: "Asia/Seoul"
       # ★ Fact Sheet 추출이 ARIA 에서 리포트 **원문 전문**을 불러 프롬프트에 넣는다
       #   (engine/report_source.py · 작업지시서 영상엔진품질 v3 §4-2). 이 값이 비면 엔진이

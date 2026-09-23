@@ -94,6 +94,11 @@ jobs:
           #   deepseek-v4-pro 로 옮겨 갈 때 이 경로가 조용히 딸려 갔다 — 재지 않은 경로이고,
           #   여기 출력 상한은 LLM_SCRIPT_MAX_TOKENS(16,384)라 거의 확실히 절단된다.
           MODEL_REPORT_DIRECTIVE: ${{ vars.MODEL_REPORT_DIRECTIVE || 'gemini-3.8-flash' }}
+          # ★ 판정 전용 모델 Jev — 실사형 따옴표 게이트의 오탐만 푼다(engine/decide.py).
+          #   지시서를 만드는 **모든** 워크플로에 같이 실어야 한다 — 한 곳만 빠지면 같은 지시서가
+          #   어느 버튼·크론으로 만들어졌느냐에 따라 다른 판정을 받는다(tests/test_workflow_wiring.py).
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          JEV_ENABLED: "1"
         run: python -m engine.report_directive
 
       # 렌더(ffmpeg) — mode=render|poll 이고 렌더 잡이 있을 때.

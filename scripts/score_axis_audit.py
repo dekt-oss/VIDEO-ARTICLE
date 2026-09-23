@@ -25,7 +25,9 @@ Jev 그림자 평가(`scripts/jev_shadow.py`)가 부수적으로 더 큰 것을 
    ★★ 여기서 함정이 하나 있고, 이 스크립트를 쓰면서 걸렸다: `daily_batch.rank` 는
      **품질 순서가 아니다.** `batch.build_batch_rows` 가 재미·중요·황금 **세 정렬의
      1등을 번갈아 뽑아** 붙인 자리 번호라, 1위=재미 1등 / 2위=중요 1등 / 3위=황금 1등이다.
-     대시보드는 그 번호 순으로 세로로 내려 보여 준다(`web/lib/queries.ts`).
+     ※ 정정(2026-09-23): 대시보드는 이 번호를 **안 쓴다** — `CandidateList` 가 받자마자
+       황금순(기본값)으로 다시 줄세운다. 처음엔 "화면이 그 번호 순"이라고 적었는데 틀렸다.
+       그러니 rank 가 가르는 것은 화면 순서가 아니라 **어떤 20편이 목록에 오르는가**뿐이다.
      그래서 `rank` 로 잰 값은 "순서가 쓸모 있나"의 답이 아니다 —
      **그날 후보를 지수로 다시 줄세운 뒤** 낙점이 어디 있었는지를 따로 잰다.
 
@@ -67,14 +69,13 @@ POSITIVE = ("picked", "shortlisted")
 # 읽기 — CLAUDE.md 의 두 상한을 둘 다 피한다
 #   `.in_()` 은 id 350~400 개에서 죽고, `select()` 는 1,000 행에서 조용히 잘린다.
 # ─────────────────────────────────────────────────────────────
-def _all(table: str, cols: str, page: int = 1000) -> list[dict[str, Any]]:
-    c, out, off = db.client(), [], 0
-    while True:
-        rows = (c.table(table).select(cols).range(off, off + page - 1).execute().data or [])
-        out.extend(rows)
-        if len(rows) < page:
-            return out
-        off += page
+#: 표별 유일 정렬 키 — 페이지를 나눠 읽을 때 순서를 고정한다(`db.select_all` 참조).
+_KEYS = {"decisions": ("paper_id",), "daily_batch": ("batch_date", "paper_id"),
+         "scores": ("paper_id",)}
+
+
+def _all(table: str, cols: str) -> list[dict[str, Any]]:
+    return db.select_all(table, cols, key=_KEYS[table])
 
 
 def _by_ids(table: str, cols: str, ids: list[str], key: str = "id") -> dict[str, dict]:

@@ -1091,6 +1091,11 @@ def quoted_label_cuts(cuts: list[dict[str, Any]]) -> list[str]:
       요구가 없어도 결과는 같으므로 검사가 따로 있어야 한다.
     """
     out: list[str] = []
+    # ★ 같은 문장은 **한 번만** 묻는다(2026-09-23 리뷰). Jev 에게 보내는 것은 따옴표 하나가
+    #   아니라 그 칸의 **문장 전체**라서, 한 칸에 따옴표가 셋이면 똑같은 질문을 세 번 보냈다
+    #   (같은 답을 받으려고 요금·지연을 세 배로 낸 것). 이 호출 안에서만 기억한다 —
+    #   프로세스 전역 캐시로 두면 테스트가 같은 문장에 다른 답을 주입하는 시나리오가 깨진다.
+    asked: dict[str, bool] = {}
     for c in cuts:
         if not isinstance(c, dict):
             continue
@@ -1103,7 +1108,7 @@ def quoted_label_cuts(cuts: list[dict[str, Any]]) -> list[str]:
         found: dict[str, list[str]] = {}
         for field, text in _image_text_fields(c):
             hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)
-                           if not _quote_is_only_a_scare_quote(text, m)})
+                           if not _quote_is_only_a_scare_quote(text, m, asked)})
             if hits:
                 found.setdefault(field, []).extend(hits)
         if found:
@@ -1123,7 +1128,8 @@ _LABEL_VERB = re.compile(
     r"(?![A-Za-z])[^'\"]{0,40}$", re.I)
 
 
-def _quote_is_only_a_scare_quote(text: str, m: "re.Match[str]") -> bool:
+def _quote_is_only_a_scare_quote(text: str, m: "re.Match[str]",
+                                 asked: dict[str, bool] | None = None) -> bool:
     """이 따옴표가 **그릴 글자가 아닌가**. 기본은 False(=차단 유지).
 
     순수 함수가 아니다 — `config.JEV_ENABLED` 가 켜져 있을 때만 판단 모델에 묻는다.
@@ -1137,7 +1143,11 @@ def _quote_is_only_a_scare_quote(text: str, m: "re.Match[str]") -> bool:
     from . import decide                  # 지연 import — 순수 테스트는 이 경로를 안 탄다
     if not decide.enabled():
         return False
-    return decide.quoted_label_is_scare_quote(text)
+    if asked is None:
+        return decide.quoted_label_is_scare_quote(text)
+    if text not in asked:
+        asked[text] = decide.quoted_label_is_scare_quote(text)
+    return asked[text]
 
 
 def _content_words(text: str) -> set[str]:

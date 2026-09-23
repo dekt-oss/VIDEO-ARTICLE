@@ -25,7 +25,7 @@ def client() -> "Client":
     return create_client(config.SECRETS.supabase_url, config.SECRETS.supabase_service_key)
 
 
-def select_all(table: str, cols: str, *, order: str | None = None,
+def select_all(table: str, cols: str, *, key: tuple[str, ...], order: str | None = None,
                desc: bool = False, where: Any = None) -> list[dict[str, Any]]:
     """표 전체를 **끝까지** 읽는다. 조건 없는 `.select()` 를 직접 쓰지 마라.
 
@@ -44,7 +44,22 @@ def select_all(table: str, cols: str, *, order: str | None = None,
 
     ★ 표가 1,000행을 넘는 날 조용히 틀리기 시작한다 — 지금 작은 표에도 이걸 쓴다.
       "아직 작으니 괜찮다"는 판단은 **틀릴 날짜만 미루는 것**이다.
+
+    ★★ `key` 는 **필수**다(2026-09-23 리뷰). 페이지를 나눠 읽으려면 페이지마다 같은 순서가
+      보장돼야 하는데, Postgres 는 ORDER BY 가 없거나 **겹치는 값**(published_date 처럼 하루에
+      수십 편이 같은 값)으로만 정렬하면 LIMIT/OFFSET 사이의 순서를 약속하지 않는다 — 공식
+      문서가 "unless you enforce a predictable result ordering with ORDER BY" 라고 못박는다.
+      그러면 페이지 경계에서 행이 **빠지거나 두 번** 나온다. 정지 상태에서 재 보면 멀쩡했지만
+      (papers·scores 3회 전부 중복 0), 이 함수를 부르는 채점 실행은 바로 그 표에 **쓰는 중**이다.
+      유일한 열(들)을 마지막 정렬 키로 붙여 순서를 고정한다. 기본값을 두지 않은 이유: 표마다
+      유일 키가 다르고(daily_batch 는 두 열이다), 틀린 기본값은 아무 경고 없이 통과한다.
+
+    ★ 끝은 **빈 페이지**로 판정한다. "요청한 것보다 적게 왔다"로 끝내면, 서버 상한이 페이지
+      크기보다 작게 설정되는 날(Supabase 의 max-rows 는 프로젝트 설정이다) 첫 페이지에서
+      멈춰 — 이 함수가 막으려던 조용한 잘림이 그대로 돌아온다. 요청 하나를 더 쓰는 값이다.
     """
+    if not key:
+        raise ValueError("select_all: 유일 정렬 키(key)가 필요하다")
     out: list[dict[str, Any]] = []
     off = 0
     while True:
@@ -53,11 +68,13 @@ def select_all(table: str, cols: str, *, order: str | None = None,
             q = where(q)
         if order:
             q = q.order(order, desc=desc)
+        for k in key:
+            q = q.order(k)
         rows = (q.range(off, off + config.DB_PAGE_ROWS - 1).execute().data or [])
-        out.extend(rows)
-        if len(rows) < config.DB_PAGE_ROWS:
+        if not rows:
             return out
-        off += config.DB_PAGE_ROWS
+        out.extend(rows)
+        off += len(rows)
 
 
 def existing_external_ids(external_ids: Iterable[str]) -> set[str]:
@@ -144,9 +161,9 @@ def fetch_papers_to_score(only_unscored: bool = True, limit: int | None = None,
     """
     papers = select_all(
         "papers", "id, external_id, title, abstract, venue, buzz_raw, published_date",
-        order="published_date", desc=True)
+        key=("id",), order="published_date", desc=True)
     if only_unscored:
-        scored = select_all("scores", "paper_id, red_flag")
+        scored = select_all("scores", "paper_id, red_flag", key=("paper_id",))
         done = {r["paper_id"] for r in scored
                 if not (retry_failed and scoring_failed(r.get("red_flag")))}
         papers = [p for p in papers if p["id"] not in done]
@@ -191,8 +208,8 @@ def fetch_papers_needing_title_ko(limit: int | None = None) -> list[dict[str, An
     반환: [{"id": paper_uuid, "title": 원제}]. 표시 대상만 겨냥해 불필요한 번역 비용을 막는다.
     """
     # 표시 대상 후보 = 배치에 편성됐거나 사람이 결정(낙점/후보/탈락)한 논문.
-    batch = select_all("daily_batch", "paper_id")
-    decs = select_all("decisions", "paper_id")
+    batch = select_all("daily_batch", "paper_id", key=("batch_date", "paper_id"))
+    decs = select_all("decisions", "paper_id", key=("paper_id",))
     candidate_ids = {r["paper_id"] for r in batch}
     candidate_ids |= {r["paper_id"] for r in decs}
     if not candidate_ids:
@@ -225,7 +242,8 @@ def fetch_papers_needing_title_ko(limit: int | None = None) -> list[dict[str, An
 
 def recent_batch_dates(limit: int = 7) -> list[str]:
     """최근 배치 날짜(내림차순) 목록."""
-    rows = select_all("daily_batch", "batch_date", order="batch_date", desc=True)
+    rows = select_all("daily_batch", "batch_date", key=("batch_date", "paper_id"),
+                      order="batch_date", desc=True)
     seen: list[str] = []
     for r in rows:
         d = r["batch_date"]
@@ -259,7 +277,7 @@ def fetch_prior_batch_paper_ids(before_date: str) -> set[str]:
     '이전 후보 리스트에 오른 논문은 다음 리스트에서 제외'(신선도)를 위해 쓴다.
     같은 날 재실행은 그날 배치를 재생성하므로 before_date=오늘 로 호출해 오늘 것은 제외 대상에서 뺀다(멱등).
     """
-    rows = select_all("daily_batch", "paper_id",
+    rows = select_all("daily_batch", "paper_id", key=("batch_date", "paper_id"),
                       where=lambda q: q.lt("batch_date", before_date))
     return {r["paper_id"] for r in rows}
 
