@@ -40,12 +40,11 @@ def fetch_reports_to_score(only_unscored: bool = True, limit: int | None = None)
     #   조용히 잘린다. 지금 reports 는 701행이라 아직 안 걸렸을 뿐이고, 걸리는 날
     #   "이미 채점된 것"이 1,000개로 잘려 **재채점 폭주**가 그대로 재현된다.
     reports = select_all(
-        "reports",
-        "id, external_id, title, summary, theme, company, ticker, broker, "
-        "target_price, opinion, aria_priority, signal_level, is_risk",
+        "reports", "id, external_id, title, summary, theme, company, ticker, broker, "
+        "target_price, opinion, aria_priority, signal_level, is_risk", key=("id",),
         order="collected_at", desc=True)
     if only_unscored:
-        scored_ids = {r["report_id"] for r in select_all("report_scores", "report_id")}
+        scored_ids = {r["report_id"] for r in select_all("report_scores", "report_id", key=("report_id",))}
         reports = [r for r in reports if r["id"] not in scored_ids]
     if limit:
         reports = reports[:limit]
@@ -74,7 +73,7 @@ def fetch_report_scores_for(report_ids: Iterable[str]) -> list[dict[str, Any]]:
 
 
 def fetch_report_ids_all() -> list[str]:
-    return [r["id"] for r in select_all("reports", "id")]
+    return [r["id"] for r in select_all("reports", "id", key=("id",))]
 
 
 def fetch_reports_aria_priority(report_ids: Iterable[str]) -> dict[str, float]:
@@ -97,7 +96,7 @@ def fetch_recent_tickers(days: int) -> set[str]:
     from datetime import date, timedelta
     cutoff = (date.today() - timedelta(days=max(0, days))).isoformat()
     rids = [r["report_id"] for r in select_all(
-        "report_daily_batch", "report_id",
+        "report_daily_batch", "report_id", key=("batch_date", "report_id"),
         where=lambda q: q.gte("batch_date", cutoff))]
     tickers: set[str] = set()
     for i in range(0, len(rids), 200):
@@ -112,7 +111,7 @@ def fetch_recent_tickers(days: int) -> set[str]:
 def fetch_prior_report_batch_ids(before_date: str) -> set[str]:
     """before_date 이전(미포함)의 report_daily_batch 에 이미 등장한 report_id 집합(신선도)."""
     return {r["report_id"] for r in select_all(
-        "report_daily_batch", "report_id",
+        "report_daily_batch", "report_id", key=("batch_date", "report_id"),
         where=lambda q: q.lt("batch_date", before_date))}
 
 

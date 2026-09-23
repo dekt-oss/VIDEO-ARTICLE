@@ -26,3 +26,5 @@ edge-tts>=6.1.0          # 무료 TTS + 단어 타임스탬프(TTS_PROVIDER=edge
 
 # 개발/테스트
 pytest>=8.0.0
+pyyaml>=6.0              # tests/test_workflow_wiring.py 가 워크플로 YAML 을 읽는다.
+                         #   ★ 로컬에만 깔려 있어 CI 첫 실행에서 수집 단계가 죽었다(2026-09-23).

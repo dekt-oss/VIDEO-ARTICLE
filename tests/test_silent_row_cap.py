@@ -26,16 +26,23 @@ from engine import batch, config, db
 
 
 class _FakeTable:
-    """range(start, end) 를 실제로 존중하는 가짜 테이블."""
+    """range(start, end) 를 실제로 존중하는 가짜 테이블.
 
-    def __init__(self, rows):
+    `server_cap` 은 Supabase 의 max-rows 설정을 흉내 낸다 — 요청한 범위보다 적게 돌려준다.
+    """
+
+    def __init__(self, rows, server_cap=None):
         self.rows = rows
         self.calls = []
+        self.orders = []
+        self.server_cap = server_cap
 
     def select(self, *_a, **_k):
+        self.orders = []          # 새 쿼리마다 정렬 기록을 비운다
         return self
 
-    def order(self, *_a, **_k):
+    def order(self, col, *_a, **_k):
+        self.orders.append(col)
         return self
 
     def lt(self, *_a, **_k):
@@ -43,15 +50,18 @@ class _FakeTable:
 
     def range(self, start, end):
         self.calls.append((start, end))
-        self._slice = self.rows[start:end + 1]
+        n = end + 1 - start
+        if self.server_cap:
+            n = min(n, self.server_cap)
+        self._slice = self.rows[start:start + n]
         return self
 
     def execute(self):
         return mock.Mock(data=list(self._slice))
 
 
-def _client_with(rows):
-    t = _FakeTable(rows)
+def _client_with(rows, server_cap=None):
+    t = _FakeTable(rows, server_cap)
     c = mock.MagicMock()
     c.table.return_value = t
     return c, t
@@ -61,24 +71,75 @@ def test_select_all_reads_past_the_thousand_row_cap():
     rows = [{"id": str(i)} for i in range(2_345)]
     c, t = _client_with(rows)
     with mock.patch.object(db, "client", return_value=c):
-        got = db.select_all("papers", "id")
+        got = db.select_all("papers", "id", key=("id",))
     assert len(got) == 2_345, "1,000 에서 멈추면 이 결함이 돌아온 것이다"
-    assert len(t.calls) == 3, "페이지를 끝까지 넘겨야 한다"
+    assert len({r["id"] for r in got}) == 2_345, "페이지 경계에서 겹치거나 빠지면 안 된다"
 
 
-def test_a_short_last_page_ends_the_loop():
-    """정확히 상한의 배수가 아닐 때 무한 루프가 되면 안 된다."""
+def test_an_exact_multiple_of_the_page_still_ends():
+    """정확히 페이지 크기의 배수일 때 무한 루프가 되면 안 된다."""
     c, _ = _client_with([{"id": str(i)} for i in range(config.DB_PAGE_ROWS)])
     with mock.patch.object(db, "client", return_value=c):
-        got = db.select_all("papers", "id")
+        got = db.select_all("papers", "id", key=("id",))
     assert len(got) == config.DB_PAGE_ROWS
 
 
 def test_an_empty_table_is_one_call_not_a_loop():
     c, t = _client_with([])
     with mock.patch.object(db, "client", return_value=c):
-        assert db.select_all("papers", "id") == []
+        assert db.select_all("papers", "id", key=("id",)) == []
     assert len(t.calls) == 1
+
+
+def test_a_server_cap_below_the_page_size_does_not_truncate():
+    """★ Supabase 의 max-rows 는 프로젝트 설정이다. 누가 500 으로 낮추는 날,
+    "요청보다 적게 왔으면 끝" 규칙은 첫 페이지에서 멈춰 조용한 잘림을 되살린다."""
+    rows = [{"id": str(i)} for i in range(1_234)]
+    c, _ = _client_with(rows, server_cap=500)
+    with mock.patch.object(db, "client", return_value=c):
+        got = db.select_all("papers", "id", key=("id",))
+    assert len(got) == 1_234
+
+
+def test_every_page_is_ordered_by_a_unique_key():
+    """ORDER BY 가 없거나 겹치는 값으로만 정렬하면 Postgres 는 페이지 사이 순서를 약속하지
+    않는다 — 경계에서 행이 빠지거나 두 번 나온다. 유일 키가 **마지막** 정렬 키여야 한다."""
+    c, t = _client_with([{"id": "a"}])
+    with mock.patch.object(db, "client", return_value=c):
+        db.select_all("papers", "id", key=("id",), order="published_date", desc=True)
+    assert t.orders == ["published_date", "id"], t.orders
+
+
+def test_a_call_without_a_key_is_refused():
+    """기본 키를 두지 않았다 — 표마다 유일 키가 다르고, 틀린 기본값은 조용히 통과한다."""
+    import pytest
+    with pytest.raises(TypeError):
+        db.select_all("papers", "id")                       # key 누락
+    with pytest.raises(ValueError):
+        db.select_all("papers", "id", key=())
+
+
+def test_no_engine_caller_pages_without_a_key():
+    """새 호출부가 key 를 빼먹으면 TypeError 로 죽지만, 그건 **실행할 때**다.
+    야간 크론에서 처음 죽지 않도록 소스에서 먼저 센다."""
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parents[1]
+    bad = []
+    for f in list((root / "engine").glob("*.py")) + list((root / "scripts").glob("*.py")):
+        src = f.read_text(encoding="utf-8")
+        for m in re.finditer(r"select_all\(", src):
+            if src[max(0, m.start() - 4):m.start()] == "def ":
+                continue
+            # 여는 괄호에 짝이 맞는 닫는 괄호까지가 한 호출이다(인자가 여러 줄에 걸친다).
+            depth, end = 1, m.end()
+            while depth and end < len(src):
+                depth += {"(": 1, ")": -1}.get(src[end], 0)
+                end += 1
+            call = src[m.end():end]
+            if "key=" not in call:
+                bad.append(f"{f.name}:{src[:m.start()].count(chr(10)) + 1}")
+    assert not bad, f"key 없는 select_all 호출: {bad}"
 
 
 # ── 채점 실패 표식 ────────────────────────────────────────────────
