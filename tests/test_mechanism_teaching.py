@@ -224,6 +224,9 @@ def test_mechanism_sequence_without_legend_warns_on_its_first_cut(monkeypatch):
     off = pc.evaluate(_header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")]), [_cut(3), _cut(4)])
     assert not any(w.startswith("photo_mechanism_unlabeled") for w in off["warnings"])
     monkeypatch.setattr(config, "MECHANISM_LABEL_OVERLAYS_ENABLED", True)
+    # ★ 범례는 2026-09-24 부터 기본 꺼짐(운영자: "없애도 될듯"). 이 검사는 범례 **기계**를 보는
+    #   것이므로 켜고 본다 — 기본값 검사는 test_staging_contract 에 있다.
+    monkeypatch.setattr(config, "OVERLAY_LEGEND_ENABLED", True)
     header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")])
     cuts = [_cut(3), _cut(4)]
     got = pc.evaluate(header, cuts)

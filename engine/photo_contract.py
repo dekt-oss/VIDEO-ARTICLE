@@ -606,8 +606,9 @@ def mechanism_unlabeled_cuts(header: dict[str, Any], cuts: list[dict[str, Any]])
                 if (visual_sequence.stage_changes_state(st) and st.get("continuity_from")
                         and "label_pair" not in types and c["cut_no"] not in out):
                     out.append(c["cut_no"])
-        if (len(mech_cuts) >= 2 and len(seen_colors) >= 2 and not has_legend
-                and mech_cuts[0]["cut_no"] not in out):
+        # ★ 범례가 꺼져 있으면(2026-09-24) 요구하지 않는다 — 렌더가 안 그리는 것을 두고 경고하면 함정이다.
+        if (config.OVERLAY_LEGEND_ENABLED and len(mech_cuts) >= 2 and len(seen_colors) >= 2
+                and not has_legend and mech_cuts[0]["cut_no"] not in out):
             out.append(mech_cuts[0]["cut_no"])
     return out
 
