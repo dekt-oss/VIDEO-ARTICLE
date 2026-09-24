@@ -104,15 +104,17 @@ PHOTO_CONTRACT = f"""
   본문 나레이션에서 증권사를 말했더라도 화면 카드는 별도로 필요하다.
 ■ 오버레이는 한 컷에 최대 {config.OVERLAY_MAX_PER_CUT}개. 많으면 읽히지 않는다.
 ■ 컷마다 visual_role 을 선언한다(MECHANISM 3D 도해 / REALITY 실사). 12컷 기준 도해 5~7 · 실사 3~5.
-  ★ [증권 리포트 라인의 MECHANISM 소재] 리포트는 다리·궁궐처럼 눈에 보이는 물건이 아니라서
-    무엇을 도해할지 정하는 것이 이 버전의 성패다. 아래에서 고른다:
-      · 공급망 흐름 — 원료에서 최종 수요처까지 단계를 잇는 도해(예: 광산 → 양극재 → 셀 → ESS → 데이터센터).
-        그 편의 주인공 기업이 어느 칸에 있는지 강조한다.
-      · 제품 단면 — 그 회사가 만드는 물건을 잘라 구조를 보여준다(셀의 층 구조, 모듈 결합 방식).
-      · 수요 전이 경로 — 수요가 A 에서 B 로 옮겨가는 과정(전기차용 → ESS용).
-      · 전후 비교 — 리포트가 말하는 변화의 전과 후. ★ **한 장에 둘을 넣지 마라** —
-        같은 장면을 두 컷으로 두고 상태만 바꾼다(나란히 놓는 일은 코드가 한다).
-      · 원가·마진 구조 — 무엇이 얼마를 차지하는지 블록으로.
+  ★★ [증권 리포트의 원리는 논증 단위다] 리포트에는 논문의 "왜 그런가" 대신 아래 논증 단위
+    (driver → 실적 → 밸류에이션)가 있다. 각 단계에 코드가 kind 를 적어 뒀다 — **그 kind 가 화면을 정한다**:
+      · kind 가 **과정** 인 단계 → MECHANISM 도해. 전·후가 있는 **물리적 과정**만 그린다:
+          공급망 흐름(광산 → 셀 → 데이터센터), 수요 전이(전기차용 → ESS용), 병목 → 우회
+          (전력망이 막힌다 → 바다 위 바지선이 우회한다), 설비 증설(엔진 라인이 늘어난다).
+          논증 단위 하나가 시퀀스 하나다 — 같은 세계에서 단계가 이어진다.
+      · kind 가 **숫자** 인 단계 → **REALITY 실사 장면 + 숫자 카드**. MECHANISM 금지.
+          크기 다른 블록·막대·높이 차이로 수치를 보이는 것은 그래프다(차단된다).
+      · kind 가 **리스크** 인 단계 → **REALITY 실사 장면 + 한 줄 카드**, 또는 나레이션만. MECHANISM 금지.
+          규제를 장벽·쇠쐐기 같은 물체로 그리면 원문에 없는 은유가 된다(차단된다).
+    ★ 전후 비교는 **한 장에 둘을 넣지 마라** — 같은 장면을 두 컷으로 두고 상태만 바꾼다.
     ★ 도해에 **숫자를 그리지 마라.** 숫자는 overlay_plan 이 얹는다. 도해는 구조와 방향만 보여준다.
   ★ [REALITY 소재] 공장·생산라인·물류·항만·제품 실물. 훅과 마무리, 그리고 도해가 추상적으로
     흐를 때 현실로 끌어오는 자리.
@@ -370,9 +372,26 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     #   보고 원문 전문이 있는 리포트에서도 LITERAL_OBSERVATION 을 전부 막았다 — 그러면
     #   되먹임이 모델에게 "실제 장면을 그리지 마라"고 시키고, 실사형이 도해로만 남는다.
     #   Fact Sheet 전체는 아직 안 넘긴다(논문 모양 검사 6개가 리포트 모양에 맞는지 안 쟀다).
+    reasoning = draft_row.get("financial_reasoning")
     d = dv.normalize_directive(
         obj, version_type, cut_max_sec=config.CUT_MAX_SEC,
-        source_depth=visual_router.source_depth_of(draft_row.get("fact_sheet")))
+        source_depth=visual_router.source_depth_of(draft_row.get("fact_sheet")),
+        # ★ 리포트의 원리 공급량 = 논증 단위의 과정 단계 수(2026-09-24). Fact Sheet 의
+        #   claim 으로 재면 리포트는 늘 0 이라 모든 편에 "원리 없는 소재" 경고가 떴다.
+        mechanism_supply=report_reasoning.process_step_count(reasoning))
+    # ★★ [도해가 숫자·리스크 단계를 옮긴다] 실측 컷3: "13.7조원"을 블록 막대그래프로 그렸다.
+    #   화면 어휘가 아니라 **논증 단계의 종류**로 잡는다. photo_gate 에 합류시키는 이유:
+    #   generate() 의 재생성 조건과 dv._contract_feedback 의 처방이 거기서 읽는다 —
+    #   새 표면을 만들면 검사만 있고 되먹임이 없는 함정이 된다(gate-prompt-feedback parity).
+    if version_type == "photo":
+        misuse = report_reasoning.mechanism_step_misuse(d["cuts"], reasoning)
+        if misuse:
+            pg = d["header"].setdefault("photo_gate", {})
+            pg["block_reasons"] = sorted(set([*(pg.get("block_reasons") or []), *misuse]))
+            d["header"]["block_reasons"] = sorted(set([*(d["header"].get("block_reasons") or []),
+                                                       *misuse]))
+            d["header"]["approval_blocked"] = True
+            log.warning("도해가 숫자·리스크 단계를 옮긴다(승인 차단): %s", ", ".join(misuse))
     # ★ 화면 투영에서 드러난 것(단계 역순·화면에 못 나간 단계)을 **기존 경고 키에 합류**
     #   시킨다. 승인 화면과 라우트가 이미 mode_warnings 를 보므로 새 표면을 만들지 않는다.
     #   차단하지 않는 이유: 순서가 어긋나도 렌더는 돌아간다(세계가 덜 이어질 뿐이다).

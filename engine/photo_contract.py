@@ -49,6 +49,8 @@ BLOCK_REASONS: tuple[str, ...] = (
     "photo_quoted_label_in_prompt",      # 따옴표 친 라벨 이름 — 그림에 글자로 구워진다
     "photo_mechanism_prompt_detached",   # 도해 구조와 visual_prompt 가 서로 딴 것을 말한다(연구 T1-b)
     "photo_split_composition",           # 화면을 갈라 두 장면을 넣는다(비교는 컷 사이에서 한다)
+    "photo_mechanism_on_number",         # 도해 컷이 숫자·전망치 단계를 옮긴다(블록 막대그래프가 된다)
+    "photo_mechanism_on_risk",           # 도해 컷이 리스크·규제 단계를 옮긴다(은유가 된다)
 )
 WARNING_REASONS: tuple[str, ...] = (
     "photo_side_by_side_layout",       # 한 장면 안에서 좌·우로 갈라 견준다(분할은 아니다)
@@ -1392,8 +1394,14 @@ def role_claim_mismatches(cuts: list[dict[str, Any]],
 
 
 def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
-             fact_sheet: dict[str, Any] | None = None) -> dict[str, Any]:
-    """실사형 지시서 → {block_reasons, warnings, stats}. 순수 함수."""
+             fact_sheet: dict[str, Any] | None = None, *,
+             mechanism_supply: int | None = None) -> dict[str, Any]:
+    """실사형 지시서 → {block_reasons, warnings, stats}. 순수 함수.
+
+    `mechanism_supply` 를 주면 "소재가 대는 원리의 개수"를 **그 값으로** 본다.
+    리포트 라인이 쓴다(2026-09-24): 리포트의 원리는 Fact Sheet 의 claim 이 아니라 논증
+    단위의 과정 단계다(report_reasoning.process_step_count). 안 주면 종전대로 Fact Sheet.
+    """
     blocks: list[str] = []
     warns: list[str] = []
     cuts = [c for c in cuts if isinstance(c, dict)]
@@ -1647,7 +1655,8 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     #   대신 **선별 단계의 문제**로 신호를 바꾼다 — 화면 엔진이 풀 수 있는 문제가 아니다.
     # ★ 천장은 **소재가 대는 개수**다. 길이에서 역산한 값이 그보다 크면 그 초과분은
     #   "지어내라"는 요구가 된다. 실측: 이 논문은 1을 대는데 길이는 2를 요구했다.
-    supply = mechanism_claim_count(fact_sheet)
+    supply = (mechanism_supply if mechanism_supply is not None
+              else mechanism_claim_count(fact_sheet))
     has_mech_source = supply > 0
     need_mech = min(min_mechanism_cuts(total_sec), supply)
     if not has_mech_source:
@@ -1864,6 +1873,17 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
             "- 도해 컷의 visual_prompt 가 배경·분위기에 그친다. **무엇을 잘라서 무엇을 보여주는지**"
             " 를 적어라(cutaway / cross-section / exploded view / step sequence / before-and-after)."
             " 'abstract', 'glowing', 'wide shot of' 같은 분위기 어휘를 빼라.")
+    if "photo_mechanism_on_number" in codes:
+        fixes.append(
+            "- 숫자·전망치 단계(kind 가 '숫자'인 단계)를 도해로 그렸다 — 블록·막대·크기 차이로 수치를"
+            " 보이는 것은 그래프다. 그 컷의 visual_role 을 **REALITY 로 바꿔라**(조선소·공장·항만 실사"
+            " 장면) 하고 수치는 overlay_plan 의 number_punch 카드로 **옮겨라**. 도해는 kind 가"
+            " '과정'인 단계에만 써라(병목 → 우회, 수요 A → B 처럼 전·후가 있는 물리적 과정).")
+    if "photo_mechanism_on_risk" in codes:
+        fixes.append(
+            "- 리스크·규제 단계(kind 가 '리스크'인 단계)를 도해로 그렸다 — 규제를 쇠쐐기·장벽 같은"
+            " 물체로 그리면 원문에 없는 은유가 된다. 그 컷의 visual_role 을 **REALITY 로 바꿔라**"
+            "(의사당·항만·정체된 선대 실사 장면) 하고 리스크는 한 줄 카드나 나레이션으로 **옮겨라**.")
     if "photo_split_composition" in codes:
         fixes.append(
             "- visual_prompt 에서 **화면을 가르는 말을 지워라**"

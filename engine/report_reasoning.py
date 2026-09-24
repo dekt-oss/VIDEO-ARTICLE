@@ -24,6 +24,7 @@ units_block. I/O 는 build() 의 LLM 호출 하나뿐이다.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from . import config, report_evidence
@@ -218,6 +219,94 @@ def reasoning_ids(reasoning: dict[str, Any] | None) -> tuple[str, ...]:
                  if isinstance(u, dict) and u.get("reasoning_id"))
 
 
+# ─────────────────────────────────────────────────────────────
+# 논증 단계의 종류 — 화면이 갈린다 (2026-09-24)
+# ─────────────────────────────────────────────────────────────
+STEP_KIND_PROCESS = "process"   # 병목 → 우회, 수요 A → B — 전·후가 있는 물리적 과정. 도해의 자리.
+STEP_KIND_NUMBER = "number"     # 13.7조·2배·P/E 최저 — 그리면 막대그래프가 된다. 실사 + 숫자 카드.
+STEP_KIND_RISK = "risk"         # 규제·선가 정체 — 그리면 은유가 된다. 실사 + 한 줄 카드.
+
+#: 프롬프트·화면에 적는 이름. 모델은 이 낱말을 보고 visual_role 을 정한다.
+STEP_KIND_LABEL: dict[str, str] = {
+    STEP_KIND_PROCESS: "과정 → MECHANISM 도해 가능",
+    STEP_KIND_NUMBER: "숫자 → REALITY + 숫자 카드 (MECHANISM 금지)",
+    STEP_KIND_RISK: "리스크 → REALITY + 한 줄 카드 (MECHANISM 금지)",
+}
+
+_NUMBER = re.compile(config.REASONING_NUMBER_PATTERN)
+_VALUATION = re.compile(config.REASONING_VALUATION_WORDS, re.I)
+
+
+def step_kind(unit: dict[str, Any], step: dict[str, Any]) -> str:
+    """이 논증 단계를 화면이 어떻게 받아야 하는가. 순수 함수 — 코드가 판정한다.
+
+    ★ 왜 코드인가: "이 단계는 도해할 만한가"를 모델에게 물으면 모델은 늘 "그렇다"고 답한다
+      (기전 5~7컷을 채우라는 지시가 있으므로). 판정 근거를 데이터(fact_ids·unit_type·수치)로
+      두면 같은 단계는 언제나 같은 답을 받는다.
+    ★ 순서: 리스크 단위가 먼저다. RISK_PATH 안의 단계에도 숫자("선가 10% 하락")가 있을 수
+      있는데, 그건 숫자 카드가 아니라 리스크 카드가 맞다.
+    """
+    ut = str(unit.get("unit_type") or "").strip().upper()
+    if ut in config.REASONING_RISK_UNIT_TYPES:
+        return STEP_KIND_RISK
+    text = str(step.get("text") or "")
+    if (ut in config.REASONING_NUMBER_UNIT_TYPES or step.get("fact_ids")
+            or _NUMBER.search(text) or _VALUATION.search(text)):
+        return STEP_KIND_NUMBER
+    return STEP_KIND_PROCESS
+
+
+def step_kinds(reasoning: dict[str, Any] | None) -> dict[tuple[str, int], str]:
+    """{(reasoning_id, step): kind} — 지시서 컷이 어느 단계를 옮기는지 대조할 때 쓴다."""
+    out: dict[tuple[str, int], str] = {}
+    for u in (reasoning or {}).get("units") or []:
+        if not isinstance(u, dict):
+            continue
+        for st in u.get("steps") or []:
+            if isinstance(st, dict):
+                try:
+                    out[(str(u.get("reasoning_id")), int(st.get("step")))] = step_kind(u, st)
+                except (TypeError, ValueError):
+                    continue
+    return out
+
+
+def process_step_count(reasoning: dict[str, Any] | None) -> int:
+    """이 리포트가 **도해로 지불할 수 있는** 원리의 개수 = 과정 단계의 수.
+
+    논문 라인의 `photo_contract.mechanism_claim_count`(Fact Sheet 의 claim_kind) 에 대응한다.
+    리포트는 Fact Sheet 에 claims 가 없어 그 함수가 늘 0 을 냈고, 그래서 게이트가 모든 리포트에
+    "원리 없는 소재"라고 경고했다 — 논증 단위에 과정 단계가 28개나 있는데도(실측 11편).
+    """
+    return sum(1 for k in step_kinds(reasoning).values() if k == STEP_KIND_PROCESS)
+
+
+def mechanism_step_misuse(cuts: list[dict[str, Any]],
+                          reasoning: dict[str, Any] | None) -> list[str]:
+    """MECHANISM 컷이 숫자·리스크 단계를 옮기면 차단 사유를 낸다.
+
+    실측(2026-09-24, 새 코드로 재생성한 리포트 지시서 컷3): "2028년 합산 영업이익 13.7조원"
+    을 **작은 파란 블록 옆에 키 큰 산호색 블록을 놓는** 도해로 그렸다. 블록으로 만든
+    막대그래프다 — 라벨이 없어 `photo_forbidden_screen_request` 는 못 잡았다.
+    화면이 아니라 **논증 단계의 종류**로 잡는다. 어휘가 무엇이든.
+    """
+    kinds = step_kinds(reasoning)
+    out: list[str] = []
+    for c in cuts:
+        if not isinstance(c, dict) or str(c.get("visual_role") or "").upper() != "MECHANISM":
+            continue
+        try:
+            key = (str(c.get("reasoning_id") or ""), int(c.get("reasoning_step") or 0))
+        except (TypeError, ValueError):
+            continue
+        kind = kinds.get(key)
+        if kind == STEP_KIND_NUMBER:
+            out.append(f"photo_mechanism_on_number:{c.get('cut_no')}")
+        elif kind == STEP_KIND_RISK:
+            out.append(f"photo_mechanism_on_risk:{c.get('cut_no')}")
+    return out
+
+
 def units_block(reasoning: dict[str, Any] | None) -> str:
     """대본·지시서 프롬프트에 박을 논증 구간. 단위가 없으면 **빈 문자열**이다.
 
@@ -230,7 +319,9 @@ def units_block(reasoning: dict[str, Any] | None) -> str:
         return ""
     slim = [{k: u[k] for k in ("reasoning_id", "unit_type", "title", "carries_thesis",
                                "attributed_to", "assumption", "breaks_if")}
-            | {"steps": [{"step": s["step"], "text": s["text"], "fact_ids": s["fact_ids"]}
+            # ★ 종류를 단계마다 적는다 — 모델이 visual_role 을 정할 때 보는 것이 이 한 줄이다.
+            | {"steps": [{"step": s["step"], "text": s["text"], "fact_ids": s["fact_ids"],
+                          "kind": STEP_KIND_LABEL[step_kind(u, s)]}
                          for s in u["steps"]]}
             for u in units]
     return (f"{config.REASONING_MARKER}\n"
