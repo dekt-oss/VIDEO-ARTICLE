@@ -527,6 +527,26 @@ def stage_changes_state(stage: dict[str, Any] | None) -> bool:
     return False
 
 
+def subject_handoff(stage: dict[str, Any] | None, prev: dict[str, Any] | None) -> bool:
+    """이 stage 의 주인공이 앞 stage 에 **하나도 없는가** — 세계는 잇되 그림은 새로 그려야 한다.
+
+    ★★ 왜 필요한가(2026-09-24 렌더 실측, docs/preview-2026-09-24/620e66be). 부유식 데이터센터
+      stage 가 CONTINUE_WORLD 로 엔진 stage 를 이어받았다. 렌더는 앞 그림(엔진 단면)을 첨부해
+      "이것만 바꿔라"로 만들었고 — 바지선은 앞 그림에 없으니 **엔진이 그대로 남았다.** 전·후
+      분할까지 걸려 같은 엔진 그림 두 장이 위·아래로 붙었다. 운영자가 본 그 화면이다.
+
+    ★ "세계가 하나"는 **같은 장소·같은 재질**이지 같은 픽셀이 아니다. 참고 영상(시화호)은
+      댐 → 유리병 → 계기판 → 돌덩이로 주인공이 바뀌면서도 한 세계다. 주인공이 바뀌는 stage 는
+      앞 그림을 참조하지 않고 세계 선언(style·lighting·background)만 물려받아 새로 그린다.
+
+    판정은 entity_refs 의 교집합이다 — 지시서가 이미 선언한 데이터이고, 모델의 자기보고가 아니다.
+    앞 stage 가 없거나 둘 중 하나가 개체를 안 적었으면 False(종전 경로).
+    """
+    cur = {str(e) for e in ((stage or {}).get("entity_refs") or []) if e}
+    old = {str(e) for e in ((prev or {}).get("entity_refs") or []) if e}
+    return bool(cur) and bool(old) and not (cur & old)
+
+
 def stage_index(sequences: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """stage_id → stage. 연속성 참조 검사와 렌더가 같은 색인을 쓴다."""
     out: dict[str, dict[str, Any]] = {}

@@ -249,8 +249,13 @@ def test_the_renderer_chains_the_world_across_report_cuts():
         kinds.append(dec["kind"])
         if dec["stage_id"]:
             assets[dec["stage_id"]] = f"/tmp/{dec['stage_id']}.png"
-    # 훅은 시퀀스 밖, 첫 stage 가 세계를 세우고, 나머지는 앞 그림에서 이어 만든다.
-    assert kinds == ["none", "new_world", "reference", "reference", "reference", "reference"]
+    # 훅은 시퀀스 밖, 첫 stage 가 세계를 세운다.
+    # ★ 정정(2026-09-24 렌더 실측): 코드 컴파일 시퀀스는 stage 마다 **다른 주인공**을 세운다
+    #   (DEMAND_FLOW → ORDER_BLOCK → BACKLOG_QUEUE …). 그런 stage 에 앞 그림을 첨부해 "이것만
+    #   바꿔라"로 만들면 앞 주인공이 그대로 남는다 — 운영자가 폐기한 "파이프 단면에 위성 그림"과
+    #   "바지선 자리에 엔진"이 정확히 그 결과다. 주인공이 바뀌면 세계 선언만 물려받고 새로 그린다
+    #   (visual_sequence.subject_handoff). 같은 주인공이 이어질 때만 참조한다(test_subject_handoff).
+    assert kinds == ["none"] + ["new_world"] * 5, kinds
 
 
 def test_belonging_to_a_stage_is_not_by_itself_a_routing_judgement():

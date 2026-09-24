@@ -106,6 +106,16 @@ def reference_decision(cut: dict[str, Any], header: dict[str, Any],
         return out
 
     ref_stage = str(stage.get("continuity_from") or "")
+    # ★★ 주인공이 바뀌는 stage 는 앞 그림을 붙이지 않는다(2026-09-24 실측 — 바지선을 그리라는
+    #   stage 에 엔진 그림을 첨부하자 엔진이 그대로 남았다). 세계 선언은 프롬프트로 물려받으니
+    #   재질·조명은 이어지고, 그림만 새로 그린다. 판정은 visual_sequence.subject_handoff 정본 하나.
+    seqs = header.get("visual_sequences") if isinstance(header.get("visual_sequences"), list) else []
+    prev_stage = visual_sequence.stage_index(seqs).get(ref_stage) if seqs else None
+    if visual_sequence.subject_handoff(stage, prev_stage):
+        out["kind"] = "new_world"
+        out["handoff"] = True
+        out["ref_stage"] = ref_stage
+        return out
     ref_asset = stage_assets.get(ref_stage) or ""
     if not ref_asset:
         # 앞 stage 의 그림이 없다(생성 실패했거나 아직 안 만들어졌다).
