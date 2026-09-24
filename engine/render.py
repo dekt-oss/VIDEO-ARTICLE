@@ -179,6 +179,36 @@ def _reuse_base_image(cut: dict[str, Any], img_path: str,
     return True
 
 
+#: 이 프로세스에서 placeholder 로 떨어진 컷 번호. 잡 하나가 끝날 때 `take_placeholder_fallbacks`
+#  가 비운다. (워커는 잡을 순서대로 처리하므로 잡 사이에 섞이지 않는다.)
+PLACEHOLDER_FALLBACKS: list[Any] = []
+
+
+def take_placeholder_fallbacks() -> list[Any]:
+    """지금까지 쌓인 placeholder 컷 번호를 돌려주고 비운다 — 잡 판정 직전에 한 번 부른다."""
+    out = list(PLACEHOLDER_FALLBACKS)
+    PLACEHOLDER_FALLBACKS.clear()
+    return out
+
+
+def fail_if_placeholders(status: str, reasons: list[str], qa: dict[str, Any] | None = None
+                         ) -> tuple[str, list[str]]:
+    """placeholder 컷이 하나라도 있으면 **failed** 다 — 빈 화면은 발행할 수 없다.
+
+    ★ 왜 degraded 가 아니라 failed 인가: degraded 는 "사람이 보고 승인하면 발행"인데, 빈 화면은
+      승인할 수 있는 것이 아니다. 그리고 원인(429·402)은 다시 돌리면 대개 풀린다 — 재시도가 답이다.
+    두 공장이 같은 함수를 쓴다(report_render 미러).
+    """
+    ph = take_placeholder_fallbacks()
+    if not ph:
+        return status, reasons
+    tag = "placeholder_cuts:" + ",".join(str(x) for x in ph)
+    if qa is not None:
+        qa.setdefault("hard_fail", []).append(tag)
+        qa["passed"] = False
+    return "failed", [*reasons, tag]
+
+
 def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
                directive_id: str | None = None,
                render_job_id: str | None = None,
@@ -303,6 +333,10 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
             image_provider.generate_image(cut, header, img_path)
         finally:
             config.IMAGE_PROVIDER = prev
+        # ★★ 폴백 사실을 **잡의 판정**에도 닿게 한다(2026-09-24 실측). 워커가 Gemini 429 를 맞아
+        #   10컷 중 6컷이 빈 화면으로 나갔는데 QA 는 "통과"였다 — mp4 신호(무음·검은 프레임)만 보고
+        #   그림이 가짜인지는 몰랐다. 원장에는 남았지만 원장을 읽어 발행을 막는 곳이 없었다.
+        PLACEHOLDER_FALLBACKS.append(cut_no)
         return 0.0  # 폴백 placeholder 는 캐시에 기록하지 않음(다음 렌더에 재시도되게)
 
     # ★ 종횡비 실측(웹툰 v1 §4). 프롬프트의 "vertical 9:16" 은 무시될 수 있고, 파라미터가 먹었는지도
@@ -1687,6 +1721,7 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     #   degraded(사람 승인 대기). **mp4 는 어느 쪽이든 올리고 output_url 을 남긴다** — 무엇이
     #   잘못됐는지 보려면 영상을 봐야 하는데, 주소가 없으면 진단이 불가능하다.
     status, reasons = rm.terminal_status(board_qa)
+    status, reasons = fail_if_placeholders(status, reasons, qa)   # 빈 화면은 발행 불가(2026-09-24)
     db.update_render_job(job_id, status=status, progress=100,
                          output_url=url, cost_estimate=spent["cost"], qa=qa,
                          error_log="; ".join(reasons)[:1000] or None,
