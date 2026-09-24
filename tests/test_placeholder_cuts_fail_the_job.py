@@ -30,7 +30,7 @@ def test_no_placeholders_leaves_the_verdict_alone():
 
 
 def test_one_placeholder_cut_fails_the_job_and_names_the_cut():
-    render.PLACEHOLDER_FALLBACKS.extend([1, 2, 10])
+    render.PLACEHOLDER_FALLBACKS.extend([1, 1, 2, 2, 10])   # 같은 컷이 두 경로에서 등록된다(실측)
     qa = {"passed": True, "hard_fail": [], "warnings": ["긴 무음"]}
     status, reasons = render.fail_if_placeholders("done", ["x"], qa)
     assert status == "failed"

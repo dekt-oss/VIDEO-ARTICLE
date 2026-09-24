@@ -202,7 +202,8 @@ def fail_if_placeholders(status: str, reasons: list[str], qa: dict[str, Any] | N
     ph = take_placeholder_fallbacks()
     if not ph:
         return status, reasons
-    tag = "placeholder_cuts:" + ",".join(str(x) for x in ph)
+    # 같은 컷이 이미지 폴백과 I2V 스틸 폴백에서 두 번 등록된다(실측 "1,1,2,2") — 한 번만 적는다.
+    tag = "placeholder_cuts:" + ",".join(str(x) for x in dict.fromkeys(ph))
     if qa is not None:
         qa.setdefault("hard_fail", []).append(tag)
         qa["passed"] = False
