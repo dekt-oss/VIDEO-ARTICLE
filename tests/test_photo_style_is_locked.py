@@ -24,10 +24,17 @@ from engine.providers import image as image_provider
 
 
 # ── 고정된 문자열. 바꾸려면 실측 렌더로 판정하고 핸드오프에 남긴다 ──
+# ★ 2026-09-24 **의도한 변경**(운영자: "색이 왜 이렇게 단조로워?? 회색 주황색 위주인데??").
+#   2차 렌더(docs/preview-2026-09-24/620e66be)가 회색+앰버 일색이었다 — "desaturated palette" 와
+#   "no other saturated color" 가 원인이었다. 참고 영상은 사물 본래 색을 쓴다. 팔레트 문구만
+#   바꾸고 재질(무광)·조명(균일)·아웃라인 없음은 그대로다. 실사 컷이 회색 사진 톤으로 튀던 것도
+#   같은 렌더에서 봤으므로 "도해와 같은 탁상 모형 룩"을 REALITY 문장에 못박았다.
 LOCKED_REALITY = (
     "stylized 3D render, simplified geometric forms with clean silhouettes, "
     "matte surfaces with minimal micro-texture, even studio lighting, "
-    "limited desaturated palette with a single amber accent, neutral background"
+    "the same tabletop scale-model look as the cutaway cuts, "
+    "objects keep their natural material colors at medium saturation, "
+    "amber only on the part being explained, neutral studio backdrop"
 )
 # ★ 2026-09-18 **의도한 변경**(운영자 승인 "T5 색까지 승인", 연구_기전시퀀스_교육력 T5).
 #   앰버 1색으로는 두 집단·전후를 구별할 수 없어(두 뇌가 같은 색) 비교용 두 색을 뜻과 함께
@@ -39,13 +46,14 @@ LOCKED_MECHANISM = (
     "matte surfaces with minimal micro-texture, "
     "isometric cutaway with crisp layer separation, "
     "even studio lighting, "
-    "amber accent on the part being explained, "
-    "muted blue and muted coral as the only two comparison colors, "
-    "no other saturated color, neutral background"
+    "objects keep their natural material colors at medium saturation, "
+    "amber only on the part being explained, "
+    "muted blue and muted coral reserved for the two compared groups or before and after, "
+    "neutral studio backdrop"
 )
 LOCKED_GLOBAL = (
-    "One consistent look across every cut: the same materials, the same even studio light, "
-    "and the same restrained palette"
+    "One consistent look across every cut: the same matte materials, the same even studio light, "
+    "and objects in their natural colors"
 )
 
 
@@ -72,7 +80,7 @@ def test_the_two_roles_still_share_one_visual_language():
                    "simplified geometric forms with clean silhouettes",
                    "matte surfaces with minimal micro-texture",
                    "even studio lighting",
-                   "neutral background"):
+                   "neutral studio backdrop"):
         assert shared in real and shared in mech, shared
     # 다른 것은 시점 하나 — 그리고 2026-09-18 부터 **비교용 두 색**(도해에만 필요하다).
     assert "isometric cutaway" in mech and "isometric cutaway" not in real
@@ -119,3 +127,28 @@ def test_other_versions_are_untouched():
     got = image_provider._build_image_prompt(
         {"cut_no": 1, "visual_prompt": "a red sphere"}, {"version_type": "comic"})
     assert config.VISUAL_ROLE_STYLE["REALITY"] not in got
+
+
+def test_the_video_prompt_carries_the_same_negative_as_the_image():
+    """★ 2026-09-24 2차 렌더: 시작 프레임은 무광이었는데 클립 끝에서 피스톤이 **빛났다.**
+    발광 금지는 이미지 경로에만 있었다. 클립에도 같은 안전망이 있어야 한 작품이다."""
+    from engine.providers import video as vp
+    cut = {"visual_role": "MECHANISM", "visual_prompt": "x", "motion_prompt": "pistons cycle"}
+    got = vp.build_motion_prompt(cut, {"version_type": "photo"})
+    assert "no glowing effects" in got and "no neon" in got
+
+
+def test_natural_colors_are_allowed_and_the_codes_are_reserved_for_marking():
+    """운영자(2026-09-24): "색이 왜 이렇게 단조로워?? 회색 주황색 위주인데??"
+    사물 본래 색은 허용하고, 앰버·파랑·산호는 표시할 부분에만 쓴다."""
+    for role in ("REALITY", "MECHANISM"):
+        style = config.VISUAL_ROLE_STYLE[role]
+        assert "natural material colors" in style, role
+        assert "desaturated" not in style and "no other saturated color" not in style, role
+    assert "restrained palette" not in config.PHOTO_GLOBAL_STYLE
+
+
+def test_changing_the_style_bumps_the_cache_contract_version():
+    """★ 3차 렌더 실측(2026-09-24): 팔레트를 바꿨는데 캐시가 옛 그림을 돌려줬다 — 화풍 문자열은
+    캐시 키에 없고 PROMPT_CONTRACT_VERSION 만 들어간다. 문자열을 바꾼 날짜 ≤ 버전 날짜여야 한다."""
+    assert config.PROMPT_CONTRACT_VERSION >= "2026-09-24", config.PROMPT_CONTRACT_VERSION

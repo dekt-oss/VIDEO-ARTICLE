@@ -113,7 +113,10 @@ def build_motion_prompt(cut: dict[str, Any], header: dict[str, Any]) -> str:
         beat_prose = temporal_plan.prose(beats)
         motion = f"{beat_prose}. {motion}" if mp else beat_prose
     body = config.VEO_CONTINUATION_INSTRUCTION + motion
-    parts = [p for p in (body, role_style) if p]
+    # ★ 화풍 부정어(발광·네온·블룸 금지)는 이미지 경로에만 있었다(2026-09-24 2차 렌더 실측:
+    #   시작 프레임은 무광이었는데 클립 끝에서 피스톤이 **빛났다**). 클립에도 같은 안전망을 싣는다.
+    neg = config.VISUAL_ROLE_NEGATIVE.get(role, "")
+    parts = [p for p in (body, role_style, neg) if p]
     return f"{', '.join(parts)}, vertical 9:16, {config.BURN_IN_NEGATIVE_PROMPT}"
 
 
