@@ -170,6 +170,8 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     # ★ §8-2·§8-3 — done 은 critical 이 전부 있을 때만(engine/render.py 미러). mp4 는 어느
     #   쪽이든 올린다 — 무엇이 잘못됐는지 보려면 영상을 봐야 한다.
     status, reasons = render_manifest.terminal_status(board_qa)
+    # ★ 빈 화면(placeholder 컷)은 failed — QA 가 mp4 신호만 봐서 놓쳤던 자리(2026-09-24, render 미러).
+    status, reasons = render.fail_if_placeholders(status, reasons, qa)
     report_db.update_report_render_job(job_id, status=status, progress=100,
                                        output_url=url, cost_estimate=spent["cost"],
                                        qa=qa, error_log="; ".join(reasons)[:1000] or None,
