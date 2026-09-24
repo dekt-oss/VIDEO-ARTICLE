@@ -1097,8 +1097,9 @@ ROLE_CLAIM_REQUIREMENTS: dict[str, dict[str, tuple[str, ...]]] = {
 #   "컷마다 같아야 한다"는 일관성만 말한다. 구체적인 화풍은 VISUAL_ROLE_STYLE 이 정한다 —
 #   그것이 MECHANISM/REALITY 로 갈리기 때문에 여기서 겹쳐 말하면 충돌한다.
 PHOTO_GLOBAL_STYLE: str = (
-    "One consistent look across every cut: the same materials, the same even studio light, "
-    "and the same restrained palette"
+    # 2026-09-24: "restrained palette" → 사물 본래 색(위 VISUAL_ROLE_STYLE 주석). 재질·조명은 그대로.
+    "One consistent look across every cut: the same matte materials, the same even studio light, "
+    "and objects in their natural colors"
 )
 
 #: **따옴표 친 라벨 이름** — 이미지에 글자로 구워지는 가장 확실한 신호.
@@ -1361,7 +1362,7 @@ VEO_CONTINUATION_INSTRUCTION: str = (
     "do not replace or restyle any object. Only the following motion happens: ")
 
 STYLE_CLAUSES_DROPPED_WHEN_REFERENCED: tuple[str, ...] = (
-    "amber accent on the part being explained",
+    "amber only on the part being explained",   # 2026-09-24 색 개정에 맞춘 문구(VISUAL_ROLE_STYLE)
 )
 
 # 참조 프레임을 못 만들었을 때 남기는 사유. **숨기지 않는다**(작업지시서 Paper §9).
@@ -1867,7 +1868,10 @@ IMAGE_MODEL_BY_ROLE: dict[str, str] = {
 IMAGE_OUTPUT_RESOLUTION: str = os.getenv("IMAGE_OUTPUT_RESOLUTION", "provider_default")
 # 프롬프트·화풍 계약 버전. ★ 화풍 문구나 역할별 계약을 고치면 **그림이 달라진다** — 그때
 # 이 값을 올리면 캐시가 통째로 갈린다(옛 그림이 새 계약의 컷에 재사용되지 않는다).
-PROMPT_CONTRACT_VERSION: str = os.getenv("PROMPT_CONTRACT_VERSION", "2026-08-29")
+# ★ 2026-09-24 올림 — 팔레트 개정(사물 본래 색). 안 올렸더니 --keep 캐시가 옛 회색+앰버 그림을
+#   그대로 돌려줘서 색 변경이 화면에 나타나지 않았다(3차 렌더 실측). 화풍 문자열을 바꿀 때는
+#   **반드시** 이 값을 같이 올린다 — tests/test_photo_style_is_locked.py 가 그것을 묻는다.
+PROMPT_CONTRACT_VERSION: str = os.getenv("PROMPT_CONTRACT_VERSION", "2026-09-24")
 
 # ─ 실사형 화면 계약의 결정론적 검사 임계값 (engine/photo_contract.py) ─
 # ★ 상수로 뺀 이유: 임계값이 코드에 박히면 오탐이 났을 때 코드를 고쳐야 하고, 그러면 게이트를
@@ -2044,9 +2048,15 @@ VISUAL_ROLE_STYLE: dict[str, str] = {
         "matte surfaces with minimal micro-texture, "
         "isometric cutaway with crisp layer separation, "
         "even studio lighting, "
-        "amber accent on the part being explained, "
-        "muted blue and muted coral as the only two comparison colors, "
-        "no other saturated color, neutral background"
+        # ★★★ 2026-09-24 색 개정(운영자: "색이 왜 이렇게 단조로워?? 회색 주황색 위주인데??").
+        #   앞 문장 "no other saturated color" 가 화면 전체를 회색+앰버로 만들었다 — 2차 렌더
+        #   실측. 참고 영상(시화호·고기 핏물)은 물은 파랗고 풀은 초록이고 고기는 붉다 —
+        #   **사물 본래 색**을 무광으로 그리고, 앰버·파랑·산호는 **표시할 부분에만** 쓴다.
+        #   재질(무광)·조명(균일)·아웃라인 없음은 그대로다. 바뀐 것은 색의 허용 범위뿐이다.
+        "objects keep their natural material colors at medium saturation, "
+        "amber only on the part being explained, "
+        "muted blue and muted coral reserved for the two compared groups or before and after, "
+        "neutral studio backdrop"
     ),
     # ★★ 2026-09-07 재작성(운영자 지시: "실사가 너무 실사 같아서 못 보겠다. 특히 쥐.
     #   벤치마킹하던 건축 도해처럼 반실사 CG 로 가자").
@@ -2060,7 +2070,12 @@ VISUAL_ROLE_STYLE: dict[str, str] = {
     "REALITY": (
         "stylized 3D render, simplified geometric forms with clean silhouettes, "
         "matte surfaces with minimal micro-texture, even studio lighting, "
-        "limited desaturated palette with a single amber accent, neutral background"
+        # ★★★ 2026-09-24 색 개정(운영자, 위 MECHANISM 주석과 같은 결정). 그리고 실사 컷이 회색
+        #   사진 톤으로 튀던 것(2차 렌더 컷5 "엔진 조립 공장")을 막으려고 **도해와 같은 탁상 모형
+        #   룩**임을 문장으로 못박는다 — "재질·조명·색을 공유한다"가 문자열에는 없었다.
+        "the same tabletop scale-model look as the cutaway cuts, "
+        "objects keep their natural material colors at medium saturation, "
+        "amber only on the part being explained, neutral studio backdrop"
     ),
 }
 # 역할별 부정어. 3D 도해는 사진처럼 되면 단면이 안 보이고, 실사는 일러스트가 섞이면 신뢰를 잃는다.
