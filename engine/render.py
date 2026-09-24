@@ -612,7 +612,14 @@ def split_before_after_applies(cut: dict[str, Any], header: dict[str, Any]) -> b
     if not isinstance(seqs, list) or not seqs:
         return False
     stage = visual_sequence.cut_to_stage(seqs).get(int(cut.get("cut_no") or 0)) or {}
-    return bool(stage.get("continuity_from")) and visual_sequence.stage_changes_state(stage)
+    if not stage.get("continuity_from"):
+        return False
+    # ★ 앞 stage 에 이 주인공이 없으면 "전"이 없다 — 같은 그림 두 장을 위·아래로 붙이게 된다
+    #   (2026-09-24 실측). 주인공이 바뀐 stage 는 분할하지 않는다.
+    prev = visual_sequence.stage_index(seqs).get(str(stage.get("continuity_from")))
+    if visual_sequence.subject_handoff(stage, prev):
+        return False
+    return visual_sequence.stage_changes_state(stage)
 
 
 def _compose_split_still(before_path: str, after_path: str, out_path: str) -> bool:
