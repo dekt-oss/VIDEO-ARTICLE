@@ -1487,6 +1487,9 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         #   했다 — 모델에게 반복시키는 대신, 뜻이 깨진 카드는 화면에서 뺀다. 경고는 남는다
         #   (photo_color_code_reused) 이므로 운영자는 왜 없는지 알 수 있다.
         drop_types = {"legend"} if photo_contract.color_code_conflicts(header) else set()
+        # ★ 범례는 기본으로 안 그린다(2026-09-24 운영자 판정, config.OVERLAY_LEGEND_ENABLED 주석).
+        if not config.OVERLAY_LEGEND_ENABLED:
+            drop_types = drop_types | {"legend"}
         if drop_types:
             log.warning("색 코드가 어긋나 범례를 그리지 않는다 — 지시서를 고쳐야 한다")
         # ★ 화살표는 **기본으로 안 그린다**(2026-09-19 운영자 지시, config 주석 참조).

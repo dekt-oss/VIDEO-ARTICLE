@@ -74,7 +74,9 @@ REPORT_DIRECTIVE_SYSTEM = f"""너는 증권사 리포트 대중화 숏폼 영상
       "cut_no": <int>, "scene_kind": "<허용 씬종류 중 1>",
       "narration_ko": "<한국어>", "narration_en": "<English>",
       "estimated_sec": <int, {config.CUT_MIN_SEC}~{config.CUT_MAX_SEC}>,
-      "visual_prompt": "<이미지/클립 생성용 영문 프롬프트>",
+      "answers_ko": "<이 컷이 답하는 질문(한 문장) — [화면 구성] 참조>",
+      "staging_ko": "<그 답을 보여주는 물리적 연출(한두 문장) — [화면 구성] 참조>",
+      "visual_prompt": "<staging_ko 를 그대로 옮긴 이미지/클립 생성용 영문 프롬프트>",
       "novelty_event": "<이 컷이 주는 '새 정보' 한 구절(새 수치/새 비교/새 시각 상태)>",
       "style_anchor_ref": "<일관성 참조 or 빈값>",
       "effects": ["<허용 토큰만>"], "transition": "cut|crossfade",
@@ -89,6 +91,9 @@ REPORT_DIRECTIVE_SYSTEM = f"""너는 증권사 리포트 대중화 숏폼 영상
 #   94%(33/35)를 채웠다. 그 차이가 곧 "나레이션은 22%인데 화면 막대는 -3%" 같은 사고의
 #   원인이었다 — 채워야 할 곳을 안 채우니 숫자가 이미지 프롬프트로 흘러갔다.
 #   실사형은 설명판형의 그 습관만 물려받는다(보드는 물려받지 않는다).
+# 범례 요구는 스위치를 본다(2026-09-24 운영자: "없애도 될듯"). 꺼져 있으면 프롬프트가 말하지 않는다.
+_LEGEND_CLAUSE = (" 그 컷에 legend 를 넣어 무슨 색이 무엇인지 말하라."
+                  if config.OVERLAY_LEGEND_ENABLED else "")
 PHOTO_CONTRACT = f"""
 
 [추가 계약 — 실사형 photo · 벤치마크 문법]
@@ -164,7 +169,7 @@ PHOTO_CONTRACT = f"""
      없으면 차단된다(photo_mechanism_prompt_detached). 구조 필드가 곧 이미지 프롬프트로 나간다.
   ★★ 기전 컷의 색은 셋뿐이다: amber=설명하는 부분, blue=첫 집단·변화 전, coral=둘째 집단·변화 후.
      두 쪽을 비교하는 컷은 한쪽을 muted blue, 다른 쪽을 muted coral 로 칠하고(표면색으로 적어라 —
-     'rendered in'·'glow' 는 화풍 어휘라 차단된다) 그 컷에 legend 를 넣어 무슨 색이 무엇인지 말하라.
+     'rendered in'·'glow' 는 화풍 어휘라 차단된다).{_LEGEND_CLAUSE}
   ★★ 그 두 색은 **영상 내내 같은 뜻**이다 — 한 개체는 처음부터 끝까지 한 색만 갖는다. 그 색을
      개체 **안의 부위**를 나누는 데 다시 쓰지 마라(화면의 범례가 거짓말이 된다). 부위를 가리키려면
      amber 강조를 쓰고, 커지고 작아지는 것은 **크기·모양**으로 보여라.
@@ -249,7 +254,7 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
     scenes_fresh = script_revision.scenes_match_script(scenes, script_md)
     guidance = dv.VERSION_GUIDANCE.get(version_type, dv.VERSION_GUIDANCE[config.DEFAULT_VERSION])
     if version_type == "photo":
-        guidance += PHOTO_CONTRACT
+        guidance += PHOTO_CONTRACT + dv.STAGING_CONTRACT
     # ★ 논증 단위(설명엔진 v2 §7)를 지시서 단계에도 싣는다. 대본에만 주고 여기서 빼면
     #   컷이 어느 논증을 옮기는지 알 수 없어 reasoning_id 가 빈 채로 나온다 — 그러면 승인
     #   화면이 "설명이 빠진 논증"을 짚지 못한다.

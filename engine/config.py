@@ -1506,6 +1506,13 @@ EVIDENCE_OVERLAY_ENABLED: bool = _get_bool("EVIDENCE_OVERLAY_ENABLED", False)
 #   구조형 오버레이(OVERLAY_STRUCTURED_TYPES)만 그린다. 수치·출처 카드까지 원하면 위 값을 켠다.
 #   `photo_mechanism_unlabeled` 검사는 이 스위치를 본다(렌더가 그리는 것만 요구한다).
 MECHANISM_LABEL_OVERLAYS_ENABLED: bool = _get_bool("MECHANISM_LABEL_OVERLAYS_ENABLED", True)
+# 【색 범례는 기본 끔】 2026-09-24 운영자 판정 — 렌더 샘플 왼쪽 아래의 "기존전력망 파랑 · 발전엔진
+#   황색" 카드를 보고 "무슨 의미야?? 없애도 될듯". 참고 영상(시화호·고기 핏물)에도 범례는 없다 —
+#   색이 무엇인지는 **그림이 말한다**(알아볼 수 있는 사물이면 범례가 필요 없다). 범례가 필요한
+#   그림은 그림이 덜 된 것이다(화살표와 같은 논리, OVERLAY_POINTER_ENABLED 주석).
+#   끄면: 렌더가 안 그리고, 프롬프트가 요구하지 않고, `photo_mechanism_unlabeled` 의 범례 요구도 꺼진다
+#   (렌더가 안 그리는 것을 요구하면 함정이다). label_pair(전·후 캡션)는 그대로다.
+OVERLAY_LEGEND_ENABLED: bool = _get_bool("OVERLAY_LEGEND_ENABLED", False)
 
 # ★★ ASS 색은 `&HAABBGGRR` — **RGB 가 아니라 BGR** 이다(2026-09-08 실물 렌더에서 잡았다).
 #   옛 값 `&H00FFE000` 은 노랑을 적으려다 자릿수를 RGB 순으로 쓴 것이라 실제로는
