@@ -59,6 +59,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_video_cuts_not_adjacent",   # 영상 컷이 흩어져 I2V 연쇄가 끊긴다
     "photo_cut_too_long",              # 한 컷이 권장 상한보다 길다
     "photo_mechanism_thin",            # 도해가 장식적일 수 있다(근거 1개)
+    "photo_component_unrecognizable",  # 도해 부품이 추상어라 그림이 정체불명이 된다(Jev 되묻기, 2026-09-24)
     "photo_mechanism_spec_inherited",  # 재사용 컷이 기준 컷의 구조를 물려받았다(면제)
     "photo_mechanism_structured",       # 어휘는 장식적이나 stage 가 진행을 구조로 선언했다
     "photo_reuse_base_overused",       # 한 기준 컷에서 파생이 너무 많다(그 대상이 화면을 지배)
@@ -1510,6 +1511,7 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
             warns.append("photo_video_cuts_not_adjacent")
 
     # ⑧ 도해가 실제로 설명을 하는가(§5).
+    _asked_components: dict[tuple, float | None] = {}   # 같은 부품 목록은 한 번만 묻는다
     for c in mech:
         spec = mechanism_spec_of(c)
         if not mechanism_spec_complete(spec):
@@ -1522,6 +1524,16 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
                 continue
             blocks.append(f"photo_mechanism_spec_missing:{c['cut_no']}")
             continue
+        # ★ [부품이 알아볼 물건인가] 2026-09-24 4차 렌더: "seawater cooling channels" 가 황금색 코일
+        #   덩어리로 그려졌다. 추상 부품은 정체불명이 된다. 판정 모델에게 묻고 **경고만** 낸다
+        #   (되묻기 목록에 있어 재생성이 부품 이름을 바꾼다). 못 물으면 종전대로 조용하다.
+        _comp = tuple(str(x) for x in (spec.get("components") or []))
+        if _comp and _comp not in _asked_components:
+            from . import decide
+            _asked_components[_comp] = decide.components_recognizable(list(_comp)) if decide.enabled() else None
+        _p = _asked_components.get(_comp)
+        if _p is not None and _p < config.JEV_COMPONENT_RECOGNIZABLE_BELOW:
+            warns.append(f"photo_component_unrecognizable:{c['cut_no']}")
         # ★ [구조와 장면이 서로 딴 말을 한다] 2026-09-18, 연구 T1-b. components 를 적어 놓고
         #   visual_prompt 에는 그중 하나도 안 그리는 컷 — 구조는 게이트용, 장면은 따로 지은 것.
         #   실측 117컷 중 4컷(3.4%)·오탐 0 이라 차단이다. 한글 구성요소는 그림에 못 가므로
@@ -2104,6 +2116,12 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 "- **number_punch 에 문장이 들어 있다.** 거기엔 수치와 단위만 남겨라"
                 " ('254MW', '+16.9%'). 설명은 evidence_card 로 옮겨라 —"
                 " number_punch 는 화면 폭을 크게 차지해서 문장을 넣으면 여러 줄로 감긴다.")
+        if "photo_component_unrecognizable" in wcodes:
+            wfix.append(
+                "- **도해 부품 이름이 추상어다.** 'cooling channel'·'power conduit'·'coupling block' 은"
+                " 그리면 정체불명의 코일·상자가 된다(실측). mechanism.components 를 **시청자가 한눈에 알아볼"
+                " 물건**으로 바꿔라 — a transmission tower, a server rack, a ship engine, a barge, a crane —"
+                " 그리고 visual_prompt 도 그 이름 그대로 고쳐라.")
         if "photo_stage_no_transformation" in wcodes:
             wfix.append(
                 "- **이 stage 들은 '나타났다·빛난다'만 선언했다.** 둘 다 정지 화면으로도 성립해서"

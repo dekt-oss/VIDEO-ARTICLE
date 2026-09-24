@@ -1050,6 +1050,9 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     #   거의 안 움직인다. 코드는 없는 변형을 지어낼 수 없으니(beats_from_stage) 되물어야 한다.
     #   실측: 재생성 뒤에도 13컷 중 12컷이 이 이유 하나로 standard 였다.
     "photo_stage_no_transformation",
+    # ★ 2026-09-24 — 도해 부품이 추상어("냉각 채널")면 그림이 정체불명의 코일이 된다(4차 렌더).
+    #   부품 이름을 알아볼 물건으로 바꾸면 되는 종류라 되묻는다. 판정은 Jev(텍스트 안에 답이 있는 질문).
+    "photo_component_unrecognizable",
     # ★ 2026-09-18 — 기전 시퀀스에 범례·캡션이 없으면 두 집단을 그려도 어느 쪽이 무엇인지
     #   시청자가 모른다. overlay_plan 에 legend/label_pair 를 넣으면 되는 종류라 되묻는다.
     "photo_mechanism_unlabeled",
@@ -2660,6 +2663,9 @@ JEV_TIMEOUT_SEC: int = _get_int("JEV_TIMEOUT_SEC", 20)
 #    애매한 0.35~0.6 구간(`Kepler`·`Laser Downlink`·`Experience`)은 **차단을 유지**한다 —
 #    확신이 없으면 막는 쪽이 이 저장소의 기본 자세다.
 JEV_LABEL_RELEASE_BELOW: float = _get_float("JEV_LABEL_RELEASE_BELOW", 0.35)
+# 도해 부품이 "한눈에 알아볼 물건"일 확률이 이 아래면 경고(되묻기). 차단이 아니다 — Jev 가
+#   틀리거나 죽어도 승인은 안 막힌다(경고는 fail-open 이 맞다: 없는 경고는 종전 동작이다).
+JEV_COMPONENT_RECOGNIZABLE_BELOW: float = _get_float("JEV_COMPONENT_RECOGNIZABLE_BELOW", 0.35)
 #: 판정에 보낼 문장 길이 상한. Jev 의 컨텍스트는 32,000 토큰이라 여유가 크지만,
 #  입력 토큰이 곧 비용이고 판정에 필요한 것은 따옴표 주변 문맥이다. 프롬프트 한 컷이
 #  실측 400~1,500자라 넉넉하다.
