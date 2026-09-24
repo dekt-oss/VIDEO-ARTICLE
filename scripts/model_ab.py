@@ -256,8 +256,15 @@ def _generate_report(draft_row: dict[str, Any], version_type: str,
         seqs = equity_visual.build_for_directive(obj.get("cuts"),
                                                  draft_row.get("financial_reasoning"))
     obj["visual_sequences"] = seqs
-    d = D.normalize_directive(obj, version_type, cut_max_sec=config.CUT_MAX_SEC)
+    from engine import report_reasoning, visual_router
+    reasoning = draft_row.get("financial_reasoning")
+    d = D.normalize_directive(
+        obj, version_type, cut_max_sec=config.CUT_MAX_SEC,
+        source_depth=visual_router.source_depth_of(draft_row.get("fact_sheet")),
+        mechanism_supply=report_reasoning.process_step_count(reasoning))
+    misuse = report_reasoning.mechanism_step_misuse(d["cuts"], reasoning)
     return {"directive": d, "fact_sheet": draft_row.get("fact_sheet") or {},
+            "_misuse": misuse, "_reasoning": reasoning,
             "skeleton": [], "seqs": seqs, "elapsed_sec": elapsed,
             "prompt_chars": len(RD.REPORT_DIRECTIVE_SYSTEM) + len(user)}
 
@@ -275,6 +282,10 @@ def _score_report(run: dict[str, Any]) -> dict[str, Any]:
     sc["화면투영경고"] = len(equity_visual.screen_warnings(seqs))
     # 맥락: 모델이 시퀀스를 **직접 썼는가**(2026-09-19부터 그게 정본이다). 폴백이면 0.
     sc["_모델이쓴시퀀스"] = len(seqs)
+    # ★ 2026-09-24: 도해가 숫자·리스크 단계를 옮기는 오용 — 이 A/B 의 표적이다.
+    sc["기전오용(숫자·리스크)"] = len(run.get("_misuse") or [])
+    cuts = run["directive"]["cuts"]
+    sc["_기전컷"] = sum(1 for c in cuts if str(c.get("visual_role") or "").upper() == "MECHANISM")
     return sc
 
 

@@ -57,5 +57,7 @@ def test_directive_wires_the_rewrite_before_the_gate():
     from engine import directive as dv
     src = open(dv.__file__, encoding="utf-8").read()
     i_fix = src.index("photo_contract.normalize_style_words(header, cuts)")
-    i_gate = src.index("photo_gate = photo_contract.evaluate(header, cuts, fact_sheet)")
+    # 호출이 여러 줄로 갈라져도 앵커가 살도록 **여는 부분까지만** 찾는다(2026-09-24 —
+    # mechanism_supply 인자를 붙이며 한 줄이 두 줄이 되자 이 앵커가 깨졌다).
+    i_gate = src.index("photo_gate = photo_contract.evaluate(header, cuts, fact_sheet")
     assert i_fix < i_gate, "게이트보다 먼저 고쳐야 차단이 풀린다"

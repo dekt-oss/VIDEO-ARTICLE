@@ -1862,6 +1862,7 @@ def normalize_directive(
     cut_max_sec: int | None = None,
     source_text: str = "",
     source_depth: str | None = None,
+    mechanism_supply: int | None = None,
 ) -> dict[str, Any]:
     """LLM 출력 → 명세 §4 지시서 shape 보장. visual_type 은 버전에서 강제,
     total_estimated_sec 은 컷 합으로 재계산(모델 자기보고 불신).
@@ -1878,6 +1879,8 @@ def normalize_directive(
         운영 경로에서는 그대로였다(라이브 실행 첫 시도에서 3건 차단으로 확인).
         Fact Sheet 전체를 넘기는 것은 다른 게이트 6개를 리포트 모양에 대고 켜는 일이라
         따로 잰 뒤에 한다 — 지금은 깊이 하나만 넘긴다.
+    `mechanism_supply` 를 주면 실사형 게이트가 "소재가 대는 원리의 개수"를 그 값으로 본다
+      (리포트 라인 — 원리는 Fact Sheet 의 claim 이 아니라 논증 단위의 과정 단계다. 2026-09-24).
     `cut_max_sec` 를 주면 컷 길이 상한을 그 값으로 **평탄하게** 건다(종류별 규칙 미적용).
     금융 라인(engine/report_directive.py)이 자기 프롬프트의 3~8초 계약을 유지하려고 쓴다 —
     논문 전용 완화(10/12초)가 범위 밖 라인으로 새지 않게 하는 장치다.
@@ -2306,7 +2309,8 @@ def normalize_directive(
                 *header.get("mode_warnings", []),
                 "photo_prompt_number_removed:" + ", ".join(numbers_fixed[:6])]))
 
-        photo_gate = photo_contract.evaluate(header, cuts, fact_sheet)
+        photo_gate = photo_contract.evaluate(header, cuts, fact_sheet,
+                                             mechanism_supply=mechanism_supply)
         header["photo_gate"] = photo_gate
         header["mode_warnings"] = sorted(set([*header["mode_warnings"],
                                               *photo_gate["warnings"]]))

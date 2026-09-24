@@ -3255,6 +3255,23 @@ DEFAULT_REASONING_UNIT_TYPE: str = "DRIVER_CHAIN"
 REASONING_MAX_UNITS: int = _get_int("REASONING_MAX_UNITS", 5)
 REASONING_MAX_STEPS: int = _get_int("REASONING_MAX_STEPS", 5)
 REASONING_ID_FORMAT: str = "R{:02d}"
+
+# ★★ 논증 단계의 **종류** — 화면이 갈린다(2026-09-24, 운영자 승인 "응 진행해").
+#   리포트에는 논문의 "왜 그런가" 대신 논증 단위(driver → 실적 → 밸류에이션)가 있고, 그것이
+#   이 라인의 원리다. 그런데 프롬프트가 종류를 안 가르고 "기전 5~7컷"만 요구하자 모델이
+#   숫자와 규제까지 도해로 그렸다 — 실측(저장 11편·기전 컷 48개): 과정 28 · 숫자 10 · 리스크 10.
+#   숫자를 그리면 블록 막대그래프가 되고("억지 비교"), 리스크를 그리면 은유가 된다(함정 앞 쇠쐐기).
+#     과정   → MECHANISM 도해(전·후가 있는 물리적 과정)
+#     숫자   → REALITY + 숫자 카드(카드는 코드가 그린다)
+#     리스크 → REALITY + 한 줄 카드, 또는 나레이션만
+#   판정은 코드가 한다: 원장 참조(fact_ids)가 있거나 본문에 수치가 있으면 숫자, RISK_PATH 면 리스크.
+REASONING_NUMBER_UNIT_TYPES: tuple[str, ...] = ("EARNINGS_BRIDGE", "VALUATION_LOGIC", "COMPARISON")
+REASONING_RISK_UNIT_TYPES: tuple[str, ...] = ("RISK_PATH",)
+# 본문에 전망치·배수·비율이 박힌 단계 — 도해로 옮기면 숫자를 그리게 된다.
+REASONING_NUMBER_PATTERN: str = (
+    "[0-9][0-9,.]*[ ]*(조|억|만|천|%|배|원|달러|불|GW|MW|bp|x)")
+# 숫자가 안 붙어도 "그리면 차트가 되는" 말 — 밸류에이션 수준을 말하는 단계.
+REASONING_VALUATION_WORDS: str = "P/E|PER|PBR|EV/EBITDA|멀티플|목표가|밸류에이션|주가수익비율|컨센서스"
 # 저장 스키마 버전(D7 — 신규 테이블 없이 report_drafts JSONB 에 versioned 로 넣는다).
 REASONING_SCHEMA_VERSION: int = 1
 # 대본·지시서 프롬프트에 박는 논증 구간 마커. ★ 리포트 전문 마커(<<FULL_SOURCE>>)·논문 마커와
