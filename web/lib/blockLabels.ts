@@ -43,6 +43,7 @@ export const BLOCK_LABEL: Record<string, string> = {
   photo_mechanism_decorative: "도해가 배경·장식에 그침",
   photo_mechanism_on_number: "도해 컷이 숫자·전망치 단계를 옮김(블록 막대그래프가 된다)",
   photo_mechanism_on_risk: "도해 컷이 리스크·규제 단계를 옮김(은유가 된다)",
+  photo_component_unrecognizable: "도해 부품이 추상어라 정체불명이 됨(알아볼 물건으로)",
   photo_skeleton_shortfall: "컷 골격보다 컷이 적음(모델이 칸을 합쳤다)",
   photo_role_name_in_prompt: "프롬프트에 역할명(MECHANISM/REALITY)이 남아 그림에 글자로 박힘",
   photo_overlay_year_unverified: "화면 카드의 연도가 Fact Sheet 에 없음(지어낸 연도)",

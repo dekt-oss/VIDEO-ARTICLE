@@ -129,3 +129,25 @@ def quoted_label_is_scare_quote(text: str) -> bool:
     if p is None:
         return False
     return p < config.JEV_LABEL_RELEASE_BELOW
+
+
+#: 도해 부품이 "한눈에 알아볼 물건"인지 묻는 질문(2026-09-24). 이것도 텍스트 안에 답이 있는
+#  종류다 — "이 낱말이 구체적 사물을 가리키나". 채점 축(취향)과 다르다.
+COMPONENTS_Q = (
+    "Would a general viewer recognize each of these listed things at a glance as a concrete, "
+    "familiar physical object (like a transmission tower, a server rack, a ship engine, a barge)?",
+    {"true": "every item names a concrete object with a well-known shape",
+     "false": "one or more items are abstract or generic parts (a channel, a conduit, a block, "
+              "a module, a flow, a pathway) with no recognizable shape"},
+)
+
+
+def components_recognizable(components: list[str]) -> float | None:
+    """도해 부품 목록이 알아볼 물건들인 확률. 못 물었으면 None(호출부는 경고를 내지 않는다).
+
+    ★ 경고용이라 fail-open 이다 — 판정을 못 하면 종전 동작(경고 없음). 차단에 쓰면 안 된다.
+    """
+    items = [str(c).strip() for c in (components or []) if str(c).strip()]
+    if not items:
+        return None
+    return noul("COMPONENTS: " + " | ".join(items), COMPONENTS_Q[0], COMPONENTS_Q[1])
