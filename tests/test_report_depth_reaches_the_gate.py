@@ -14,6 +14,7 @@
 ★ Fact Sheet 전체를 넘기지 않는 이유: 그 인자는 Claim 대조·자기검증·숫자 감사 등 논문
   모양의 검사 6개를 함께 켠다. 리포트 Fact Sheet(`numbers`·`basis`)에 그것이 맞는지는
   아직 안 쟀다. 그래서 **깊이 하나만** 넘긴다 — 잰 뒤에 넓힌다.
+  **정정(2026-09-25):** 쟀고 넓혔다 — tests/test_report_factsheet_reaches_normalize.py.
 """
 
 from __future__ import annotations

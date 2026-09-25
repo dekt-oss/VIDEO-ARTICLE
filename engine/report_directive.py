@@ -376,10 +376,15 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     # ★★ 원문 확보 수준을 **넘긴다**(2026-09-23 라이브 실측). 안 넘기면 정규화기가 "none" 으로
     #   보고 원문 전문이 있는 리포트에서도 LITERAL_OBSERVATION 을 전부 막았다 — 그러면
     #   되먹임이 모델에게 "실제 장면을 그리지 마라"고 시키고, 실사형이 도해로만 남는다.
-    #   Fact Sheet 전체는 아직 안 넘긴다(논문 모양 검사 6개가 리포트 모양에 맞는지 안 쟀다).
+    # ★★ Fact Sheet **전체**도 넘긴다(2026-09-25, scripts/report_factsheet_shadow.py 로 잰 뒤).
+    #   안 넘기면 숫자 감사가 빈 원장에 대고 돌아 **모든 수치**를 "Fact Sheet 에 없다"(빨강)로
+    #   찍었다 — 저장 지시서 39건에서 378건, 넘기면 34건. 오버레이 연도 대조도 꺼져 있어서
+    #   실제로 지어낸 "SK증권 리포트 (2024)"(2026-09 리포트)가 통과했다. 리포트 Fact Sheet 에는
+    #   claims 가 없어 Claim 대조·자기검증·역할 라벨 검사는 원래대로 돌지 않는다(차이 0건).
     reasoning = draft_row.get("financial_reasoning")
     d = dv.normalize_directive(
         obj, version_type, cut_max_sec=config.CUT_MAX_SEC,
+        fact_sheet=draft_row.get("fact_sheet") or None,
         source_depth=visual_router.source_depth_of(draft_row.get("fact_sheet")),
         # ★ 리포트의 원리 공급량 = 논증 단위의 과정 단계 수(2026-09-24). Fact Sheet 의
         #   claim 으로 재면 리포트는 늘 0 이라 모든 편에 "원리 없는 소재" 경고가 떴다.
