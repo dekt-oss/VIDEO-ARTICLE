@@ -1935,8 +1935,10 @@ def normalize_directive(
         리포트에서도 LITERAL_OBSERVATION 이 전부 `vseq_literal_without_source` 로 막혔다.
         #46 이 `source_depth_of` 를 리포트 모양도 읽게 고쳤지만, **이 함수에 닿지 않아**
         운영 경로에서는 그대로였다(라이브 실행 첫 시도에서 3건 차단으로 확인).
-        Fact Sheet 전체를 넘기는 것은 다른 게이트 6개를 리포트 모양에 대고 켜는 일이라
-        따로 잰 뒤에 한다 — 지금은 깊이 하나만 넘긴다.
+        **정정(2026-09-25):** 따로 잰 뒤 리포트도 Fact Sheet 전체를 넘긴다
+        (scripts/report_factsheet_shadow.py). 리포트 모양에는 claims 가 없어 Claim 대조·
+        자기검증이 스스로 꺼지고, 숫자 감사·오버레이 연도 대조가 켜진다. 깊이는 여전히
+        이 인자로도 받는다(주면 이 값이 우선).
     `mechanism_supply` 를 주면 실사형 게이트가 "소재가 대는 원리의 개수"를 그 값으로 본다
       (리포트 라인 — 원리는 Fact Sheet 의 claim 이 아니라 논증 단위의 과정 단계다. 2026-09-24).
     `cut_max_sec` 를 주면 컷 길이 상한을 그 값으로 **평탄하게** 건다(종류별 규칙 미적용).

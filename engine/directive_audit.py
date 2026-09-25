@@ -76,11 +76,20 @@ def _numbers(text: str) -> set[str]:
 
 
 def source_numbers(fact_sheet: dict[str, Any] | None) -> set[str]:
-    """Fact Sheet 전체가 지불하는 숫자 집합(문자열 값을 전부 훑는다)."""
+    """Fact Sheet 전체가 지불하는 숫자 집합(문자열 값과 숫자 값을 전부 훑는다).
+
+    ★ 숫자 값도 센다(2026-09-25). 리포트 Fact Sheet 는 수치를 `number_facts[].value` 에
+      **float** 로 둔다(목표주가 9000.0). 문자열만 훑으면 영문 나레이션의 "9,000" 이
+      "Fact Sheet 에 없다"(빨강)가 됐다 — 원장에 있는 숫자다.
+    """
     out: set[str] = set()
 
     def walk(v: Any) -> None:
-        if isinstance(v, str):
+        if isinstance(v, bool):
+            return
+        if isinstance(v, (int, float)):
+            out.add(str(int(v)) if float(v).is_integer() else f"{v:g}")
+        elif isinstance(v, str):
             out.update(_numbers(v))
         elif isinstance(v, dict):
             for x in v.values():
