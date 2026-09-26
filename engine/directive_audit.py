@@ -144,7 +144,7 @@ def audit(header: dict[str, Any], cuts: list[dict[str, Any]],
                                                " — 우리가 계산한 값이니 맞는지 보라"})
                 else:
                     findings.append({"level": "red", "code": "number_not_in_source",
-                                     "cut_no": no,
+                                     "cut_no": no, "number": n,
                                      "detail": f"{scope}의 '{n}' 이 Fact Sheet 에 없다"})
 
         # ② 없는 주장 참조.
@@ -173,7 +173,7 @@ def audit(header: dict[str, Any], cuts: list[dict[str, Any]],
     hook = str(header.get("hook_ko") or "")
     for n in _numbers(hook) - known_nums:
         findings.append({"level": "red", "code": "hook_number_not_in_source",
-                         "cut_no": 0, "detail": f"훅의 '{n}' 이 Fact Sheet 에 없다"})
+                         "cut_no": 0, "number": n, "detail": f"훅의 '{n}' 이 Fact Sheet 에 없다"})
     if animal_study and _HUMAN.search(hook) and not _ANIMAL.search(hook)             and not _HEDGE.search(hook):
         findings.append({"level": "yellow", "code": "hook_states_human_result",
                          "cut_no": 0, "detail": "동물 연구인데 훅이 사람을 주어로 말한다"})

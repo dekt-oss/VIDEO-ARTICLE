@@ -97,6 +97,8 @@ STAGING_CONTRACT: str = """
     ① 한 컷에 **주인공 하나**. 배경은 비운다(스튜디오·단색 바닥). 부감·터미널·나열·군중은 답이 아니다.
     ② 추상적인 말은 **행위**로 바꾼다 — 돈을 쏟아부었다 → 돌덩이를 구덩이에 쏟는다 / 효과가 없다 → 그 물건 위에 큰 X /
        수요가 몰린다 → 한 입구로 상자가 밀려든다. 숫자·글자는 그리지 않는다(카드가 쓴다).
+       수치를 **사물 개수·더미 높이·막대**로 바꾸지도 않는다 — "4GW"를 엔진 네 대로, 점수를 높이가 다른
+       카드 더미로 그리면 억지 비교다(운영자 판정). 판정 모델이 본다(photo_number_as_objects).
     ③ 앞 컷의 물건을 **이어받거나 그 안으로 들어간다**(고기 팩 → 소 → 소의 혈관 → 근육 단면). 새 물건은 이유가 있을 때만.
     ④ 답이 되지 않는 장면은 쓰지 않는다 — "주가는 떨어졌는데 이익은 2배?"에 조선소 전경은 답이 아니다.
        답은 예를 들어 '작은 저울 접시에 놓인 작은 배 모형 하나가, 반대 접시의 큰 엔진 블록에 들려 올라간다' 같은 것이다.
@@ -116,10 +118,12 @@ STAGING_CONTRACT: str = """
        먼저 두고, 결과 stage(그 앞바다로 밀려 나간 플랫폼)를 그 다음에 둔다. 4차 렌더 실측: 한 stage 에
        "막힌 육상 부지를 벗어나 바다 위에"라고 적자 결과(바다 위 바지선)만 남고 원인은 사라졌다.
        같은 세계·같은 카메라, 바뀌는 것은 상태다. 나레이션도 그 두 컷에 나눠 얹어라.
+       판정 모델이 이 컷과 앞 컷 장면에서 원인을 찾는다(photo_cause_not_shown).
     ⑩ 도해 구조의 components 는 **시청자가 한눈에 알아볼 물건**이어야 한다(송전탑·서버 랙·엔진·바지선).
        "냉각 채널"·"동력 통로"·"결합 블록" 같은 추상 부품은 그리면 정체불명의 코일·상자가 된다(4차 렌더
        실측: 해수 냉각 채널 → 황금색 코일 덩어리). 판정 모델이 되묻는다(photo_component_unrecognizable).
-  ★ 검사: staging_ko 가 answers_ko 에 답하는지 판정 모델이 본다. 주제만 같은 사진은 되돌려 보낸다.
+  ★ 검사: 실사 컷의 장면(visual_prompt)이 나레이션의 주장에 답하는지 판정 모델이 본다. 주제만 같은
+    사진은 되돌려 보낸다(photo_scene_not_answering). 연결 문장("바로 설명합니다")은 검사하지 않는다.
 """
 
 
@@ -2383,6 +2387,7 @@ def normalize_directive(
     #   ① 기계 판정(무료) ② 의미 판정(LLM 1회). 둘 다 경고이며 승인을 막지 않는다.
     if config.DIRECTIVE_AUDIT_ENABLED:
         audit = directive_audit.audit(header, cuts, fact_sheet)
+        _release_restated_numbers(audit, header, cuts, fact_sheet)
         header["directive_audit"] = audit
         if audit["findings"]:
             header["mode_warnings"] = sorted(set([
@@ -2422,6 +2427,72 @@ def normalize_directive(
     ]))
     header["approval_blocked"] = bool(header["block_reasons"])
     return {"version_type": version, "header": header, "cuts": cuts}
+
+
+def _fact_strings_with_numbers(fact_sheet: dict[str, Any] | None) -> list[str]:
+    """원장에서 숫자가 든 문자열만 모은다 — 판정 모델에 보낼 '원장 수치' 목록."""
+    out: list[str] = []
+
+    def walk(v: Any) -> None:
+        if isinstance(v, str):
+            if any(ch.isdigit() for ch in v):
+                out.append(v.strip())
+        elif isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+
+    walk(fact_sheet or {})
+    return list(dict.fromkeys(out))
+
+
+def _release_restated_numbers(audit: dict[str, Any], header: dict[str, Any],
+                              cuts: list[dict[str, Any]],
+                              fact_sheet: dict[str, Any] | None) -> None:
+    """숫자 감사의 빨강 중 **원장 수치를 단위·표기만 바꿔 쓴 것**을 노랑으로 내린다(2026-09-27).
+
+    ★ 실측(scripts/report_factsheet_shadow.py): 원장을 넘긴 뒤 남은 빨강 28건 중 다수가
+      '631억 원' ↔ 영문 '63.1 billion' 같은 환산이었다. 감사는 문자열 대조라 이것을 못 가른다.
+    ★ 내리기만 한다 — 판정 모델이 죽거나 "아니다"라고 하면 빨강 그대로다. 지우지도 않는다:
+      노랑은 화면에 남아 사람이 본다(`number_derived_from_source` 와 같은 자리).
+    ★ 감사 모듈은 LLM 없이 도는 순수 검사로 둔다(편집할 때마다 돌 수 있어야 한다) — 이 완화만
+      지시서 생성 경로에서 한 번 붙는다.
+    """
+    from . import decide
+    if not (fact_sheet and decide.enabled()):
+        return
+    facts = " | ".join(_fact_strings_with_numbers(fact_sheet))
+    if not facts:
+        return
+    by_no = {c.get("cut_no"): c for c in cuts}
+    asked: dict[tuple[str, str], float | None] = {}
+    changed = False
+    for f in audit.get("findings") or []:
+        if f.get("level") != "red" or f.get("code") not in ("number_not_in_source",
+                                                             "hook_number_not_in_source"):
+            continue
+        n = str(f.get("number") or "")
+        if f["code"] == "hook_number_not_in_source":
+            sentence = str(header.get("hook_ko") or "")
+        else:
+            c = by_no.get(f.get("cut_no")) or {}
+            sentence = " / ".join([*(str(c.get(k) or "") for k in ("narration_ko", "narration_en")),
+                                 *(str(o.get("text") or "") for o in (c.get("overlay_plan") or []) if isinstance(o, dict))])
+        key = (n, sentence)
+        if key not in asked:
+            asked[key] = decide.number_restated(n, sentence, facts)
+        p = asked[key]
+        if p is not None and p >= config.JEV_NUMBER_RESTATED_MIN:
+            f["level"] = "yellow"
+            f["code"] = ("hook_number_restated_from_source"
+                         if f["code"] == "hook_number_not_in_source" else "number_restated_from_source")
+            f["detail"] = f"'{n}' 은 원장 수치를 단위·표기만 바꿔 쓴 것으로 보인다(판정 모델) — 맞는지 보라"
+            changed = True
+    if changed:
+        audit["stats"]["red"] = sum(1 for f in audit["findings"] if f["level"] == "red")
+        audit["stats"]["yellow"] = sum(1 for f in audit["findings"] if f["level"] == "yellow")
 
 
 def _hook_text_key(text: str) -> str:

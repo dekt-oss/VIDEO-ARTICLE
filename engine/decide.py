@@ -142,6 +142,131 @@ COMPONENTS_Q = (
 )
 
 
+def noul_many(state: str, questions: dict[str, tuple[str, dict[str, str]]]) -> dict[str, float] | None:
+    """한 상태에 참/거짓 질문 여럿을 **한 호출로** 묻는다. 하나라도 못 읽으면 None.
+
+    ★ 질문을 나눠 보내면 같은 입력을 질문 수만큼 다시 보낸다 — 입력 토큰이 곧 비용이다.
+    """
+    if not enabled():
+        return None
+    data = _post({"model": config.JEV_MODEL, "state": state[:config.JEV_STATE_MAX_CHARS],
+                  "questions": {k: {"type": "noul", "instructions": q, "criteria": crit}
+                                for k, (q, crit) in questions.items()}})
+    if not data:
+        return None
+    _record(data.get("usage") or {}, str(data.get("model") or config.JEV_MODEL))
+    try:
+        ans = data.get("answers") or {}
+        return {k: float(ans[k]["noul"]) for k in questions}
+    except (KeyError, TypeError, ValueError):
+        log.warning("Jev 응답 모양이 다르다: %s", json.dumps(data, ensure_ascii=False)[:200])
+        return None
+
+
+#: 실사 컷이 나레이션에 **답하는가**(2026-09-27). 화면 구성 계약(directive.STAGING_CONTRACT)의
+#  "주제만 같은 사진은 되돌려 보낸다"를 실제로 하는 자리다. 질문 문구는 scripts/staging_shadow.py
+#  가 565컷에 대 본 그것이다 — 문구를 바꾸면 문턱의 근거가 사라진다.
+#  `showable` 은 **나레이션 쪽**을 본다: "이건 그냥 하는 말이 아니라," 같은 연결 문장은 어떤
+#  장면으로도 답할 수 없어서, 그 컷을 벌하면 옳게 쓴 지시서를 벌하게 된다.
+SCENE_ANSWERS_Q: dict[str, tuple[str, dict[str, str]]] = {
+    "answers": (
+        "Does the SCENE show the specific thing the NARRATION asserts — the action, change or "
+        "comparison itself — rather than merely a place or object related to the topic?",
+        {"true": "the scene stages what the narration says (a hand scoops muddy water; rocks are "
+                 "dumped into a pit; a line grows longer)",
+         "false": "the scene is a generic establishing shot of the topic (a wide shipyard, a port, "
+                  "a factory floor) that would fit many different narrations"},
+    ),
+    "showable": (
+        "Does the NARRATION state a concrete fact, action, change or comparison that a picture "
+        "could show?",
+        {"true": "it asserts something specific (prices fell while profits doubled; the engine "
+                 "powers a data center; mice lived 12% longer)",
+         "false": "it is a transition, a rhetorical aside or a framing phrase with nothing "
+                  "specific to show (this is not just talk; let's look closer; here is why)"},
+    ),
+}
+
+
+def scene_answers(narration: str, visual: str) -> dict[str, float] | None:
+    """{answers, showable} 확률. 못 물었으면 None(호출부는 경고를 내지 않는다 — fail-open)."""
+    if not str(narration or "").strip() or not str(visual or "").strip():
+        return None
+    return noul_many(f"NARRATION: {narration}\nSCENE: {visual}", SCENE_ANSWERS_Q)
+
+
+#: 수치를 **사물의 개수·높이**로 옮겼나(2026-09-27). 운영자 판정: "4GW" 를 엔진 네 대로,
+#  13.7조 원을 블록 막대로 그리면 억지 비교다 — 수치는 카드가 쓴다. 어휘로는 못 잡는다
+#  ("four engines" 는 정상 장면에도 나온다) — 나레이션의 수치와 장면을 **대조**해야 한다.
+NUMBER_AS_OBJECTS_Q = (
+    "Does the SCENE turn a number from the NARRATION into a count of repeated objects or into "
+    "heights/sizes of stacks, bars or blocks (e.g. '4GW' drawn as four engines, scores drawn as "
+    "two stacks of different height, a profit figure drawn as a tall column of blocks)?",
+    {"true": "the picture encodes the narration's number as how many objects there are or how "
+             "tall/large things are",
+     "false": "the picture shows the real things involved without encoding the number in "
+              "object counts or bar-like heights"},
+)
+
+
+def number_as_objects(narration: str, visual: str) -> float | None:
+    """수치를 사물 개수·높이로 옮겼을 확률. 못 물었으면 None(fail-open)."""
+    if not str(narration or "").strip() or not str(visual or "").strip():
+        return None
+    return noul(f"NARRATION: {narration}\nSCENE: {visual}",
+                NUMBER_AS_OBJECTS_Q[0], NUMBER_AS_OBJECTS_Q[1])
+
+
+#: 숫자 감사가 "원장에 없다"고 한 수치가 **원장 수치를 단위·표기만 바꿔 쓴 것**인가(2026-09-27).
+#  감사(directive_audit)는 문자열 대조라 '631억 원' 과 영문 '63.1 billion won' 을 다른 숫자로 본다.
+#  빨강을 노랑으로 **내리기만** 한다 — 이 질문이 새로 막는 것은 없다.
+NUMBER_RESTATED_Q = (
+    "Is NUMBER, as used in SENTENCE, the same quantity as one of the figures in SOURCE FACTS — "
+    "only written in different units, notation or language, or rounded (e.g. 631억 원 = 63.1 "
+    "billion won; 7조 6천억 원 = 7.6 trillion won; +18.50% = over 18%)?",
+    {"true": "a figure in SOURCE FACTS expresses the same amount",
+     "false": "no figure in SOURCE FACTS expresses this amount — it is new, computed differently "
+              "or unrelated"},
+)
+
+
+def number_restated(number: str, sentence: str, facts: str) -> float | None:
+    """원장 수치를 다르게 쓴 것일 확률. 못 물었으면 None(호출부는 빨강을 그대로 둔다)."""
+    if not (str(number).strip() and str(sentence).strip() and str(facts).strip()):
+        return None
+    return noul(f"NUMBER: {number}\nSENTENCE: {sentence}\nSOURCE FACTS: {facts}",
+                NUMBER_RESTATED_Q[0], NUMBER_RESTATED_Q[1])
+
+
+#: "~해서 ~한다"의 **원인이 화면에 있나**(2026-09-27, 화면 구성 계약 ⑨). 운영자 판정(09-24):
+#  "자리가 없어서 바다에 구축한다"는데 바다 위 플랫폼만 있고 '자리 없음'이 화면에 없었다.
+#  계약이 원인을 앞 stage 로 나누라고 하므로 **앞 컷 장면까지** 함께 보여 준다.
+CAUSE_SHOWN_Q: dict[str, tuple[str, dict[str, str]]] = {
+    "states_cause": (
+        "Does NARRATION explain WHY something happens — a cause or constraint that leads to an "
+        "effect (because of X, Y; X is blocked so Y; to avoid X, they do Y)?",
+        {"true": "the narration names a cause/constraint and the effect it leads to",
+         "false": "the narration only states a fact, a number or a result without its reason"},
+    ),
+    "cause_shown": (
+        "Is that CAUSE (the reason or constraint, not the resulting situation) visible in "
+        "PREVIOUS SCENE or SCENE?",
+        {"true": "one of the scenes shows the cause itself (a coastline packed with buildings "
+                 "leaving no room; a transmission line jammed at a narrow gate)",
+         "false": "the scenes show only the result (a platform floating at sea) and the reason "
+                  "never appears"},
+    ),
+}
+
+
+def cause_shown(narration: str, previous_scene: str, scene: str) -> dict[str, float] | None:
+    """{states_cause, cause_shown} 확률. 못 물었으면 None(fail-open)."""
+    if not str(narration or "").strip() or not str(scene or "").strip():
+        return None
+    return noul_many(f"NARRATION: {narration}\nPREVIOUS SCENE: {previous_scene or '(none)'}\n"
+                     f"SCENE: {scene}", CAUSE_SHOWN_Q)
+
+
 def components_recognizable(components: list[str]) -> float | None:
     """도해 부품 목록이 알아볼 물건들인 확률. 못 물었으면 None(호출부는 경고를 내지 않는다).
 
