@@ -195,6 +195,28 @@ def scene_answers(narration: str, visual: str) -> dict[str, float] | None:
     return noul_many(f"NARRATION: {narration}\nSCENE: {visual}", SCENE_ANSWERS_Q)
 
 
+#: 수치를 **사물의 개수·높이**로 옮겼나(2026-09-27). 운영자 판정: "4GW" 를 엔진 네 대로,
+#  13.7조 원을 블록 막대로 그리면 억지 비교다 — 수치는 카드가 쓴다. 어휘로는 못 잡는다
+#  ("four engines" 는 정상 장면에도 나온다) — 나레이션의 수치와 장면을 **대조**해야 한다.
+NUMBER_AS_OBJECTS_Q = (
+    "Does the SCENE turn a number from the NARRATION into a count of repeated objects or into "
+    "heights/sizes of stacks, bars or blocks (e.g. '4GW' drawn as four engines, scores drawn as "
+    "two stacks of different height, a profit figure drawn as a tall column of blocks)?",
+    {"true": "the picture encodes the narration's number as how many objects there are or how "
+             "tall/large things are",
+     "false": "the picture shows the real things involved without encoding the number in "
+              "object counts or bar-like heights"},
+)
+
+
+def number_as_objects(narration: str, visual: str) -> float | None:
+    """수치를 사물 개수·높이로 옮겼을 확률. 못 물었으면 None(fail-open)."""
+    if not str(narration or "").strip() or not str(visual or "").strip():
+        return None
+    return noul(f"NARRATION: {narration}\nSCENE: {visual}",
+                NUMBER_AS_OBJECTS_Q[0], NUMBER_AS_OBJECTS_Q[1])
+
+
 def components_recognizable(components: list[str]) -> float | None:
     """도해 부품 목록이 알아볼 물건들인 확률. 못 물었으면 None(호출부는 경고를 내지 않는다).
 

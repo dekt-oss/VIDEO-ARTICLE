@@ -100,3 +100,49 @@ def test_scene_answers_asks_both_questions_in_one_call(monkeypatch):
     assert set(seen["questions"]) == {"answers", "showable"}
     assert "NARRATION: 나레이션" in seen["state"] and "SCENE: scene" in seen["state"]
     assert decide.scene_answers("", "scene") is None
+
+
+# ── 수치를 사물 개수·높이로 그렸나 (2026-09-27) ─────────────────────────
+def _numeric(header_cuts):
+    header, cuts = header_cuts
+    cuts[0]["narration_ko"] = "소프트웨어 공학은 52.6점에 그칩니다."
+    return header, cuts
+
+
+def test_a_number_drawn_as_stack_heights_is_warned(monkeypatch):
+    header, cuts = _numeric(_good_directive(10))
+    monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
+    monkeypatch.setattr(decide, "number_as_objects", lambda n, v: 0.9)
+    got = pc.evaluate(header, cuts, None)
+    w = [x for x in got["warnings"] if x.startswith("photo_number_as_objects")]
+    assert w == [f"photo_number_as_objects:{cuts[0]['cut_no']}"], got["warnings"]
+    assert not any(b.startswith("photo_number_as_objects") for b in got["block_reasons"])
+
+
+def test_the_balance_scale_the_contract_recommends_is_not_warned(monkeypatch):
+    """실측 0.56 — 계약이 권하는 저울 연출이 문턱 아래여야 한다."""
+    header, cuts = _numeric(_good_directive(10))
+    monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
+    monkeypatch.setattr(decide, "number_as_objects", lambda n, v: 0.56)
+    got = pc.evaluate(header, cuts, None)
+    assert not any(x.startswith("photo_number_as_objects") for x in got["warnings"])
+
+
+def test_cuts_without_numbers_are_not_asked(monkeypatch):
+    header, cuts = _good_directive(10)
+    for c in cuts:
+        c["narration_ko"] = "숫자가 없는 문장."
+    monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
+    monkeypatch.setattr(decide, "number_as_objects",
+                        lambda n, v: (_ for _ in ()).throw(AssertionError("불렸다")))
+    pc.evaluate(header, cuts, None)
+
+
+def test_number_rule_has_notice_check_and_feedback():
+    assert "photo_number_as_objects" in dv.STAGING_CONTRACT
+    assert "photo_number_as_objects" in config.RETRYABLE_QUALITY_WARNINGS
+    fix = pc.feedback_prompt([], ["photo_number_as_objects:1"])
+    assert "억지 비교" in fix and "number_punch" in fix

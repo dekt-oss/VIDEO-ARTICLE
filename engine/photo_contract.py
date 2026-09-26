@@ -61,6 +61,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_mechanism_thin",            # 도해가 장식적일 수 있다(근거 1개)
     "photo_component_unrecognizable",  # 도해 부품이 추상어라 그림이 정체불명이 된다(Jev 되묻기, 2026-09-24)
     "photo_scene_not_answering",       # 실사 컷이 나레이션 대신 주제 사진을 놓았다(Jev 되묻기, 2026-09-27)
+    "photo_number_as_objects",         # 수치를 사물 개수·높이로 그렸다 — 억지 비교(Jev 되묻기, 2026-09-27)
     "photo_mechanism_spec_inherited",  # 재사용 컷이 기준 컷의 구조를 물려받았다(면제)
     "photo_mechanism_structured",       # 어휘는 장식적이나 stage 가 진행을 구조로 선언했다
     "photo_reuse_base_overused",       # 한 기준 컷에서 파생이 너무 많다(그 대상이 화면을 지배)
@@ -1440,6 +1441,23 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
             if weak:
                 warns.append("photo_scene_not_answering:" + ",".join(weak[:6]))
 
+    # ★ [수치를 사물 개수·높이로 옮겼다] 2026-09-27. 운영자 판정(09-24): "4GW" 를 엔진 네 대로,
+    #   13.7조 원을 블록 막대로 그리면 억지 비교다 — 수치는 카드가 쓴다. 어휘로는 못 잡아서
+    #   (정상 장면에도 "four engines" 가 나온다) 나레이션 수치와 장면을 Jev 가 대조한다.
+    #   실측(scripts/number_objects_shadow.py, 숫자 나오는 126컷): 0.7 이상 21컷은 카드 더미 높이·
+    #   큐브 더미·표식 1,260개 같은 진짜였고, 계약이 권하는 저울 연출(0.56)은 그 아래였다.
+    #   역할 무관 — 실사에서도(카드 더미) 도해에서도(DNA 표식 1,260개) 일어난다. 경고, fail-open.
+    numeric = [c for c in cuts if re.search(r"\d", str(c.get("narration_ko") or ""))]
+    if numeric:
+        from . import decide
+        if decide.enabled():
+            counted = [str(c.get("cut_no")) for c in numeric
+                       if (p := decide.number_as_objects(str(c.get("narration_ko") or ""),
+                                                         str(c.get("visual_prompt") or ""))) is not None
+                       and p >= config.JEV_NUMBER_AS_OBJECTS_MIN]
+            if counted:
+                warns.append("photo_number_as_objects:" + ",".join(counted[:6]))
+
     # ③ 도해가 아예 없으면 이 버전을 고른 의미가 없다.
     if n and not mech:
         blocks.append("photo_mechanism_missing")
@@ -2150,6 +2168,12 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 들려 올라가는 장면, '전력망이 막혔다'는 송전탑 앞 좁은 관문에 멈춰 선 전선 다발."
                 " 수치는 그리지 말고(카드가 쓴다) 수치를 사물 개수로 바꾸지도 마라."
                 " visual_prompt 는 그 staging_ko 를 그대로 옮겨라.")
+        if "photo_number_as_objects" in wcodes:
+            wfix.append(
+                "- **수치를 사물 개수·높이로 그렸다.** '4GW'를 엔진 네 대로, 점수를 높이가 다른 카드 더미로,"
+                " 13.7조 원을 블록 기둥으로 — 운영자 판정 '억지 비교'다. 수치는 number_punch 카드가 쓴다."
+                " 장면은 그 수치를 **가진 실제 사물**을 하나 보여줘라(엔진 한 대가 발전기에 얹히는 모습,"
+                " 시험지를 채점하는 손). 개수·더미·막대·줄 세우기로 크기를 표현하지 마라.")
         if "photo_stage_no_transformation" in wcodes:
             wfix.append(
                 "- **이 stage 들은 '나타났다·빛난다'만 선언했다.** 둘 다 정지 화면으로도 성립해서"

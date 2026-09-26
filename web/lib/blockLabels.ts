@@ -45,6 +45,7 @@ export const BLOCK_LABEL: Record<string, string> = {
   photo_mechanism_on_risk: "도해 컷이 리스크·규제 단계를 옮김(은유가 된다)",
   photo_component_unrecognizable: "도해 부품이 추상어라 정체불명이 됨(알아볼 물건으로)",
   photo_scene_not_answering: "실사 컷이 나레이션에 답하지 않는 주제 사진(행위로 다시)",
+  photo_number_as_objects: "수치를 물건 개수·높이로 그림(억지 비교 — 카드가 쓴다)",
   photo_skeleton_shortfall: "컷 골격보다 컷이 적음(모델이 칸을 합쳤다)",
   photo_role_name_in_prompt: "프롬프트에 역할명(MECHANISM/REALITY)이 남아 그림에 글자로 박힘",
   photo_overlay_year_unverified: "화면 카드의 연도가 Fact Sheet 에 없음(지어낸 연도)",
