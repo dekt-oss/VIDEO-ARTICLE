@@ -60,6 +60,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_cut_too_long",              # 한 컷이 권장 상한보다 길다
     "photo_mechanism_thin",            # 도해가 장식적일 수 있다(근거 1개)
     "photo_component_unrecognizable",  # 도해 부품이 추상어라 그림이 정체불명이 된다(Jev 되묻기, 2026-09-24)
+    "photo_scene_not_answering",       # 실사 컷이 나레이션 대신 주제 사진을 놓았다(Jev 되묻기, 2026-09-27)
     "photo_mechanism_spec_inherited",  # 재사용 컷이 기준 컷의 구조를 물려받았다(면제)
     "photo_mechanism_structured",       # 어휘는 장식적이나 stage 가 진행을 구조로 선언했다
     "photo_reuse_base_overused",       # 한 기준 컷에서 파생이 너무 많다(그 대상이 화면을 지배)
@@ -1421,6 +1422,24 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     mech = [c for c in cuts if str(c.get("visual_role") or "") == "MECHANISM"]
     real = [c for c in cuts if str(c.get("visual_role") or "") == "REALITY"]
 
+    # ★ [실사 컷이 나레이션에 답하나] 2026-09-27. 화면 구성 계약이 "주제만 같은 사진은 되돌려
+    #   보낸다"고 모델에게 말해 놓고 **검사가 없었다**. 실측(scripts/staging_shadow.py, 596컷):
+    #   업로드한 편(620e66be)의 약한 두 컷 — 밸류에이션 나레이션에 설계 사무실 책상, 13.7조 원
+    #   나레이션에 드라이독 — 이 답함 0.04·0.03 으로 최하점이었다. 연결 문장("바로 설명합니다")은
+    #   어떤 장면으로도 답할 수 없어 `showable` 로 거른다. 경고이고 fail-open 이다.
+    if real:
+        from . import decide
+        if decide.enabled():
+            weak: list[str] = []
+            for c in real:
+                got = decide.scene_answers(str(c.get("narration_ko") or ""),
+                                           str(c.get("visual_prompt") or ""))
+                if (got and got["answers"] < config.JEV_SCENE_ANSWERS_BELOW
+                        and got["showable"] >= config.JEV_SCENE_SHOWABLE_MIN):
+                    weak.append(str(c.get("cut_no")))
+            if weak:
+                warns.append("photo_scene_not_answering:" + ",".join(weak[:6]))
+
     # ③ 도해가 아예 없으면 이 버전을 고른 의미가 없다.
     if n and not mech:
         blocks.append("photo_mechanism_missing")
@@ -2122,6 +2141,15 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 그리면 정체불명의 코일·상자가 된다(실측). mechanism.components 를 **시청자가 한눈에 알아볼"
                 " 물건**으로 바꿔라 — a transmission tower, a server rack, a ship engine, a barge, a crane —"
                 " 그리고 visual_prompt 도 그 이름 그대로 고쳐라.")
+        if "photo_scene_not_answering" in wcodes:
+            wfix.append(
+                "- **실사 컷이 나레이션에 답하지 않는다(주제 사진).** '밸류에이션이 최저'에 설계 사무실 책상,"
+                " '영업이익 13.7조'에 드라이독 전경 — 주제만 같고 나레이션이 말한 **그것**은 화면에 없다(실측)."
+                " 그 컷의 answers_ko 를 다시 읽고 staging_ko 를 **물건과 행위**로 다시 써라:"
+                " '주가는 떨어졌는데 이익은 늘었다'는 작은 배 모형이 놓인 저울 접시가 큰 엔진 블록 쪽으로"
+                " 들려 올라가는 장면, '전력망이 막혔다'는 송전탑 앞 좁은 관문에 멈춰 선 전선 다발."
+                " 수치는 그리지 말고(카드가 쓴다) 수치를 사물 개수로 바꾸지도 마라."
+                " visual_prompt 는 그 staging_ko 를 그대로 옮겨라.")
         if "photo_stage_no_transformation" in wcodes:
             wfix.append(
                 "- **이 stage 들은 '나타났다·빛난다'만 선언했다.** 둘 다 정지 화면으로도 성립해서"

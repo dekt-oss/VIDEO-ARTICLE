@@ -34,47 +34,19 @@ from engine import config, db, decide  # noqa: E402
 
 OUT = pathlib.Path("docs/실측_모델")
 
-QUESTIONS: dict[str, dict[str, Any]] = {
-    "answers": {
-        "type": "noul",
-        "instructions": ("Does the SCENE show the specific thing the NARRATION asserts — "
-                         "the action, change or comparison itself — rather than merely a "
-                         "place or object related to the topic?"),
-        "criteria": {"true": "the scene stages what the narration says (a hand scoops muddy "
-                             "water; rocks are dumped into a pit; a line grows longer)",
-                     "false": "the scene is a generic establishing shot of the topic (a wide "
-                              "shipyard, a port, a factory floor) that would fit many "
-                              "different narrations"},
-    },
-    "one_subject": {
-        "type": "noul",
-        "instructions": "Does the scene have ONE clear subject placed as the focus?",
-        "criteria": {"true": "a single object or action dominates; the rest is background",
-                     "false": "an array, a panorama, several equal objects, or a crowded scene"},
-    },
-}
-
-
 def ask(narration: str, visual: str) -> dict[str, float] | None:
-    state = f"NARRATION: {narration}\nSCENE: {visual}"
-    data = decide._post({"model": config.JEV_MODEL, "state": state[:config.JEV_STATE_MAX_CHARS],
-                         "questions": QUESTIONS})
-    if not data:
-        return None
-    decide._record(data.get("usage") or {}, str(data.get("model") or config.JEV_MODEL))
-    try:
-        ans = data["answers"]
-        return {k: float(ans[k]["noul"]) for k in QUESTIONS}
-    except (KeyError, TypeError, ValueError):
-        return None
+    """운영 질문 그대로(decide.SCENE_ANSWERS_Q) — 그림자와 운영이 다른 질문을 재면 문턱이 무의미하다."""
+    return decide.scene_answers(narration, visual)
 
 
-def load(limit: int) -> list[dict[str, Any]]:
+def load(limit: int, since: str = "") -> list[dict[str, Any]]:
     c = db.client()
     rows: list[dict[str, Any]] = []
     for table, key in (("report_directives", "report_id"), ("directives", "paper_id")):
-        for d in (c.table(table).select("id,cuts,created_at").eq("version_type", "photo")
-                  .order("created_at", desc=True).limit(40).execute().data or []):
+        q = c.table(table).select("id,cuts,created_at").eq("version_type", "photo")
+        if since:
+            q = q.gte("created_at", since)
+        for d in (q.order("created_at", desc=True).limit(40).execute().data or []):
             for cu in d.get("cuts") or []:
                 if not isinstance(cu, dict):
                     continue
@@ -89,10 +61,12 @@ def load(limit: int) -> list[dict[str, Any]]:
 def main() -> None:
     ap = argparse.ArgumentParser(description="화면-나레이션 정합 그림자 — 읽기 전용")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--since", default="", help="이 시각 이후 지시서만(예: 2026-09-24T12:00:00Z)")
+    ap.add_argument("--out", default="staging_shadow.json")
     args = ap.parse_args()
     if not decide.enabled():
         raise SystemExit("JEV 가 꺼져 있다.")
-    rows = load(args.limit)
+    rows = load(args.limit, args.since)
     print(f"대상 컷 {len(rows)}개 · 예상 비용 ${len(rows) * 350 * config.TEXT_PRICING['jev-latest']['text_input_per_token']:.4f}")
     got = []
     for i, r in enumerate(rows, 1):
@@ -102,18 +76,18 @@ def main() -> None:
         if i % 50 == 0:
             print(f"  {i}/{len(rows)}")
     OUT.mkdir(parents=True, exist_ok=True)
-    p = OUT / "staging_shadow.json"
+    p = OUT / args.out
     p.write_text(json.dumps(got, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def share(xs, k, th=0.5):
         return (sum(1 for x in xs if x[k] >= th) / len(xs)) if xs else 0.0
-    print("\n[화면이 나레이션에 답하나 / 주인공이 하나인가]  (Jev 확률 ≥ 0.5 비율)")
+    print("\n[화면이 나레이션에 답하나 / 나레이션에 보여줄 것이 있나]  (Jev 확률 ≥ 0.5 비율)")
     for fac in ("report", "paper"):
         for role in ("REALITY", "MECHANISM"):
             xs = [g for g in got if g["factory"] == fac and g["role"] == role]
             if xs:
-                print("  %-6s %-9s %3d컷 · 답한다 %4.0f%% · 주인공 하나 %4.0f%%"
-                      % (fac, role, len(xs), 100 * share(xs, "answers"), 100 * share(xs, "one_subject")))
+                print("  %-6s %-9s %3d컷 · 답한다 %4.0f%% · 보여줄 게 있는 나레이션 %4.0f%%"
+                      % (fac, role, len(xs), 100 * share(xs, "answers"), 100 * share(xs, "showable")))
     worst = sorted(got, key=lambda g: g["answers"])[:6]
     print("\n[가장 안 답하는 컷 — 눈으로 볼 것]")
     for g in worst:
