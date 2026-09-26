@@ -217,6 +217,27 @@ def number_as_objects(narration: str, visual: str) -> float | None:
                 NUMBER_AS_OBJECTS_Q[0], NUMBER_AS_OBJECTS_Q[1])
 
 
+#: 숫자 감사가 "원장에 없다"고 한 수치가 **원장 수치를 단위·표기만 바꿔 쓴 것**인가(2026-09-27).
+#  감사(directive_audit)는 문자열 대조라 '631억 원' 과 영문 '63.1 billion won' 을 다른 숫자로 본다.
+#  빨강을 노랑으로 **내리기만** 한다 — 이 질문이 새로 막는 것은 없다.
+NUMBER_RESTATED_Q = (
+    "Is NUMBER, as used in SENTENCE, the same quantity as one of the figures in SOURCE FACTS — "
+    "only written in different units, notation or language, or rounded (e.g. 631억 원 = 63.1 "
+    "billion won; 7조 6천억 원 = 7.6 trillion won; +18.50% = over 18%)?",
+    {"true": "a figure in SOURCE FACTS expresses the same amount",
+     "false": "no figure in SOURCE FACTS expresses this amount — it is new, computed differently "
+              "or unrelated"},
+)
+
+
+def number_restated(number: str, sentence: str, facts: str) -> float | None:
+    """원장 수치를 다르게 쓴 것일 확률. 못 물었으면 None(호출부는 빨강을 그대로 둔다)."""
+    if not (str(number).strip() and str(sentence).strip() and str(facts).strip()):
+        return None
+    return noul(f"NUMBER: {number}\nSENTENCE: {sentence}\nSOURCE FACTS: {facts}",
+                NUMBER_RESTATED_Q[0], NUMBER_RESTATED_Q[1])
+
+
 def components_recognizable(components: list[str]) -> float | None:
     """도해 부품 목록이 알아볼 물건들인 확률. 못 물었으면 None(호출부는 경고를 내지 않는다).
 

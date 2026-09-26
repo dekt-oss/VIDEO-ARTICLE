@@ -2386,6 +2386,7 @@ def normalize_directive(
     #   ① 기계 판정(무료) ② 의미 판정(LLM 1회). 둘 다 경고이며 승인을 막지 않는다.
     if config.DIRECTIVE_AUDIT_ENABLED:
         audit = directive_audit.audit(header, cuts, fact_sheet)
+        _release_restated_numbers(audit, header, cuts, fact_sheet)
         header["directive_audit"] = audit
         if audit["findings"]:
             header["mode_warnings"] = sorted(set([
@@ -2425,6 +2426,72 @@ def normalize_directive(
     ]))
     header["approval_blocked"] = bool(header["block_reasons"])
     return {"version_type": version, "header": header, "cuts": cuts}
+
+
+def _fact_strings_with_numbers(fact_sheet: dict[str, Any] | None) -> list[str]:
+    """원장에서 숫자가 든 문자열만 모은다 — 판정 모델에 보낼 '원장 수치' 목록."""
+    out: list[str] = []
+
+    def walk(v: Any) -> None:
+        if isinstance(v, str):
+            if any(ch.isdigit() for ch in v):
+                out.append(v.strip())
+        elif isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+
+    walk(fact_sheet or {})
+    return list(dict.fromkeys(out))
+
+
+def _release_restated_numbers(audit: dict[str, Any], header: dict[str, Any],
+                              cuts: list[dict[str, Any]],
+                              fact_sheet: dict[str, Any] | None) -> None:
+    """숫자 감사의 빨강 중 **원장 수치를 단위·표기만 바꿔 쓴 것**을 노랑으로 내린다(2026-09-27).
+
+    ★ 실측(scripts/report_factsheet_shadow.py): 원장을 넘긴 뒤 남은 빨강 28건 중 다수가
+      '631억 원' ↔ 영문 '63.1 billion' 같은 환산이었다. 감사는 문자열 대조라 이것을 못 가른다.
+    ★ 내리기만 한다 — 판정 모델이 죽거나 "아니다"라고 하면 빨강 그대로다. 지우지도 않는다:
+      노랑은 화면에 남아 사람이 본다(`number_derived_from_source` 와 같은 자리).
+    ★ 감사 모듈은 LLM 없이 도는 순수 검사로 둔다(편집할 때마다 돌 수 있어야 한다) — 이 완화만
+      지시서 생성 경로에서 한 번 붙는다.
+    """
+    from . import decide
+    if not (fact_sheet and decide.enabled()):
+        return
+    facts = " | ".join(_fact_strings_with_numbers(fact_sheet))
+    if not facts:
+        return
+    by_no = {c.get("cut_no"): c for c in cuts}
+    asked: dict[tuple[str, str], float | None] = {}
+    changed = False
+    for f in audit.get("findings") or []:
+        if f.get("level") != "red" or f.get("code") not in ("number_not_in_source",
+                                                             "hook_number_not_in_source"):
+            continue
+        n = str(f.get("number") or "")
+        if f["code"] == "hook_number_not_in_source":
+            sentence = str(header.get("hook_ko") or "")
+        else:
+            c = by_no.get(f.get("cut_no")) or {}
+            sentence = " / ".join([*(str(c.get(k) or "") for k in ("narration_ko", "narration_en")),
+                                 *(str(o.get("text") or "") for o in (c.get("overlay_plan") or []) if isinstance(o, dict))])
+        key = (n, sentence)
+        if key not in asked:
+            asked[key] = decide.number_restated(n, sentence, facts)
+        p = asked[key]
+        if p is not None and p >= config.JEV_NUMBER_RESTATED_MIN:
+            f["level"] = "yellow"
+            f["code"] = ("hook_number_restated_from_source"
+                         if f["code"] == "hook_number_not_in_source" else "number_restated_from_source")
+            f["detail"] = f"'{n}' 은 원장 수치를 단위·표기만 바꿔 쓴 것으로 보인다(판정 모델) — 맞는지 보라"
+            changed = True
+    if changed:
+        audit["stats"]["red"] = sum(1 for f in audit["findings"] if f["level"] == "red")
+        audit["stats"]["yellow"] = sum(1 for f in audit["findings"] if f["level"] == "yellow")
 
 
 def _hook_text_key(text: str) -> str:

@@ -2681,6 +2681,9 @@ JEV_SCENE_SHOWABLE_MIN: float = _get_float("JEV_SCENE_SHOWABLE_MIN", 0.5)
 #   (number_objects_shadow, 숫자 나오는 126컷): 0.7 이상 21컷은 전부 개수·높이 표현이었고,
 #   계약이 권하는 저울 연출은 0.56 이었다(0.5 로 내리면 그것을 벌한다).
 JEV_NUMBER_AS_OBJECTS_MIN: float = _get_float("JEV_NUMBER_AS_OBJECTS_MIN", 0.7)
+# 숫자 감사의 빨강을 "원장 수치를 단위·표기만 바꿔 쓴 것"으로 보고 노랑으로 내리는 문턱.
+#   풀어 주는 방향이라 높게 잡는다 — 틀리게 풀면 지어낸 숫자가 노랑으로 묻힌다.
+JEV_NUMBER_RESTATED_MIN: float = _get_float("JEV_NUMBER_RESTATED_MIN", 0.8)
 #: 판정에 보낼 문장 길이 상한. Jev 의 컨텍스트는 32,000 토큰이라 여유가 크지만,
 #  입력 토큰이 곧 비용이고 판정에 필요한 것은 따옴표 주변 문맥이다. 프롬프트 한 컷이
 #  실측 400~1,500자라 넉넉하다.
