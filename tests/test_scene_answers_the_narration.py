@@ -146,3 +146,46 @@ def test_number_rule_has_notice_check_and_feedback():
     assert "photo_number_as_objects" in config.RETRYABLE_QUALITY_WARNINGS
     fix = pc.feedback_prompt([], ["photo_number_as_objects:1"])
     assert "억지 비교" in fix and "number_punch" in fix
+
+
+# ── "~해서 ~한다"의 원인이 화면에 있나 (2026-09-27, 계약 ⑨) ─────────────
+def _cause_judge(monkeypatch, fn):
+    monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
+    monkeypatch.setattr(decide, "number_as_objects", lambda n, v: None)
+    monkeypatch.setattr(decide, "cause_shown", fn)
+
+
+def test_a_result_without_its_cause_is_warned(monkeypatch):
+    """★ 실측 그 컷: '부지 규제를 피해 바다 위로' → 바다 위 바지선만."""
+    header, cuts = _good_directive(10)
+    cuts[5]["narration_ko"] = "부지 규제를 피하기 위해 바다 위 부유식 플랫폼으로 띄웁니다."
+    _cause_judge(monkeypatch, lambda n, p, v: {"states_cause": 0.9,
+                                              "cause_shown": 0.04 if "부지" in n else 0.9})
+    got = pc.evaluate(header, cuts, None)
+    assert [w for w in got["warnings"] if w.startswith("photo_cause_not_shown")] == \
+        [f"photo_cause_not_shown:{cuts[5]['cut_no']}"]
+
+
+def test_the_previous_scene_is_shown_to_the_judge(monkeypatch):
+    """계약이 원인을 앞 stage 로 나누라고 하므로 앞 컷 장면을 함께 본다."""
+    header, cuts = _good_directive(10)
+    seen = []
+    _cause_judge(monkeypatch, lambda n, p, v: seen.append((p, v)) or None)
+    pc.evaluate(header, cuts, None)
+    assert seen[0][0] == "" and seen[1][0] == cuts[0]["visual_prompt"]
+
+
+def test_a_plain_fact_is_not_asked_for_a_cause(monkeypatch):
+    header, cuts = _good_directive(10)
+    _cause_judge(monkeypatch, lambda n, p, v: {"states_cause": 0.1, "cause_shown": 0.0})
+    got = pc.evaluate(header, cuts, None)
+    assert not any(w.startswith("photo_cause_not_shown") for w in got["warnings"])
+
+
+def test_cause_rule_has_notice_check_and_feedback():
+    assert "photo_cause_not_shown" in dv.STAGING_CONTRACT
+    assert "photo_cause_not_shown" in config.RETRYABLE_QUALITY_WARNINGS
+    assert "photo_cause_not_shown" in pc.WARNING_REASONS
+    fix = pc.feedback_prompt([], ["photo_cause_not_shown:6"])
+    assert "앞 stage" in fix

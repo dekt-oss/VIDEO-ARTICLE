@@ -238,6 +238,35 @@ def number_restated(number: str, sentence: str, facts: str) -> float | None:
                 NUMBER_RESTATED_Q[0], NUMBER_RESTATED_Q[1])
 
 
+#: "~해서 ~한다"의 **원인이 화면에 있나**(2026-09-27, 화면 구성 계약 ⑨). 운영자 판정(09-24):
+#  "자리가 없어서 바다에 구축한다"는데 바다 위 플랫폼만 있고 '자리 없음'이 화면에 없었다.
+#  계약이 원인을 앞 stage 로 나누라고 하므로 **앞 컷 장면까지** 함께 보여 준다.
+CAUSE_SHOWN_Q: dict[str, tuple[str, dict[str, str]]] = {
+    "states_cause": (
+        "Does NARRATION explain WHY something happens — a cause or constraint that leads to an "
+        "effect (because of X, Y; X is blocked so Y; to avoid X, they do Y)?",
+        {"true": "the narration names a cause/constraint and the effect it leads to",
+         "false": "the narration only states a fact, a number or a result without its reason"},
+    ),
+    "cause_shown": (
+        "Is that CAUSE (the reason or constraint, not the resulting situation) visible in "
+        "PREVIOUS SCENE or SCENE?",
+        {"true": "one of the scenes shows the cause itself (a coastline packed with buildings "
+                 "leaving no room; a transmission line jammed at a narrow gate)",
+         "false": "the scenes show only the result (a platform floating at sea) and the reason "
+                  "never appears"},
+    ),
+}
+
+
+def cause_shown(narration: str, previous_scene: str, scene: str) -> dict[str, float] | None:
+    """{states_cause, cause_shown} 확률. 못 물었으면 None(fail-open)."""
+    if not str(narration or "").strip() or not str(scene or "").strip():
+        return None
+    return noul_many(f"NARRATION: {narration}\nPREVIOUS SCENE: {previous_scene or '(none)'}\n"
+                     f"SCENE: {scene}", CAUSE_SHOWN_Q)
+
+
 def components_recognizable(components: list[str]) -> float | None:
     """도해 부품 목록이 알아볼 물건들인 확률. 못 물었으면 None(호출부는 경고를 내지 않는다).
 

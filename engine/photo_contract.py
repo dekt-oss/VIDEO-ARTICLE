@@ -62,6 +62,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_component_unrecognizable",  # 도해 부품이 추상어라 그림이 정체불명이 된다(Jev 되묻기, 2026-09-24)
     "photo_scene_not_answering",       # 실사 컷이 나레이션 대신 주제 사진을 놓았다(Jev 되묻기, 2026-09-27)
     "photo_number_as_objects",         # 수치를 사물 개수·높이로 그렸다 — 억지 비교(Jev 되묻기, 2026-09-27)
+    "photo_cause_not_shown",           # "~해서 ~한다"의 원인이 화면에 없다 — 계약 ⑨(Jev 되묻기, 2026-09-27)
     "photo_mechanism_spec_inherited",  # 재사용 컷이 기준 컷의 구조를 물려받았다(면제)
     "photo_mechanism_structured",       # 어휘는 장식적이나 stage 가 진행을 구조로 선언했다
     "photo_reuse_base_overused",       # 한 기준 컷에서 파생이 너무 많다(그 대상이 화면을 지배)
@@ -1458,6 +1459,26 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
             if counted:
                 warns.append("photo_number_as_objects:" + ",".join(counted[:6]))
 
+    # ★ [원인이 화면에 없다] 2026-09-27, 화면 구성 계약 ⑨. 운영자 판정(09-24): "자리가 없어서
+    #   바다에 짓는다"는데 바다 위 플랫폼만 있었다. 계약이 원인을 **앞 stage** 로 나누라고 하므로
+    #   앞 컷 장면까지 같이 보여 준다. 실측(scripts/cause_shown_shadow.py, 605컷 중 원인을 말하는
+    #   129컷): 0.1 미만 12컷 — 1위가 바로 그 부유식 데이터센터 컷이었고(같은 리포트 지시서 5장 전부),
+    #   '전력 부족을 해결하는 엔진'에 엔진 단면만 있는 컷이 뒤를 이었다. 경고, fail-open.
+    if cuts:
+        from . import decide
+        if decide.enabled():
+            missing: list[str] = []
+            prev = ""
+            for c in cuts:
+                vis = str(c.get("visual_prompt") or "")
+                got = decide.cause_shown(str(c.get("narration_ko") or ""), prev, vis)
+                if (got and got["states_cause"] >= config.JEV_CAUSE_STATED_MIN
+                        and got["cause_shown"] < config.JEV_CAUSE_SHOWN_BELOW):
+                    missing.append(str(c.get("cut_no")))
+                prev = vis
+            if missing:
+                warns.append("photo_cause_not_shown:" + ",".join(missing[:6]))
+
     # ③ 도해가 아예 없으면 이 버전을 고른 의미가 없다.
     if n and not mech:
         blocks.append("photo_mechanism_missing")
@@ -2174,6 +2195,12 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 13.7조 원을 블록 기둥으로 — 운영자 판정 '억지 비교'다. 수치는 number_punch 카드가 쓴다."
                 " 장면은 그 수치를 **가진 실제 사물**을 하나 보여줘라(엔진 한 대가 발전기에 얹히는 모습,"
                 " 시험지를 채점하는 손). 개수·더미·막대·줄 세우기로 크기를 표현하지 마라.")
+        if "photo_cause_not_shown" in wcodes:
+            wfix.append(
+                "- **'~해서 ~한다'의 원인이 화면에 없다.** '부지 규제를 피해 바다 위로'에 바다 위 바지선만"
+                " 있으면 왜 바다인지 아무도 모른다(운영자 판정). 원인을 **바로 앞 stage** 로 나눠 그려라 —"
+                " 빈틈없이 꽉 찬 해안(자리 없음) → 그 앞바다로 밀려 나가는 플랫폼. 같은 세계·같은 카메라,"
+                " 바뀌는 것은 상태다. 나레이션도 두 컷에 나눠 얹어라(화면 구성 계약 ⑨).")
         if "photo_stage_no_transformation" in wcodes:
             wfix.append(
                 "- **이 stage 들은 '나타났다·빛난다'만 선언했다.** 둘 다 정지 화면으로도 성립해서"

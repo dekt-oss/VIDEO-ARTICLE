@@ -1058,6 +1058,8 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_scene_not_answering",
     # ★ 2026-09-27 — 수치를 사물 개수·높이로 그렸다("4GW" → 엔진 네 대). 운영자 판정 억지 비교.
     "photo_number_as_objects",
+    # ★ 2026-09-27 — "~해서 ~한다"의 원인이 화면에 없다(계약 ⑨). 원인 stage 를 앞에 나누면 된다.
+    "photo_cause_not_shown",
     # ★ 2026-09-18 — 기전 시퀀스에 범례·캡션이 없으면 두 집단을 그려도 어느 쪽이 무엇인지
     #   시청자가 모른다. overlay_plan 에 legend/label_pair 를 넣으면 되는 종류라 되묻는다.
     "photo_mechanism_unlabeled",
@@ -2684,6 +2686,11 @@ JEV_NUMBER_AS_OBJECTS_MIN: float = _get_float("JEV_NUMBER_AS_OBJECTS_MIN", 0.7)
 # 숫자 감사의 빨강을 "원장 수치를 단위·표기만 바꿔 쓴 것"으로 보고 노랑으로 내리는 문턱.
 #   풀어 주는 방향이라 높게 잡는다 — 틀리게 풀면 지어낸 숫자가 노랑으로 묻힌다.
 JEV_NUMBER_RESTATED_MIN: float = _get_float("JEV_NUMBER_RESTATED_MIN", 0.8)
+# "~해서 ~한다"를 말하는 컷(아래 값 이상)에서 원인이 이 컷·앞 컷 장면에 보일 확률이 이 아래면 경고.
+#   실측 2026-09-27(cause_shown_shadow, 원인을 말하는 129컷): 0.1 미만 12컷 — 부유식 데이터센터
+#   (운영자 지적 그 컷, 5장 모두)가 1위. 0.2 로 올리면 36컷으로 세 배가 된다.
+JEV_CAUSE_STATED_MIN: float = _get_float("JEV_CAUSE_STATED_MIN", 0.5)
+JEV_CAUSE_SHOWN_BELOW: float = _get_float("JEV_CAUSE_SHOWN_BELOW", 0.1)
 #: 판정에 보낼 문장 길이 상한. Jev 의 컨텍스트는 32,000 토큰이라 여유가 크지만,
 #  입력 토큰이 곧 비용이고 판정에 필요한 것은 따옴표 주변 문맥이다. 프롬프트 한 컷이
 #  실측 400~1,500자라 넉넉하다.
