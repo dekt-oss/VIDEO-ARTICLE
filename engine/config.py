@@ -463,7 +463,15 @@ VERSION_VISUAL_TYPE: dict[str, str] = {
 #     티어가 다르면 따로 재야 한다.
 #   ★ MODEL_REPORT_SCRIPT 도 pro 티어지만 **미측정이라 그대로 둔다.** 지시서 결과를
 #     재지 않은 자리에 밀지 않는다.
-MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", "deepseek-v4-pro")
+#   ★★★ **2026-09-27: gemini-3.8-flash 로 옮긴다(운영자 결정).** 원장 실측(호출 26·25건):
+#       deepseek-v4-pro  $0.163/회 · 출력 3.2만 토큰 · **5~6분/회**
+#       gemini-3.8-flash $0.133/회 · 출력 1.2만 토큰 · **35~45초/회**(리포트 지시서 기준)
+#     지시서는 거의 항상 2회 호출이라 편당 $0.33·11분 → 약 $0.27~0.36·1.5분(추정). 비용은
+#     사실상 같고 **시간이 7배 차이**다 — 운영자 체감 "무한으로 돈다"의 대부분이 이것이었다.
+#     ⚠ 위 A/B 는 2.5-pro 와의 비교였고 **3.8-flash 는 논문 지시서로 잰 적이 없다.** 리포트에서는
+#       품질이 구간으로 겹쳤다(MODEL_REPORT_DIRECTIVE 주석). 초반 몇 편은 승인 화면의 차단·경고
+#       수를 deepseek 때와 비교해 본다 — 나빠지면 draft.yml 의 directive_model 입력으로 되돌린다.
+MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", "gemini-3.8-flash")
 
 # 총길이 예산(DV6). 1분 기준이되 내용에 따라 유연(실제 길이는 나레이션 실측을 따른다).
 TARGET_TOTAL_SEC: int = _get_int("TARGET_TOTAL_SEC", 60)
