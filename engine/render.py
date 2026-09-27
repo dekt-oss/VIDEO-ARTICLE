@@ -29,6 +29,7 @@ from . import (assemble, asset_cache, board_render, clip_fit_types, config, cost
                sequence_render, stage_metrics as sm, stage_render, subtitles,
                visual_sequence)
 from . import continuity_qa
+from . import still_check
 from . import photo_contract
 from .providers import image as image_provider
 from .providers import tts as tts_provider
@@ -215,8 +216,14 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
                render_job_id: str | None = None,
                render_job_kind: str = "paper",
                ref_path: str | None = None,
-               reference_key: str = "") -> float:
+               reference_key: str = "",
+               force: bool = False) -> float:
     """이미지 스틸 생성. 실패 시 재시도 → placeholder 폴백. 반환: cost.
+
+    `force=True` 는 캐시를 **읽지 않고** 새로 그린다(결과는 캐시에 덮어쓴다).
+      ★ 2026-09-27 발견: 판정 뒤 "재생성 1회"가 이 함수를 그냥 다시 불렀는데, 첫 그림이 이미
+        캐시에 들어가 있어 **같은 그림을 내려받았다**(비용 0, 재생성 0). 연속성 QA 의 재생성은
+        캐시가 켜진 렌더(유료 + directive_id)에서 한 번도 실제로 일어난 적이 없다.
 
     유료 제공자(gemini 등)일 때만 content_hash 멱등 캐시를 쓴다 — 재렌더 시 변경 안 된 컷은
     Storage 에 저장된 에셋을 재사용해 재생성 비용을 아낀다(placeholder 는 공짜라 캐시 불필요).
@@ -238,7 +245,7 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
     content_h = assemble.content_hash(cut, header, reference_key=reference_key)
     cut_no = int(cut.get("cut_no") or 0)
 
-    if use_cache:
+    if use_cache and not force:
         existing = asset_cache.get(render_job_kind, directive_id, cut_no, "image")
         if assemble.cache_hit(existing, content_h) and existing.get("asset_url"):
             try:
@@ -842,12 +849,29 @@ def _obtain_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
             log.warning("컷 %s 연속성 실패 → 재생성 1회", cut.get("cut_no"))
             cost += _gen_still(
                 cut, header, img_path, directive_id, render_job_id, render_job_kind,
-                ref_path=ref_path, reference_key=ref_key)
+                ref_path=ref_path, reference_key=ref_key, force=True)
             if continuity_qa.failed(continuity_qa.judge(ref_path, img_path)):
                 dec.setdefault("degraded", []).append(
                     continuity_qa.DEGRADED_WORLD_CHANGED)
                 log.warning("컷 %s 재생성 뒤에도 세계가 다르다 — 기록하고 진행",
                             cut.get("cut_no"))
+
+    # ★ [클립을 사기 전에 그림을 본다] 2026-09-27 운영자 승인("그림 먼저 검사하고 클립 사기").
+    #   그림은 $0.04~0.13, 그 그림으로 사는 클립은 $0.2~0.4 다. 그림에 글자가 박혔거나 주인공이
+    #   없으면 클립을 사도 못 쓴다 — 그림만 한 번 다시 그리는 것이 싸다. 판정은 멀티모달
+    #   flash 한 번(≈$0.0002). 실패하면 재생성 1회, 그래도 실패면 **기록하고 진행한다**
+    #   (연속성 QA 와 같은 자세 — 화면이 비는 것이 가장 나쁜 결말이다).
+    if still_check.applies(cut, header):
+        verdict = still_check.check(img_path, cut)
+        if still_check.failed(verdict):
+            log.warning("컷 %s 그림 검사 실패(%s) → 클립 전에 그림만 재생성 1회",
+                        cut.get("cut_no"), verdict.get("reason"))
+            cost += _gen_still(
+                cut, header, img_path, directive_id, render_job_id, render_job_kind,
+                ref_path=ref_path, reference_key=ref_key, force=True)
+            if still_check.failed(still_check.check(img_path, cut)):
+                dec.setdefault("degraded", []).append(still_check.DEGRADED_STILL_FAILED)
+                log.warning("컷 %s 재생성 뒤에도 그림 검사 실패 — 기록하고 진행", cut.get("cut_no"))
     return cost
 
 

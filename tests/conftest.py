@@ -80,6 +80,10 @@ def _no_live_judge_calls_from_tests(monkeypatch):
       `config.JEV_ENABLED` 를 읽는 테스트(기본값 검사)는 그대로 살아 있고,
       켜진 상태를 보고 싶은 테스트는 `decide.enabled` 를 스스로 덮어써서 볼 수 있다.
     """
-    from engine import decide
+    from engine import config, decide
 
     monkeypatch.setattr(decide, "enabled", lambda: False)
+    # ★ 같은 이유로 클립 전 그림 검사(멀티모달 Gemini)도 끈다(2026-09-27). 유료 이미지 제공자를
+    #   흉내 내는 테스트에서 `.env` 의 GEMINI 키로 **실제 판정 호출**이 나갔다(test_shared_assets).
+    #   켜진 상태를 보고 싶은 테스트는 config.STILL_CHECK_ENABLED 를 스스로 켠다.
+    monkeypatch.setattr(config, "STILL_CHECK_ENABLED", False)

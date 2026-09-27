@@ -2707,6 +2707,9 @@ CONTINUITY_QA_ENABLED: bool = os.getenv("CONTINUITY_QA_ENABLED", "1") not in ("0
 CONTINUITY_QA_MODEL: str = os.getenv("CONTINUITY_QA_MODEL", "gemini-2.5-flash")
 # 판정은 한 문장 사유만 받는다 — 길게 받을 이유가 없고, 길면 잘려서 JSON 이 깨진다.
 CONTINUITY_QA_MAX_TOKENS: int = int(os.getenv("CONTINUITY_QA_MAX_TOKENS", "200") or "200")
+# 클립을 사기 전 그림 검사(engine/still_check.py, 2026-09-27 운영자 승인). 실사형(photo)의 영상
+#   컷에만 돈다. 같은 멀티모달 통로(continuity_qa.ask)·같은 모델이다. 끄려면 0.
+STILL_CHECK_ENABLED: bool = _get_bool("STILL_CHECK_ENABLED", True)
 # 세계이탈 신호를 운영자에게 알리는 문턱. **점수·게이트가 아니다** — 표본이 쌓이기 전에
 #   벌점으로 만들면 "충돌 → 분화구"처럼 정상적으로 크게 변하는 컷을 벌한다.
 WORLD_DRIFT_NOTICE: float = 0.30

@@ -1,0 +1,105 @@
+"""클립을 사기 전에 그림을 본다 (2026-09-27, 운영자 승인 "그림 먼저 검사하고 클립 사기").
+
+무엇을 푸는가
+------------
+실사형 한 컷은 그림 한 장($0.04~0.13) 위에 클립($0.2~0.4)을 산다. 그림에 **글자가 박혔거나**
+(flash 는 도해에 깨진 라벨을 그린다 — 2026-08-29 실측) **주인공이 없으면** 클립은 사도 못 쓴다.
+지금까지는 그것을 편을 다 만든 뒤 사람이 보고 알았고, 다시 사는 비용은 클립 값이었다.
+그림만 한 번 다시 그리는 편이 싸다.
+
+무엇을 묻는가 — 좁게 고정한다(clip_candidates.review_tie 와 같은 규율)
+  ① 그림 안에 글자·숫자·라벨이 그려져 있나 — 화풍 계약이 금지하고 카드가 대신 쓴다.
+  ② 이 컷의 주인공(staging_ko 또는 visual_prompt 첫 문장)이 한눈에 보이나.
+"어느 쪽이 예쁘냐"는 묻지 않는다 — 예쁨으로 고르면 우리가 아는 실패를 놓친다.
+
+★ 판정 불가(키 없음·호출 실패·응답 모양 이상)는 **통과**다. 못 쟀다고 벌하지 않는다.
+★ Jev 가 아니라 멀티모달 flash 다 — Jev 는 글만 본다.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from . import config, continuity_qa
+
+#: 재생성 뒤에도 실패한 컷이 남기는 저하 코드(sequence_render.degraded_summary 그릇).
+DEGRADED_STILL_FAILED = "still_check_failed"
+
+_SYSTEM = (
+    "You check one generated still image before it is animated into a video clip. "
+    "Answer only the two questions asked. Reply with JSON only."
+)
+
+_USER = (
+    "INTENDED SUBJECT: {subject}\n\n"
+    "1. text_in_image — Would a viewer watching this on a PHONE notice prominent lettering, "
+    "numbers, a logo-like glyph or a label drawn on an object (a big sign, a caption, a chart "
+    "label, large digits on a hull)? Answer false for small print on papers or documents, "
+    "rolled drawings, screens, and fine texture — those read as texture on a phone.\n"
+    "2. subject_present — Is the main object of the INTENDED SUBJECT recognizably in the picture? "
+    "Judge only whether that object is there and is the focus. Size, count, exact pose, "
+    "lighting and small details do NOT matter.\n\n"
+    'Reply exactly: {{"text_in_image": true|false, "subject_present": true|false, '
+    '"reason": "<one short sentence>"}}'
+)
+
+_FIRST_SENTENCE = re.compile(r"^(.{20,240}?[.!?])(\s|$)")
+
+
+def subject_of(cut: dict[str, Any]) -> str:
+    """이 컷이 보여야 할 것 — 그림을 **실제로 시킨** visual_prompt 의 첫 문장.
+
+    ★ staging_ko 를 쓰지 않는다(2026-09-27 실측): 연출 전체를 주면 판정관이 "크레인이 충분히
+      크지 않다" 같은 세부로 떨어뜨렸다(10컷 중 7컷 불합격). 물어야 할 것은 "주인공이 있나"다.
+    """
+    vp = str(cut.get("visual_prompt") or "").strip()
+    m = _FIRST_SENTENCE.match(vp)
+    return (m.group(1) if m else vp[:240]).strip()
+
+
+def applies(cut: dict[str, Any], header: dict[str, Any]) -> bool:
+    """실사형·유료 그림·키 있음·주인공을 말할 수 있을 때만 본다."""
+    return bool(config.STILL_CHECK_ENABLED
+                and str(header.get("version_type") or "") == "photo"
+                and continuity_qa.enabled()
+                and subject_of(cut))
+
+
+def judge(img_path: str, cut: dict[str, Any], asker=None) -> dict[str, Any]:
+    """그림 → {measured, text_in_image, subject_present, reason}. 예외를 내지 않는다."""
+    out: dict[str, Any] = {"measured": False, "text_in_image": None,
+                           "subject_present": None, "reason": ""}
+    ask = asker or continuity_qa.ask
+    data = ask(_SYSTEM, _USER.format(subject=subject_of(cut)), [img_path])
+    if not isinstance(data, dict):
+        return out
+    t, s = data.get("text_in_image"), data.get("subject_present")
+    if not isinstance(t, bool) or not isinstance(s, bool):
+        return out
+    out.update(measured=True, text_in_image=t, subject_present=s,
+               reason=str(data.get("reason") or ""))
+    return out
+
+
+def check(img_path: str, cut: dict[str, Any], asker=None) -> dict[str, Any]:
+    """두 번 물어 **두 번 다 불합격일 때만** 불합격으로 본다(2026-09-27 실측).
+
+    ★ 같은 그림에 같은 질문을 두 번 했더니 답이 갈린 컷이 있었다(10장 중 1장). 불합격 한 번이
+      그림 재생성(돈)으로 이어지므로 흔들리는 판정으로 돈을 쓰지 않는다. 판정은 한 번에 약
+      $0.0002 라 두 번 물어도 거의 공짜다. 첫 판정이 합격이면 두 번째는 묻지 않는다.
+    """
+    first = judge(img_path, cut, asker)
+    if not failed(first):
+        return first
+    second = judge(img_path, cut, asker)
+    if failed(second):
+        return {**second, "votes": 2}
+    return {**second, "votes": 1}
+
+
+def failed(verdict: dict[str, Any] | None) -> bool:
+    """글자가 박혔거나 주인공이 없다고 **판정된** 경우만 True. 판정 불가는 False."""
+    v = verdict or {}
+    return bool(v.get("measured")) and (v.get("text_in_image") is True
+                                        or v.get("subject_present") is False)
