@@ -1913,7 +1913,10 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
     fixes: list[str] = []
     codes = {r.split(":", 1)[0] for r in block_reasons}
     if "photo_hook_missing" in codes:
-        fixes.append("- header.hook_ko 를 채워라(20자 내외, 1컷 나레이션과 다른 문장).")
+        fixes.append("- header.hook_ko 를 채워라(20자 내외, 1컷 나레이션과 다른 문장)."
+                     " **1컷 나레이션을 그대로 옮기면 코드가 지운다** — 화면 위(훅)와 아래(자막)에 같은"
+                     " 문장이 겹치기 때문이다. 훅은 제목처럼 짧은 명사구로 써라"
+                     " (예: 나레이션 '나무도 목마르면 성장을 멈춘다?' → 훅 '나무 성장의 임계점').")
     if "photo_visual_role_missing" in codes:
         fixes.append("- 모든 컷에 visual_role 을 MECHANISM 또는 REALITY 로 선언하라.")
     if "photo_forbidden_screen_request" in codes:
