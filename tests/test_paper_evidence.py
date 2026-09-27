@@ -164,8 +164,12 @@ def test_abstract_is_used_as_the_source_when_full_text_is_missing():
 
 
 def test_full_text_wins_over_the_abstract():
+    """전문이 정본이고 확보 수준도 전문이다. **정정(2026-09-27):** 다만 PMC 본문에는 초록이
+    없어서 초록 인용이 '원문에 없음'이 됐다 — 이제 초록을 앞에 붙여 함께 대조한다
+    (tests/test_abstract_counts_as_source.py)."""
     pk = pe.verification_packet(_packet(text="본문 전문", depth="full_body"), "초록")
-    assert pk["text"] == "본문 전문" and pk["source_depth"] == "full_body"
+    assert "본문 전문" in pk["text"] and "초록" in pk["text"]
+    assert pk["source_depth"] == "full_body"
 
 
 def test_no_abstract_and_no_text_stays_unverifiable():
