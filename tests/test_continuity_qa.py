@@ -105,6 +105,7 @@ def test_it_regenerates_once_and_then_gives_up():
     # 판정 2회(최초 + 재생성 뒤), 재생성 1회.
     assert src.count("continuity_qa.judge(ref_path, img_path)") == 2
     body = src.split("if ref_path and continuity_qa.enabled():")[1]
+    body = body.split("클립을 사기 전에 그림을 본다")[0]   # 뒤따르는 그림 검사(2026-09-27)는 별개다
     assert body.count("_gen_still(") == 1
 
 

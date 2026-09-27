@@ -254,7 +254,8 @@ DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 �
   "header": {{
     "aspect_ratio": "{config.ASPECT_RATIO}",
     "global_style": "<전 컷 일관성 기준 — 화풍/톤 앵커 한 줄(영문 키워드 포함 가능)>",
-    "hook_ko": "<한국어 훅 — 관용적 재작성>", "hook_en": "<English hook — idiomatic>",
+    "hook_ko": "<상단 고정 부제 — 영상 내내 화면 위에 떠 있다. 1컷 나레이션과 **다른 문장**. 제목처럼 짧게(20자 내외)>",
+    "hook_en": "<top caption shown for the whole video — a different sentence from cut 1's narration, title-short>",
     "cta_ko": "<저장/댓글 유도>",           "cta_en": "<save/comment CTA>",
     "bgm": {{ "mood": "<차분|긴장|경쾌 등>", "track_ref": "" }},
     "total_estimated_sec": <int>,
