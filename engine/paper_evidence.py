@@ -74,6 +74,14 @@ def verification_packet(packet: dict[str, Any] | None,
     """
     packet = dict(packet or {})
     if packet.get("text"):
+        # ★ 전문이 있어도 **초록을 앞에 붙인다**(2026-09-27 실측). PMC XML 본문(jats_to_text)에는
+        #   초록이 없다 — PNAS 나무 논문에서 초록에 그대로 있는 인용 5개가 "원문에 없음"이 되어
+        #   지시서 승인이 잠겼고, 재생성은 같은 원장을 다시 쓰니 몇 번을 돌려도 풀리지 않았다.
+        #   모델은 초록을 입력으로 받으므로 초록 문장을 인용하는 것은 정당하다.
+        ab = (abstract or "").strip()
+        body = str(packet["text"])
+        if ab and ab[:160] not in body:
+            packet["text"] = f"{ab}\n\n{body}"
         return packet
     text = (abstract or "").strip()
     if not text:
