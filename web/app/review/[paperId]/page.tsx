@@ -165,7 +165,7 @@ export default async function ReviewDetailPage(props: {
             {draft && (
               <PublishTitles
                 key={params.paperId}
-                paperId={params.paperId}
+                id={params.paperId}
                 initialKo={draft.upload_title_ko}
                 initialEn={draft.upload_title_en}
                 fallback={score?.title_ko || paper?.title || null}

@@ -9,15 +9,19 @@ import { useToast } from "@/components/Toast";
 import { apiErrorText } from "@/lib/apiError";
 
 export default function PublishTitles({
-  paperId,
+  id,
+  factory = "paper",
   initialKo,
   initialEn,
   fallback,
 }: {
-  paperId: string;
+  id: string;
+  // ★ 두 공장 공용(2026-09-27). 리포트 화면에 이 칸이 아예 없었다 — DB 칸(report_drafts.
+  //   upload_title_ko/en)과 저장 라우트(/api/report-draft-update)는 있었는데 화면만 빠졌다.
+  factory?: "paper" | "report";
   initialKo: string | null;
   initialEn: string | null;
-  fallback?: string | null; // 제목이 비었을 때 참고용(논문 제목) — 저장값은 아님
+  fallback?: string | null; // 제목이 비었을 때 참고용(논문·리포트 제목) — 저장값은 아님
 }) {
   const toast = useToast();
   const router = useRouter();
@@ -68,10 +72,12 @@ export default function PublishTitles({
 
   async function save() {
     setSaving(true);
-    const res = await fetch("/api/draft-update", {
+    const [url, idKey] = factory === "report"
+      ? ["/api/report-draft-update", "report_id"] : ["/api/draft-update", "paper_id"];
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paper_id: paperId, upload_title_ko: ko, upload_title_en: en }),
+      body: JSON.stringify({ [idKey]: id, upload_title_ko: ko, upload_title_en: en }),
     });
     setSaving(false);
     const e = await res.json().catch(() => null);

@@ -83,3 +83,46 @@ export function buildPublishCaption(
 export function stripMarkup(text: string): string {
   return (text ?? "").replace(/<[^>]*>/g, "").replace(/[<>]/g, "");
 }
+
+// ── 리포트 발행 캡션 ─────────────────────────────────────────────
+// ★ engine/report_attribution.py::build_publish_caption 과 **글자 그대로** 같아야 한다 —
+//   화면에서 복사한 설명란과 워커가 업로드하는 설명란이 다르면 운영자가 본 것이 올라가지 않는다.
+//   tests/test_report_caption_twin.py 가 문구·면책·해시태그를 대조한다(이중관리 지점).
+export const REPORT_DISCLAIMER_TEXT =
+  "본 영상은 정보 제공 목적이며 투자 권유가 아닙니다. 투자 판단과 책임은 본인에게 있습니다.";
+
+export interface ReportMeta {
+  broker?: string | null;
+  analyst?: string | null;
+  company?: string | null;
+  theme?: string | null;
+  report_url?: string | null;
+}
+
+export function buildReportPublishCaption(
+  r: ReportMeta | null, teaser = "", lang: "ko" | "en" = "ko", hashtags?: string[],
+): string {
+  let who = r?.broker ?? "";
+  if (r?.analyst) who = `${who} ${r.analyst}`.trim();
+  const company = r?.company || r?.theme || "";
+  const url = r?.report_url ?? "";
+  const lines: string[] = [];
+  if (teaser) { lines.push(teaser.trim()); lines.push(""); }
+  let tags: string[];
+  if (lang === "en") {
+    if (company) lines.push(`📊 ${company}`);
+    if (who) lines.push(`🏛️ Source: ${who}`);
+    if (url) lines.push(`🔗 ${url}`);
+    lines.push("⚠️ For information only. Not investment advice.");
+    tags = hashtags ?? ["#stocks", "#investing", "#finance", "#shorts"];
+  } else {
+    if (company) lines.push(`📊 ${company}`);
+    if (who) lines.push(`🏛️ 출처: ${who}`);
+    if (url) lines.push(`🔗 ${url}`);
+    lines.push(`⚠️ ${REPORT_DISCLAIMER_TEXT}`);
+    tags = hashtags ?? ["#증권", "#리포트", "#주식", "#투자", "#쇼츠"];
+  }
+  lines.push("");
+  lines.push(tags.join(" "));
+  return lines.join("\n").trim();
+}
