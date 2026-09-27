@@ -11,6 +11,9 @@ import {
   getReportDirectivePending,
 } from "@/lib/reportQueries";
 import WorkspaceClient from "@/components/WorkspaceClient";
+import PublishTitles from "@/components/PublishTitles";
+import PublishCaption from "@/components/PublishCaption";
+import { buildReportPublishCaption } from "@/lib/publishCaption";
 import StageStepper, { type StepNo } from "@/components/StageStepper";
 import { reportStages } from "@/lib/work/steps";
 import { renderProgress } from "@/lib/work/renderQueue";
@@ -45,10 +48,10 @@ export default async function ReportReviewDetailPage(props: {
     getReportDraft(supabase, reportId),
     supabase
       .from("reports")
-      .select("title, company, theme, broker, target_price, opinion, report_url, summary")
+      .select("title, company, theme, broker, analyst, target_price, opinion, report_url, summary")
       .eq("id", reportId)
       .maybeSingle(),
-    supabase.from("report_scores").select("title_ko, one_liner_ko, angle").eq("report_id", reportId).maybeSingle(),
+    supabase.from("report_scores").select("title_ko, one_liner_ko, one_liner_en, angle").eq("report_id", reportId).maybeSingle(),
     supabase.from("report_published").select("report_id").eq("report_id", reportId).maybeSingle(),
     getReportDirectiveStatusMap(supabase, [reportId]),
     getReportRenderJobs(supabase),
@@ -77,6 +80,10 @@ export default async function ReportReviewDetailPage(props: {
     : defaultStep;
 
   const title = score?.title_ko || report?.title || "리포트";
+  // ★ 설명란은 워커가 업로드할 때와 **같은 규칙**으로 만든다(engine/report_publish.
+  //   build_upload_description → report_attribution.build_publish_caption).
+  const captionKo = buildReportPublishCaption(report, score?.one_liner_ko ?? "", "ko");
+  const captionEn = buildReportPublishCaption(report, score?.one_liner_en ?? "", "en");
   // ★ 화면에 뜬 검사 결과가 지금 대본의 것인가(PR #94 후속 리뷰 P1-3). 승인을 막지는 않는다.
   const validationCurrent = isValidationCurrent(
     draft?.script_md, (draft as { validated_script_hash?: string } | null)?.validated_script_hash);
@@ -108,6 +115,7 @@ export default async function ReportReviewDetailPage(props: {
         initialStep={step}
         validationCurrent={validationCurrent}
         leftExtras={
+          <>
           <details className="aux-panel">
             <summary>리포트 정보 · 원문</summary>
             <div className="muted">
@@ -127,6 +135,18 @@ export default async function ReportReviewDetailPage(props: {
             )}
             {report?.report_url && <a className="btn" href={report.report_url} target="_blank" rel="noreferrer">원문 ↗</a>}
           </details>
+            {draft && (
+              <PublishTitles
+                key={reportId}
+                id={reportId}
+                factory="report"
+                initialKo={draft.upload_title_ko ?? null}
+                initialEn={draft.upload_title_en ?? null}
+                fallback={score?.title_ko || report?.title || null}
+              />
+            )}
+            <PublishCaption captionKo={captionKo} captionEn={captionEn} />
+          </>
         }
       />
     </main>

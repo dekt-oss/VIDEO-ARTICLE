@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    {"report": {"broker": "유안타증권", "analyst": "이재윤", "company": "삼성전자", "report_url": "https://example.com/r.pdf"},
+     "teaser": "메모리 사이클 장기화", "lang": "ko",
+     "expect": "메모리 사이클 장기화\n\n📊 삼성전자\n🏛️ 출처: 유안타증권 이재윤\n🔗 https://example.com/r.pdf\n⚠️ 본 영상은 정보 제공 목적이며 투자 권유가 아닙니다. 투자 판단과 책임은 본인에게 있습니다.\n\n#증권 #리포트 #주식 #투자 #쇼츠"},
+    {"report": {"broker": "유안타증권", "analyst": "이재윤", "company": "삼성전자", "report_url": "https://example.com/r.pdf"},
+     "teaser": "Memory upcycle", "lang": "en",
+     "expect": "Memory upcycle\n\n📊 삼성전자\n🏛️ Source: 유안타증권 이재윤\n🔗 https://example.com/r.pdf\n⚠️ For information only. Not investment advice.\n\n#stocks #investing #finance #shorts"},
+    {"report": {"theme": "조선"}, "teaser": "", "lang": "ko",
+     "expect": "📊 조선\n⚠️ 본 영상은 정보 제공 목적이며 투자 권유가 아닙니다. 투자 판단과 책임은 본인에게 있습니다.\n\n#증권 #리포트 #주식 #투자 #쇼츠"}
+  ]
+}
