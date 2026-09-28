@@ -1070,6 +1070,8 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_cause_not_shown",
     # ★ 2026-09-28 — 첫 컷 나레이션이 3초를 넘는다(벤치마크 첫 3초 규칙). 줄이면 되는 종류라 되묻는다.
     "photo_hook_cut_too_long",
+    # ★ 2026-09-27 — 세계에 장소가 둘이라 모든 컷 그림이 콜라주가 됐다(삼성전자 렌더).
+    "photo_world_multi_place",
     # ★ 2026-09-18 — 기전 시퀀스에 범례·캡션이 없으면 두 집단을 그려도 어느 쪽이 무엇인지
     #   시청자가 모른다. overlay_plan 에 legend/label_pair 를 넣으면 되는 종류라 되묻는다.
     "photo_mechanism_unlabeled",
@@ -2723,6 +2725,9 @@ JEV_NUMBER_RESTATED_MIN: float = _get_float("JEV_NUMBER_RESTATED_MIN", 0.8)
 #   (운영자 지적 그 컷, 5장 모두)가 1위. 0.2 로 올리면 36컷으로 세 배가 된다.
 JEV_CAUSE_STATED_MIN: float = _get_float("JEV_CAUSE_STATED_MIN", 0.5)
 JEV_CAUSE_SHOWN_BELOW: float = _get_float("JEV_CAUSE_SHOWN_BELOW", 0.1)
+# 세계 문장이 장소를 둘 이상 적었을 확률이 이 이상이면 경고(되묻기). 실측 2026-09-27(저장 세계 130개):
+#   걸린 3개가 0.91~0.97, 나머지는 전부 0.5 미만이라 문턱 위치에 민감하지 않다.
+JEV_WORLD_MULTI_PLACE_MIN: float = _get_float("JEV_WORLD_MULTI_PLACE_MIN", 0.7)
 #: 판정에 보낼 문장 길이 상한. Jev 의 컨텍스트는 32,000 토큰이라 여유가 크지만,
 #  입력 토큰이 곧 비용이고 판정에 필요한 것은 따옴표 주변 문맥이다. 프롬프트 한 컷이
 #  실측 400~1,500자라 넉넉하다.

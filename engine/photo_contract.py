@@ -82,6 +82,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_glow_normalized",           # 발광 어휘를 코드가 앰버 강조로 옮겼다(화풍이 금지하는 것이다)
     "photo_prompt_number_removed",     # 카드가 이미 그리는 퍼센트를 이미지 프롬프트에서 지웠다
     "photo_world_lead_disagrees",      # 세계를 여는 컷이 그 세계를 안 그린다(세계 선언이 죽는다)
+    "photo_world_multi_place",         # 세계에 장소가 둘 — 모든 컷 그림이 콜라주가 된다(Jev, 2026-09-27)
     "photo_mechanism_starts_late",     # 원리 설명이 너무 늦게 시작한다(전반부가 통째로 소개)
     "photo_role_claim_mismatch",       # 컷의 역할 라벨이 가리키는 근거와 맞지 않는다
     "photo_mechanism_unlabeled",       # 기전 시퀀스에 범례·캡션이 없다(어느 쪽이 무엇인지 화면이 안 말한다)
@@ -1795,6 +1796,21 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     if unstaged:
         warns.append("photo_lead_cut_missing_entity:" + ", ".join(unstaged[:4]))
 
+    # ★★ [세계가 장소를 둘 적었다] 2026-09-27 삼성전자 렌더 실측. 세계 문장은 그 시퀀스 **모든 컷
+    #   그림 앞에** 붙는다. "클린룸 공장 and 기업 분석 사무실"이라 적자 그림 10장 중 7장이 공장|사무실
+    #   (|컷 장면) **콜라주**로 나왔다. 저장 세계 130개 중 3개(0.91~0.97)였고 나머지는 전부 0.5 미만 —
+    #   드물지만 걸리면 편이 망가진다. 판정은 Jev(문장 안에 답이 있다), 경고·되묻기·fail-open.
+    from . import decide
+    if decide.enabled():
+        split_worlds = []
+        for s in sequences or []:
+            w = visual_sequence.world_prose((s or {}).get("world") or {})
+            p = decide.world_multi_place(w) if w else None
+            if p is not None and p >= config.JEV_WORLD_MULTI_PLACE_MIN:
+                split_worlds.append(str((s or {}).get("sequence_id") or "?"))
+        if split_worlds:
+            warns.append("photo_world_multi_place:" + ", ".join(split_worlds[:4]))
+
     churn = worlds_per_minute(sequences, total_sec)
     if churn > config.PHOTO_MAX_WORLDS_PER_MIN:
         warns.append(f"photo_world_churn:{churn}/분")
@@ -2097,6 +2113,12 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 그리고 MECHANISM 도해 컷을 바로 그 나레이션 위에 놓아라 —"
                 " 그림이 설명하는 원리와 말이 설명하는 원리가 같아야 한다."
                 " 소스에 기전이 없으면 지어내지 말고 연구진의 해석을 그 자리에 놓아라.")
+        if "photo_world_multi_place" in wcodes:
+            wfix.append(
+                "- **세계(world)에 장소가 둘 이상이다.** world 문장은 그 시퀀스의 **모든 컷 그림 앞에**"
+                " 붙는다 — '클린룸 공장 and 기업 분석 사무실'이라고 적자 그림 10장 중 7장이 공장|사무실"
+                " **콜라주**로 쪼개졌다(실측). world.style 에는 **한 곳**만 적어라."
+                " 장소가 정말 다르면(공장 → 애널리스트 책상) **시퀀스를 나눠** 각자 자기 world 를 가져라.")
         if "photo_world_lead_disagrees" in wcodes:
             wfix.append(
                 "- **세계를 여는 컷이 그 세계를 안 그린다.** NEW_WORLD stage 의 첫 컷이 곧"

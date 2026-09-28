@@ -267,6 +267,25 @@ def cause_shown(narration: str, previous_scene: str, scene: str) -> dict[str, fl
                      f"SCENE: {scene}", CAUSE_SHOWN_Q)
 
 
+#: 시퀀스 세계(world)가 **장소를 둘 이상** 적었나(2026-09-27 삼성전자 렌더 실측).
+#  세계 문장은 그 시퀀스의 **모든 컷 그림 앞에** 붙는다. "클린룸 공장 and 기업 분석 사무실"이라고
+#  적자 그림 10장 중 7장이 공장|사무실(|컷 장면) **콜라주**로 나왔다 — 모델이 둘 다 그렸다.
+WORLD_MULTI_PLACE_Q = (
+    "Does this WORLD description name two or more different kinds of places that cannot be one "
+    "single camera view (e.g. 'a cleanroom factory and a corporate office', 'a port and a "
+    "trading floor')?",
+    {"true": "it combines distinct places — an image model will draw a split or collage",
+     "false": "it describes one place (details, lighting and objects inside it are fine)"},
+)
+
+
+def world_multi_place(world_text: str) -> float | None:
+    """세계 문장이 장소를 둘 이상 적었을 확률. 못 물었으면 None(fail-open)."""
+    if not str(world_text or "").strip():
+        return None
+    return noul(f"WORLD: {world_text}", WORLD_MULTI_PLACE_Q[0], WORLD_MULTI_PLACE_Q[1])
+
+
 def components_recognizable(components: list[str]) -> float | None:
     """도해 부품 목록이 알아볼 물건들인 확률. 못 물었으면 None(호출부는 경고를 내지 않는다).
 

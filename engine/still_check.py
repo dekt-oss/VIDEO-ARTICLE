@@ -9,7 +9,8 @@
 
 무엇을 묻는가 — 좁게 고정한다(clip_candidates.review_tie 와 같은 규율)
   ① 그림 안에 글자·숫자·라벨이 그려져 있나 — 화풍 계약이 금지하고 카드가 대신 쓴다.
-  ② 이 컷의 주인공(staging_ko 또는 visual_prompt 첫 문장)이 한눈에 보이나.
+  ② 이 컷의 주인공(visual_prompt 첫 문장)이 한눈에 보이나.
+  ③ 그림이 여러 칸(콜라주·분할)으로 쪼개졌나 — 2026-09-27 삼성전자 렌더 실측.
 "어느 쪽이 예쁘냐"는 묻지 않는다 — 예쁨으로 고르면 우리가 아는 실패를 놓친다.
 
 ★ 판정 불가(키 없음·호출 실패·응답 모양 이상)는 **통과**다. 못 쟀다고 벌하지 않는다.
@@ -28,7 +29,7 @@ DEGRADED_STILL_FAILED = "still_check_failed"
 
 _SYSTEM = (
     "You check one generated still image before it is animated into a video clip. "
-    "Answer only the two questions asked. Reply with JSON only."
+    "Answer only the three questions asked. Reply with JSON only."
 )
 
 _USER = (
@@ -39,9 +40,12 @@ _USER = (
     "rolled drawings, screens, and fine texture — those read as texture on a phone.\n"
     "2. subject_present — Is the main object of the INTENDED SUBJECT recognizably in the picture? "
     "Judge only whether that object is there and is the focus. Size, count, exact pose, "
-    "lighting and small details do NOT matter.\n\n"
+    "lighting and small details do NOT matter.\n"
+    "3. split_panels — Is the picture divided into two or more separate panels or tiles showing "
+    "different scenes (a collage, a split-screen, stacked strips)? A single scene that merely "
+    "contains a window, a screen or a doorway is NOT split.\n\n"
     'Reply exactly: {{"text_in_image": true|false, "subject_present": true|false, '
-    '"reason": "<one short sentence>"}}'
+    '"split_panels": true|false, "reason": "<one short sentence>"}}'
 )
 
 _FIRST_SENTENCE = re.compile(r"^(.{20,240}?[.!?])(\s|$)")
@@ -69,7 +73,7 @@ def applies(cut: dict[str, Any], header: dict[str, Any]) -> bool:
 def judge(img_path: str, cut: dict[str, Any], asker=None) -> dict[str, Any]:
     """그림 → {measured, text_in_image, subject_present, reason}. 예외를 내지 않는다."""
     out: dict[str, Any] = {"measured": False, "text_in_image": None,
-                           "subject_present": None, "reason": ""}
+                           "subject_present": None, "split_panels": None, "reason": ""}
     ask = asker or continuity_qa.ask
     data = ask(_SYSTEM, _USER.format(subject=subject_of(cut)), [img_path])
     if not isinstance(data, dict):
@@ -77,7 +81,9 @@ def judge(img_path: str, cut: dict[str, Any], asker=None) -> dict[str, Any]:
     t, s = data.get("text_in_image"), data.get("subject_present")
     if not isinstance(t, bool) or not isinstance(s, bool):
         return out
+    sp = data.get("split_panels")
     out.update(measured=True, text_in_image=t, subject_present=s,
+               split_panels=sp if isinstance(sp, bool) else None,
                reason=str(data.get("reason") or ""))
     return out
 
@@ -99,7 +105,12 @@ def check(img_path: str, cut: dict[str, Any], asker=None) -> dict[str, Any]:
 
 
 def failed(verdict: dict[str, Any] | None) -> bool:
-    """글자가 박혔거나 주인공이 없다고 **판정된** 경우만 True. 판정 불가는 False."""
+    """글자가 박혔거나·주인공이 없거나·칸으로 쪼개졌다고 **판정된** 경우만 True. 판정 불가는 False.
+
+    ★ split_panels(2026-09-27): 삼성전자 렌더에서 그림 10장 중 7장이 공장|사무실 콜라주였다.
+      원인은 세계 문장(photo_world_multi_place)이지만, 그림 단계에서도 한 번 더 잡는다.
+    """
     v = verdict or {}
     return bool(v.get("measured")) and (v.get("text_in_image") is True
-                                        or v.get("subject_present") is False)
+                                        or v.get("subject_present") is False
+                                        or v.get("split_panels") is True)

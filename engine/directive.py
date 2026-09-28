@@ -151,7 +151,9 @@ SEQUENCE_SCHEMA: str = f"""
                   "style": "<이 세계가 **어디인가** 한 구절 — 장소·공간·거기 놓인 것."
                   " 화풍·재질·렌더 방식은 쓰지 마라(코드가 정한다). 카메라 각도·렌즈 수치도 금지."
                   " 좋음 'A cell culture room with incubators and a steel bench'."
-                  " 나쁨 'Microscopic, detailed 3D rendering of cellular structures'(장소가 아니라 그리는 방법)>",
+                  " 나쁨 'Microscopic, detailed 3D rendering of cellular structures'(장소가 아니라 그리는 방법)."
+                  " **장소는 한 곳만** — 'A factory and an office'처럼 둘을 적으면 모든 컷 그림이 칸으로"
+                  " 쪼개진다(photo_world_multi_place). 장소가 다르면 시퀀스를 나눠라>",
                   "lighting": "<그 장소의 **광원** 한 구절(창·형광등·작업등). 분위기·발광 효과 금지 —"
                   " 'Soft, internal glow' 는 광원이 아니라 효과다. 발광하는 물체를 그리고 싶으면"
                   " 그 물체를 lighting 이 아니라 장면에 적어라>",
