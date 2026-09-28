@@ -20,7 +20,8 @@ def _cues(plan, lang="ko"):
 def test_term_on_top_gloss_below_in_the_viewers_language():
     plan = eo.normalize_overlay_plan([GLOSS])
     ko, en = _cues(plan, "ko")[0][2], _cues(plan, "en")[0][2]
-    assert ko.startswith("HBM\\N") and ko.endswith("고대역폭 메모리")
+    # "용어: 풀이" 한 줄(운영자 2026-09-28: "중속엔진: 발전소용 중형엔진 이런 식으로 확실하게")
+    assert ko.endswith("HBM: 고대역폭 메모리")
     assert en.endswith("high-bandwidth memory")
 
 
@@ -28,7 +29,7 @@ def test_it_survives_the_second_normalization():
     """★ 실측(2026-09-28): 저장 때 한 번, 렌더 때 한 번 정리된다 — 두 번째에 풀이를 잃어 한 줄 요약이 됐다."""
     twice = eo.normalize_overlay_plan(eo.normalize_overlay_plan([GLOSS]))
     assert twice[0]["payload"]["term"] == "HBM"
-    assert "\\N" in _cues(twice)[0][2]
+    assert _cues(twice)[0][2].endswith("HBM: 고대역폭 메모리")
 
 
 def test_an_old_english_word_card_does_not_show_in_korean_videos():

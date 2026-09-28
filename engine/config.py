@@ -1587,7 +1587,7 @@ OVERLAY_KEYWORD_MAX_CHARS: int = 18
 #   애매한 것들을 추가 자막으로 잘 보이게 넣어야 할 거 같은데". 종전 규칙은 "컷마다 대문자 영어 낱말 하나"라
 #   모든 컷에 GRID BOTTLENECK 같은 영어 요약어가 붙었다 — 한국 시청자에게 새 정보가 없다.
 # 이제 keyword 는 {term, gloss_ko, gloss_en} — 용어(1줄) + 쉬운 풀이(2줄, 작게), **필요한 컷에만**.
-OVERLAY_GLOSS_FONT_SIZE: int = _get_int("OVERLAY_GLOSS_FONT_SIZE", 52)
+OVERLAY_GLOSS_FONT_SIZE: int = _get_int("OVERLAY_GLOSS_FONT_SIZE", 60)
 OVERLAY_GLOSS_TERM_MAX_CHARS: int = _get_int("OVERLAY_GLOSS_TERM_MAX_CHARS", 12)
 OVERLAY_GLOSS_MAX_CHARS: int = _get_int("OVERLAY_GLOSS_MAX_CHARS", 16)
 # 한국어 영상에서 한글 없는 옛 낱말 카드("GRID BOTTLENECK")를 안 띄운다(옛 지시서 재렌더 포함).

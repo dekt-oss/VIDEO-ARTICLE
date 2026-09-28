@@ -385,7 +385,9 @@ def gloss_card_text(item: dict[str, Any], lang: str = "ko") -> str:
     term = str(pay.get("term") or "").strip()
     gloss = str(pay.get(f"gloss_{lang}") or pay.get("gloss_ko") or "").strip()
     if term and gloss:
-        return f"{term}\\N{{\\fs{config.OVERLAY_GLOSS_FONT_SIZE}}}{gloss}"
+        # ★ "용어: 풀이" 한 줄(2026-09-28 운영자: "중속엔진: 발전소용 중형엔진 이런 식으로 확실하게").
+        #   두 줄(용어 / 작은 풀이)은 풀이가 딸린 말처럼 보였다. 길면 ASS 가 알아서 줄을 바꾼다.
+        return f"{{\\fs{config.OVERLAY_GLOSS_FONT_SIZE}}}{term}: {gloss}"
     text = str(item.get("text") or "").strip()
     if not text:
         return ""
