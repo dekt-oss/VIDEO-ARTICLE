@@ -89,6 +89,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_color_code_assigned",       # 코드가 개체별 비교색을 확정하고 어긋난 언급을 앰버로 바꿨다
     "photo_keyword_is_a_sentence",     # 키워드 카드가 낱말이 아니라 문장이다(9/8 에 뺀 그 카드다)
     "photo_keyword_repeats_narration",  # 카드가 나레이션을 그대로 옮겨 적었다(같은 말을 두 번)
+    "photo_keyword_without_gloss",     # 풀이 없는 영어 낱말 카드(GRID BOTTLENECK) — 풀이로 바꾸거나 지운다(2026-09-28)
     "photo_pointer_zone_unknown",      # 화살표가 가리킬 구역 이름이 틀렸다(화살표가 통째로 사라진다)
 )
 
@@ -390,8 +391,8 @@ def _squash(text: str) -> str:
     return _PUNCT.sub("", str(text or "")).lower()
 
 
-def keyword_card_problems(cuts: list[dict[str, Any]]) -> tuple[list[Any], list[Any]]:
-    """(문장꼴 카드 컷, 나레이션을 옮겨 적은 카드 컷). 순수 — 지시서 dict 만 본다.
+def keyword_card_problems(cuts: list[dict[str, Any]]) -> tuple[list[Any], list[Any], list[Any]]:
+    """(문장꼴·너무 긴 카드 컷, 나레이션을 옮겨 적은 카드 컷, 풀이 없는 옛 낱말 카드 컷). 순수.
 
     ★ 왜 이 둘인가(2026-09-18): 운영자가 9/8 에 화면 카드를 뺀 이유는 "그냥 들어간다"였다.
       그때 나간 카드는 `캘리포니아 대학교 버클리 연구팀` 처럼 **나레이션이 이미 말한 문장**이었다.
@@ -403,15 +404,27 @@ def keyword_card_problems(cuts: list[dict[str, Any]]) -> tuple[list[Any], list[A
     """
     sentences: list[Any] = []
     repeats: list[Any] = []
+    no_gloss: list[Any] = []
     for c in cuts:
         if not isinstance(c, dict):
             continue
         for item in (c.get("overlay_plan") or []):
             if not isinstance(item, dict) or str(item.get("type")) != "keyword":
                 continue
+            # ★ 풀이 카드(2026-09-28): 용어 + 쉬운 풀이. 정규화 뒤에는 payload 에, 모델 원본에는 최상위에 있다.
+            pay = item.get("payload") or {}
+            term = str(pay.get("term") or item.get("term") or "").strip()
+            gloss = str(pay.get("gloss_ko") or item.get("gloss_ko") or "").strip()
+            if term and gloss:
+                if (len(term) > config.OVERLAY_GLOSS_TERM_MAX_CHARS
+                        or len(gloss) > config.OVERLAY_GLOSS_MAX_CHARS):
+                    sentences.append(c.get("cut_no"))
+                continue
             text = " ".join(str(item.get("text") or "").split())
             if not text:
                 continue
+            # 풀이가 없는 옛 낱말 카드 — 운영자가 "왜 들어가냐"고 물은 그것이다.
+            no_gloss.append(c.get("cut_no"))
             words = text.split()
             if (len(words) > config.OVERLAY_KEYWORD_MAX_WORDS
                     or len(text) > config.OVERLAY_KEYWORD_MAX_CHARS):
@@ -419,7 +432,7 @@ def keyword_card_problems(cuts: list[dict[str, Any]]) -> tuple[list[Any], list[A
                 continue
             if len(words) >= 2 and _squash(text) in _squash(c.get("narration_ko")):
                 repeats.append(c.get("cut_no"))
-    return sentences, repeats
+    return sentences, repeats, no_gloss
 
 
 def pointer_zone_problems(cuts: list[dict[str, Any]]) -> list[Any]:
@@ -1647,7 +1660,10 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     if color_bad:
         warns.append("photo_color_code_reused:" + ", ".join(color_bad[:4]))
     if config.MECHANISM_LABEL_OVERLAYS_ENABLED:
-        kw_sentences, kw_repeats = keyword_card_problems(cuts)
+        kw_sentences, kw_repeats, kw_no_gloss = keyword_card_problems(cuts)
+        if kw_no_gloss:
+            warns.append("photo_keyword_without_gloss:"
+                         + ",".join(str(x) for x in kw_no_gloss[:6]))
         if kw_sentences:
             warns.append("photo_keyword_is_a_sentence:"
                          + ",".join(str(x) for x in kw_sentences[:6]))
@@ -2096,11 +2112,17 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 쓰면 범례가 거짓말이 된다(화면은 '파랑=청각인'이라고 적혀 있는데 파랑이 청각장애인"
                 " 뇌의 중심부를 뜻하게 된다). 한 개체는 처음부터 끝까지 **한 색**만 갖는다."
                 " 개체 **안의** 한 부분을 가리키려면 amber 강조나 화살표(pointer)를 써라.")
+        if "photo_keyword_without_gloss" in wcodes:
+            wfix.append(
+                "- **풀이 없는 낱말 카드가 있다**(예: 'GRID BOTTLENECK'). 운영자 판정: 영어 요약어는 한국 시청자에게"
+                " 새 정보가 없다. 카드는 **약어·어려운 개념·뜻이 안 와닿는 수치**를 푸는 자리다 — 그 컷에 그런"
+                " 말이 있으면 {\"type\": \"keyword\", \"term\": \"HBM\", \"gloss_ko\": \"고대역폭 메모리\","
+                " \"gloss_en\": \"high-bandwidth memory\"} 로 바꾸고, 없으면 **카드를 지워라.**")
         if "photo_keyword_is_a_sentence" in wcodes:
             fixes.append(
-                "- 키워드 카드가 **문장**이다. 카드는 화면 속 물체에 다는 이름표이지 자막이 아니다 —"
-                f" {config.OVERLAY_KEYWORD_MAX_WORDS}낱말·{config.OVERLAY_KEYWORD_MAX_CHARS}자 안으로"
-                " 줄여라(MYOGLOBIN · 75% WATER · 30-60 MIN 처럼). 길게 말할 것은 나레이션이 한다.")
+                "- 풀이 카드가 너무 길다. 용어는"
+                f" {config.OVERLAY_GLOSS_TERM_MAX_CHARS}자, 풀이는 {config.OVERLAY_GLOSS_MAX_CHARS}자 안으로"
+                " 줄여라('PBR 3.5배' · '자산 가치의 3.5배'). 길게 말할 것은 나레이션이 한다.")
         if "photo_keyword_repeats_narration" in wcodes:
             fixes.append(
                 "- 키워드 카드가 나레이션을 그대로 옮겨 적었다. 같은 말을 귀와 눈으로 두 번 하면"

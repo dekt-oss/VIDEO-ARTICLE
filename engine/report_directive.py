@@ -147,10 +147,13 @@ PHOTO_CONTRACT = f"""
                        "text": "<화면 카드 문구>", "start_sec": <초>, "duration_sec": <초>,
                        "payload": {{ "<legend 일 때>": "items: [{{color: amber|blue|coral, label: 한글 낱말}}]",
                                     "<label_pair 일 때>": "top / bottom (위·아래 화면이 무엇인지, 한글)",
-                                    "<pointer 일 때>": "at: [구역 1~3개] — {dv._POINTER_ZONES_HELP}" }} }} ]
-  ★ **컷마다 키워드 카드 하나**(type: keyword). 화면 속 물체에 다는 이름표다 — 대문자 영어 낱말
-    하나나 수치 하나({config.OVERLAY_KEYWORD_MAX_WORDS}낱말·{config.OVERLAY_KEYWORD_MAX_CHARS}자 이내,
-    예: CATHODE · 30-60 MIN · 1984). 나레이션을 옮겨 적지 마라(같은 말을 두 번 하는 셈이다).
+                                    "<pointer 일 때>": "at: [구역 1~3개] — {dv._POINTER_ZONES_HELP}" }},
+                       "term": "<keyword 일 때: 풀 용어>", "gloss_ko": "<쉬운 풀이>", "gloss_en": "<English gloss>" }} ]
+  ★ **풀이 카드(type: keyword)는 약어·어려운 개념·뜻이 안 와닿는 수치가 나오는 컷에만**(2026-09-28 운영자 지시).
+    나레이션이 다 풀지 못하는 말을 화면이 옆에서 풀어 준다 — term + gloss_ko + gloss_en:
+    HBM → "고대역폭 메모리" · PBR 3.5배 → "자산 가치의 3.5배" · 12M Fwd P/E → "1년 뒤 이익 대비 주가".
+    용어 {config.OVERLAY_GLOSS_TERM_MAX_CHARS}자·풀이 {config.OVERLAY_GLOSS_MAX_CHARS}자 이내, 컷당 하나.
+    그런 말이 없는 컷에는 **붙이지 마라** — 영어 요약어(GRID BOTTLENECK · PRICE HIKE)는 새 정보가 없다.
   ★ **화살표(pointer)는 웬만하면 쓰지 마라.** 어디를 보라고 손가락질하기 전에, 설명할 대상이
     **화면에서 제일 크고 한가운데**에 오도록 구도를 짜라. 그래도 도저히 가리킬 수 없을 때만
     type: pointer 를 쓰고, 그때도 구역 이름만 적어라(좌표·픽셀 금지 — 너는 그 그림을 본 적이 없다).

@@ -345,10 +345,13 @@ def test_prompt_is_recorded_in_asset_meta():
 # 둘 다 생성 모델이 아니라 코드가 그린다(ASS 텍스트·도형) — 추가 비용 0.
 
 def test_keyword_card_becomes_a_boxed_ass_cue():
-    plan = eo.normalize_overlay_plan([{"type": "keyword", "text": "  MYOGLOBIN \n"}])
-    assert plan[0]["type"] == "keyword" and plan[0]["text"] == "MYOGLOBIN"
+    # ★ 2026-09-28: 풀이 카드(용어 + 쉬운 풀이). 옛 낱말 카드("MYOGLOBIN")는 한국어 영상에서 안 뜬다.
+    plan = eo.normalize_overlay_plan([{"type": "keyword", "term": "  HBM \n",
+                                       "gloss_ko": "고대역폭 메모리", "gloss_en": "high-bandwidth memory"}])
+    assert plan[0]["type"] == "keyword" and plan[0]["payload"]["term"] == "HBM"
     cues = eo.build_overlay_cues([{"cut_no": 1, "overlay_plan": plan}], [0.0], [4.0])
     assert [c[3] for c in cues] == ["Keyword"]
+    assert "HBM" in cues[0][2] and "고대역폭 메모리" in cues[0][2]
     with_ov = subtitles.build_ass([(0.0, 4.0, "자막")], header_title="t", header_hook="h",
                                   overlays=cues)
     line = next(l for l in with_ov.splitlines() if l.startswith("Style: Keyword,"))
@@ -357,7 +360,7 @@ def test_keyword_card_becomes_a_boxed_ass_cue():
     #   거꾸로 넣었더니 시안 카드가 검게 나왔다(2026-09-18 실측).
     assert parts[4] == config.OVERLAY_KEYWORD_BOX_ASS, "박스 색이 Outline 자리에 있어야 한다"
     assert parts[8] == "3", "BorderStyle=3 이어야 불투명 박스가 된다"
-    assert parts[11] == "7", "좌상단"
+    assert parts[11] == "8", "위 가운데(2026-09-28 풀이 카드)"
 
 
 def test_the_annotation_layer_is_one_colour():
@@ -423,8 +426,11 @@ def test_a_sentence_card_is_flagged_but_a_word_card_is_not():
         {"type": "keyword", "text": "캘리포니아 대학교 버클리 연구팀"}])])
     assert any(w.startswith("photo_keyword_is_a_sentence") for w in bad["warnings"])
     ok = pc.evaluate({"hook_ko": "훅"}, [_cut(1, narration_ko="문장", overlay_plan=[
-        {"type": "keyword", "text": "75% WATER"}])])
+        {"type": "keyword", "term": "HBM", "gloss_ko": "고대역폭 메모리"}])])
     assert not any(w.startswith("photo_keyword") for w in ok["warnings"])
+    long_gloss = pc.evaluate({"hook_ko": "훅"}, [_cut(1, narration_ko="문장", overlay_plan=[
+        {"type": "keyword", "term": "HBM", "gloss_ko": "여러 겹으로 쌓아 올려 빠르게 읽고 쓰는 메모리 반도체"}])])
+    assert any(w.startswith("photo_keyword_is_a_sentence") for w in long_gloss["warnings"])
 
 
 def test_a_card_that_copies_the_narration_is_flagged_but_naming_is_not():
@@ -434,7 +440,7 @@ def test_a_card_that_copies_the_narration_is_flagged_but_naming_is_not():
     assert any(w.startswith("photo_keyword_repeats_narration") for w in copied["warnings"])
     naming = pc.evaluate({"hook_ko": "훅"}, [_cut(1, narration_ko="이건 미오글로빈입니다",
                                                  overlay_plan=[{"type": "keyword", "text": "미오글로빈"}])])
-    assert not any(w.startswith("photo_keyword") for w in naming["warnings"])
+    assert not any(w.startswith("photo_keyword_repeats_narration") for w in naming["warnings"])
 
 
 def test_the_model_is_told_about_both_new_types():
@@ -661,7 +667,7 @@ def test_a_lying_legend_is_not_drawn():
     """
     plan = eo.normalize_overlay_plan([
         {"type": "legend", "payload": {"items": [{"color": "blue", "label": "청각인"}]}},
-        {"type": "keyword", "text": "CORTEX"}])
+        {"type": "keyword", "term": "피질", "gloss_ko": "뇌의 바깥층"}])
     cuts = [{"cut_no": 1, "overlay_plan": plan}]
     kept = eo.build_overlay_cues(cuts, [0.0], [4.0], drop_types={"legend"})
     assert [c[3] for c in kept] == ["Keyword"], "범례만 빠지고 나머지는 남아야 한다"

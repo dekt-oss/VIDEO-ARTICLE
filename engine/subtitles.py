@@ -133,8 +133,11 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
         f"&H00000000,&H64000000,1,0,1,3,0,8,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_LABEL_BOTTOM_MARGIN_V}\n"
         # ★ 키워드 카드(2026-09-18): 불투명 박스(BorderStyle=3) + 좌상단(Alignment=7).
         #   참고 영상이 모든 컷에 쓰는 문법이다 — 낱말 하나로 화면 속 물체에 이름을 단다.
+        # ★ 2026-09-28 풀이 카드: 좌상단(7) → **위 가운데(8)**. 용어+풀이 두 줄이라 가운데가 잘 읽히고,
+        #   상단 고정 줄이 꺼져 있으면(SCREEN_HEADER_ENABLED) 헤더 자리만큼 위로 올린다.
         f"Style: Keyword,{font_name},{config.OVERLAY_KEYWORD_FONT_SIZE},{config.OVERLAY_KEYWORD_COLOR_ASS},"
-        f"{config.OVERLAY_KEYWORD_BOX_ASS},&H00000000,1,0,3,6,0,7,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_KEYWORD_MARGIN_V}\n"
+        f"{config.OVERLAY_KEYWORD_BOX_ASS},&H00000000,1,0,3,6,0,8,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},"
+        f"{config.OVERLAY_KEYWORD_MARGIN_V if config.SCREEN_HEADER_ENABLED else int(h * config.SUBTITLE_SAFE_TOP)}\n"
         # ★ 지시 화살표: 글자가 아니라 ASS 도형이다. 자리는 문자열이 \pos 로 직접 지정하므로
         #   여기 마진은 안 쓰인다. 외곽선 0 — 도형에 테두리가 생기면 촉이 뭉툼해진다.
         f"Style: Pointer,{font_name},20,{config.OVERLAY_POINTER_COLOR_ASS},"

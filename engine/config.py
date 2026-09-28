@@ -1079,6 +1079,8 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_color_code_reused",
     "photo_keyword_is_a_sentence",
     "photo_keyword_repeats_narration",
+    # ★ 2026-09-28 — 풀이 없는 영어 낱말 카드. 풀이로 바꾸거나 지우면 되는 종류라 되묻는다.
+    "photo_keyword_without_gloss",
     "photo_pointer_zone_unknown",
     # ★★ 2026-09-21 — 리포트 모델이 `visual_sequences` 를 안 쓰면 코드 폴백이 돈다. 그 경로는
     #   컷이 무엇을 그리든 2번째 stage 부터 무조건 CONTINUE_WORLD 를 찍는다 — 운영자가 통째로
@@ -1580,6 +1582,16 @@ OVERLAY_KEYWORD_BOX_ASS: str = OVERLAY_ANNOTATION_COLOR_ASS
 OVERLAY_KEYWORD_MARGIN_V: int = 0
 OVERLAY_KEYWORD_MAX_WORDS: int = 3
 OVERLAY_KEYWORD_MAX_CHARS: int = 18
+# ── 풀이 카드(2026-09-28 운영자 지시) ─────────────────────────────────────────────
+# 원문: "파란색 bottleneck 이건 왜 들어가는거야?? 약어라던지 어려운 개념이라던지 나레이션으로 다 표현하기
+#   애매한 것들을 추가 자막으로 잘 보이게 넣어야 할 거 같은데". 종전 규칙은 "컷마다 대문자 영어 낱말 하나"라
+#   모든 컷에 GRID BOTTLENECK 같은 영어 요약어가 붙었다 — 한국 시청자에게 새 정보가 없다.
+# 이제 keyword 는 {term, gloss_ko, gloss_en} — 용어(1줄) + 쉬운 풀이(2줄, 작게), **필요한 컷에만**.
+OVERLAY_GLOSS_FONT_SIZE: int = _get_int("OVERLAY_GLOSS_FONT_SIZE", 52)
+OVERLAY_GLOSS_TERM_MAX_CHARS: int = _get_int("OVERLAY_GLOSS_TERM_MAX_CHARS", 12)
+OVERLAY_GLOSS_MAX_CHARS: int = _get_int("OVERLAY_GLOSS_MAX_CHARS", 16)
+# 한국어 영상에서 한글 없는 옛 낱말 카드("GRID BOTTLENECK")를 안 띄운다(옛 지시서 재렌더 포함).
+KEYWORD_DROP_WITHOUT_HANGUL: bool = _get_bool("KEYWORD_DROP_WITHOUT_HANGUL", True)
 # ── 지시 화살표(2026-09-18) — 대상 구역을 코드가 가리킨다 ──
 #: ★★ **기본 꺼짐**(2026-09-19 운영자 지시). 원문: "화살표에 왜 목숨거냐. 화살표는 그냥 없어도
 #  되는거야. 아주가끔 필요하면 쓰는 도구이지 그걸 무슨 목숨걸고 처 넣으려고 낑낑거리고 있냐."

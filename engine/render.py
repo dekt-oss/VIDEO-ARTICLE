@@ -1588,7 +1588,8 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         drop_types = drop_types or None
         overlay_out.extend(evidence_overlay.build_overlay_cues(
             cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types,
-            images={no: p for no, p in asset_index.items() if p}, drop_types=drop_types))
+            images={no: p for no, p in asset_index.items() if p}, drop_types=drop_types,
+            lang=lang))
     if cut_map_out is not None:
         # ★ cut_no 가 정본이다. 예전 오버레이 경로는 결측 시 리스트 인덱스로 폴백했는데,
         #   그러면 지시서가 컷을 건너뛴 번호를 쓸 때 두 체계가 어긋난다. 여기서는 결측을
