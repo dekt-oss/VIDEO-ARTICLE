@@ -1704,7 +1704,9 @@ RENDER_QA_MAX_FREEZE_SEC: float = float(os.getenv("RENDER_QA_MAX_FREEZE_SEC", "3
 RENDER_QA_FREEZE_BLOCKS: bool = _get_bool("RENDER_QA_FREEZE_BLOCKS", False)
 # 자막 번인(libass). 한글 폰트 필요(러너: fonts-nanum). force_style 로 세이프에어리어 위 배치.
 SUBTITLE_FONT_NAME: str = os.getenv("SUBTITLE_FONT_NAME", "NanumGothic")
-SUBTITLE_FONT_SIZE: int = 66        # 본문 자막(크고 굵게 — 눈에 잘 띄게, 트렌디)
+# ★ 66 → 84(2026-09-28 벤치마크 3번): 벤치마크 자막은 그림 위 큰 글씨 2~5글자다. 청크도 짧게 끊는다
+#   (CAPTION_CHUNK_MAX). 글자가 커지고 청크가 짧아지니 줄바꿈 위험은 오히려 줄었다.
+SUBTITLE_FONT_SIZE: int = _get_int("SUBTITLE_FONT_SIZE", 84)
 SUBTITLE_MAX_CHARS: int = 22        # 단어 타임스탬프→자막 줄 묶음 시 한 줄 최대 글자수
 # 영상 상단 고정 헤더: 시리즈 제목 + 논문 후킹(부제). 전 구간 표시.
 SERIES_TITLE: str = os.getenv("SERIES_TITLE", "하루 논문 한 편")
@@ -2883,8 +2885,10 @@ CAPTION_TARGET_CPS_RANGE: dict[str, tuple[float, float]] = {
 CAPTION_MIN_DISPLAY_FLOOR_SEC: float = 0.7   # 하드 플로어(이보다 짧으면 인접 청크 병합)
 CAPTION_TAIL_HOLD_MAX_SEC: float = 0.5       # 침묵 구간까지만 표시창 연장(오디오는 안 밈)
 # 한 청크 최대 토큰 수(언어별). 빠른 발화면 fast 로 줄여 가독 부하↓.
-CAPTION_CHUNK_MAX: dict[str, int] = {"ko": 6, "en": 7}
-CAPTION_CHUNK_FAST: dict[str, int] = {"ko": 4, "en": 5}
+# ★ ko 6→3 · en 7→4 (2026-09-28 벤치마크 3번): 벤치마크 자막은 한 번에 1~2어절("피일까요?", "혈관을 돌지").
+#   긴 문장을 한 줄로 띄우면 시청자가 그림 대신 글을 읽는다. 너무 짧은 청크는 아래 하드 플로어가 병합한다.
+CAPTION_CHUNK_MAX: dict[str, int] = {"ko": 3, "en": 4}
+CAPTION_CHUNK_FAST: dict[str, int] = {"ko": 2, "en": 3}
 # 한 줄 최대 글자수(오토핏 근사). EN 은 폭 초과 방지 위해 넉넉히.
 CAPTION_MAX_CHARS: dict[str, int] = {"ko": SUBTITLE_MAX_CHARS, "en": 34}
 CAPTION_AUTOFIT_MAX_WIDTH_PX: int = 900
@@ -2939,7 +2943,12 @@ KEN_BURNS_ROLE: str = "micro_motion_only"
 # 근거: Reels/Shorts 에서 콘텐츠를 중앙(≈4:5~1:1) 밴드에 넣고 상하를 검정/블러 바로 채우는 편집이
 #       표준화(상단 바=훅, 하단 바=여백/자막 안전지대, 플랫폼 UI 겹침 회피). 리서치 반영.
 # full_bleed = 기존(이미지 화면 꽉 채움) / center_band = 중앙 밴드 + 상하 바.
-LAYOUT_MODE: str = os.getenv("LAYOUT_MODE", "center_band")
+# ★ 정정(2026-09-28, 운영자 승인 "1~3번 기준으로 수정" — 벤치마크 3번 화면 정리): full_bleed 가 기본이다.
+#   벤치마크(시화호·고기 핏물)는 그림이 **화면 전체**를 채우고 큰 자막이 그림 위에 얹힌다. 우리는 가운데
+#   띠 + 위(시리즈 제목·훅)·아래(자막·면책) 검정 바였다 — 위아래에 글줄 세 개가 늘 떠 있었다.
+#   제목 줄을 걷고(SCREEN_HEADER_ENABLED) 면책을 마지막 컷으로 옮기면 바가 빈 칸이 된다.
+#   되돌리려면 환경변수 LAYOUT_MODE=center_band. 근거: docs/deviation-benchmark-screen.md
+LAYOUT_MODE: str = os.getenv("LAYOUT_MODE", "full_bleed")
 LETTERBOX_TOP_PX: int = _get_int("LETTERBOX_TOP_PX", 200)        # 상단 바 높이
 LETTERBOX_CONTENT_HEIGHT: int = _get_int("LETTERBOX_CONTENT_HEIGHT", 1300)  # 중앙 콘텐츠 밴드 높이(px, 크게)
 LETTERBOX_BAR_COLOR: str = os.getenv("LETTERBOX_BAR_COLOR", "black")  # 상하 바 색(ffmpeg color)
@@ -3531,6 +3540,13 @@ REPORT_DEFAULT_VERSION: str = os.getenv("REPORT_DEFAULT_VERSION", "comic")  # co
 # 논문 시리즈("하루 한 편")를 그대로 변주한 이름이라 어색했다. 채널 통합 후 같은 채널에
 # 두 시리즈가 나란히 놓이므로 이름이 서로 헷갈리지 않는 편이 낫다.
 # 명세서 docs/specs/20260730-report-merge-into-paper-ko.md §6-1 의 열린 질문 해소.
+# ★ 화면 상단 고정 줄(시리즈 제목 + 훅)을 띄울까(2026-09-28 벤치마크 3번: 끔). 벤치마크에는 없다 —
+#   첫 컷이 질문 한마디(HOOK_CUT_RULE)라 훅이 화면에 두 번 뜰 이유도 없다. 제목 문자열은 남겨 둔다.
+SCREEN_HEADER_ENABLED: bool = _get_bool("SCREEN_HEADER_ENABLED", False)
+# ★ 리포트 하단 면책·출처 줄을 **마지막 컷에만** 띄운다(2026-09-28 벤치마크 3번). 설명란에는 항상 있고
+#   (report_attribution.build_publish_caption), 화면에는 FIN_DISCLAIMER_MIN_SEC 이상 노출한다.
+#   False 면 종전처럼 전 구간. 근거·되돌리기: docs/deviation-benchmark-screen.md
+REPORT_FOOTER_LAST_CUT_ONLY: bool = _get_bool("REPORT_FOOTER_LAST_CUT_ONLY", True)
 REPORT_SERIES_TITLE: str = os.getenv("REPORT_SERIES_TITLE", "오늘의 리포트")
 REPORT_SERIES_TITLE_BY_LANG: dict[str, str] = {
     "ko": REPORT_SERIES_TITLE,

@@ -70,7 +70,8 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
               platform: str | None = None, footer_text: str = "",
               overlays: list[tuple[float, float, str, str]] | None = None,
               caption_margin_v: int | None = None,
-              footer_margin_v: int | None = None) -> str:
+              footer_margin_v: int | None = None,
+              footer_from: float = 0.0) -> str:
     """(start,end,text) 목록 → ASS 문서.
 
     ★ PlayResX/Y 를 렌더 해상도로 명시한다. 그래야 폰트 크기·MarginV 가 실제 픽셀 단위로
@@ -157,8 +158,11 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
     )
     lines: list[str] = []
     # 상단 고정 헤더: 시리즈 제목(굵게) + 후킹(작게 다음 줄). 전 구간 표시.
-    title = (header_title or "").strip().replace("\n", " ")
-    hook = (header_hook or "").strip().replace("\n", " ")
+    # ★ 2026-09-28 벤치마크 3번: 기본으로 끈다(SCREEN_HEADER_ENABLED). 벤치마크에는 고정 줄이 없고,
+    #   첫 컷이 질문 한마디(HOOK_CUT_RULE)라 훅이 화면에 두 번 뜰 이유도 없다.
+    show_header = config.SCREEN_HEADER_ENABLED
+    title = (header_title or "").strip().replace("\n", " ") if show_header else ""
+    hook = (header_hook or "").strip().replace("\n", " ") if show_header else ""
     if title or hook:
         end_t = total_sec if total_sec and total_sec > 0 else _cues_end(cues)
         if end_t > 0:
@@ -174,12 +178,14 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
             lines.append(
                 f"Dialogue: 0,{ass_timestamp(0.0)},{ass_timestamp(end_t)},Header,,0,0,0,,{text}"
             )
-    # 하단 고정 면책/출처 자막(전 구간). footer_text 있을 때만.
+    # 하단 고정 면책/출처 자막. footer_text 있을 때만. footer_from 부터 끝까지(기본 0 = 전 구간).
+    #   ★ 2026-09-28: 리포트는 마지막 컷에서만 띄운다(report_render._footer_start).
     if footer:
         f_end = total_sec if total_sec and total_sec > 0 else _cues_end(cues)
-        if f_end > 0:
+        f_start = min(max(0.0, float(footer_from or 0.0)), f_end)
+        if f_end > f_start:
             lines.append(
-                f"Dialogue: 0,{ass_timestamp(0.0)},{ass_timestamp(f_end)},Footer,,0,0,0,,{footer}"
+                f"Dialogue: 0,{ass_timestamp(f_start)},{ass_timestamp(f_end)},Footer,,0,0,0,,{footer}"
             )
     for start, end, text in cues:
         text = (text or "").strip().replace("\n", "\\N")
