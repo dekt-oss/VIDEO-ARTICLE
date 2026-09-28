@@ -131,6 +131,18 @@ def test_the_router_verdict_counts_as_mechanism_even_without_the_label():
     assert pc.assign_motion_sources(cuts) == [1, 2, 3]
 
 
+def test_labelled_mechanism_cuts_beat_world_cuts_for_the_video_budget(monkeypatch):
+    """★ 첫 실측(발뒤꿈치 편, 2026-09-28): 라우터가 컷 1~14 를 전부 '이어지는 세계'로 보자 실사 컷 1~5 가 영상
+    8개를 다 써 버리고 정작 도해 컷 10·11·14·15 가 스틸이 됐다. 도해가 먼저, 훅·마무리 다음, 세계 컷은 남을 때만."""
+    monkeypatch.setattr(config, "PHOTO_VIDEO_CUTS_MAX", 8)
+    roles = "RRRRRRRMMMMRRMMRR"
+    cuts = [{"cut_no": i + 1, "visual_role": "MECHANISM" if ch == "M" else "REALITY",
+             "resolved_visual_plan": {"base": "MECHANISM_SEQUENCE" if i < 15 else "REALITY"}}
+            for i, ch in enumerate(roles)]
+    got = pc.assign_motion_sources(cuts)
+    assert got == [1, 8, 9, 10, 11, 14, 15, 17]       # 도해 6 + 훅 + 마무리 = 8. 세계 컷 2~7 은 남는 자리가 없다
+
+
 def test_the_floor_is_filled_with_neighbours_so_the_i2v_chain_stays_joined(monkeypatch):
     monkeypatch.setattr(config, "PHOTO_VIDEO_CUTS_MIN", 4)
     cuts = _cuts("RRRRRR")                                # 도해 없음 → 훅·마무리 둘뿐 → 이웃으로 채운다

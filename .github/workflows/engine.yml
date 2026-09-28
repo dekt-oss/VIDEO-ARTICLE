@@ -18,8 +18,8 @@ on:
         description: "채점 모델(gemini-* 면 Gemini 사용)"
         default: "gemini-2.5-flash"
       draft_model:
-        description: "초안(Fact Sheet/대본/자기검증) 모델. 품질 높이려면 claude-opus-4-8 + ANTHROPIC_API_KEY Secret"
-        default: "gemini-2.5-flash"
+        description: "초안(Fact Sheet/대본) 모델. 2026-09-28 기본 gemini-3.8-flash. 자기검증은 2.5-flash 고정"
+        default: "gemini-3.8-flash"
       run_draft:
         description: "초안 큐(draft_requests) 처리 여부"
         type: boolean
@@ -59,9 +59,9 @@ jobs:
       JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
       JEV_ENABLED: "1"
       # inputs 는 스케줄 실행 때 비므로 `|| 기본값` 으로 무인 실행에서도 동일하게 동작.
-      MODEL_FACTSHEET: ${{ inputs.draft_model || 'gemini-2.5-flash' }}
-      MODEL_SCRIPT: ${{ inputs.draft_model || 'gemini-2.5-flash' }}
-      MODEL_SELFCHECK: ${{ inputs.draft_model || 'gemini-2.5-flash' }}
+      MODEL_FACTSHEET: ${{ inputs.draft_model || 'gemini-3.8-flash' }}
+      MODEL_SCRIPT: ${{ inputs.draft_model || 'gemini-3.8-flash' }}
+      MODEL_SELFCHECK: 'gemini-2.5-flash'   # 판정용 — 2026-09-28 결정으로 싼 모델 고정
       OPENALEX_MAILTO: ${{ secrets.OPENALEX_MAILTO }}
       ARXIV_CONTACT: ${{ secrets.OPENALEX_MAILTO }}
       REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}

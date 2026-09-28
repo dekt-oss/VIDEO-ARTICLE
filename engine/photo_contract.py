@@ -740,8 +740,8 @@ def scene_kind_for_role(visual_role: Any) -> str:
 def assign_motion_sources(cuts: list[dict[str, Any]]) -> list[int]:
     """실사형 영상/스틸은 코드가 정한다(2026-09-28, 3단계). 반환: 영상으로 정한 컷 번호.
 
-    규칙(옛 프롬프트 문구 셋을 그대로 코드로): ① 도해 컷(라우터 정본 base=MECHANISM_SEQUENCE 또는 visual_role
-    MECHANISM) 전부 → ② 훅(컷1) → ③ 마무리(마지막 컷) 순으로 상한(PHOTO_VIDEO_CUTS_MAX)까지.
+    규칙(옛 프롬프트 문구 셋을 그대로 코드로): ① 도해 컷(visual_role MECHANISM) 전부 → ② 훅(컷1) → ③ 마무리(마지막 컷)
+    → ④ 이어지는 세계 안의 나머지 컷(라우터 base MECHANISM_SEQUENCE) 순으로 상한(PHOTO_VIDEO_CUTS_MAX)까지.
     ④ 하한(PHOTO_VIDEO_CUTS_MIN) 미달이면 이미 고른 컷 **옆의** 컷을 붙인다 — I2V 연쇄는 붙은 컷끼리만 이어진다.
     모델이 6~8개를 세어 붙이라던 규칙과 그 경고 둘(photo_video_cut_count_off·_not_adjacent)이 이것으로 대체된다.
     """
@@ -749,15 +749,20 @@ def assign_motion_sources(cuts: list[dict[str, Any]]) -> list[int]:
     if not n:
         return []
 
-    def is_mech(c: dict[str, Any]) -> bool:
-        plan = c.get("resolved_visual_plan") or {}
-        return (str(plan.get("base") or "") == "MECHANISM_SEQUENCE"
-                or str(c.get("visual_role") or "").strip().upper() == "MECHANISM")
+    def role_mech(c: dict[str, Any]) -> bool:
+        return str(c.get("visual_role") or "").strip().upper() == "MECHANISM"
 
-    order = [i for i, c in enumerate(cuts) if is_mech(c)]
+    def world_mech(c: dict[str, Any]) -> bool:
+        return str((c.get("resolved_visual_plan") or {}).get("base") or "") == "MECHANISM_SEQUENCE"
+
+    # ★ 순서가 곧 우선순위다(2026-09-28 저녁 첫 실측에서 잡음). 라우터의 MECHANISM_SEQUENCE 는 "이어지는 세계 안의
+    #   컷"이지 도해가 아니다 — 그것을 먼저 세니 실사 컷 1~5 가 영상을 다 쓰고 정작 도해 컷 10·11·14·15 가 스틸이
+    #   됐다(발뒤꿈치 편). 도해(visual_role) → 훅·마무리 → 세계 안의 나머지 컷 순.
+    order = [i for i, c in enumerate(cuts) if role_mech(c)]
     for i in (0, n - 1):
         if i not in order:
             order.append(i)
+    order += [i for i, c in enumerate(cuts) if i not in order and world_mech(c)]
     chosen = order[:config.PHOTO_VIDEO_CUTS_MAX]
     while len(chosen) < min(config.PHOTO_VIDEO_CUTS_MIN, n):
         nearby = sorted({j for i in chosen for j in (i - 1, i + 1) if 0 <= j < n and j not in chosen})
