@@ -34,7 +34,8 @@ def test_the_renderer_drops_arrows_while_it_is_off():
 def test_neither_factory_tells_the_model_to_add_arrows():
     """되도록 붙이라고 적어 두면 모델은 거의 매 컷에 붙인다 — 이 저장소가 실측한 그대로다."""
     for name in ("directive.py", "report_directive.py"):
-        src = (ENGINE / name).read_text(encoding="utf-8")
+        # ★ 2026-09-28 실사형 계약은 photo_prompt.py 한 자리(두 공장 공용) — 같이 읽는다.
+        src = (ENGINE / name).read_text(encoding="utf-8") + (ENGINE / "photo_prompt.py").read_text(encoding="utf-8")
         prompt = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
         assert "되도록 붙여라" not in prompt, name
         assert "화살표로 찍어라" not in prompt, name
@@ -44,7 +45,7 @@ def test_neither_factory_tells_the_model_to_add_arrows():
 def test_both_factories_tell_the_model_to_compose_instead():
     """'쓰지 마라'만 적으면 모델은 대안을 모른다 — 대신 할 일을 같이 준다."""
     for name in ("directive.py", "report_directive.py"):
-        src = (ENGINE / name).read_text(encoding="utf-8")
+        src = (ENGINE / name).read_text(encoding="utf-8") + (ENGINE / "photo_prompt.py").read_text(encoding="utf-8")
         assert "제일 크고 한가운데" in src, name
 
 

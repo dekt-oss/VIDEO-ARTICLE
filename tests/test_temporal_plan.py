@@ -148,7 +148,11 @@ def test_the_contract_reaches_every_version_that_can_use_it():
 
     from engine import directive as dv
     src = inspect.getsource(dv)
-    assert src.count("+ TEMPORAL_CONTRACT_GUIDANCE") >= 3, "계약이 일부 버전에만 간다"
+    # ★ 2026-09-28 실사형은 통합 프롬프트(photo_prompt.MOTION_RULES)가 같은 계약을 말한다 — 옛 상수는 만화식·나열식 둘.
+    assert src.count("+ TEMPORAL_CONTRACT_GUIDANCE") >= 2, "계약이 일부 버전에만 간다"
+    from engine import photo_prompt
+    assert "temporal_plan" in photo_prompt.MOTION_RULES and "HOLD" in photo_prompt.MOTION_RULES
+    assert photo_prompt.MOTION_RULES in dv.VERSION_GUIDANCE["photo"]
     assert "temporal_plan" in dv.DIRECTIVE_SYSTEM_BASE, "출력 스키마에 필드가 없다"
 
 

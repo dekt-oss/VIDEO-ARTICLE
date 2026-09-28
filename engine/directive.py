@@ -31,6 +31,7 @@ from . import sequence_tier
 from . import temporal_plan as tplan
 from . import temporal_context
 from . import photo_contract
+from . import photo_prompt
 from . import warning_triage
 from .llm import call_json, set_text_purpose
 from .providers import video  # 길이 티어(pick_clip_tier) — 예산 캡을 실제 요청 초수로 조인다
@@ -68,136 +69,14 @@ _OVERLAY_TYPES_HELP = "|".join(config.OVERLAY_TEXT_TYPES)
 _POINTER_ZONES_HELP = " / ".join(config.OVERLAY_POINTER_ZONES)
 _TONE_GRADES_HELP = "|".join((config.DEFAULT_TONE_GRADE, *config.TONE_GRADES))
 
-#: 시각 시퀀스 JSON 스키마 — **두 공장이 같은 것을 쓴다**(2026-09-19).
-#  예전엔 논문 프롬프트 안에만 있었다. 리포트는 시퀀스를 모델에게 묻지 않고 코드
-#  (equity_visual)가 찍었기 때문이다 — 그래서 컷이 무엇을 그리든 2번째 stage 부터
-#  무조건 CONTINUE_WORLD 였고, "파이프 단면을 그려라"는 컷에 앞 컷의 위성 그림이
-#  참조로 붙어 **파이프가 화면에 아예 안 나왔다**(2026-09-19 실물 렌더로 확인).
-#  이제 리포트도 모델이 쓴다. 스키마를 한 벌로 두어야 한쪽만 낡는 일이 없다.
-# ─────────────────────────────────────────────────────────────
-# 화면 구성 계약 — "장면 자체가 설명이다" (2026-09-24, 운영자 지시)
-# ─────────────────────────────────────────────────────────────
-# ★ 왜 생겼나. 운영자가 참고 영상 셋(시화호·고기 핏물)을 주고 "화살표·게이지 같은 단순한
-#   표현이 아니라 전체적으로 이해를 돕는 화면 구성"을 요구했다. 그 영상들의 공통점:
-#     "물이 얼마나 더러운지" → 손이 유리병으로 물을 뜬다 → 흙탕이 가라앉는다
-#     "3,551억 원을 쏟아부었다" → 콘크리트 구덩이에 돌덩이가 쏟아진다 (숫자는 카드)
-#     "효과가 없었다" → 정화 시설 위에 큰 X
-#   즉 **나레이션이 던진 질문에 장면이 물건과 행위로 답한다.** 우리 지시서는 같은 자리에
-#   "조선소 부감"·"컨테이너 터미널" 같은 **주제 사진**을 놓고 있었다.
-# ★ 실측(scripts/staging_shadow.py, 저장된 실사형 지시서 565컷, Jev 그림자):
-#     실사(REALITY) 컷이 나레이션에 답하는 비율 — 리포트 41% · 논문 31%
-#     도해(MECHANISM) 컷                        — 리포트 75% · 논문 77%
-#   도해는 구조를 강제하니 답하고, 실사는 강제가 없어 사진이 된다. 이 계약은 실사 컷에 그
-#   강제를 준다 — "무엇을 보여줄지"가 아니라 **"무슨 질문에 어떻게 답할지"** 를 쓰게 한다.
-# ★ 두 공장이 같은 문자열을 쓴다(SEQUENCE_SCHEMA 와 같은 이유 — 두 벌이면 한쪽만 낡는다).
-STAGING_CONTRACT: str = """
-[화면 구성 — 장면 자체가 설명이다] 컷마다 아래 두 칸을 **먼저** 쓰고, visual_prompt 는 그것을 영어로 옮긴다:
-  "answers_ko": "<이 컷이 답하는 질문 — 나레이션이 방금 던진 것. 한 문장. 예: '물이 얼마나 더러운가'>"
-  "staging_ko": "<그 답을 보여주는 물리적 연출 — 무엇이 무엇을 한다. 예: '손이 유리병으로 호수 물을 뜨고, 병 바닥에 흙탕이 가라앉는다'>"
-  ★ 규칙 넷:
-    ① 한 컷에 **주인공 하나**. 배경은 비운다(스튜디오·단색 바닥). 부감·터미널·나열·군중은 답이 아니다.
-    ② 추상적인 말은 **행위**로 바꾼다 — 돈을 쏟아부었다 → 돌덩이를 구덩이에 쏟는다 / 효과가 없다 → 그 물건 위에 큰 X /
-       수요가 몰린다 → 한 입구로 상자가 밀려든다. 숫자·글자는 그리지 않는다(카드가 쓴다).
-       수치를 **사물 개수·더미 높이·막대**로 바꾸지도 않는다 — "4GW"를 엔진 네 대로, 점수를 높이가 다른
-       카드 더미로 그리면 억지 비교다(운영자 판정). 판정 모델이 본다(photo_number_as_objects).
-    ③ 앞 컷의 물건을 **이어받거나 그 안으로 들어간다**(고기 팩 → 소 → 소의 혈관 → 근육 단면). 새 물건은 이유가 있을 때만.
-    ④ 답이 되지 않는 장면은 쓰지 않는다 — "주가는 떨어졌는데 이익은 2배?"에 조선소 전경은 답이 아니다.
-       답은 예를 들어 '작은 저울 접시에 놓인 작은 배 모형 하나가, 반대 접시의 큰 엔진 블록에 들려 올라간다' 같은 것이다.
-  ★★ 운영자가 첫 렌더 샘플(2026-09-24)을 보고 준 판정 넷 — 위 규칙보다 우선한다:
-    ⑤ **한눈에 알아볼 사물**로 그려라. "전력망"을 관·상자로 그리면 안 읽힌다(실측) — 송전탑과 전선,
-       서버 랙이 줄지어 선 데이터센터 건물, 발전기 위에 얹힌 선박 엔진처럼 **그 사물의 대표 형태**로.
-       부유식 데이터센터는 **바다 위 바지선에 얹힌 각진 데이터센터 건물**이다 — 찰랑이는 물만으로는
-       데이터센터가 안 보인다.
-    ⑥ **"~해서 ~한다"는 원인이 화면에 있어야 한다.** "자리가 없어서 바다에 짓는다"면 앞 stage 는
-       빈틈없이 꽉 찬 해안(자리 없음)이고 다음 stage 는 그 해안 앞바다로 플랫폼이 밀려 나가는 그림이다.
-       결과만 그리면(바다 위 플랫폼) 왜 바다인지 아무도 모른다.
-    ⑦ **세계를 이어가되 화면에는 이번 컷의 주인공만 둔다.** 앞 컷의 물건은 프레임 밖으로 밀거나
-       흐려라. 이어받기(CONTINUE_WORLD)는 "다 남겨 두라"가 아니다 — 실측: 엔진·랙·관·바지선·함정이
-       한 탁자에 쌓여 밀도가 높아졌다. 참고 영상은 같은 장소에서 카메라가 **하나만** 잡는다.
-    ⑧ 범례(legend)는 쓰지 않는다. 색이 무엇인지는 사물이 말해야 한다 — 범례가 필요하면 그림이 덜 된 것이다.
-    ⑨ **"~해서 ~한다"는 한 장에 못 넣는다 — 두 stage 로 나눠라.** 원인 stage(빈틈없이 꽉 찬 해안)를
-       먼저 두고, 결과 stage(그 앞바다로 밀려 나간 플랫폼)를 그 다음에 둔다. 4차 렌더 실측: 한 stage 에
-       "막힌 육상 부지를 벗어나 바다 위에"라고 적자 결과(바다 위 바지선)만 남고 원인은 사라졌다.
-       같은 세계·같은 카메라, 바뀌는 것은 상태다. 나레이션도 그 두 컷에 나눠 얹어라.
-       판정 모델이 이 컷과 앞 컷 장면에서 원인을 찾는다(photo_cause_not_shown).
-    ⑩ 도해 구조의 components 는 **시청자가 한눈에 알아볼 물건**이어야 한다(송전탑·서버 랙·엔진·바지선).
-       "냉각 채널"·"동력 통로"·"결합 블록" 같은 추상 부품은 그리면 정체불명의 코일·상자가 된다(4차 렌더
-       실측: 해수 냉각 채널 → 황금색 코일 덩어리). 판정 모델이 되묻는다(photo_component_unrecognizable).
-  ★ 검사: 실사 컷의 장면(visual_prompt)이 나레이션의 주장에 답하는지 판정 모델이 본다. 주제만 같은
-    사진은 되돌려 보낸다(photo_scene_not_answering). 연결 문장("바로 설명합니다")은 검사하지 않는다.
-"""
-
-
-# ★ 첫 3초 규칙(2026-09-28, 운영자 승인). 두 공장 공용 — 실사형 프롬프트에 붙는다.
-#   벤치마크 첫 컷: "피일까요?" + 핏물 고인 고기 / "시화호죠." + 방조제. 우리 첫 컷 중앙값은 26자(≈5초)였고
-#   조선업 편 제목 "주가는 반토막인데 이익은 2배?"(수수께끼형)이 시청 비율 67.5% 로 가장 잘 됐다.
-HOOK_CUT_RULE: str = f"""
-[첫 3초 — 컷1 규칙] 시청자는 첫 3초에 넘길지 정한다.
-  ① 컷1 나레이션은 **질문·역설 한마디, 한국어 {config.HOOK_CUT_MAX_CHARS_KO}자 이내(약 3초)**다.
-     좋음: "피일까요?" · "나무도 목마르면 성장을 멈춘다?" · "주가는 반토막인데 이익은 2배?"
-     나쁨: "삼성전자 목표주가가 63만 원까지 상향된 이유, 과열인 줄 알았더니 메모리 수급 구조의 변화 때문이었습니다."
-     → 설명·출처·수치 근거는 **컷2 부터** 푼다. 컷1 은 궁금하게만 만든다.
-  ② 컷1 화면은 그 말의 **물건 자체를 가까이서** 보여준다(핏물 고인 고기 한 접시, 방조제 수문). 전경·사무실 금지.
-  ③ 검사: 컷1 이 {config.HOOK_CUT_MAX_CHARS_KO}자를 넘으면 photo_hook_cut_too_long 으로 되돌아온다.
-  ④ 컷1 뒤의 나레이션은 **대본의 4막 순서**(문제 제기 → 오해 또는 문제 상황 → 반전 또는 원리 → 결과/결론)를
-     그대로 따른다. 출처(기관·증권사) 이름은 한두 번만 — 매 컷 "OO은 …했습니다"로 시작하지 마라.
-"""
-
-
-SEQUENCE_SCHEMA: str = f"""
-  "visual_sequences": [
-    {{ "sequence_id": "<SEQ1 …>",
-       "sequence_role": "<{_SEQUENCE_ROLES_HELP} 중 1>",
-       "world": {{ "world_id": "<이 시퀀스가 머무는 세계의 이름>",
-                  "style": "<이 세계가 **어디인가** 한 구절 — 장소·공간·거기 놓인 것."
-                  " 화풍·재질·렌더 방식은 쓰지 마라(코드가 정한다). 카메라 각도·렌즈 수치도 금지."
-                  " 좋음 'A cell culture room with incubators and a steel bench'."
-                  " 나쁨 'Microscopic, detailed 3D rendering of cellular structures'(장소가 아니라 그리는 방법)."
-                  " **장소는 한 곳만** — 'A factory and an office'처럼 둘을 적으면 모든 컷 그림이 칸으로"
-                  " 쪼개진다(photo_world_multi_place). 장소가 다르면 시퀀스를 나눠라>",
-                  "lighting": "<그 장소의 **광원** 한 구절(창·형광등·작업등). 분위기·발광 효과 금지 —"
-                  " 'Soft, internal glow' 는 광원이 아니라 효과다. 발광하는 물체를 그리고 싶으면"
-                  " 그 물체를 lighting 이 아니라 장면에 적어라>",
-                  "background": "<뒤에 **무엇이 있는가** 한 구절."
-                  " ★ 'blurred'·'out of focus' 를 쓰지 마라. 흐림은 코드가 정한다."
-                  " 뒤에 있다는 것은 **거리**로 말한다 — 'blurred lab equipment' 가 아니라"
-                  " 'lab equipment further back along the far wall'. 배경이 부차적이라는 것은"
-                  " 위치로 충분히 전달된다>",
-                  "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — 이 토큰만 쓴다>",
-                  "style_ko": "<style 을 한국어로 — 운영자가 읽는 용도. 영어 원문은 그대로 둔다>",
-                  "lighting_ko": "<lighting 을 한국어로>",
-                  "background_ko": "<background 를 한국어로>" }},
-       "entities": [
-         {{ "entity_id": "<PARTICIPANT_A / TOKEN_SET 처럼 대문자 식별자>",
-            "entity_type": "<person|object|structure>",
-            "visual_identity": "<이 개체를 매 stage 같게 만들 외형 한 구절>",
-            "visual_identity_ko": "<위 외형을 한국어로 — 운영자가 읽는 용도>" }} ],
-       "stages": [
-         {{ "stage_id": "<S1 …>",
-            "cut_refs": [<이 stage 가 담당하는 컷 번호들>],
-            "operation": "<{_VISUAL_OPERATIONS_HELP} 중 1>",
-            "camera_operation": "<{_CAMERA_OPERATIONS_HELP} 중 1>",
-            "camera_base": "<{_CAMERA_BASES_HELP} 중 1 — **이 stage 의 축척**. 세계가 하나여도"
-            " stage 마다 바꿔라. 최소 하나는 close_detail(근접)이어야 한다>",
-            "continuity_mode": "<{_CONTINUITY_MODES_HELP} 중 1>",
-            "continuity_from": "<이어받는 **앞선** stage_id. NEW_WORLD 면 빈값>",
-            "entity_refs": ["<이 stage 에서 유지되는 entity_id>"],
-            "representation_mode": "<{_REPRESENTATION_MODES_HELP} 중 1>",
-            "allow_connective": false,
-            "mutations": [
-              {{ "entity_id": "<위 entities 에 선언한 id>",
-                 "property": "<무엇이 바뀌는가 — position/size/state/rotation …>",
-                 "operation": "<{_MUTATION_OPERATIONS_HELP} 중 1>",
-                 "visible_change": true,
-                 "result_state": "<바뀐 뒤 그 개체가 어떻게 보이는가 한 구절>",
-                 "claim_ids": ["<이 변화가 지불하는 claim_id>"] }} ],
-            "state_before": {{ "<개체 id>": "<이전 상태>" }},
-            "state_after":  {{ "<개체 id>": "<이후 상태>" }},
-            "observable_change": "<화면에서 눈에 보이게 달라지는 것 한 문장(영어)>",
-            "observable_change_ko": "<바로 위 문장을 한국어로 — 운영자가 읽는 용도>",
-            "claim_ids": ["<이 stage 가 지불하는 claim_id>"] }} ] }}
-  ],
-"""
+# ★ 실사형 계약 문자열은 **한 자리**(engine/photo_prompt.py)에 있다(2026-09-28 규칙 통합 2단계).
+#   여기 이름들은 하위호환 재수출이다 — 테스트·리포트 라인이 이 이름으로 부른다.
+STAGING_CONTRACT: str = photo_prompt.STAGING_CONTRACT
+HOOK_CUT_RULE: str = photo_prompt.HOOK_CUT_RULE
+SEQUENCE_SCHEMA: str = photo_prompt.SEQUENCE_SCHEMA
+SCREEN_GRAPHIC_BAN_GUIDANCE: str = photo_prompt.SCREEN_GRAPHIC_BAN_GUIDANCE
+# ★ 실사형 시스템 프롬프트 — 아래 DIRECTIVE_SYSTEM_BASE 는 만화식·나열식(옛 버전)만 쓴다.
+DIRECTIVE_SYSTEM_PHOTO: str = photo_prompt.system_prompt("paper")
 
 DIRECTIVE_SYSTEM_BASE = f"""너는 논문 대중화 숏폼 영상의 연출가 겸 스토리 작가다. 입력은
 "대본(script_md)" + "Fact Sheet" + 기존 "장면들(scenes 초안)"이다. 이것들만으로 지정된 버전 규격에 맞는
@@ -386,124 +265,8 @@ TEMPORAL_CONTRACT_GUIDANCE: str = (
     " ★ 즉 좋은 비트는 **무엇이 어떻게 변하는지 + 카메라가 어디로 가는지**가 매 비트 다르다."
 )
 
-# 서사 골격 — **대본이 원리를 설명해야 그림도 원리를 설명할 수 있다**(2026-09-04).
-#
-# ★ 왜 생겼나: 실측에서 지시서 **20개 전부**(20/20) evidence_role 에 `mechanism` 이
-#   **0개**였다. 그런데 같은 프롬프트가 그림에는 "MECHANISM 도해 컷 5~7개"를 요구한다.
-#   즉 **말은 원리를 한 번도 설명하지 않는데 그림에만 원리를 그리라고 시켰다.**
-#   운영자가 첫 실사형 렌더를 보고 한 말 — "3d 도해나 원인과 원리를 설명하는 내용과
-#   전혀 상관없는 의미없는 화면" — 은 화풍 문제가 아니라 **대본에 원리가 없다**는 뜻이었다.
-#   실제 그 지시서의 흐름: 훅 → 출처 → 규모 → 결과 → 결과 → 결과 → 규모 → 시사점.
-#   인과가 한 번도 없는 **결과 나열**이다.
-#
-# ★ 근거: 운영자가 준 발행 벤치마크(신비한 건축사전 시화호 편, 105초)는 기전을 **세 번**
-#   설명한다 — 원인(방조제가 물길을 끊었다) → 재정의(오염이 아니라 호수 자체가 문제다)
-#   → 해법(방조제에 구멍을 뚫고 터빈을 심는다). 그 셋이 3D 도해가 놓인 자리다.
-#   docs/벤치마크_시화호_구조분석_2026-09-04.md 1·5절.
-#
-# ★ 어휘를 새로 만들지 않는다. 기존 `evidence_role` 의 `mechanism` 을 **쓰게** 할 뿐이다
-#   (config.SCENE_ROLES 주석이 경고한 "역할 어휘 4벌째"를 만들지 않는다).
-PHOTO_NARRATIVE_ARC: str = (
-    " ★★★ [서사 골격 — 이것부터 정하고 컷을 나눠라] 좋은 설명 영상은 결과 나열이 아니라"
-    " **인과 사슬 하나**다. 발행 벤치마크의 105초가 이 순서였다:"
-    "   ① 훅(결론을 먼저) → ② 반전·문제(그런데 이런 문제가 있었다) →"
-    " ③ 원인(왜 그렇게 됐나) → ④ 증거(숫자로 확인) → ⑤ 시도와 한계(이렇게 해봤지만) →"
-    " ⑥ **원리·해법(그래서 이렇게 푼다 — 어떻게 작동하는가)** → ⑦ 결과(그래서 이렇게 됐다)."
-    " ★★ 이 중 **⑥ 원리가 이 영상의 심장**이다. ⑥ 이 없으면 '무슨 일이 있었다'는 소식이지"
-    " 설명이 아니고, 그림은 그릴 원리가 없어서 의미 없는 화면이 된다."
-    " ★★ 따라서 **evidence_role='mechanism' 컷**을 반드시 두어라 — 몇 개인지는"
-    " 아래 [기전 컷 수]가 영상 길이에서 정해 준다(길수록 늘어난다)."
-    " 2개 이상이면 하나는 '왜 그런 일이 벌어지는가(원인·기전)',"
-    " 하나는 '그래서 어떻게 작동하는가(해법·구조)'로 갈라라."
-    " 이 컷들의 나레이션은 **결과가 아니라 과정**을 말한다:"
-    " '무엇이 무엇에 작용해서 무엇이 된다'는 문장이어야 한다."
-    "   나쁜 예(결과 나열): '성격 조합이 광고 품질에 직접적인 영향을 미쳤습니다.'"
-    "   좋은 예(기전): '외향적인 사람은 아이디어를 넓게 벌리는데, 성실한 AI 는 그걸 계속"
-    " 규격에 맞춰 좁힙니다. 그래서 확장과 수렴이 서로를 상쇄해 평범한 결과만 남습니다.'"
-    " ★ MECHANISM 도해 컷은 **바로 이 mechanism 나레이션 위에 놓아라.** 그림이 설명하는"
-    " 원리와 말이 설명하는 원리가 **같아야** 한다 — 지금까지의 실패가 정확히 이 어긋남이었다."
-    " ★★★ [기전 컷은 **상태가 아니라 과정**이다] 실측 사고(2026-09-09): 세포 도해 세 컷이"
-    " 전부 '세포 하나가 놓여 있고 주변에 뭔가 있다'였고, 그래서 세 컷이 같은 그림이 됐다."
-    " 기전은 **A가 B에 작용해서 C가 된다**는 움직임이다. 한 화면이 그 움직임을 담게 적어라:"
-    "   ① 한 화면 안에 **왼쪽 원인 → 가운데 작용 → 오른쪽 결과** 로 벌려 놓거나,"
-    "   ② 같은 대상의 **전과 후를 반반으로 갈라** 나란히 두거나,"
-    "   ③ 붙는 자리·잘리는 자리처럼 **일이 실제로 벌어지는 지점**을 화면 가운데 둔다."
-    " (화살표·라벨·글자를 그리라는 말이 아니다 — 물체의 **배치**로 말하라.)"
-    " ★★★ [배우를 먼저 무대에 세워라] 한 세계의 **여는 컷**(NEW_WORLD stage 의 첫 컷)이"
-    " 그 세계의 **유일한 새 그림**이다. 뒤 컷들은 그 그림을 그대로 첨부하고 \"이것만"
-    " 바꿔라\"로 만들어진다 — 그래서 **여는 그림에 없는 물체는 뒤에서 줄일 수도 키울 수도"
-    " 없다.** 실측 사고: 여는 컷이 세포 모형만 그렸는데 뒤 컷들이 '붉은 조각을 줄여라'"
-    " '노란 조각을 줄여라'고 해서, 없는 것을 줄이지 못한 세 컷이 같은 화면으로 나왔다."
-    " ★★ 그러니 뒤 stage 가 움직일 개체는 **전부 여는 컷의 visual_prompt 에 물체로** 적어라:"
-    " 모양·색·개수·놓인 자리. 줄어드는 것을 보여줄 생각이면 여는 컷에 **넉넉히** 놓아라."
-    " ★★ '염증의 징후가 보인다' 처럼 **판정**으로 적지 마라 — 징후는 물체가 아니라서"
-    " 아무것도 안 그려진다(실측). '세포 주변에 흩어진 작고 붉은 불규칙한 조각들' 처럼"
-    " 눈으로 셀 수 있게 적어라."
-    " ★★★ [컷마다 축척을 바꿔라] 같은 세계에 머무는 것은 옳지만, **연속한 stage 가 같은"
-    " camera_base 면 두 컷이 사실상 같은 그림**이 된다(실측: 세포 stage 셋이 전부"
-    " close_detail 이었다). 세계 바깥 → 잘린 단면 → 물체가 붙는 자리 근접, 이렇게"
-    " **들어가면서** 설명하라. 눈이 확 가는 것은 색이 아니라 **축척 변화**에서 나온다."
-    " ★ 논문에 기전이 정말 없으면(순수 상관·메타분석) 지어내지 마라. 대신 **연구가 제시한"
-    " 해석**을 기전 자리에 놓고, 그것이 해석임을 나레이션에 밝혀라('연구진은 …로 봅니다')."
-    " ★★★ [같은 사진을 두 번 틀지 마라] 실사형에서 asset_strategy 는 항상 new_asset 이다."
-    " 재사용(reuse_*)을 적으면 코드가 무시한다. 통일성은 앞 stage 그림을 **참조**해 새 프레임을"
-    " 그리는 것으로 얻는다 — 같은 파일을 복사해 나레이션만 바꾸는 것이 아니다."
-    " 실측: 재사용 8컷이 같은 두 쥐 20초, 같은 구체 32초를 만들었다."
-    " ★★★ [연구 대상이 화면을 먹지 않게 하라] 동물·시료·장비 같은 **연구 대상**은 전체의"
-    " 35%를 넘기지 마라. 실측: 쥐 실험 영상에서 쥐가 86초 중 42초(49%)를 차지했고 운영자는"
-    " '생쥐 이미지를 40초 보고 싶어 할 것 같으냐'고 했다. 대상은 **훅과 규모 실감에서만** 짧게"
-    " 보이고, 나머지는 원리(도해)·맥락(약이 쓰이는 현장)·의미(시청자 세계)로 옮겨라."
-    " 절차 컷(주사·케이지·측정)은 한 컷을 넘기지 마라."
-    " ★★★ [훅은 **화면**으로도 훅이어야 한다] 훅 규칙(P1~P3)은 나레이션에 대한 것이다."
-    " 말로만 반전을 하고 화면은 무난한 설정 샷을 쓰면 훅이 아니다."
-    " ★★ 컷1·2 의 화면은 **한눈에 대비가 보여야** 한다 — 나란히 놓기 / 전과 후 /"
-    " 같아 보이는데 다른 것. 시청자가 0.5초 안에 '어? 왜 다르지?' 해야 한다."
-    " ★★ 훅에 **설정 샷을 쓰지 마라**: 연구실 전경, 우리 속 동물 한 마리, 연구자가"
-    " 현미경을 들여다보는 장면, 책상 위 장비. 그건 배경이지 훅이 아니다."
-    " 실측(2026-09-04): 훅 두 컷이 '우리 속 쥐 한 마리'였고 **정작 대비 화면(두 우리를"
-    " 나란히)은 컷3 출처 소개에 가 있었다.** 가장 센 그림을 뒤에 두지 마라."
-    " ★★ 컷1 과 컷2 는 **다른 그림**이어야 한다(실측 22%가 같은 이미지를 재사용했다)."
-    " 벤치마크 문법: 컷1 에서 대비를 넓게 보여 주고(TRACK), 컷2 에서 한쪽으로"
-    " **급속 푸시인**(DOLLY_IN)하며 숫자를 얹는다."
-    " ★ 주제가 '노화·수명·질병'처럼 시청자 몸에 닿는 것이면 훅 화면도 그 축에 세워라 —"
-    " 연구 절차(주사·케이지·라벨)가 아니라 **결과의 모습**을 먼저 보여준다."
-        " ★★★ [세계는 하나, 바뀌는 것은 축척이다] 발행 벤치마크는 **105초 내내 같은 장소**에"
-    " 머문다. 하드 컷은 37초에 6번뿐이고 나머지는 **같은 세계 안에서 카메라가 이동**한다."
-    " 바뀌는 것은 장소가 아니라 **축척**이다: 광역 부감 ↔ 중경 ↔ 근접."
-    "   예) 방조제 12.7km 전체(광역) → 농지와 도시 배치(중경) → 손이 물을 뜬다 →"
-    " 유리병 클로즈업(근접). **3초 만에 광역에서 손바닥까지 내려온다.**"
-    " ★★ 그러니 시퀀스마다 새 세계를 만들지 마라. 앞 시퀀스의 world_id 를 **그대로 재사용**하고"
-    " camera_base 와 카메라 동작만 바꿔라(CONTINUE_WORLD·RETURN_WORLD·CAMERA_REVEAL)."
-    " 실측: 우리 지시서가 71초에 세계를 4개 만들었고 컷 경계마다 화면이 갈아엎어졌다."
-    " 반면 화면이 좋았던 지시서들은 전부 **세계 1개**였다."
-    " ★★ 축척은 **stage 의 camera_base** 로 바꾼다. 각 stage 에 camera_base 를 적어라"
-    " (top_down·elevated_three_quarter·eye_level_front·side_profile·low_angle·close_detail)."
-    " 세계가 하나여도 stage 마다 축척이 달라야 화면이 살아난다."
-    " ★★ 그리고 **최소 하나의 stage 는 camera_base='close_detail'**(근접)이어야 한다."
-    " 크기 대비가 있어야 '이게 진짜 있는 일'이 된다 — 전부 멀리서 보면 도해가 지도처럼"
-    " 남고 실감이 안 난다. 벤치마크는 광역 12.7km 에서 손바닥의 물 한 컵까지 3초 만에 내려간다."
-    " ★ 물리적 장소가 정말 여럿이면(현장 A → 실험실 B) 새 세계를 만들어도 된다."
-    " 다만 **연결·평가 문장 때문에** 세계를 새로 만들지는 마라."
-    " ★★★ [단, 결과·한계·결론은 실험실 밖으로 나가라] 위 '세계는 하나'는 **기전을 설명하는"
-    " 구간**의 규칙이다. 행동·삶의 결과·연구의 한계·결론처럼 **시청자의 세계**를 말하는"
-    " 구간까지 실험실 탁자에 가두면 영상 전체가 한 장면이 된다 — 그 구간은 사람과 일상 장소"
-    " (출근길·가족 식탁·교실·거리)를 REALITY 세계로 새로 열어라. 실측 2026-09-14 운영자:"
-    " '시퀀스의 배경이 뇌의 이미지와 뇌 안에서 벌어지는 이미지로 너무 한정된다'(13컷 전부"
-    " 실험실 탁자 한 세계였다). 기전 구간은 하나의 세계, 결과·결론 구간은 사람의 세계 — 둘이다."
-    " ★★★ [영상 컷은 카메라가 움직여야 한다] motion_source='video' 인 컷은 **모두**"
-    " temporal_plan 의 카메라 중 최소 하나가 HOLD 가 아니어야 한다. 기전 컷만이 아니다 —"
-    " 영상비를 내고 정지 화면을 받는 것이 가장 나쁘다(실측: HOLD 만 쓴 영상 컷이 매번 나왔다)."
-    " ★★★ [오버레이는 코드가 그린다 — 프롬프트에서 언급하지 마라] overlay_plan 의 카드는"
-    " 렌더가 그린다. visual_prompt·motion_prompt 에 'text overlay', '카드가 나타난다',"
-    " '숫자가 뜬다' 같은 말을 적지 마라. 실측 사고: motion_prompt 에"
-    " \"allowing the text overlay to appear prominently\" 가 들어가 같은 컷의"
-    " \"No on-screen text\" 와 정면으로 부딪혀 승인이 막혔다. 화면에 글자를 그리는 것은"
-    " 생성 모델의 일이 아니다."
-    " ★★★ [수치는 크게, 그리고 수치만] overlay_plan 의 number_punch 는 **수치와 단위만**"
-    " 담는다('254MW', '+16.9%', '12.7km'). 화면 폭을 크게 차지하는 한 방이라서, 문장을 넣으면"
-    " 여러 줄로 감겨 화면을 덮는다. 실측: number_punch 에 28자짜리 요약문이 들어와 있었다"
-    " ('AI 데이터센터 ESS 수요 2030년까지 20배↑'). **설명은 evidence_card 로 옮겨라.**"
-)
+# ★ 실사형 서사 골격·세계·도해·움직임 규칙은 photo_prompt 로 옮겼다(2026-09-28). 여기 남은 지침은
+#   만화식·나열식 전용이다.
 
 _VIDEO_CLIP_GUIDANCE: str = (
     " ★영상 클립(I2V)은 값비싼 선택 투자다. 개수 상한을 의무적으로 채우지 마라 — 움직임이 이해·감정·반전에"
@@ -541,151 +304,12 @@ _ASSET_REUSE_GUIDANCE: str = (
     " 텍스트만 바뀌는 전환은 text_only_transition, 코드 그래픽은 code_viz 를 쓴다(둘 다 생성비 0)."
 )
 
-# ★ 실사형 전용 클립 지침. 공통 _VIDEO_CLIP_GUIDANCE 는 "움직임이 꼭 필요한 컷만, 0개여도
-#   좋다"고 강하게 말리는데, 그 문구가 실사형 계약의 "6~8개 배정하라"를 이겼다(실측: 두 번
-#   생성해 두 번 다 영상 컷 2개). 실사형은 움직이는 화면이 정체성이라 지침 자체를 갈아 끼운다.
-#   유지하는 것: 모션 구절은 motion_prompt 에 따로, loop_safe 선언, 실패 시 스틸 폴백.
-_PHOTO_VIDEO_CLIP_GUIDANCE: str = (
-    " ★영상 클립(I2V): 이 버전은 **움직이는 화면이 기본**이다. 컷의 절반 이상,"
-    " 즉 **6~8개를 \"motion_source\": \"video\"** 로 지정하라(스틸은 보조다)."
-    " ★영상 컷은 **MECHANISM(3D 도해)에 먼저** 배정하라. 단면이 열리고, 층이 분리되고, 흐름이"
-    " 이동하는 것 — 그 움직임 자체가 이 버전의 설명력이다. **정지된 3D 도해는 그냥 그림이고,"
-    " 말로 하는 설명을 도로 가져간다.** REALITY 컷은 훅·마무리처럼 현장감이 필요한 자리에만 영상을 쓴다."
-    " ★영상 컷은 **연달아 붙여서** 배치하라. 렌더가 앞 영상 컷의 마지막 화면에서 다음 컷을 이어"
-    " 만들기 때문에, 붙어 있어야 카메라가 끊기지 않고 한 장면처럼 흐른다. 영상-스틸-영상처럼"
-    " 띄엄띄엄 두면 그 연결이 매번 끊긴다."
-    " ★카메라·피사체 모션은 별도 필드 motion_prompt(영문)에 적어라 — visual_prompt 에는 정적"
-    " 장면만 쓴다(예: motion_prompt='slow aerial orbit, subtle heat haze, workers moving in background')."
-    " 이어지는 영상 컷들의 motion_prompt 는 **같은 카메라 동작을 이어가듯** 써라"
-    " (예: 오비트 → 계속 오비트하며 접근 → 접근 끝에서 푸시인)."
-    " ★카메라가 천천히 움직이거나 분위기만 담는 컷은 \"loop_safe\": true. 인물의 걷기·물의 흐름·"
-    "요소의 등장처럼 방향이 있는 모션은 \"loop_safe\": false(역재생하면 티가 난다)."
-    " ★표·수치·출처는 영상으로 만들지 마라 — overlay_plan(코드 그래픽)이 담당한다."
-    " ★영상 프롬프트는 **카메라와 피사체가 어떻게 움직이는지만** 말한다"
-    " (화면에 무엇이 나타나는지는 아래 [화면 그래픽 금지]가 정한다)."
-)
-
-# 화면 그래픽·글자 요구 금지(v2, 2026-08-31 개정). ★★ **독립 상수이자 필드 중립**이다.
-#   종전에는 이 문단이 _PHOTO_VIDEO_CLIP_GUIDANCE 안에서 "[motion_prompt 금지]" 로 시작했다.
-#   그랬더니 모델이 그것을 **motion_prompt 에만 걸린 규칙**으로 읽고 같은 요구를
-#   visual_prompt 에 썼다 — 재생성 실측 3건이 전부 visual_prompt 였다(로고 / 단어
-#   'Astonishing' 텍스트 애니메이션 / computer screen showing data visualization).
-#   게이트(engine/photo_contract._raw_text_of)는 처음부터 두 필드를 다 보고 있었으므로
-#   **반쪽이었던 것은 게이트가 아니라 프롬프트다.** 필드 이름으로 범위를 만들지 않는다.
 # 초안 장면(video_prompts[])에서 실사형 지시서 입력으로 **넘기지 않는** 필드.
 #   초안 단계의 시각 제안이다 — 지시서 단계가 다시 정하는 것이 바로 이것이고, 금지된
 #   화면 그래픽 요구가 여기 실려 그대로 계승됐다(directive_user_prompt 의 주석).
 _DRAFT_SCENE_VISUAL_FIELDS: frozenset[str] = frozenset(
     {"image_prompt", "image_prompt_ko", "video_prompt", "video_prompt_ko"})
 
-SCREEN_GRAPHIC_BAN_GUIDANCE: str = (
-    " ★★[화면 그래픽 금지 — visual_prompt·motion_prompt **둘 다**]"
-    " **화면에 그래픽·오버레이·라벨·치수선·계기판·로고·글자가 있거나 나타난다고 쓰지 마라.**"
-    " 두 필드 중 어느 쪽에 적든 똑같이 폐기 사유다 — 생성 모델은 필드를 구분하지 않고"
-    " 합쳐서 그린다."
-    " 금지 예시(전부 실측에서 나온 문장이다):"
-    " 'a graphic overlay appears indicating…', 'annotation lines mark…', 'a readout shows…',"
-    " \"a subtle logo of a fictional university\", \"text animation of the word 'Astonishing'\","
-    " 'a computer screen showing a data visualization'."
-    " ★ 'fictional'·'no actual names'·'no on-screen text' 같은 단서를 붙여도 금지다."
-    " 실측(2026-08-31): 모델이 같은 문장 안에서 글자를 요구하면서 동시에 금지했고,"
-    " 화면에는 지어낸 글자가 그대로 박혔다. 부정문은 생성 모델에 통하지 않는다."
-    " 실측(2026-08-31): 그런 문장 하나 때문에 클립 4개가 **전부** 달 표면 실사에서"
-    " 도표 화면으로 튕겨 나갔다 — 글자만 문제가 아니라 **세계를 떠난다**."
-    " ★ 대신 이렇게 써라: 화면에 얹히는 글자·수치·지시선·출처는 overlay_plan 이 코드로"
-    " 그린다(수치=number_punch, 비교=group_compare, 전후=before_after, 표본·기간=scope_tag,"
-    " 출처=source_card). **이미지에는 라벨 없이 차이만** 그리고, 어느 쪽이 무엇인지는"
-    " 오버레이 카드가 말한다. 소속·기관이 필요하면 로고가 아니라 **장소로** 보여라"
-    " (간판 글자가 아니라 건물·복도·실험대)."
-)
-
-# 시각 시퀀스 지침(v3 Phase 2). ★ 이 저장소가 v2 에서 실제로 겪은 실패를 근거로 쓴다.
-_SEQUENCE_GUIDANCE: str = (
-    " ■■ 시각 시퀀스 — 이 버전의 화면 문법이다."
-    " 컷 하나에 세계 하나를 만들지 마라. **같은 세계가 단계적으로 변하면서** 설명이 진행된다:"
-    " 전체 → 내부 공개 → 흐름 → 결과. 컷은 나레이션·타이밍 단위로 남고, 그 위에 stage 가 얹힌다."
-    " ★ 실측 근거: v2 는 11컷 영상에 원본 이미지가 6장뿐이었고 그중 둘은 완전히 같은 파일이었다."
-    " 컷마다 새로 그리면 같은 인물이 다른 사람이 되므로 연속성의 유일한 수단이 복붙이었다."
-    " 이제 참조 조건 생성으로 **같은 세계의 다음 상태**를 만들 수 있다(실측 확인, 단가 동일)."
-    " ■■ [세계는 물리적 장소다] world 는 **실제로 가 볼 수 있는 곳이나 만질 수 있는 실물**이어야"
-    " 한다 — 실험실·공장 라인·시술실·현장, 또는 단면을 연 장치·시료·부품."
-    " **화면 속을 세계로 잡지 마라**: 인터페이스·대시보드·앱 화면·소셜 피드·'digital space'·"
-    " 'abstract space with nodes' 전부 금지다. 세계가 화면이면 **그 시퀀스의 모든 컷이 UI 렌더가"
-    " 된다** — 컷에서 글자를 금지해도 소용이 없다. 결정은 여기서 끝난다."
-    " 실측(2026-09-03): 세계 5개 중 3개를 AD_CREATION_INTERFACE·SOCIAL_MEDIA_FEED·"
-    " HUMAN_AI_COLLABORATION_SPACE 로 잡았고, 그 안의 컷들이 게이지·막대그래프·아이콘으로"
-    " 채워져 **통째로 폐기**됐다."
-    " ★ 주제가 추상적일수록(성격·협업·신뢰·효율) 세계는 **더 구체여야** 한다:"
-    " 그 연구가 실제로 벌어진 방, 참가자가 앉은 자리, 결과가 인쇄된 종이."
-    " ★★ **소재 자체가 화면일 때**(광고·앱·소셜미디어·대시보드 연구) — 여기서 대부분 틀린다."
-    " 화면을 세계로 잡지 말고 **그 화면을 보는 사람과 자리**를 세계로 잡아라."
-    "  ▸ 나쁨: world=SOCIAL_MEDIA_FEED (피드 자체가 세계 → 컷이 전부 UI 렌더)"
-    "  ▸ 좋음: world=사람이 손에 든 폰을 들여다보는 카페 자리 — 화면은 그 손 안에 **소품으로**"
-    " 들어간다. 카메라는 사람과 공간에 있고, 화면 내용은 작게·비스듬히·부분만 보인다."
-    " 즉 **화면은 세계가 아니라 세계 안의 물건**이다. 이렇게 잡아야 실사가 성립하고,"
-    " 화면 속 글자를 지어낼 필요도 사라진다(작게 나오므로)."
-    "  ▸ 화면이 집기로 들어간 세계는 통과한다 — 예: '사람들이 일하는 오픈플랜 사무실,"
-    " 모니터 여러 대', '각 자리에 컴퓨터가 놓인 연구실 큐비클'. 반대로 세계 자체가"
-    " 'feed'·'interface'·'digital space'·'holographic' 이면 막힌다."
-    " ★★ [비교·결론 대목의 실물 대안] 여기서 가장 자주 화면으로 도망간다."
-    " 'A와 B를 비교한다'·'그래서 이런 뜻이다' 같은 대목은 그릴 실물이 없어 보이지만,"
-    " **연구가 실제로 만들어 낸 물건**이 있다. 그것을 책상에 놓아라:"
-    "  ▸ 두 결과 비교 → **인쇄물 두 장을 나란히** 놓고 한쪽에 손이 얹힌다 /"
-    " **폰 두 대를 나란히 든 손** / 서류 두 묶음의 **두께 차이**"
-    "  ▸ 성과가 늘었다 → 같은 책상에 **쌓인 양이 달라진** 두 더미(코인·서류·시료)"
-    "  ▸ 결론·시사점 → 연구자가 그 결과물을 들고 있는 자리, 회의 탁자 위의 인쇄물"
-    " ★ 어느 쪽이 무엇인지는 **오버레이 카드가 말한다** — 화면에 라벨을 그리지 마라."
-    " 이미지에는 **라벨 없이 차이만** 나오게 한다(같은 조명·같은 구도, 양만 다르게)."
-    " ★★ **인쇄물을 쓸 때 그 위에 도표를 그리지 마라**(실측 2026-09-03: '인쇄된 보고서,"
-    " 페이지에 charts and data 가 보인다'가 폐기됐다). '읽을 수 없게' 라고 덧붙여도"
-    " 마찬가지다 — 생성 모델은 그 단서를 지키지 못하고, 지켜도 그건 가짜 도표다."
-    " 인쇄물에서 보여줄 것은 **글자 블록의 결·종이 두께·넘기는 손·쌓인 높이**다."
-    " 종이가 몇 장인지, 어느 쪽이 두꺼운지가 곧 비교다."
-    " ■ visual_sequences 를 채워라. 각 시퀀스는 world(머무는 세계) + entities(유지되는 개체)"
-    " + stages(단계)를 갖는다. MECHANISM_SEQUENCE 는 **stage 가 2개 이상**이어야 한다 —"
-    " 한 장면으로 끝나는 설명은 시퀀스가 아니다."
-    " ■■ stage 마다 **mutations 를 반드시 채워라** — 이것이 진행의 증거다."
-    " 무엇이(entity_id) 어떤 속성이(property) 어떻게(operation) 바뀌고 그것이 눈에 보이는지"
-    " (visible_change)를 적는다. state_before/state_after 는 사람이 읽는 서술로 함께 적되,"
-    " **진행 판정은 mutations 로 한다** — 상태 두 벌을 네가 다 쓰면 달라졌다는 말이 결국"
-    " 네 자기보고가 되기 때문이다(standing → standing calmly 로도 통과해 버린다)."
-    " mutations 가 빈 stage 는 폐기된다."
-    " ■■ **기전 stage 는 APPEAR·HIGHLIGHT 만으로 끝내지 마라.** '나타났다'와 '빛난다'는"
-    " 정지 화면으로도 성립해서 원리를 설명하지 못한다 — 최소 하나는 실제로 **변형**돼야 한다"
-    " (MOVE·GROW·SHRINK·ROTATE·TRANSFORM·SPLIT_OFF·MERGE_INTO·REVERSE_TRACE·IMPACT)."
-    " 실측 2026-09-12: 최근 지시서 10편의 컷 124개 중 절반 가까이가 '나타남·빛남'뿐이어서"
-    " 8초 등급을 받지 못하고 화면이 거의 정지했다."
-    " ■ state_before 에는 **앞 stage 에 실제로 있던 개체**만 적어라. 앞에 없던 것을"
-    " 물려받았다고 쓰면 폐기된다 — 새로 등장시키려면 mutations 에 APPEAR 로 선언한다."
-    " ■ 상태·변이에 쓰는 개체 id 는 **전부 entities 에 먼저 선언**해야 한다. 선언 없는"
-    " 개체는 stage 마다 다른 모습으로 그려진다."
-    " ■ representation_mode 를 정확히 골라라. LITERAL_OBSERVATION 은 **원문이 그 관측"
-    " 방식까지 말할 때만** 쓴다 — 지상 망원경으로 한 분광을 우주에서 조사하는 그림으로"
-    " 그리면 주장은 맞고 묘사가 틀린 환각이 된다. 확실치 않으면 SCHEMATIC_PRINCIPLE 이다."
-    " ★ 이번 건에 그 자격이 있는지는 아래 [원문 확보 수준]이 **단정해서** 알려준다 —"
-    " 네가 짐작하지 마라."
-    " ■ 사실 주장을 지불하지 않는 컷(전환·CTA)을 stage 의 cut_refs 에 넣을 때는"
-    " allow_connective 를 true 로 하라. 그런 컷에는 기전 도해가 붙지 않고 세계 배경만 이어진다."
-    " ■ 이어지는 stage 는 continuity_mode 를 CONTINUE_WORLD / MUTATE_STATE / CAMERA_REVEAL /"
-    " RETURN_WORLD 중에서 고르고 continuity_from 에 **앞선** stage_id 를 적어라."
-    " 같은 인물·같은 물체가 다시 나오는 것은 옳다 — 단 무엇인가 진행돼야 한다."
-    " ■ 컷마다 beat 를 선언하라(이 컷이 설명에서 맡은 역할). **어떻게 보여줄지는 코드가**"
-    " 근거 깊이와 수치 유무를 보고 정한다 — 네가 정하지 않는다."
-    " ■ 수치를 말하는 컷도 시퀀스 안에 그대로 두어라. 세계는 이어지고 정확한 수치는"
-    " **코드가 그리는 오버레이**가 말한다 — 세계를 끊고 차트로 나가지 마라."
-    " ■ camera_operation 은 **꼭 필요할 때만** HOLD 가 아닌 값을 쓴다. 카메라가 움직이면"
-    " 연속성 잠금이 풀려 같은 물체가 다르게 그려질 위험이 커진다(실측). 개체 하나가"
-    " 나타나거나 상태만 바뀌는 stage 는 HOLD 다 — 카메라를 움직여야만 보이는 것이 있을 때만"
-    " ORBIT·DOLLY_IN·SECTION_DIVE 를 쓴다."
-    " ■■ 카메라는 camera_base 토큰과 camera_operation 으로만 선언하라."
-    " 각도·렌즈 수치(35 degree, 50mm, 4K)를 문장에 쓰지 마라 — **화면에 글자로 그려진다**"
-    " (실측: 세계 프롬프트의 '35 degree isometric camera' 가 영상에 '35°' 로 박혔다)."
-    " ■■ 정확한 수치를 물체 개수로 표현하지 마라. 생성 모델은 개수를 지키지 못한다"
-    " (실측: 'ten discs' 를 요구했는데 화면엔 4묶음이 나왔다)."
-    " 화면은 방향과 관계만 보여준다 — 늘어난다·옮겨간다·쌓인다. '얼마나'는 overlay 가 말한다."
-)
-
-# 버전별 추가지시 (명세 §5-2). visual_type 은 정규화에서 강제하므로 여기선 성격만 안내.
 VERSION_GUIDANCE: dict[str, str] = {
     "comic": (
         "[버전=만화식 comic] 각 컷을 만화/웹툰 패널 장면으로 만든다."
@@ -696,184 +320,8 @@ VERSION_GUIDANCE: dict[str, str] = {
         " visual_prompt 에는 인물·구도·표정·배경을 구체적으로. 서사 흐름(누가·어디서·무엇을)을 살려라."
         + _VIDEO_CLIP_GUIDANCE + TEMPORAL_CONTRACT_GUIDANCE + _ASSET_REUSE_GUIDANCE
     ),
-    "photo": (
-        "[버전=실사형 photo] 이 버전의 핵심은 화풍이 아니라 **화면이 설명을 하는가**다."
-        + PHOTO_NARRATIVE_ARC +
-        " 컷마다 반드시 visual_role 을 선언하라 — MECHANISM 또는 REALITY."
-        " ■ MECHANISM(3D 도해) — **화면이 설명을 한다.** 단면(cutaway)·절개·분해·조립 순서·"
-        " 흐름 추적·전후 비교·크기 대비. 말로 설명하는 원리를 그림이 대신 보여주는 컷이다."
-        " 예: 지반을 세로로 잘라 물이 어느 층으로 빠지는지 / 부품이 하나씩 조립되는 순서 /"
-        " 전과 후를 나란히 놓은 비교. 12컷 기준 **5~7개**."
-        " ■ REALITY(실사) — 실제 현장·제품·규모. 이건 진짜 있는 일이다를 앵커한다."
-        " 훅과 마무리, 그리고 도해가 추상적으로 흐를 때 현실로 끌어오는 자리다. 12컷 기준 **3~5개**."
-        " ■ MECHANISM 컷은 **먼저 mechanism 구조를 채우고**, visual_prompt 는 그 구조에서"
-        " 파생시켜라(구조에 없는 물체를 그리지 마라). subject / components(2개 이상) /"
-        " relationship / initial_state / transformation / final_state / highlighted_element."
-        " 구조를 못 채우겠으면 그 컷은 MECHANISM 이 아니다 — REALITY 로 바꿔라."
-        " ★★ **mechanism 의 필드는 영어로 써라 — 그 문장이 그대로 이미지 프롬프트에 실린다.**"
-        " components 는 화면에 실제로 보일 **물체 이름**(a damaged neuron, a healthy neuron,"
-        " the visual cortex)이지 entity_id·데이터셋명·개념어가 아니다. 그리고 visual_prompt 는"
-        " 그 물체들을 **같은 이름으로** 그려라 — 구조에 있는 물체가 장면에 없으면 차단된다"
-        " (photo_mechanism_prompt_detached). 사람이 읽을 한 줄은 mechanism_ko 에 한글로."
-        " ★★ [기전 컷의 색 규약 — 세 색뿐이다] amber=설명하는 부분, blue=첫 집단·변화 전,"
-        " coral=둘째 집단·변화 후. 두 집단이나 전·후를 나란히 놓는 컷은 visual_prompt 에서"
-        " 한쪽을 muted blue, 다른 쪽을 muted coral 로 칠하고(**표면색**이다 — 'the left model is"
-        " muted blue' 처럼 써라. 'rendered in'·'render' 는 화풍 어휘라 차단되고, 'glow'·'glowing"
-        " light' 는 발광이라 무광 화풍과 싸운다)."
-        # ★ 범례 요구는 스위치를 본다(2026-09-24 운영자: "없애도 될듯"). 꺼져 있으면 말하지 않는다.
-        + (" 그 컷의 overlay_plan 에 legend (payload.items=[{color, label(한글)}])를 넣어"
-           " 어느 색이 무엇인지 말하라 — 기전 시퀀스마다 legend 하나는 있어야 한다."
-           if config.OVERLAY_LEGEND_ENABLED else "")
-        + " 상태가 **바뀌는** stage(TRANSFORM·GROW·"
-        " SHRINK·SPLIT_OFF·MERGE_INTO·DISAPPEAR)의 컷은 코드가 앞 stage 의 그림(전)과 이 stage"
-        " 의 그림(후)을 **위·아래로 붙인 한 장**으로 만든다(영상은 의미 변화를 못 만든다). 그"
-        " 컷에는 label_pair(payload.top / payload.bottom, 한글 짧게)를 넣어 위·아래가 무엇인지"
-        " 말하라. **한 컷에 두 상태를 다 그리려 하지 마라** — 이 컷의 visual_prompt 는 '후'만 그린다."
-        " ★★★ [색은 영상 내내 같은 뜻이다] muted blue·muted coral 은 **비교하는 두 대상의 이름**이다."
-        " 한 개체는 처음부터 끝까지 **한 색**만 갖는다. 그 두 색을 **개체 안의 부위 구분**으로 다시"
-        " 쓰지 마라 — 화면의 범례가 거짓말이 된다. 실측 사고(2026-09-19): '청각장애인 뇌는 주변부가"
-        " coral, 중심부가 blue / 청각인 뇌는 둘 다 blue' 라고 적었더니, 범례는 '파랑=청각인'인데"
-        " 화면에서는 파랑이 청각장애인 뇌의 중심부를 뜻하게 됐다."
-        " ▸ 개체 **안의** 한 부분을 가리키려면 **amber 강조** 또는 **화살표(pointer)** 를 써라."
-        " ▸ 커지고 작아지는 것은 색이 아니라 **크기·모양**으로 보여라(그것이 이 컷의 변화다)."
-        " ★ 모든 주제에 억지로 도해를 만들지 마라. 실제로 시각화 가능한 원리·구조·전후 변화가"
-        " 있는 컷에만 쓴다."
-        " ★★ **도해할 물리적 대상이 없는 문장**(메타분석·통계 재분석·연구 설계 언급·'효과가"
-        " 일관적이었다' 류)은 MECHANISM 이 **아니다**. 그런 칸은 REALITY 로 내고, 화면은"
-        " 그 연구가 실제로 벌어진 현실을 앵커하라 — 데이터를 들여다보는 연구자, 쌓인 논문,"
-        " 실험실 책상. **추상 3D 로 도망가지 마라.**"
-        " ★★ [연결 문장 처방] 물리적 주어가 없는 **짧은 연결·평가·부정 문장**"
-        " ('…에 직접적인 영향을 미쳤습니다', '이건 그냥 점수놀이가 아니었습니다', '결과는"
-        " 놀라웠습니다')에는 **새 세계를 만들지 마라.** 그릴 것이 없으니 모델은 글자나"
-        " 계기판으로 화면을 채우게 되는데, 그건 화면이 아니라 자막이다."
-        " 실측(2026-09-03): 3초짜리 연결 컷 둘이 각각"
-        " \"a dynamic text animation of the word 'IMPACT'\" 와"
-        " \"a score counter dropping to zero\" 로 나왔고 **둘 다 폐기됐다.**"
-        " ▸ 대신 **앞 컷의 세계를 이어라** — 같은 장면·같은 개체를 유지하고 카메라만"
-        " 움직이거나(밀어들어가기·빼기) 시선을 옮긴다. base_asset_ref 로 앞 컷을 가리키고"
-        " state_change 에 무엇이 달라지는지 적는다. 이것이 시퀀스가 존재하는 이유다."
-        " ▸ 그것도 애매하면 **그 연구가 실제로 벌어진 자리**로 돌아가라 — 참가자들이 앉아"
-        " 있는 실험실, 화면 앞의 연구자, 쌓인 결과물. 문장이 추상적일수록 화면은 구체여야 한다."
-        " ▸ 연결 문장에 **영상 클립을 배정하지 마라.** 움직임이 이해에 기여하지 않는 자리이고,"
-        " 거기 쓴 클립 값은 기전 컷에서 빠진다."
-        " ■ 다만 이 규칙을 과하게 읽지 마라(실측 2026-08-29: 13컷에 도해가 3개뿐이었다)."
-        " '물리적 대상'은 기계 부품만이 아니다. **절차·집단·비교도 물리적으로 배치하면 도해가"
-        " 된다** — 실제로 그렇게 벌어진 일이기 때문이다. 예:"
-        " ▸ 이중맹검 설계 = 똑같이 생긴 두 무리를 나란히 놓고 한쪽에만 진짜 약병이 간다."
-        " ▸ 통합 분석 = 두 연구의 참가자 무리가 한자리로 합쳐져 더 큰 하나가 된다."
-        " ▸ 범위 한정 = 사람들이 늘어선 줄에서 해당 집단만 남고 나머지는 물러난다."
-        " ▸ 전후 비교 = 같은 배치에서 한쪽의 양이 눈에 띄게 늘어난다."
-        " 이런 컷은 **셀 수 있는 실물**(사람·약병·동전·서류 묶음)을 배치해 그린다."
-        " ★ 사람을 그릴 때는 **실제 사람**이다 — 'abstract/minimalist humanoid figures' 처럼"
-        " 추상 형상으로 대체하면 그 컷은 폐기된다. 손·얼굴·옷이 있는 진짜 사람을 그려라."
-        " 금지(그대로 쓰면 폐기된다): abstract, conceptual, data visualization, data points,"
-        " clusters/clouds merging, glowing cube/orb/blocks, floating particles, aura,"
-        " symbolic representation. 이런 화면은 아무것도 설명하지 않는다."
-        " ★★ **아이콘 인포그래픽도 같은 금지다**(2026-09-03 실측). 금지: icon(s),"
-        " 'personality icons', pictogram, symbol connecting with a line, gauge, meter bar,"
-        " bar graph rising, 'clean digital interface', UI card, dashboard-like panel."
-        " 실측: 추상 주제(성격·협업 품질)를 받자 모델이 글자를 피한 대신"
-        " \"personality icons connecting with a dynamic line, leading to a rising 'ad quality'"
-        " gauge, clean digital interface\" 로 도망갔다 — **글자만 안 썼을 뿐 같은 회피**다."
-        " 이 버전은 실사(REALITY)와 3D 도해(MECHANISM) 둘뿐이고 **인포그래픽은 셋째 선택지가"
-        " 아니다.** 아이콘을 그리고 싶어지면 그 컷은 MECHANISM 이 아니라 REALITY 다 —"
-        " 사람·장비·결과물이 있는 실제 장면으로 내려라."
-        " ■ 도해 컷의 visual_prompt 는 **무엇을 잘라서 무엇을 보여주는지**를 적어라."
-        " 관련 있는 장면을 적으면 그 컷은 배경이 된다 — 이 버전이 실패하는 유일한 방식이다."
-        " 나쁜 예: a modern factory interior. 좋은 예: cutaway cross-section of a battery cell"
-        " showing the separator layer between anode and cathode, one layer highlighted."
-        " ■ 화풍은 코드가 역할에 따라 붙인다. visual_prompt 에 화풍 형용사를 쓰지 마라 —"
-        " **무엇을 보여줄지**만 적는다. 네가 쓰면 코드가 붙이는 화풍과 충돌하고,"
-        " 실측 4회에서 **매번 네 쪽이 이겼다**(그래서 원하지 않은 그림이 나왔다)."
-        " 삭제 대상(그대로 쓰면 차단된다): stylized, photorealistic, 3D render, CGI,"
-        " illustration, painterly, cel shading, line art, vector art, anime, cartoon,"
-        " low poly, cinematic still — 그리고 렌즈 어휘 depth of field, bokeh, macro detail,"
-        " lens flare, film grain, motion blur, blurred, out of focus."
-        " ★ 이 규칙은 `world.style`·`world.lighting`·`world.background` 에도 **똑같이** 적용된다."
-        " ■■ **장소가 없는 주제(세포·분자·힘)의 세계는 '스튜디오 탁자'로 적어라.**"
-        " 실측(2026-09-07): 실험실 세계는 장소를 적어 원하는 화면이 나왔고, 세포 세계는"
-        " 'Microscopic view of a cellular environment' 라고 적어 **교과서 삽화**가 나왔다."
-        " 세포에는 실물 사진이 없으니 모델이 배운 대로 삽화를 그린다. 그래서 대상을"
-        " **물리적 모형**으로 내려라 — 'A plain studio tabletop holding a cutaway teaching"
-        " model of an animal cell, with small painted resin pieces laid beside it'."
-        " 그러면 모델이 삽화가 아니라 **탁자 위의 물건**을 떠올린다(실측에서 아웃라인이 사라졌다)."
-        " 분자·입자는 'resin piece'·'painted block'·'machined part' 처럼 **만질 수 있는 것**으로 적어라."
-        " ■■ **연구 조건(대상·계통·연령·기간)은 한 컷으로 합쳐라.** 각각 독립 컷으로 쪼개면 화면이 통째로 연구 대상 사진이 되고, 시청자는 원리를 만나기 전에 떠난다."
-        " 실측 사고: 그 세 문장이 18초를 먹어 전반부 36초의 절반이 됐다."
-        " ■■ **원리 설명(evidence_role='mechanism')을 앞으로 당겨라.** 결과와 숫자를 말한 직후가 자리다. 총량이 충분해도 뒤로 몰리면 전반부가 통째로 연구 소개가 된다 —"
-        " 실측: 기전 총량 28% 인데 첫 기전이 51% 지점이라 전반부에 원리가 0개였다."
-        " 소재가 기전을 대지 않으면 억지로 만들지 마라(지어내는 것이 더 나쁘다)."
-        " ■ **evidence_role 은 정직하게 적어라.** 그 컷이 가리키는 claim 이 실제로 그 역할을 지불해야 한다 — 라벨만 바꾸면 코드가 잡는다(photo_role_claim_mismatch)."
-        " ■■ **차이는 판정이 아니라 물체로 적어라.** 생성 모델은 '건강함'·'개선'을 그릴 수 없다."
-        " 실측 사고: '더 건강하고 활동적인 세포로 변한다'고 썼더니 두 세포가 **똑같이** 나왔다 —"
-        " 그 컷의 내용 전체가 비교였는데 화면에 비교가 없었다."
-        " 금지: healthier, more active, improved, better, enhanced, more pronounced,"
-        " vibrant, glowing, revitalized, superior."
-        " 대신 **눈으로 셀 수 있는 차이**를 적어라 — 형태·색·자세·개수·거리·높이·기울기."
-        " 나쁨: 'the right cell becomes healthier and more active'."
-        " 좋음: 'the right model is assembled from whole, tightly packed parts;"
-        " the left one has gaps and two pieces lying detached beside it'."
-        " ■ 컷 호흡: 한 컷 = 나레이션 한 문장(2~4초). 문장이 끝나는 지점에서 화면 전환."
-        " 정확한 컷 수는 아래 [컷 수]가 목표 길이에서 역산해 알려준다 — 그 범위를 지켜라."
-        " ■ 화면의 글자·숫자는 전부 overlay_plan(코드 그래픽)이 담당한다."
-        " visual_prompt 에 차트·그래프·대시보드·숫자·라벨을 절대 요구하지 마라 —"
-        " 생성 모델이 그린 숫자는 근거 없는 가짜다."
-        " ★★ **지도·지구본도 그리지 마라.** 생성 모델은 나라 경계를 틀리고 지명을 지어내며,"
-        " '서구 지역만'이라고 해도 전 세계에 표시를 찍는다(실측 2026-09-14). 지역·집단의"
-        " 편중은 **물체의 양**으로 보여줘라(시료관 선반에서 한 색이 대부분인 장면 등)."
-        " ★★ **라벨이 필요하다고 느껴지면 그건 오버레이가 할 일이다.** 금지만 있고 대안이"
-        " 없으면 너는 결국 이미지에 글자를 굽게 된다. 아래로 옮겨라:"
-        " 두 그룹·두 색이 무엇인지 → overlay_plan 의 legend / 위·아래 분할 화면의 전후 → label_pair /"
-        " 표본·기간·대상 → scope_tag / 수치 → number_punch / 출처 → source_card."
-        # ★★ 2026-09-28 운영자 지시로 "컷마다 영어 낱말 하나" → **풀이 카드, 필요한 컷에만**.
-        #   원문: "파란색 bottleneck 이건 왜 들어가는거야?? 약어라던지 어려운 개념이라던지 나레이션으로
-        #   다 표현하기 애매한 것들을 추가 자막으로 잘 보이게 넣어야". GRID BOTTLENECK 은 한국 시청자에게
-        #   새 정보가 없었다.
-        " ■■ **[풀이 카드] 약어·어려운 개념·뜻이 안 와닿는 수치가 나오는 컷에만 붙인다.**"
-        " 나레이션이 빠르게 지나가며 다 풀지 못하는 말을 **화면이 옆에서 풀어 준다**:"
-        ' `{"type": "keyword", "term": "HBM", "gloss_ko": "고대역폭 메모리", "gloss_en": "high-bandwidth memory"}`'
-        " · `PBR 3.5배` → '자산 가치의 3.5배' · `중속 엔진` → '발전소용 중형 엔진' · `FDC` → '바다 위 데이터센터'."
-        f" 용어 {config.OVERLAY_GLOSS_TERM_MAX_CHARS}자·풀이 {config.OVERLAY_GLOSS_MAX_CHARS}자 이내, 컷당 하나."
-        " ★ 그런 말이 없는 컷에는 **붙이지 마라** — 영어 요약어(GRID BOTTLENECK)는 새 정보가 없다(운영자 판정)."
-        " ★ 나레이션이 이미 쉬운 말로 풀었으면 붙이지 마라."
-        # ★★ 2026-09-19 운영자 지시로 **화살표를 권하지 않는다.** 예전 문구는 "원리를 설명하는
-        #   컷에는 되도록 붙여라"였고, 그래서 모델이 거의 매 컷에 달았다(최근 지시서 11/113 컷).
-        #   화살표는 그림이 이미 말하고 있는 것을 못 믿을 때 쓰는 땜질이다 — 그림이 말하게
-        #   하는 것이 먼저고, 그게 안 되면 화살표가 아니라 그림을 고쳐야 한다.
-        #   렌더도 기본으로 안 그린다(config.OVERLAY_POINTER_ENABLED=False).
-        " ■■ **화살표(pointer)는 웬만하면 쓰지 마라.** 어디를 보라고 손가락질하기 전에,"
-        " 설명할 대상이 **화면에서 제일 크고 한가운데**에 오도록 구도를 짜라. 그래도 도저히"
-        " 가리킬 수 없을 때만 `type: pointer` 를 쓰고, 그때도 구역 이름"
-        f" ({_POINTER_ZONES_HELP})만 적어라 — **좌표(픽셀)는 적지 마라**(너는 그 그림을 본 적이 없다)."
-    " ★★ **훅 컷도 예외가 아니다**(실측: 두 번 연속 여기서 막혔다). 컷1 이 숫자를 말하면"
-    " (\"수명을 92일 연장\") 그 컷의 overlay_plan 에도 number_punch 를 넣어라 —"
-    " 숫자를 말하는 **모든** 컷이 대상이고, 첫 컷이 가장 자주 빠진다."
-        " ■■ **대상에 따옴표로 이름을 붙이지 마라** — 그 이름이 그림에 글자로 그려진다."
-        " 실측 사고(2026-09-07): `the left model represents 'Calorie Restriction' and the"
-        " right represents 'Semaglutide' … 'Exploratory Behavior', 'Spatial Memory',"
-        " 'Glucose Control'` 라고 적었더니 **다섯 개가 전부 영어 글자로 화면에 박혔다.**"
-        " 글자를 그려 달라고 한 적이 없어도 그렇게 된다 — 이름을 주면 모델은 라벨로 읽는다."
-        " 이미지는 한국어판·영어판이 **공유**하므로 영어가 구워지면 언어 공유가 통째로 깨진다."
-        " 두 대상은 **생김새로** 구별되게 적어라(왼쪽은 낮고 평평한 접시, 오른쪽은 높고 칸이"
-        " 나뉜 접시). 어느 쪽이 무엇인지는 overlay_plan 이 말한다."
-        " ■■ **세계를 여는 컷(continuity_mode=NEW_WORLD 인 stage 의 첫 컷)은 그 세계를"
-        " 실제로 그려야 한다.** 그 컷의 그림이 곧 세계이고, 뒤 stage 들은 그것을 참조로"
-        " 물려받는다. 여는 컷이 딴 것을 그리면 world 선언이 죽고 오해가 끝까지 간다 —"
-        " 실측: world 가 '세포 단면 모형'인데 여는 컷이 벤 다이어그램을 그려 세포가 사라졌다."
-        " 여는 컷의 visual_prompt 에 world 가 말한 장소와 물건을 그대로 적어라."
-        " ■ 그러면 이미지에는 **라벨 없이 차이만** 그린다. 예:"
-        " 나쁨 — 'split screen, left labeled Placebo, right labeled Oxytocin'."
-        " 좋음 — 'two identical figures facing each other; the left passes a single coin,"
-        " the right passes a tall stack of coins; identical lighting and framing so only the"
-        " amount differs'. 어느 쪽이 무엇인지는 오버레이 카드가 말한다."
-        " ■ 훅 문형: 반전 평서문 + 숫자 하나(…인 줄 알았는데 사실은 …였습니다)."
-        " 금지: 증권 전광판·돈다발·로켓·상승 화살표 클리셰·가짜 로고·정장 인물 악수."
-        " ■ [논문 라인 소재] MECHANISM = 분자·세포·장치가 작동하는 원리, 실험 전후 비교,"
-        " 투여 경로, 구조 단면. REALITY = 실험실·장비·임상 현장·시료."
-        + _SEQUENCE_GUIDANCE + _PHOTO_VIDEO_CLIP_GUIDANCE
-        + SCREEN_GRAPHIC_BAN_GUIDANCE
-        + TEMPORAL_CONTRACT_GUIDANCE + _ASSET_REUSE_GUIDANCE
-    ),
+    # ★ 실사형은 계약 전체가 photo_prompt 에 있다(2026-09-28). 여기서는 조립만 한다.
+    "photo": photo_prompt.guidance("paper"),
     "image_sequence": (
         "[버전=이미지 나열식 image_sequence] 각 컷의 핵심을 대표하는 사실적/일러스트 이미지 1장을 지정한다."
         " visual_prompt 는 주제를 직접 표현하는 리치 프롬프트. 강조가 필요한 컷엔 effects(ken_burns/텍스트오버레이/highlight)를"
@@ -1068,9 +516,6 @@ def directive_user_prompt(draft_row: dict[str, Any], version_type: str) -> str:
     # ★ 표현 수준 제약은 **시퀀스를 쓰는 버전에만** 붙인다 — 시퀀스가 없으면
     #   representation_mode 자체가 없고, 없는 필드를 두고 설교하면 프롬프트만 희석된다.
     depth_block = source_depth_guidance(fact_sheet) if version_type == "photo" else ""
-    # ★ 화면 구성 계약은 실사형에만 — 만화식은 컷마다 새 장면이라 "주인공 하나·이어받기"가 맞지 않는다.
-    if version_type == "photo":
-        depth_block += STAGING_CONTRACT + HOOK_CUT_RULE
     # ★ 소재가 원리를 대지 못하면 **판형 자체를 바꾼다**(선택지 B). 게이트가 요구를 낮추는
     #   것만으로는 부족하다 — 프롬프트가 여전히 "3D 도해 5~7개"를 요구하고 있으면
     #   모델은 원리 없는 도해를 만든다(그게 "의미 없는 화면"의 정체였다).
@@ -1657,7 +1102,8 @@ def _image_unit_type() -> str:
     return "image_batch" if config.IMAGE_GENERATION_MODE == "batch" else "image_standard"
 
 
-def directive_warnings(header: dict[str, Any], cuts: list[dict[str, Any]]) -> list[str]:
+def directive_warnings(header: dict[str, Any], cuts: list[dict[str, Any]],
+                       version_type: str = "") -> list[str]:
     """차단은 아니지만 운영자가 승인 전에 봐야 하는 신호들 (수정명세 §14-4)."""
     out: list[str] = []
     plan = header.get("cost_plan") or {}
@@ -1672,6 +1118,9 @@ def directive_warnings(header: dict[str, Any], cuts: list[dict[str, Any]]) -> li
     if ("hook_promise_check" not in set(header.get("backfilled_fields") or ())
             and header.get("hook_promise_check", {}).get("pass") is False):
         out.append("hook_promise_unpaid")
+    # ★ 실사형은 novelty_event·state_change 를 묻지 않는다(2026-09-28, 3단계 — 엔진 소비자 0인 칸).
+    if version_type == "photo":
+        return out
     for c in cuts:
         no = c.get("cut_no")
         if int(c.get("estimated_sec") or 0) > config.CUT_STATE_CHANGE_MIN_SEC \
@@ -1997,8 +1446,15 @@ def normalize_directive(
             cut_no = int(c.get("cut_no") or (i + 1))
         except (TypeError, ValueError):
             cut_no = i + 1
-        scene_kind = sanitize_scene_kind(c.get("scene_kind"), version)  # ③ 다양성 래더
-        motion_source = sanitize_motion_source(c.get("motion_source"), version)
+        # ★ 실사형은 scene_kind·영상/스틸을 **코드가 정한다**(2026-09-28, 3단계). scene_kind 는 역할에서,
+        #   영상/스틸은 라우팅 뒤 photo_contract.assign_motion_sources 가(도해 우선·훅·마무리·붙여서).
+        #   여기서는 still 로 두어 앞단 상한 검사가 빈 경고를 만들지 않게 한다.
+        if version == "photo":
+            scene_kind = photo_contract.scene_kind_for_role(c.get("visual_role"))
+            motion_source = "still"
+        else:
+            scene_kind = sanitize_scene_kind(c.get("scene_kind"), version)  # ③ 다양성 래더
+            motion_source = sanitize_motion_source(c.get("motion_source"), version)
         if "motion_value" in c:
             declared_motion.add(cut_no)
         sec_cap = cut_max_sec or content_mode.cut_max_sec(scene_kind, motion_source)
@@ -2105,7 +1561,8 @@ def normalize_directive(
     #   총액 초과는 `cost_plan` → `video_budget_exceeded` 로 **승인 단계에서** 멈춘다.
     tiered = config.tiering_enabled(version)
     tier_warnings: list[str] = []
-    enforce_scene_variety(cuts, version)   # ③ 같은 scene_kind 3연속 금지(제자리 교정)
+    if version != "photo":                # 실사형의 scene_kind 는 역할에서 온다 — 섞지 않는다
+        enforce_scene_variety(cuts, version)   # ③ 같은 scene_kind 3연속 금지(제자리 교정)
     enforce_motion_value_gate(cuts, declared_motion, tiered=tiered,
                               warnings_out=tier_warnings)
     if not tiered:
@@ -2240,6 +1697,10 @@ def normalize_directive(
         c["routing_reasons"] = r["reasons"]
     header["visual_routing"] = {**visual_router.routing_summary(routed),
                                 "source_depth": depth}
+    # ★ 실사형 영상/스틸은 라우팅 정본을 보고 코드가 정한다(2026-09-28, 3단계). 모델에게 6~8개를 세어
+    #   붙이라고 시키던 규칙 셋과 경고 둘(photo_video_cut_count_off·_not_adjacent)이 이 한 줄로 대체된다.
+    if version == "photo":
+        header["visual_routing"]["video_cuts_by_code"] = photo_contract.assign_motion_sources(cuts)
 
     # ★ 시퀀스 계약은 **라우팅 뒤**에 돈다 — 정본(resolved plan)과 옛 역할 선언의 충돌을
     #   보려면 둘 다 있어야 한다(적대적 자기리뷰 Q4).
@@ -2309,7 +1770,7 @@ def normalize_directive(
     header["cost_plan"] = compute_cost_plan(cuts, mode, version,
                                             header.get("visual_sequences") or [])
     header["mode_warnings"] = sorted(set([*header["mode_warnings"],
-                                          *directive_warnings(header, cuts)]))
+                                          *directive_warnings(header, cuts, version)]))
 
     photo_gate: dict[str, Any] = {}
     if version == "photo":
@@ -2757,7 +2218,8 @@ def generate(draft_row: dict[str, Any], version_type: str) -> dict[str, Any]:
         set_text_purpose("directive")     # 비용 원장의 용도 라벨(engine/llm.py)
         obj = call_json(
             model=config.MODEL_DIRECTIVE,
-            system=DIRECTIVE_SYSTEM_BASE,
+            # ★ 실사형은 통합 프롬프트(2026-09-28). 옛 버전은 종전 시스템 프롬프트 그대로.
+            system=DIRECTIVE_SYSTEM_PHOTO if version_type == "photo" else DIRECTIVE_SYSTEM_BASE,
             user=directive_user_prompt(draft_row, version_type) + feedback,
             # 컷마다 근거·모션·에셋 필드가 늘어 출력이 약 900토큰 커졌다. 너무 낮으면 잘림 →
             # JSON 파싱 실패 → 재시도 1회 → 하드 에러(파이프라인 정지)라 소프트 저하가 아니다.

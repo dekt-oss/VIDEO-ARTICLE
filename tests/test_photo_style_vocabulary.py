@@ -208,7 +208,8 @@ def test_the_directive_prompt_tells_the_model_the_same_rule():
     """
     from engine import directive as dv
 
-    src = dv.__file__ and open(dv.__file__, encoding="utf-8").read()
+    from engine import photo_prompt
+    src = open(dv.__file__, encoding="utf-8").read() + open(photo_prompt.__file__, encoding="utf-8").read()
     assert "화풍 형용사를 쓰지 마라" in src
     for word in ("stylized", "depth of field", "healthier"):
         assert word in src, f"프롬프트가 금지 어휘 {word} 를 모델에게 알려주지 않는다"
