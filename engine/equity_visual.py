@@ -393,8 +393,10 @@ def annotate(sequences: list[dict[str, Any]] | None,
                       for i, s in enumerate(u.get("steps") or [], 1)}
                 for rid, u in units.items()}
     cut_tag = {}
+    cut_by_no: dict[int, dict[str, Any]] = {}
     for c in cuts or []:
         try:
+            cut_by_no[int(c.get("cut_no"))] = c
             cut_tag[int(c.get("cut_no"))] = (str(c.get("reasoning_id") or "").strip(),
                                              int(c.get("reasoning_step") or 0))
         except (TypeError, ValueError):
@@ -431,6 +433,19 @@ def annotate(sequences: list[dict[str, Any]] | None,
             # ★ 컷이 스스로 선언했으면 건드리지 않는다(assign_cuts 와 같은 규율).
             if not (st.get("claim_ids") or []):
                 st["claim_ids"] = facts
+            # ★★ 컷도 같은 것을 물려받는다(2026-09-28 실측: 최근 리포트 지시서 6장 **전부** in_sequence 0).
+            #   옛 경로 `assign_cuts` 는 컷에 claim_ids 를 채웠는데, 이 경로는 stage 에만 채우고 있었다.
+            #   라우터는 주장 없는 컷을 연결 컷으로 보고 세계만 잇는다(`connective_in_world`) — 그래서
+            #   리포트 실사형이 기전 시퀀스 경로(참조 이어 그리기·8초 등급)를 한 번도 안 탔고, vseq
+            #   게이트는 빈 claim_ids 를 보고 컷마다 `cut_claim_mismatch` 를 찍었다(16장에 132건).
+            #   `assign_cuts` 와 같은 규율: 컷이 스스로 선언했으면 건드리지 않는다.
+            for n in st.get("cut_refs") or []:
+                try:
+                    cut = cut_by_no.get(int(n))
+                except (TypeError, ValueError):
+                    continue
+                if cut is not None and not (cut.get("claim_ids") or []):
+                    cut["claim_ids"] = list(st.get("claim_ids") or [])
 
         rid = max(set(rids), key=rids.count) if rids else ""
         unit = units.get(rid) or {}

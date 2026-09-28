@@ -95,3 +95,20 @@ def test_it_never_calls_an_llm():
     src = inspect.getsource(da)
     for banned in ("call_json", "anthropic", "genai", "requests", "httpx"):
         assert banned not in src, banned
+
+
+def test_report_cuts_may_point_at_fact_sheet_keys_instead_of_claim_ids():
+    """★ 리포트 Fact Sheet 에는 claims 가 없다 — 컷은 `basis[1]`·`num_target_price` 로 근거를 가리킨다.
+
+    2026-09-28 리포트 컷이 stage 의 claim_ids 를 물려받게 되자(equity_visual.annotate) 이 검사가 그
+    전부를 '원장에 없는 주장'으로 찍었다(재현 6장 중 4장). 원장에 실제로 있는 항목은 통과하고,
+    범위 밖 인덱스는 여전히 빨강이다.
+    """
+    fs = {"basis": ["a", "b"], "numbers": ["목표주가 630,000원"],
+          "number_facts": [{"fact_id": "num_target_price", "value": 630000}]}
+    cuts = [{"cut_no": 1, "narration_ko": "x", "claim_ids": ["basis[1]", "numbers[0]", "num_target_price"]},
+            {"cut_no": 2, "narration_ko": "y", "claim_ids": ["basis[9]", "C7"]}]
+    got = da.audit({}, cuts, fs)
+    unknown = [(f["cut_no"], f["detail"]) for f in got["findings"] if f["code"] == "claim_id_unknown"]
+    assert [c for c, _ in unknown] == [2, 2], unknown
+    assert da.known_claim_refs(fs) >= {"basis[0]", "basis[1]", "numbers[0]", "num_target_price"}

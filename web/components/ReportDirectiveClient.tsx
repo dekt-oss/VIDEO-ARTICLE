@@ -15,6 +15,8 @@ import { apiErrorText } from "@/lib/apiError";
 import UnsavedGuard from "@/components/UnsavedGuard";
 import SaveStatus from "@/components/SaveStatus";
 import ExplainerPanel from "@/components/ExplainerPanel";
+import WarningSummaryView from "@/components/WarningSummaryView";
+import { blockLabel } from "@/lib/blockLabels";
 
 const TRANSITIONS = ["cut", "crossfade"];
 const FIXED_EFFECTS = ["ken_burns_zoom_in", "ken_burns_zoom_out", "pan_left", "pan_right", "highlight"];
@@ -319,6 +321,14 @@ export default function ReportDirectiveClient({
             {" "}· 비율: {h.aspect_ratio} · 총 {h.total_estimated_sec}초 · BGM: {h.bgm?.mood || "—"}
           </p>
           {h.global_style && <p className="oneliner">🎨 {h.global_style}</p>}
+          {/* ★ 2026-09-28 까지 리포트 지시서 화면은 차단 사유·경고를 **아예** 안 보여줬다 — 삼성전자 편이
+              경고 22개를 달고 승인된 자리다. 논문 화면(DirectiveClient)과 같은 요약을 붙인다. */}
+          {h.approval_blocked && (
+            <div className="banner-warn" style={{ margin: "8px 0" }}>
+              ⛔ 승인 차단 — {(h.block_reasons ?? []).map((r) => blockLabel(r)).join(" · ")}
+            </div>
+          )}
+          <WarningSummaryView summary={h.warning_summary} all={h.mode_warnings} />
         </div>
       )}
 

@@ -1045,6 +1045,10 @@ MECHANISM_START_SHARE_WARN: float = _get_float("MECHANISM_START_SHARE_WARN", 0.4
 #   말을 건네지 않고 있었다 — 경고가 장식으로 끝나는 구조였다.
 # ★★ 승인 차단은 **아니다.** 계약은 "경고 → 재생성 1회 → 그래도 남으면 경고인 채로
 #   사람에게 보여준다". 오탐이 생산을 막지 않는다는 기존 철학을 그대로 지킨다.
+# ★ 경고 요약 — 승인 화면 위에 크게 보이는 개수(engine/warning_triage.py). 실측 중앙값 56개 중 진짜
+#   고칠 것은 5~8개였다(docs/규칙통합_분석_2026-09-28.md §1-2). 나머지는 접는다.
+WARNING_SUMMARY_TOP_N: int = 3
+
 RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_subject_dominates",
     "photo_narrative_no_mechanism",

@@ -31,6 +31,7 @@ from . import sequence_tier
 from . import temporal_plan as tplan
 from . import temporal_context
 from . import photo_contract
+from . import warning_triage
 from .llm import call_json, set_text_purpose
 from .providers import video  # 길이 티어(pick_clip_tier) — 예산 캡을 실제 요청 초수로 조인다
 from .util import log
@@ -2450,6 +2451,8 @@ def normalize_directive(
         *vseq.get("block_reasons", []),
     ]))
     header["approval_blocked"] = bool(header["block_reasons"])
+    # ★ 경고를 넷으로 갈라 위 3개만 고른다(2026-09-28). 새 판정은 없다 — 정렬·분류만.
+    warning_triage.attach(header)
     return {"version_type": version, "header": header, "cuts": cuts}
 
 

@@ -65,7 +65,6 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_number_as_objects",         # 수치를 사물 개수·높이로 그렸다 — 억지 비교(Jev 되묻기, 2026-09-27)
     "photo_cause_not_shown",           # "~해서 ~한다"의 원인이 화면에 없다 — 계약 ⑨(Jev 되묻기, 2026-09-27)
     "photo_mechanism_spec_inherited",  # 재사용 컷이 기준 컷의 구조를 물려받았다(면제)
-    "photo_mechanism_structured",       # 어휘는 장식적이나 stage 가 진행을 구조로 선언했다
     "photo_reuse_base_overused",       # 한 기준 컷에서 파생이 너무 많다(그 대상이 화면을 지배)
     "photo_narrative_no_mechanism",    # 대본이 원리를 한 번도 설명하지 않는다(그림만 도해)
     "photo_world_churn",               # 시퀀스마다 새 세계를 만든다(컷 나열이지 시퀀스가 아니다)
@@ -1638,7 +1637,7 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
         #     스타일 단어를 잡느라 정작 위험한 "원문에 없는 관계 추가"는 놓친다. 관계는
         #     claim·operation 연결로 판단해야 한다 — 그 이관의 첫 걸음이 이 면제다.
         if signals and _has_structured_progression(c):
-            warns.append(f"photo_mechanism_structured:{c['cut_no']}")
+            pass                       # 면제 — 알림으로 남기지 않는다(2026-09-28: 20장에 108건, 고칠 것 없음)
         elif signals >= 2:
             blocks.append(f"photo_mechanism_decorative:{c['cut_no']}")
         elif signals == 1:

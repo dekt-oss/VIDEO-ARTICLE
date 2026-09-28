@@ -22,6 +22,7 @@ from . import equity_visual
 from . import equity_contract
 from . import report_reasoning
 from . import directive as dv
+from . import warning_triage
 from . import visual_router
 from .llm import call_json
 from . import script_revision
@@ -431,6 +432,8 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
                                                    *blocks]))
         d["header"]["approval_blocked"] = True
         log.warning("EQ-V 계약 위반(승인 차단): %s", ", ".join(blocks))
+    # ★ 정규화 뒤에 경고가 더 붙었으므로 요약을 다시 계산한다(멱등).
+    warning_triage.attach(d["header"])
     return _filter_reasoning_ids(d, draft_row)
 
 
