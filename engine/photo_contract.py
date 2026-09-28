@@ -61,6 +61,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_mechanism_thin",            # 도해가 장식적일 수 있다(근거 1개)
     "photo_component_unrecognizable",  # 도해 부품이 추상어라 그림이 정체불명이 된다(Jev 되묻기, 2026-09-24)
     "photo_scene_not_answering",       # 실사 컷이 나레이션 대신 주제 사진을 놓았다(Jev 되묻기, 2026-09-27)
+    "photo_hook_cut_too_long",         # 컷1 나레이션이 3초를 넘는다(첫 3초 규칙, 2026-09-28)
     "photo_number_as_objects",         # 수치를 사물 개수·높이로 그렸다 — 억지 비교(Jev 되묻기, 2026-09-27)
     "photo_cause_not_shown",           # "~해서 ~한다"의 원인이 화면에 없다 — 계약 ⑨(Jev 되묻기, 2026-09-27)
     "photo_mechanism_spec_inherited",  # 재사용 컷이 기준 컷의 구조를 물려받았다(면제)
@@ -1416,6 +1417,13 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     if not str(header.get("hook_ko") or "").strip():
         blocks.append("photo_hook_missing")
 
+    # ① -b 첫 3초 규칙(2026-09-28). 컷1 나레이션이 3초(HOOK_CUT_MAX_CHARS_KO)를 넘으면 되묻는다.
+    #   글자 수는 결정적이라 코드가 잰다(공백 제외 — TTS 속도를 잰 기준과 같다). 경고·되묻기.
+    if cuts:
+        n1 = len(re.sub(r"\s", "", str(cuts[0].get("narration_ko") or "")))
+        if n1 > config.HOOK_CUT_MAX_CHARS_KO:
+            warns.append(f"photo_hook_cut_too_long:{n1}자")
+
     # ② 역할 선언 — 실사형의 모든 컷은 자기가 무엇을 하는 컷인지 밝혀야 한다.
     roleless = [c["cut_no"] for c in cuts if not str(c.get("visual_role") or "").strip()]
     if roleless:
@@ -2183,6 +2191,12 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 " 그리면 정체불명의 코일·상자가 된다(실측). mechanism.components 를 **시청자가 한눈에 알아볼"
                 " 물건**으로 바꿔라 — a transmission tower, a server rack, a ship engine, a barge, a crane —"
                 " 그리고 visual_prompt 도 그 이름 그대로 고쳐라.")
+        if "photo_hook_cut_too_long" in wcodes:
+            wfix.append(
+                f"- **컷1 나레이션이 3초를 넘는다.** 시청자는 첫 3초에 넘길지 정한다. 컷1 은 질문·역설"
+                f" 한마디, **{config.HOOK_CUT_MAX_CHARS_KO}자 이내**로 줄여라(예: '피일까요?' · '주가는 반토막인데"
+                " 이익은 2배?'). 지운 설명·출처·수치는 **컷2 로 옮겨라** — 사실을 버리지 말고 자리만 바꾼다."
+                " 컷1 화면은 그 말의 물건 자체를 가까이서.")
         if "photo_scene_not_answering" in wcodes:
             wfix.append(
                 "- **실사 컷이 나레이션에 답하지 않는다(주제 사진).** '밸류에이션이 최저'에 설계 사무실 책상,"

@@ -1068,6 +1068,8 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_number_as_objects",
     # ★ 2026-09-27 — "~해서 ~한다"의 원인이 화면에 없다(계약 ⑨). 원인 stage 를 앞에 나누면 된다.
     "photo_cause_not_shown",
+    # ★ 2026-09-28 — 첫 컷 나레이션이 3초를 넘는다(벤치마크 첫 3초 규칙). 줄이면 되는 종류라 되묻는다.
+    "photo_hook_cut_too_long",
     # ★ 2026-09-18 — 기전 시퀀스에 범례·캡션이 없으면 두 집단을 그려도 어느 쪽이 무엇인지
     #   시청자가 모른다. overlay_plan 에 legend/label_pair 를 넣으면 되는 종류라 되묻는다.
     "photo_mechanism_unlabeled",
@@ -2682,6 +2684,12 @@ JEV_TIMEOUT_SEC: int = _get_int("JEV_TIMEOUT_SEC", 20)
 JEV_LABEL_RELEASE_BELOW: float = _get_float("JEV_LABEL_RELEASE_BELOW", 0.35)
 # 도해 부품이 "한눈에 알아볼 물건"일 확률이 이 아래면 경고(되묻기). 차단이 아니다 — Jev 가
 #   틀리거나 죽어도 승인은 안 막힌다(경고는 fail-open 이 맞다: 없는 경고는 종전 동작이다).
+# ── 첫 3초 규칙(2026-09-28, 운영자 승인 "1~3번 기준으로 수정") ─────────────────────────────
+# 벤치마크(시화호·고기 핏물)의 첫 컷은 "시화호죠." · "피일까요?" 처럼 **2~5글자 질문 한마디 + 그 물건**이다.
+# 우리 첫 컷은 저장 지시서 56편 중앙값 26자(≈5초), 삼성전자 편은 50자(8.5초)였다.
+# TTS 실측 초당 5.1자(공백 제외, 렌더 2편 cut_map 중앙값) → 16자 ≈ 3.1초. 우리 데이터에도 이미 좋은 예가
+# 있다: "나무도 목마르면 성장을 멈춘다?"(14자) · "비만치료제가 노화를 늦춘다고요?"(15자).
+HOOK_CUT_MAX_CHARS_KO: int = _get_int("HOOK_CUT_MAX_CHARS_KO", 16)
 JEV_COMPONENT_RECOGNIZABLE_BELOW: float = _get_float("JEV_COMPONENT_RECOGNIZABLE_BELOW", 0.35)
 # 실사 컷이 나레이션에 "답하는" 확률이 이 아래이고, 나레이션에 보여줄 내용이 있으면(아래 값 이상)
 #   경고(되묻기). 실측 2026-09-27(staging_shadow_v2, 596컷): 0.1 은 계약 뒤 지시서에서 편당 약 2.7컷

@@ -254,7 +254,7 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
     scenes_fresh = script_revision.scenes_match_script(scenes, script_md)
     guidance = dv.VERSION_GUIDANCE.get(version_type, dv.VERSION_GUIDANCE[config.DEFAULT_VERSION])
     if version_type == "photo":
-        guidance += PHOTO_CONTRACT + dv.STAGING_CONTRACT
+        guidance += PHOTO_CONTRACT + dv.STAGING_CONTRACT + dv.HOOK_CUT_RULE
     # ★ 논증 단위(설명엔진 v2 §7)를 지시서 단계에도 싣는다. 대본에만 주고 여기서 빼면
     #   컷이 어느 논증을 옮기는지 알 수 없어 reasoning_id 가 빈 채로 나온다 — 그러면 승인
     #   화면이 "설명이 빠진 논증"을 짚지 못한다.

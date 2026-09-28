@@ -127,6 +127,20 @@ STAGING_CONTRACT: str = """
 """
 
 
+# ★ 첫 3초 규칙(2026-09-28, 운영자 승인). 두 공장 공용 — 실사형 프롬프트에 붙는다.
+#   벤치마크 첫 컷: "피일까요?" + 핏물 고인 고기 / "시화호죠." + 방조제. 우리 첫 컷 중앙값은 26자(≈5초)였고
+#   조선업 편 제목 "주가는 반토막인데 이익은 2배?"(수수께끼형)이 시청 비율 67.5% 로 가장 잘 됐다.
+HOOK_CUT_RULE: str = f"""
+[첫 3초 — 컷1 규칙] 시청자는 첫 3초에 넘길지 정한다.
+  ① 컷1 나레이션은 **질문·역설 한마디, 한국어 {config.HOOK_CUT_MAX_CHARS_KO}자 이내(약 3초)**다.
+     좋음: "피일까요?" · "나무도 목마르면 성장을 멈춘다?" · "주가는 반토막인데 이익은 2배?"
+     나쁨: "삼성전자 목표주가가 63만 원까지 상향된 이유, 과열인 줄 알았더니 메모리 수급 구조의 변화 때문이었습니다."
+     → 설명·출처·수치 근거는 **컷2 부터** 푼다. 컷1 은 궁금하게만 만든다.
+  ② 컷1 화면은 그 말의 **물건 자체를 가까이서** 보여준다(핏물 고인 고기 한 접시, 방조제 수문). 전경·사무실 금지.
+  ③ 검사: 컷1 이 {config.HOOK_CUT_MAX_CHARS_KO}자를 넘으면 photo_hook_cut_too_long 으로 되돌아온다.
+"""
+
+
 SEQUENCE_SCHEMA: str = f"""
   "visual_sequences": [
     {{ "sequence_id": "<SEQ1 …>",
@@ -1046,7 +1060,7 @@ def directive_user_prompt(draft_row: dict[str, Any], version_type: str) -> str:
     depth_block = source_depth_guidance(fact_sheet) if version_type == "photo" else ""
     # ★ 화면 구성 계약은 실사형에만 — 만화식은 컷마다 새 장면이라 "주인공 하나·이어받기"가 맞지 않는다.
     if version_type == "photo":
-        depth_block += STAGING_CONTRACT
+        depth_block += STAGING_CONTRACT + HOOK_CUT_RULE
     # ★ 소재가 원리를 대지 못하면 **판형 자체를 바꾼다**(선택지 B). 게이트가 요구를 낮추는
     #   것만으로는 부족하다 — 프롬프트가 여전히 "3D 도해 5~7개"를 요구하고 있으면
     #   모델은 원리 없는 도해를 만든다(그게 "의미 없는 화면"의 정체였다).
