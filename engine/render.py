@@ -639,6 +639,21 @@ def stage_video_hash(plan: dict[str, Any], cuts: list[dict[str, Any]],
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
+def tempo_punch_applies(cut: dict[str, Any], header: dict[str, Any], clip_dur: float) -> bool:
+    """이 컷에 펀치인 템포를 넣을까(2026-09-28 벤치마크 2번). 순수 함수.
+
+    실사형(photo)만 · 스위치 켜짐 · 컷이 TEMPO_MIN_CUT_SEC 이상 · 전·후 분할이 아닌 컷.
+    ★ 전·후 분할 스틸은 위·아래 반쪽이 각자 화면이라 확대하면 두 화면이 다 잘린다.
+    """
+    if not config.TEMPO_PUNCH_ENABLED:
+        return False
+    if str((header or {}).get("version_type") or "") != "photo":
+        return False
+    if float(clip_dur) < config.TEMPO_MIN_CUT_SEC:
+        return False
+    return not split_before_after_applies(cut, header)
+
+
 def split_before_after_applies(cut: dict[str, Any], header: dict[str, Any]) -> bool:
     """이 컷이 여는 stage 를 **전·후 분할 스틸**로 만들 것인가(연구 T2). 순수 판정.
 
@@ -1512,6 +1527,14 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                 effects=effects, out_path=out,
             )
         assemble.run_ffmpeg(argv)
+        # ★ 템포(2026-09-28 벤치마크 2번): 긴 컷은 2~3초마다 확대↔원래 크기로 끊는다(비용 0).
+        if tempo_punch_applies(cut, header, clip_dur):
+            punched = os.path.join(work_dir, f"cut_{i}_punch.mp4")
+            try:
+                assemble.run_ffmpeg(assemble.build_punch_in_command(in_path=out, out_path=punched))
+                out = punched
+            except Exception as exc:  # noqa: BLE001 — 템포는 부가 효과다. 실패하면 원래 컷을 쓴다
+                log.warning("컷 %s 펀치인 실패(원래 컷 사용): %s", cut.get("cut_no"), str(exc)[:120])
         cut_files.append(out)
         text = str(cut.get(f"narration_{lang}") or cut.get("narration_ko") or "")
         # 자막·VO 스팬은 나레이션 구간([t, t+measured])에. 단어 타임스탬프면 정밀 싱크·레이트 청킹.
@@ -1565,7 +1588,8 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         drop_types = drop_types or None
         overlay_out.extend(evidence_overlay.build_overlay_cues(
             cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types,
-            images={no: p for no, p in asset_index.items() if p}, drop_types=drop_types))
+            images={no: p for no, p in asset_index.items() if p}, drop_types=drop_types,
+            lang=lang))
     if cut_map_out is not None:
         # ★ cut_no 가 정본이다. 예전 오버레이 경로는 결측 시 리스트 인덱스로 폴백했는데,
         #   그러면 지시서가 컷을 건너뛴 번호를 쓸 때 두 체계가 어긋난다. 여기서는 결측을

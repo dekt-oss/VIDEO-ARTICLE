@@ -38,6 +38,18 @@ def _disclaimer_footer(broker: str, lang: str) -> str:
     return f"{src}{disc}"
 
 
+def _footer_start(cut_map: list[dict[str, Any]], total: float) -> float:
+    """면책·출처 줄을 **언제부터** 띄울까(2026-09-28 벤치마크 3번 — 화면 정리).
+
+    마지막 컷 시작부터 끝까지. 단 FIN_DISCLAIMER_MIN_SEC 보다 짧게는 띄우지 않는다(끝에서 그만큼 당긴다).
+    스위치가 꺼져 있거나 컷 지도가 없으면 0 — 종전처럼 전 구간이다. 설명란에는 항상 있다.
+    """
+    if not config.REPORT_FOOTER_LAST_CUT_ONLY or not cut_map or total <= 0:
+        return 0.0
+    last = float(cut_map[-1].get("start_sec") or 0.0)
+    return max(0.0, min(last, total - config.FIN_DISCLAIMER_MIN_SEC))
+
+
 @contextlib.contextmanager
 def _explainer_layout(version_type: str):
     """설명판형 렌더 동안만 레터박스를 끈다 (최종명세 v3.3 §21 K3 — 커버 크롭만, 필러바 금지).
@@ -137,7 +149,8 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
                         "footer_margin_v": config.EXPLAINER_SOURCE_MARGIN_V}
     ass = subtitles.build_ass(cues, header_title=series_title, header_hook=hook,
                               total_sec=total, lang=lang, platform=config.DEFAULT_PLATFORM,
-                              footer_text=footer, overlays=overlays, **band_margins)
+                              footer_text=footer, overlays=overlays,
+                              footer_from=_footer_start(cut_map, total), **band_margins)
     with sm.stage(metrics, "assemble"):
         assemble.assemble_full(cut_files, work_dir, out_path, ass_text=ass, total_sec=total,
                                duck_spans=duck_spans)

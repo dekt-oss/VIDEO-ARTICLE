@@ -18,7 +18,8 @@ import json
 import re
 from typing import Any
 
-from . import config, content_mode, factsheet
+from . import config, content_mode, factsheet, narrative
+from .narrative import NARRATIVE_ARC
 from .llm import call_json, set_text_purpose
 
 SCRIPT_SYSTEM = """너는 대중 과학 숏폼 대본 작가 겸 영상 연출자다. 입력으로 주어지는 것은 오직 "Fact Sheet"(JSON)뿐이다.
@@ -62,11 +63,9 @@ Fact Sheet 에 claims(주장 원장)가 있으면 각 씬에 claim_ids 로 **원
    권장: 핵심 결과·대표 수치=both, 표본·기간=visual, 연구 방법=한 문장 spoken,
         상세 통계=visual, 부차 한계=caption, 핵심 일반화 한계=spoken.
 
-[★ 서사 배치 — 근거를 "설명"으로 나열하지 말고 반전 장치로 써라]
+[★ 서사 배치 — 근거를 "설명"으로 나열하지 말고 아래 4막에 얹어라]
 나쁨: 결과 → 방법 설명 → 표본 설명 → 기간 설명 → 한계 설명(면책 문구)
-좋음: 강한 결과 → "그런데 이건 X 자체를 조사한 게 아닙니다" → 실제 연구 범위 공개 →
-     비교 결과 → 예외 조건 → 한계를 포함한 정확한 결론
-★ 한 영상에 핵심 주장은 1개다. 보조 주장은 핵심 주장을 설명하거나 제한하는 역할만 한다.
+""" + NARRATIVE_ARC + """★ 한 영상에 핵심 주장은 1개다. 보조 주장은 핵심 주장을 설명하거나 제한하는 역할만 한다.
   독립적인 두 번째 결과가 중요하면 나열하지 말고 series_split 을 제안하라.
 각 씬은 evidence_role 로 자기가 맡은 근거 역할을 밝힌다:
   primary_result|scope|method|magnitude|mechanism|moderator|caveat|implication|connective|cta
@@ -136,6 +135,9 @@ image_prompt_ko(어떤 스틸 장면인지)·video_prompt_ko(어떻게 움직이
 [★ 유튜브 업로드용 제목 — upload_title_ko / upload_title_en]
 숏폼(유튜브 Shorts) 업로드 제목을 한국어·영어로 각각 만든다. 논문 원제는 밋밋하니 쓰지 마라.
 - 클릭을 부르는 자극적·호기심 유발형 훅. 시청자가 "뭐라고?" 하고 멈추게.
+- ★ **수수께끼형**으로 써라(2026-09-28 실측): 설명형("증권사가 보는 핵심 근거")보다 역설·의문형이
+  훨씬 잘 됐다 — "주가는 반토막인데 이익은 2배?"(시청 비율 67.5%). 틀: "A인데 B?" · "왜 …할까?" ·
+  "…가 …가 된 방법". 답(정답·핵심어)은 제목에 넣지 말고 영상에서 풀게 남겨라.
 - 짧게(한국어 대략 15~30자, 영어 대략 40~70자). 한 줄, 문장부호 최소.
 - 언어별 독립 트랜스크리에이션(직역 금지) — 각 언어에서 자연스럽고 강한 표현으로.
 - ★환각 금지: Fact Sheet에 없는 수치·주장·결과를 지어내지 마라. 과장 표현은 되지만 없는 사실은 금지.
@@ -193,6 +195,7 @@ image_prompt_ko(어떤 스틸 장면인지)·video_prompt_ko(어떻게 움직이
       "video_prompt_ko": "<video_prompt의 한국어 설명 — 어떻게 움직이는지 1~2문장>",
       "source_facts": ["<Fact Sheet 항목 키>"],
       "claim_ids": ["<이 씬이 근거하는 claim_id — 원장에 있는 것만>"],
+      "arc_stage": "<problem|situation|turn|result — 4막 중 이 씬의 자리>",
       "evidence_role": "<primary_result|scope|method|magnitude|mechanism|moderator|caveat|implication|connective|cta>",
       "evidence_delivery": "<spoken|visual|both|caption — 이 씬의 근거를 어떻게 전달하는가>"
     }
@@ -389,6 +392,7 @@ def normalize_script(
             "video_prompt_ko": str(s.get("video_prompt_ko") or ""),
             "source_facts": [str(x) for x in sf],
             "claim_ids": cid,
+            "arc_stage": narrative.arc_stage(s.get("arc_stage")),
             "evidence_role": role if role in config.EVIDENCE_ROLES else config.DEFAULT_EVIDENCE_ROLE,
             "evidence_delivery": (delivery if delivery in config.EVIDENCE_DELIVERY
                                   else config.DEFAULT_EVIDENCE_DELIVERY),

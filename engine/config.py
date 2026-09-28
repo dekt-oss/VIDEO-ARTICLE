@@ -1068,6 +1068,8 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_number_as_objects",
     # ★ 2026-09-27 — "~해서 ~한다"의 원인이 화면에 없다(계약 ⑨). 원인 stage 를 앞에 나누면 된다.
     "photo_cause_not_shown",
+    # ★ 2026-09-28 — 첫 컷 나레이션이 3초를 넘는다(벤치마크 첫 3초 규칙). 줄이면 되는 종류라 되묻는다.
+    "photo_hook_cut_too_long",
     # ★ 2026-09-27 — 세계에 장소가 둘이라 모든 컷 그림이 콜라주가 됐다(삼성전자 렌더).
     "photo_world_multi_place",
     # ★ 2026-09-18 — 기전 시퀀스에 범례·캡션이 없으면 두 집단을 그려도 어느 쪽이 무엇인지
@@ -1079,6 +1081,8 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_color_code_reused",
     "photo_keyword_is_a_sentence",
     "photo_keyword_repeats_narration",
+    # ★ 2026-09-28 — 풀이 없는 영어 낱말 카드. 풀이로 바꾸거나 지우면 되는 종류라 되묻는다.
+    "photo_keyword_without_gloss",
     "photo_pointer_zone_unknown",
     # ★★ 2026-09-21 — 리포트 모델이 `visual_sequences` 를 안 쓰면 코드 폴백이 돈다. 그 경로는
     #   컷이 무엇을 그리든 2번째 stage 부터 무조건 CONTINUE_WORLD 를 찍는다 — 운영자가 통째로
@@ -1580,6 +1584,16 @@ OVERLAY_KEYWORD_BOX_ASS: str = OVERLAY_ANNOTATION_COLOR_ASS
 OVERLAY_KEYWORD_MARGIN_V: int = 0
 OVERLAY_KEYWORD_MAX_WORDS: int = 3
 OVERLAY_KEYWORD_MAX_CHARS: int = 18
+# ── 풀이 카드(2026-09-28 운영자 지시) ─────────────────────────────────────────────
+# 원문: "파란색 bottleneck 이건 왜 들어가는거야?? 약어라던지 어려운 개념이라던지 나레이션으로 다 표현하기
+#   애매한 것들을 추가 자막으로 잘 보이게 넣어야 할 거 같은데". 종전 규칙은 "컷마다 대문자 영어 낱말 하나"라
+#   모든 컷에 GRID BOTTLENECK 같은 영어 요약어가 붙었다 — 한국 시청자에게 새 정보가 없다.
+# 이제 keyword 는 {term, gloss_ko, gloss_en} — 용어(1줄) + 쉬운 풀이(2줄, 작게), **필요한 컷에만**.
+OVERLAY_GLOSS_FONT_SIZE: int = _get_int("OVERLAY_GLOSS_FONT_SIZE", 60)
+OVERLAY_GLOSS_TERM_MAX_CHARS: int = _get_int("OVERLAY_GLOSS_TERM_MAX_CHARS", 12)
+OVERLAY_GLOSS_MAX_CHARS: int = _get_int("OVERLAY_GLOSS_MAX_CHARS", 16)
+# 한국어 영상에서 한글 없는 옛 낱말 카드("GRID BOTTLENECK")를 안 띄운다(옛 지시서 재렌더 포함).
+KEYWORD_DROP_WITHOUT_HANGUL: bool = _get_bool("KEYWORD_DROP_WITHOUT_HANGUL", True)
 # ── 지시 화살표(2026-09-18) — 대상 구역을 코드가 가리킨다 ──
 #: ★★ **기본 꺼짐**(2026-09-19 운영자 지시). 원문: "화살표에 왜 목숨거냐. 화살표는 그냥 없어도
 #  되는거야. 아주가끔 필요하면 쓰는 도구이지 그걸 무슨 목숨걸고 처 넣으려고 낑낑거리고 있냐."
@@ -1704,7 +1718,9 @@ RENDER_QA_MAX_FREEZE_SEC: float = float(os.getenv("RENDER_QA_MAX_FREEZE_SEC", "3
 RENDER_QA_FREEZE_BLOCKS: bool = _get_bool("RENDER_QA_FREEZE_BLOCKS", False)
 # 자막 번인(libass). 한글 폰트 필요(러너: fonts-nanum). force_style 로 세이프에어리어 위 배치.
 SUBTITLE_FONT_NAME: str = os.getenv("SUBTITLE_FONT_NAME", "NanumGothic")
-SUBTITLE_FONT_SIZE: int = 66        # 본문 자막(크고 굵게 — 눈에 잘 띄게, 트렌디)
+# ★ 66 → 84(2026-09-28 벤치마크 3번): 벤치마크 자막은 그림 위 큰 글씨 2~5글자다. 청크도 짧게 끊는다
+#   (CAPTION_CHUNK_MAX). 글자가 커지고 청크가 짧아지니 줄바꿈 위험은 오히려 줄었다.
+SUBTITLE_FONT_SIZE: int = _get_int("SUBTITLE_FONT_SIZE", 84)
 SUBTITLE_MAX_CHARS: int = 22        # 단어 타임스탬프→자막 줄 묶음 시 한 줄 최대 글자수
 # 영상 상단 고정 헤더: 시리즈 제목 + 논문 후킹(부제). 전 구간 표시.
 SERIES_TITLE: str = os.getenv("SERIES_TITLE", "하루 논문 한 편")
@@ -2684,6 +2700,12 @@ JEV_TIMEOUT_SEC: int = _get_int("JEV_TIMEOUT_SEC", 20)
 JEV_LABEL_RELEASE_BELOW: float = _get_float("JEV_LABEL_RELEASE_BELOW", 0.35)
 # 도해 부품이 "한눈에 알아볼 물건"일 확률이 이 아래면 경고(되묻기). 차단이 아니다 — Jev 가
 #   틀리거나 죽어도 승인은 안 막힌다(경고는 fail-open 이 맞다: 없는 경고는 종전 동작이다).
+# ── 첫 3초 규칙(2026-09-28, 운영자 승인 "1~3번 기준으로 수정") ─────────────────────────────
+# 벤치마크(시화호·고기 핏물)의 첫 컷은 "시화호죠." · "피일까요?" 처럼 **2~5글자 질문 한마디 + 그 물건**이다.
+# 우리 첫 컷은 저장 지시서 56편 중앙값 26자(≈5초), 삼성전자 편은 50자(8.5초)였다.
+# TTS 실측 초당 5.1자(공백 제외, 렌더 2편 cut_map 중앙값) → 16자 ≈ 3.1초. 우리 데이터에도 이미 좋은 예가
+# 있다: "나무도 목마르면 성장을 멈춘다?"(14자) · "비만치료제가 노화를 늦춘다고요?"(15자).
+HOOK_CUT_MAX_CHARS_KO: int = _get_int("HOOK_CUT_MAX_CHARS_KO", 16)
 JEV_COMPONENT_RECOGNIZABLE_BELOW: float = _get_float("JEV_COMPONENT_RECOGNIZABLE_BELOW", 0.35)
 # 실사 컷이 나레이션에 "답하는" 확률이 이 아래이고, 나레이션에 보여줄 내용이 있으면(아래 값 이상)
 #   경고(되묻기). 실측 2026-09-27(staging_shadow_v2, 596컷): 0.1 은 계약 뒤 지시서에서 편당 약 2.7컷
@@ -2880,8 +2902,10 @@ CAPTION_TARGET_CPS_RANGE: dict[str, tuple[float, float]] = {
 CAPTION_MIN_DISPLAY_FLOOR_SEC: float = 0.7   # 하드 플로어(이보다 짧으면 인접 청크 병합)
 CAPTION_TAIL_HOLD_MAX_SEC: float = 0.5       # 침묵 구간까지만 표시창 연장(오디오는 안 밈)
 # 한 청크 최대 토큰 수(언어별). 빠른 발화면 fast 로 줄여 가독 부하↓.
-CAPTION_CHUNK_MAX: dict[str, int] = {"ko": 6, "en": 7}
-CAPTION_CHUNK_FAST: dict[str, int] = {"ko": 4, "en": 5}
+# ★ ko 6→3 · en 7→4 (2026-09-28 벤치마크 3번): 벤치마크 자막은 한 번에 1~2어절("피일까요?", "혈관을 돌지").
+#   긴 문장을 한 줄로 띄우면 시청자가 그림 대신 글을 읽는다. 너무 짧은 청크는 아래 하드 플로어가 병합한다.
+CAPTION_CHUNK_MAX: dict[str, int] = {"ko": 3, "en": 4}
+CAPTION_CHUNK_FAST: dict[str, int] = {"ko": 2, "en": 3}
 # 한 줄 최대 글자수(오토핏 근사). EN 은 폭 초과 방지 위해 넉넉히.
 CAPTION_MAX_CHARS: dict[str, int] = {"ko": SUBTITLE_MAX_CHARS, "en": 34}
 CAPTION_AUTOFIT_MAX_WIDTH_PX: int = 900
@@ -2928,6 +2952,14 @@ DUCK_MERGE_GAP_MS: int = 800      # 인접 VO 간극 < 이 값이면 병합(펌�
 
 # 페이싱(참고 상수 — 프롬프트·검증용).
 PACING_VISUAL_CHANGE_SEC: tuple[float, float] = (2.0, 4.0)
+# ── 템포: 한 컷 안에서 2~3초마다 확대↔원래 크기로 끊는다(2026-09-28 벤치마크 2번, 운영자 승인) ──
+# 벤치마크는 2~3초마다 화면이 바뀐다. 우리 컷은 6~9초 동안 한 화면이 천천히 흐른다. 클립을 더 사지 않고
+# 편집의 "펀치인"(같은 화면을 한 단계 확대해 컷처럼 끊기)으로 템포를 만든다 — 추가 비용 0.
+# 전·후 분할 컷은 제외한다(확대하면 반쪽이 잘린다). 짧은 컷(TEMPO_MIN_CUT_SEC 미만)은 이미 빠르다.
+TEMPO_PUNCH_ENABLED: bool = _get_bool("TEMPO_PUNCH_ENABLED", True)
+TEMPO_SEGMENT_SEC: float = _get_float("TEMPO_SEGMENT_SEC", 2.5)
+TEMPO_PUNCH_ZOOM: float = _get_float("TEMPO_PUNCH_ZOOM", 1.15)
+TEMPO_MIN_CUT_SEC: float = _get_float("TEMPO_MIN_CUT_SEC", 4.0)
 PACING_DEAD_AIR_MAX_MS: int = 250
 PACING_NO_DISSOLVE_FIRST_SEC: int = 5
 KEN_BURNS_ROLE: str = "micro_motion_only"
@@ -2936,7 +2968,12 @@ KEN_BURNS_ROLE: str = "micro_motion_only"
 # 근거: Reels/Shorts 에서 콘텐츠를 중앙(≈4:5~1:1) 밴드에 넣고 상하를 검정/블러 바로 채우는 편집이
 #       표준화(상단 바=훅, 하단 바=여백/자막 안전지대, 플랫폼 UI 겹침 회피). 리서치 반영.
 # full_bleed = 기존(이미지 화면 꽉 채움) / center_band = 중앙 밴드 + 상하 바.
-LAYOUT_MODE: str = os.getenv("LAYOUT_MODE", "center_band")
+# ★ 정정(2026-09-28, 운영자 승인 "1~3번 기준으로 수정" — 벤치마크 3번 화면 정리): full_bleed 가 기본이다.
+#   벤치마크(시화호·고기 핏물)는 그림이 **화면 전체**를 채우고 큰 자막이 그림 위에 얹힌다. 우리는 가운데
+#   띠 + 위(시리즈 제목·훅)·아래(자막·면책) 검정 바였다 — 위아래에 글줄 세 개가 늘 떠 있었다.
+#   제목 줄을 걷고(SCREEN_HEADER_ENABLED) 면책을 마지막 컷으로 옮기면 바가 빈 칸이 된다.
+#   되돌리려면 환경변수 LAYOUT_MODE=center_band. 근거: docs/deviation-benchmark-screen.md
+LAYOUT_MODE: str = os.getenv("LAYOUT_MODE", "full_bleed")
 LETTERBOX_TOP_PX: int = _get_int("LETTERBOX_TOP_PX", 200)        # 상단 바 높이
 LETTERBOX_CONTENT_HEIGHT: int = _get_int("LETTERBOX_CONTENT_HEIGHT", 1300)  # 중앙 콘텐츠 밴드 높이(px, 크게)
 LETTERBOX_BAR_COLOR: str = os.getenv("LETTERBOX_BAR_COLOR", "black")  # 상하 바 색(ffmpeg color)
@@ -3528,6 +3565,13 @@ REPORT_DEFAULT_VERSION: str = os.getenv("REPORT_DEFAULT_VERSION", "comic")  # co
 # 논문 시리즈("하루 한 편")를 그대로 변주한 이름이라 어색했다. 채널 통합 후 같은 채널에
 # 두 시리즈가 나란히 놓이므로 이름이 서로 헷갈리지 않는 편이 낫다.
 # 명세서 docs/specs/20260730-report-merge-into-paper-ko.md §6-1 의 열린 질문 해소.
+# ★ 화면 상단 고정 줄(시리즈 제목 + 훅)을 띄울까(2026-09-28 벤치마크 3번: 끔). 벤치마크에는 없다 —
+#   첫 컷이 질문 한마디(HOOK_CUT_RULE)라 훅이 화면에 두 번 뜰 이유도 없다. 제목 문자열은 남겨 둔다.
+SCREEN_HEADER_ENABLED: bool = _get_bool("SCREEN_HEADER_ENABLED", False)
+# ★ 리포트 하단 면책·출처 줄을 **마지막 컷에만** 띄운다(2026-09-28 벤치마크 3번). 설명란에는 항상 있고
+#   (report_attribution.build_publish_caption), 화면에는 FIN_DISCLAIMER_MIN_SEC 이상 노출한다.
+#   False 면 종전처럼 전 구간. 근거·되돌리기: docs/deviation-benchmark-screen.md
+REPORT_FOOTER_LAST_CUT_ONLY: bool = _get_bool("REPORT_FOOTER_LAST_CUT_ONLY", True)
 REPORT_SERIES_TITLE: str = os.getenv("REPORT_SERIES_TITLE", "오늘의 리포트")
 REPORT_SERIES_TITLE_BY_LANG: dict[str, str] = {
     "ko": REPORT_SERIES_TITLE,
@@ -3537,6 +3581,10 @@ REPORT_SERIES_TITLE_BY_LANG: dict[str, str] = {
 FOOTER_FONT_SIZE: int = 30            # 본문 자막보다 작게(눈에 띄되 방해 안 되게)
 FOOTER_COLOR_ASS: str = "&H00D0D0D0&"  # 옅은 회색(&HAABBGGRR&)
 FOOTER_MARGIN_V: int = 24             # 화면 맨 아래 근접(캡션 밴드 아래)
+# ★ 면책·출처 줄 바탕 상자(2026-09-28). full_bleed 에서는 검은 띠가 없어 옅은 회색 글씨가 **밝은 그림 위에서
+#   안 읽혔다**(무료 미리보기 실측 — 하얀 스튜디오 바닥). 법적 문구라 읽혀야 한다 → 반투명 검정 상자(BorderStyle=3).
+#   &HAABBGGRR& 의 AA=00 불투명 ~ FF 투명. 60(hex) ≈ 62% 불투명.
+FOOTER_BOX_ASS: str = "&H60000000&"
 
 # ─ 금융 리포트 영상 시각·서사 강화 (C안 v1.1 · docs/강화지시서_금융리포트시각화_C안_v1.1.md) ─
 # fin_charts 코드 도표 5종 + Arc A 서사 + Veo≤1 오프닝. 전 상수는 여기서(매직넘버 금지, CLAUDE.md 규칙).

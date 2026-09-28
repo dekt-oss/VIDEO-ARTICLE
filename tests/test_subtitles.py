@@ -88,8 +88,10 @@ def test_build_ass_skips_empty():
     assert ass.count("Dialogue:") == 0
 
 
-def test_build_ass_header_title_and_hook():
+def test_build_ass_header_title_and_hook(monkeypatch):
     # 상단 고정 헤더: 시리즈 제목 + 후킹을 [0, total] 전 구간 표시(Header 스타일, 상단 정렬).
+    # ★ 2026-09-28 부터 기본은 끔(SCREEN_HEADER_ENABLED) — 켰을 때의 모양을 본다.
+    monkeypatch.setattr(config, "SCREEN_HEADER_ENABLED", True)
     ass = build_ass([(0, 4, "후크"), (4, 8, "개념")],
                     header_title="하루 논문 한 편", header_hook="AI도 나이를 먹는다",
                     total_sec=8.0)
@@ -118,8 +120,9 @@ def test_chunk_by_rate_slow_speech_fills_to_max():
 
 
 def test_chunk_by_rate_fast_speech_reduces_chunk():
-    # 빠른 발화(단어당 0.25s, 5자): 4단어 표시창 1.0s(플로어 이상)인데 R≈1.8s>W → CHUNK_FAST(4)에서 닫는다.
-    words = _words(12, dur=0.25, char="가나다라마")
+    # 빠른 발화: FAST 어절 표시창이 플로어(0.7s) 이상이면서 가독요구 R 보다 짧으면 CHUNK_FAST 에서 닫는다.
+    # ★ 2026-09-28 FAST 4→2: 단어당 0.4s(실제 TTS 는 어절당 ≈0.7s)·7자 → 2어절 0.8s ≥ 플로어, R≈1.3s > W.
+    words = _words(12, dur=0.4, char="가나다라마바사")
     cues = chunk_by_rate(words, lang="ko")
     assert len(cues[0][2].split(" ")) == config.CAPTION_CHUNK_FAST["ko"]
 

@@ -303,8 +303,20 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
             structured = {"zones": zones}
             text = " · ".join(zones)
         elif otype == "keyword":
-            # 낱말 카드는 payload 가 없다 — 글자 그대로다. 줄바꿈만 없앤다(한 줄 카드).
-            text = " ".join(str(item.get("text") or "").split())
+            # ★ 풀이 카드(2026-09-28 운영자 지시): 약어·어려운 개념을 **용어 + 쉬운 풀이**로 푼다.
+            #   {term, gloss_ko, gloss_en} 이 정본이고 text 는 사람이 읽는 요약이다.
+            #   옛 지시서(낱말 하나, text 만)는 그대로 받는다 — 렌더가 언어를 보고 거른다.
+            # ★ 정규화는 **두 번** 돈다(지시서 저장 때 + 렌더 때). 두 번째 입력에는 용어·풀이가 payload
+            #   안에 있다 — 거기를 안 보면 풀이 카드가 한 줄 요약본으로 떨어진다(2026-09-28 실측).
+            pay_in = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+            term = " ".join(str(item.get("term") or pay_in.get("term") or "").split())
+            gko = " ".join(str(item.get("gloss_ko") or pay_in.get("gloss_ko") or "").split())
+            gen = " ".join(str(item.get("gloss_en") or pay_in.get("gloss_en") or "").split())
+            if term and (gko or gen):
+                structured = {"term": term, "gloss_ko": gko, "gloss_en": gen}
+                text = f"{term} · {gko or gen}"
+            else:
+                text = " ".join(str(item.get("text") or "").split())
         elif otype == "label_pair":
             top, bottom = _label_pair(item)
             if not (top and bottom):
@@ -360,6 +372,30 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
     return out
 
 
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def gloss_card_text(item: dict[str, Any], lang: str = "ko") -> str:
+    """풀이 카드 → ASS 글자. 1줄 용어, 2줄 풀이(작게). 못 만들면 "" (카드를 안 띄운다). 순수.
+
+    ★ 옛 낱말 카드(text 만): 한국어 영상에서는 한글이 있어야 띄운다 — "GRID BOTTLENECK" 같은
+      영어 요약어는 한국 시청자에게 새 정보가 없다(2026-09-28 운영자). 영어 영상은 그대로.
+    """
+    pay = item.get("payload") or {}
+    term = str(pay.get("term") or "").strip()
+    gloss = str(pay.get(f"gloss_{lang}") or pay.get("gloss_ko") or "").strip()
+    if term and gloss:
+        # ★ "용어: 풀이" 한 줄(2026-09-28 운영자: "중속엔진: 발전소용 중형엔진 이런 식으로 확실하게").
+        #   두 줄(용어 / 작은 풀이)은 풀이가 딸린 말처럼 보였다. 길면 ASS 가 알아서 줄을 바꾼다.
+        return f"{{\\fs{config.OVERLAY_GLOSS_FONT_SIZE}}}{term}: {gloss}"
+    text = str(item.get("text") or "").strip()
+    if not text:
+        return ""
+    if lang == "ko" and config.KEYWORD_DROP_WITHOUT_HANGUL and not _HANGUL.search(text):
+        return ""
+    return text
+
+
 def _legacy_text_overlays(cut: dict[str, Any]) -> list[dict[str, Any]]:
     """`effects` 의 `text_overlay:<문구>` 토큰을 오버레이로 승계한다.
 
@@ -384,8 +420,13 @@ def build_overlay_cues(
     only_types: set[str] | None = None,
     images: dict[Any, str] | None = None,
     drop_types: set[str] | None = None,
+    lang: str = "ko",
 ) -> list[tuple[float, float, str, str]]:
     """컷별 overlay_plan → 영상 전체 타임라인의 ASS 이벤트.
+
+    lang: 풀이 카드(keyword)의 풀이 언어. ★ 한국어 영상에 **한글이 없는 옛 낱말 카드**
+      ("GRID BOTTLENECK")는 내보내지 않는다(2026-09-28 운영자: "파란색 bottleneck 이건 왜
+      들어가는거야?") — 한국 시청자에게 영어 요약어는 새 정보가 없다.
 
     drop_types: 이 유형은 내보내지 않는다. **거짓이 될 카드를 지우는 자리**다 —
       색 코드가 어긋난 지시서에서 범례를 그리면 화면이 거짓말을 한다(2026-09-19).
@@ -431,6 +472,11 @@ def build_overlay_cues(
                 for zone in (item.get("payload") or {}).get("zones") or []:
                     cues.append((start, end, pointer_ass_text(zone, img),
                                  _STYLE_BY_TYPE["pointer"]))
+                continue
+            if item["type"] == "keyword":
+                text = gloss_card_text(item, lang)
+                if text:
+                    cues.append((start, end, text, _STYLE_BY_TYPE["keyword"]))
                 continue
             if item["type"] == "legend":
                 cues.append((start, end, legend_ass_text((item.get("payload") or {}).get("items") or []),

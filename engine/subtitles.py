@@ -70,7 +70,8 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
               platform: str | None = None, footer_text: str = "",
               overlays: list[tuple[float, float, str, str]] | None = None,
               caption_margin_v: int | None = None,
-              footer_margin_v: int | None = None) -> str:
+              footer_margin_v: int | None = None,
+              footer_from: float = 0.0) -> str:
     """(start,end,text) 목록 → ASS 문서.
 
     ★ PlayResX/Y 를 렌더 해상도로 명시한다. 그래야 폰트 크기·MarginV 가 실제 픽셀 단위로
@@ -105,8 +106,10 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
     # 하단 고정 자막(리포트 면책/출처). footer_text 있을 때만 스타일 정의 → 논문 출력 바이트 불변.
     footer = (footer_text or "").strip().replace("\n", " ")
     footer_style = (
+        # ★ 반투명 상자(BorderStyle=3, 상자색 = OutlineColour — 키워드 카드와 같은 문법). full_bleed 에서는
+        #   바탕 검은 띠가 없어 밝은 그림 위 옅은 글씨가 안 읽혔다(2026-09-28 미리보기 실측).
         f"Style: Footer,{font_name},{config.FOOTER_FONT_SIZE},{config.FOOTER_COLOR_ASS},"
-        f"&H00000000,&H64000000,1,0,1,1,0,2,40,40,"
+        f"{config.FOOTER_BOX_ASS},&H64000000,1,0,3,8,0,2,40,40,"
         f"{config.FOOTER_MARGIN_V if footer_margin_v is None else int(footer_margin_v)}\n"
     ) if footer else ""
     # 【§11】 근거 오버레이 스타일. Alignment=2(하단 중앙 기준) + 큰 MarginV 로 중상단에 띄운다.
@@ -130,8 +133,11 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
         f"&H00000000,&H64000000,1,0,1,3,0,8,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_LABEL_BOTTOM_MARGIN_V}\n"
         # ★ 키워드 카드(2026-09-18): 불투명 박스(BorderStyle=3) + 좌상단(Alignment=7).
         #   참고 영상이 모든 컷에 쓰는 문법이다 — 낱말 하나로 화면 속 물체에 이름을 단다.
+        # ★ 2026-09-28 풀이 카드: 좌상단(7) → **위 가운데(8)**. 용어+풀이 두 줄이라 가운데가 잘 읽히고,
+        #   상단 고정 줄이 꺼져 있으면(SCREEN_HEADER_ENABLED) 헤더 자리만큼 위로 올린다.
         f"Style: Keyword,{font_name},{config.OVERLAY_KEYWORD_FONT_SIZE},{config.OVERLAY_KEYWORD_COLOR_ASS},"
-        f"{config.OVERLAY_KEYWORD_BOX_ASS},&H00000000,1,0,3,6,0,7,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_KEYWORD_MARGIN_V}\n"
+        f"{config.OVERLAY_KEYWORD_BOX_ASS},&H00000000,1,0,3,6,0,8,{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_SIDE_MARGIN_PX},"
+        f"{config.OVERLAY_KEYWORD_MARGIN_V if config.SCREEN_HEADER_ENABLED else int(h * config.SUBTITLE_SAFE_TOP)}\n"
         # ★ 지시 화살표: 글자가 아니라 ASS 도형이다. 자리는 문자열이 \pos 로 직접 지정하므로
         #   여기 마진은 안 쓰인다. 외곽선 0 — 도형에 테두리가 생기면 촉이 뭉툼해진다.
         f"Style: Pointer,{font_name},20,{config.OVERLAY_POINTER_COLOR_ASS},"
@@ -157,8 +163,11 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
     )
     lines: list[str] = []
     # 상단 고정 헤더: 시리즈 제목(굵게) + 후킹(작게 다음 줄). 전 구간 표시.
-    title = (header_title or "").strip().replace("\n", " ")
-    hook = (header_hook or "").strip().replace("\n", " ")
+    # ★ 2026-09-28 벤치마크 3번: 기본으로 끈다(SCREEN_HEADER_ENABLED). 벤치마크에는 고정 줄이 없고,
+    #   첫 컷이 질문 한마디(HOOK_CUT_RULE)라 훅이 화면에 두 번 뜰 이유도 없다.
+    show_header = config.SCREEN_HEADER_ENABLED
+    title = (header_title or "").strip().replace("\n", " ") if show_header else ""
+    hook = (header_hook or "").strip().replace("\n", " ") if show_header else ""
     if title or hook:
         end_t = total_sec if total_sec and total_sec > 0 else _cues_end(cues)
         if end_t > 0:
@@ -174,12 +183,14 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
             lines.append(
                 f"Dialogue: 0,{ass_timestamp(0.0)},{ass_timestamp(end_t)},Header,,0,0,0,,{text}"
             )
-    # 하단 고정 면책/출처 자막(전 구간). footer_text 있을 때만.
+    # 하단 고정 면책/출처 자막. footer_text 있을 때만. footer_from 부터 끝까지(기본 0 = 전 구간).
+    #   ★ 2026-09-28: 리포트는 마지막 컷에서만 띄운다(report_render._footer_start).
     if footer:
         f_end = total_sec if total_sec and total_sec > 0 else _cues_end(cues)
-        if f_end > 0:
+        f_start = min(max(0.0, float(footer_from or 0.0)), f_end)
+        if f_end > f_start:
             lines.append(
-                f"Dialogue: 0,{ass_timestamp(0.0)},{ass_timestamp(f_end)},Footer,,0,0,0,,{footer}"
+                f"Dialogue: 0,{ass_timestamp(f_start)},{ass_timestamp(f_end)},Footer,,0,0,0,,{footer}"
             )
     for start, end, text in cues:
         text = (text or "").strip().replace("\n", "\\N")

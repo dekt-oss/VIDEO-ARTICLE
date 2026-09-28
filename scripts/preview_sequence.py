@@ -310,7 +310,7 @@ def main() -> None:
         config.IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER") or "gemini"
         config.VIDEO_PROVIDER = os.getenv("VIDEO_PROVIDER") or "veo"
 
-    from engine import assemble, db, render, render_qa, sequence_render, subtitles
+    from engine import assemble, db, render, render_qa, report_render, sequence_render, subtitles
     from scripts.mini_render import slice_directive
 
     # ★ 두 공장을 **둘 다** 찾는다(2026-09-19). 운영자가 리포트 지시서를 미리 보려 했는데
@@ -366,8 +366,10 @@ def main() -> None:
     fit_log: list[dict] = []
     overlays: list[tuple[float, float, str, str]] = []
     seq_log: list[dict] = []
+    cut_map: list[dict] = []
     cut_files, cues, total, duck = render._render_cut_clips(
         mini, str(work), lang="ko", fit_log=fit_log, overlay_out=overlays, seq_out=seq_log,
+        cut_map_out=cut_map,
         # ★ --keep 일 때만 directive_id 를 넘긴다. 이 인자 하나가 캐시 스위치다
         #   (render._gen_still: `use_cache = bool(directive_id) and paid`).
         directive_id=(args.directive_id if args.keep else None),
@@ -380,7 +382,9 @@ def main() -> None:
     ass = subtitles.build_ass(
         cues, header_title=title,
         header_hook=str(header.get("hook_ko") or ""), total_sec=total, lang="ko",
-        platform=config.DEFAULT_PLATFORM, overlays=overlays, footer_text=footer)
+        platform=config.DEFAULT_PLATFORM, overlays=overlays, footer_text=footer,
+        # ★ 본 렌더와 같게 — 리포트 면책 줄은 마지막 컷에만(2026-09-28, report_render._footer_start).
+        footer_from=(report_render._footer_start(cut_map, total) if kind == "report" else 0.0))
     mp4 = str(out_dir / "preview_ko.mp4")
     assemble.assemble_full(cut_files, str(work), mp4, ass_text=ass, total_sec=total,
                            duck_spans=duck)

@@ -106,7 +106,7 @@ def _score(run: dict[str, Any]) -> dict[str, Any]:
 
     audit = directive_audit.audit(header, cuts, fs)
     findings = audit.get("findings") or []
-    kw_a, kw_b = photo_contract.keyword_card_problems(cuts)
+    kw_a, kw_b, _kw_c = photo_contract.keyword_card_problems(cuts)
     split_a, split_b = photo_contract.split_composition_cuts(cuts)
     # ★ 게이트가 쓰는 **그 유도식** 그대로 읽는다(photo_contract 1447·1624행). 처음엔
     #   header["total_sec"] / header["sequences"] 로 읽었는데 그런 키는 없어서 네 항목이

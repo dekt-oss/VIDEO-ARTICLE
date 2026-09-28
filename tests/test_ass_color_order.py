@@ -35,12 +35,13 @@ def test_the_caveat_grey_is_actually_grey():
     assert r == g == b, f"회색이 아니다: R{r} G{g} B{b}"
 
 
-def test_the_hook_and_the_evidence_card_use_the_same_accent():
+def test_the_hook_and_the_evidence_card_use_the_same_accent(monkeypatch):
     """★★ 이것이 실측에서 색이 갈린 이유다 — 훅은 노랑, 근거 카드는 하늘색이었다.
 
     한 화면의 강조색은 하나여야 한다. 훅은 인라인 태그로, 카드는 스타일로 색을 받으므로
     두 자리를 각각 고치기 쉽고, 그래서 어긋난다.
     """
+    monkeypatch.setattr(config, "SCREEN_HEADER_ENABLED", True)   # 2026-09-28 부터 기본 끔
     ass = subtitles.build_ass(
         [(0.0, 2.0, "본문")], header_title="시리즈", header_hook="훅 문장",
         total_sec=5.0, overlays=[(0.0, 2.0, "근거 카드", "Evidence")])

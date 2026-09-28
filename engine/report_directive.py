@@ -139,7 +139,7 @@ PHOTO_CONTRACT = f"""
                              "reason": "<pass 가 false 면 무엇이 비었는지>" }}
     ★ 이 칸을 비워 두지 마라. 비면 코드가 기본값을 채우는데, 그 기본값은 "약속을 안 지켰다"
       로 읽힌다(2026-09-20 이전 리포트 지시서 8편이 전부 그렇게 나왔다).
-■ 서사: 문제 제기 → "왜?" → 예측을 깨는 원인 → 해결의 메커니즘 → 그래서 무엇(확인 포인트).
+■ 서사: 대본의 4막 — 문제 제기 → 오해 또는 문제 상황 → 반전 또는 원리 → 결과/결론(확인 포인트).
   마술처럼 시청자가 한쪽을 보게 만들고 다른 쪽에서 답이 나오게 하라(예측 오류).
 
 [추가 필드] 위 기본 스키마의 각 컷에 다음을 더해서 출력하라.
@@ -147,10 +147,13 @@ PHOTO_CONTRACT = f"""
                        "text": "<화면 카드 문구>", "start_sec": <초>, "duration_sec": <초>,
                        "payload": {{ "<legend 일 때>": "items: [{{color: amber|blue|coral, label: 한글 낱말}}]",
                                     "<label_pair 일 때>": "top / bottom (위·아래 화면이 무엇인지, 한글)",
-                                    "<pointer 일 때>": "at: [구역 1~3개] — {dv._POINTER_ZONES_HELP}" }} }} ]
-  ★ **컷마다 키워드 카드 하나**(type: keyword). 화면 속 물체에 다는 이름표다 — 대문자 영어 낱말
-    하나나 수치 하나({config.OVERLAY_KEYWORD_MAX_WORDS}낱말·{config.OVERLAY_KEYWORD_MAX_CHARS}자 이내,
-    예: CATHODE · 30-60 MIN · 1984). 나레이션을 옮겨 적지 마라(같은 말을 두 번 하는 셈이다).
+                                    "<pointer 일 때>": "at: [구역 1~3개] — {dv._POINTER_ZONES_HELP}" }},
+                       "term": "<keyword 일 때: 풀 용어>", "gloss_ko": "<쉬운 풀이>", "gloss_en": "<English gloss>" }} ]
+  ★ **풀이 카드(type: keyword)는 약어·어려운 개념·뜻이 안 와닿는 수치가 나오는 컷에만**(2026-09-28 운영자 지시).
+    나레이션이 다 풀지 못하는 말을 화면이 옆에서 풀어 준다 — term + gloss_ko + gloss_en:
+    HBM → "고대역폭 메모리" · PBR 3.5배 → "자산 가치의 3.5배" · 12M Fwd P/E → "1년 뒤 이익 대비 주가".
+    용어 {config.OVERLAY_GLOSS_TERM_MAX_CHARS}자·풀이 {config.OVERLAY_GLOSS_MAX_CHARS}자 이내, 컷당 하나.
+    그런 말이 없는 컷에는 **붙이지 마라** — 영어 요약어(GRID BOTTLENECK · PRICE HIKE)는 새 정보가 없다.
   ★ **화살표(pointer)는 웬만하면 쓰지 마라.** 어디를 보라고 손가락질하기 전에, 설명할 대상이
     **화면에서 제일 크고 한가운데**에 오도록 구도를 짜라. 그래도 도저히 가리킬 수 없을 때만
     type: pointer 를 쓰고, 그때도 구역 이름만 적어라(좌표·픽셀 금지 — 너는 그 그림을 본 적이 없다).
@@ -254,7 +257,7 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
     scenes_fresh = script_revision.scenes_match_script(scenes, script_md)
     guidance = dv.VERSION_GUIDANCE.get(version_type, dv.VERSION_GUIDANCE[config.DEFAULT_VERSION])
     if version_type == "photo":
-        guidance += PHOTO_CONTRACT + dv.STAGING_CONTRACT
+        guidance += PHOTO_CONTRACT + dv.STAGING_CONTRACT + dv.HOOK_CUT_RULE
     # ★ 논증 단위(설명엔진 v2 §7)를 지시서 단계에도 싣는다. 대본에만 주고 여기서 빼면
     #   컷이 어느 논증을 옮기는지 알 수 없어 reasoning_id 가 빈 채로 나온다 — 그러면 승인
     #   화면이 "설명이 빠진 논증"을 짚지 못한다.

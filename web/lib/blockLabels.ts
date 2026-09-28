@@ -47,6 +47,8 @@ export const BLOCK_LABEL: Record<string, string> = {
   photo_scene_not_answering: "실사 컷이 나레이션에 답하지 않는 주제 사진(행위로 다시)",
   photo_number_as_objects: "수치를 물건 개수·높이로 그림(억지 비교 — 카드가 쓴다)",
   photo_cause_not_shown: "'~해서'의 원인이 화면에 없음(원인 장면을 앞에)",
+  photo_hook_cut_too_long: "첫 컷 나레이션이 3초를 넘음(질문 한마디로 줄이기)",
+  photo_keyword_without_gloss: "풀이 없는 영어 낱말 카드(용어+쉬운 풀이로 바꾸거나 지우기)",
   photo_world_multi_place: "세계 설정에 장소가 둘 — 그림이 칸으로 쪼개짐(시퀀스를 나누기)",
   photo_skeleton_shortfall: "컷 골격보다 컷이 적음(모델이 칸을 합쳤다)",
   photo_role_name_in_prompt: "프롬프트에 역할명(MECHANISM/REALITY)이 남아 그림에 글자로 박힘",
