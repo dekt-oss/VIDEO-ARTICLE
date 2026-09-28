@@ -3,8 +3,12 @@
 # 스냅샷 저장. 대시보드 /analytics 가 읽음. publish.yml 과 동일하게 GitHub Actions 러너에서 돈다
 # (로컬에 파이썬 환경을 갖추지 않아도 "실행" 버튼 하나로 돌릴 수 있게).
 #
-# 트리거: workflow_dispatch 뿐 — 스케줄(크론) 없음. CLAUDE.md 범위 "cron 무인 실행 제외"를 지키기
-# 위해 항상 사람이 Actions 탭에서 직접 눌러야 실행된다(업로드처럼 대시보드 자동 트리거도 아직 없음).
+# 트리거: 매일 KST 07:00 크론 + 수동 버튼.
+#   ★ 정정(2026-09-28, 운영자 승인 "가능하면 해주세요"): 수동 전용이었더니 **두 달 넘게 아무도 안
+#     눌렀다**(마지막 스냅샷 2026-07-19). 그 사이 실사형 전환 뒤 첫 편(조선업, 시청 비율 67.5%)이
+#     잘 된 것도 몰랐다 — 무엇이 먹혔는지 모르고 영상을 바꾸고 있었다. 읽기 전용(YouTube 조회)이고
+#     한 번에 1분 안쪽이라 매일 돌린다. 수집 창이 최근 7일(YOUTUBE_ANALYTICS_WINDOW_DAYS)이라
+#     주 1회로는 쇼츠의 첫 주 곡선을 놓친다.
 #
 # 필요한 Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY,
 #   YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET (업로드용 재사용, 폴백),
@@ -14,6 +18,8 @@ name: analytics
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 22 * * *"   # UTC 22:00 = KST 07:00
 
 # 크론과 수동 실행이 겹쳐 같은 큐를 두 워커가 처리하지 않게 직렬화한다
 # (2026-09-06 추가. c8b46fd 에서 중복 dispatch 로 분이 두 배 나갈 뻔했다).
