@@ -48,5 +48,4 @@ def test_arc_problems():
 
 def test_the_directive_keeps_the_script_order():
     assert "4막 순서" in dv.HOOK_CUT_RULE
-    import inspect
-    assert "대본의 4막" in inspect.getsource(rd)
+    assert "대본의 4막" in rd.PHOTO_CONTRACT   # 리포트 실사형 프롬프트에도 같은 규칙이 실린다

@@ -328,7 +328,9 @@ def test_color_code_is_one_table_read_by_prompt_legend_and_directive():
 
 def inspect_src(mod):
     import inspect
-    return inspect.getsource(mod)
+    from engine import photo_prompt
+    # ★ 2026-09-28 실사형 계약은 photo_prompt 한 자리에 있다 — 지시서 모듈의 원문에 그것을 합쳐 본다.
+    return inspect.getsource(mod) + inspect.getsource(photo_prompt)
 
 
 def test_prompt_is_recorded_in_asset_meta():

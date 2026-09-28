@@ -14,7 +14,9 @@ from engine import config
 from engine import photo_contract as pc
 from engine import stage_render as sr
 
-DIRECTIVE_SRC = (pathlib.Path(__file__).resolve().parents[1] / "engine" / "directive.py").read_text(encoding="utf-8")
+# ★ 2026-09-28 실사형 계약은 engine/photo_prompt.py 한 자리에 있다 — 두 파일을 같이 읽는다.
+DIRECTIVE_SRC = "".join((pathlib.Path(__file__).resolve().parents[1] / "engine" / n).read_text(encoding="utf-8")
+                        for n in ("directive.py", "photo_prompt.py"))
 
 
 def _cut(no, stage, base="MECHANISM_SEQUENCE", connective=False):

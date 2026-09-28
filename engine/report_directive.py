@@ -22,6 +22,8 @@ from . import equity_visual
 from . import equity_contract
 from . import report_reasoning
 from . import directive as dv
+from . import photo_contract
+from . import photo_prompt
 from . import warning_triage
 from . import visual_router
 from .llm import call_json
@@ -87,107 +89,10 @@ REPORT_DIRECTIVE_SYSTEM = f"""너는 증권사 리포트 대중화 숏폼 영상
   ]
 }}"""
 
-# ── 실사형 photo 추가 계약 (2026-08-19) ──
-# ★ 왜 이 블록이 필요한가: 만화식은 overlay_plan 을 컷의 5%(12/235)만 채웠고 설명판형은
-#   94%(33/35)를 채웠다. 그 차이가 곧 "나레이션은 22%인데 화면 막대는 -3%" 같은 사고의
-#   원인이었다 — 채워야 할 곳을 안 채우니 숫자가 이미지 프롬프트로 흘러갔다.
-#   실사형은 설명판형의 그 습관만 물려받는다(보드는 물려받지 않는다).
-# 범례 요구는 스위치를 본다(2026-09-24 운영자: "없애도 될듯"). 꺼져 있으면 프롬프트가 말하지 않는다.
-_LEGEND_CLAUSE = (" 그 컷에 legend 를 넣어 무슨 색이 무엇인지 말하라."
-                  if config.OVERLAY_LEGEND_ENABLED else "")
-PHOTO_CONTRACT = f"""
-
-[추가 계약 — 실사형 photo · 벤치마크 문법]
-이 영상은 건축·구조 해설 쇼츠(신비한 건축사전·이런거지 류)의 화면 문법으로 만든다.
-■ 컷 호흡: 한 컷 = 나레이션 한 문장(2~4초). **문장이 끝나는 지점에서 화면 전환**.
-  그래서 컷 수는 만화식(6~8)보다 많다 — 40~50초 영상이면 **10~14컷**을 목표로 하라.
-  estimated_sec 하한({config.CUT_MIN_SEC}초)은 계획값일 뿐이다. 실제 컷 길이는 나레이션
-  실측으로 정해지므로, 문장을 짧게 쓰면 컷이 짧아진다. 문장을 길게 쓰고 컷을 늘리지 마라.
-■ 화면의 글자·숫자는 **전부 overlay_plan** 이 담당한다. 이미지에 글자를 굽지 않는다.
-  숫자를 화면에 내보내려면 그 컷의 overlay_plan 에 number_punch 카드로 넣어라. 벤치 채널이
-  화면 위에 붉은 계측선·치수를 "얹어" 보여주듯, 우리는 리포트 수치를 카드로 얹는다.
-■ 수치가 나오는 컷은 **반드시** 그 수치의 출처를 같은 화면에 둔다(source_card).
-  본문 나레이션에서 증권사를 말했더라도 화면 카드는 별도로 필요하다.
-■ 오버레이는 한 컷에 최대 {config.OVERLAY_MAX_PER_CUT}개. 많으면 읽히지 않는다.
-■ 컷마다 visual_role 을 선언한다(MECHANISM 3D 도해 / REALITY 실사). 12컷 기준 도해 5~7 · 실사 3~5.
-  ★★ [증권 리포트의 원리는 논증 단위다] 리포트에는 논문의 "왜 그런가" 대신 아래 논증 단위
-    (driver → 실적 → 밸류에이션)가 있다. 각 단계에 코드가 kind 를 적어 뒀다 — **그 kind 가 화면을 정한다**:
-      · kind 가 **과정** 인 단계 → MECHANISM 도해. 전·후가 있는 **물리적 과정**만 그린다:
-          공급망 흐름(광산 → 셀 → 데이터센터), 수요 전이(전기차용 → ESS용), 병목 → 우회
-          (전력망이 막힌다 → 바다 위 바지선이 우회한다), 설비 증설(엔진 라인이 늘어난다).
-          논증 단위 하나가 시퀀스 하나다 — 같은 세계에서 단계가 이어진다.
-      · kind 가 **숫자** 인 단계 → **REALITY 실사 장면 + 숫자 카드**. MECHANISM 금지.
-          크기 다른 블록·막대·높이 차이로 수치를 보이는 것은 그래프다(차단된다).
-      · kind 가 **리스크** 인 단계 → **REALITY 실사 장면 + 한 줄 카드**, 또는 나레이션만. MECHANISM 금지.
-          규제를 장벽·쇠쐐기 같은 물체로 그리면 원문에 없는 은유가 된다(차단된다).
-    ★ 전후 비교는 **한 장에 둘을 넣지 마라** — 같은 장면을 두 컷으로 두고 상태만 바꾼다.
-    ★ 도해에 **숫자를 그리지 마라.** 숫자는 overlay_plan 이 얹는다. 도해는 구조와 방향만 보여준다.
-  ★ [REALITY 소재] 공장·생산라인·물류·항만·제품 실물. 훅과 마무리, 그리고 도해가 추상적으로
-    흐를 때 현실로 끌어오는 자리.
-■ visual_prompt 에는 **무엇을 보여줄지만** 쓴다 — 화풍 형용사(photorealistic, 3D render 등)는
-  코드가 역할에 따라 붙이므로 쓰지 마라. 차트·그래프·대시보드·UI·인포그래픽·퍼센트·라벨 금지.
-  얼굴 클로즈업·정장 인물·악수 금지.
-■ 움직임: 이 버전은 "움직이는 화면"이 정체성이다. **영상 컷(motion_source=video)을 6~8개**
-  배정하라(기본 지침의 "0개여도 좋다"는 실사형에 적용되지 않는다).
-  ★ 그리고 영상 컷을 **서로 붙여서** 배치하라. 렌더가 앞 영상 컷의 마지막 화면에서 다음 컷을
-    이어 만들기 때문에, 영상 컷이 연달아 있어야 카메라가 끊기지 않고 흐른다.
-    영상-스틸-영상처럼 띄엄띄엄 두면 그 연결이 끊긴다.
-■ 훅: 첫 문장은 반전 평서문으로 시작한다 — "…인 줄 알았는데 사실은 …였습니다" /
-  "…가 …를 일부러 …한 이유". 첫 3초에 상식을 뒤집는 한 문장 + 숫자 하나.
-  ★★ **훅이 약속한 것을 본문이 지불하는지 스스로 확인하고 header 에 적어라** — 낚시 금지:
-    "hook_promise_check": {{ "pass": <bool>, "promise": "<훅이 약속한 것 한 줄>",
-                             "payoff_cut_no": [<그것을 지불하는 컷 번호들>],
-                             "reason": "<pass 가 false 면 무엇이 비었는지>" }}
-    ★ 이 칸을 비워 두지 마라. 비면 코드가 기본값을 채우는데, 그 기본값은 "약속을 안 지켰다"
-      로 읽힌다(2026-09-20 이전 리포트 지시서 8편이 전부 그렇게 나왔다).
-■ 서사: 대본의 4막 — 문제 제기 → 오해 또는 문제 상황 → 반전 또는 원리 → 결과/결론(확인 포인트).
-  마술처럼 시청자가 한쪽을 보게 만들고 다른 쪽에서 답이 나오게 하라(예측 오류).
-
-[추가 필드] 위 기본 스키마의 각 컷에 다음을 더해서 출력하라.
-  "overlay_plan": [ {{ "type": "source_card|evidence_card|number_punch|caveat_tag|legend|label_pair|keyword|pointer",
-                       "text": "<화면 카드 문구>", "start_sec": <초>, "duration_sec": <초>,
-                       "payload": {{ "<legend 일 때>": "items: [{{color: amber|blue|coral, label: 한글 낱말}}]",
-                                    "<label_pair 일 때>": "top / bottom (위·아래 화면이 무엇인지, 한글)",
-                                    "<pointer 일 때>": "at: [구역 1~3개] — {dv._POINTER_ZONES_HELP}" }},
-                       "term": "<keyword 일 때: 풀 용어>", "gloss_ko": "<쉬운 풀이>", "gloss_en": "<English gloss>" }} ]
-  ★ **풀이 카드(type: keyword)는 약어·어려운 개념·뜻이 안 와닿는 수치가 나오는 컷에만**(2026-09-28 운영자 지시).
-    나레이션이 다 풀지 못하는 말을 화면이 옆에서 풀어 준다 — term + gloss_ko + gloss_en:
-    HBM → "고대역폭 메모리" · PBR 3.5배 → "자산 가치의 3.5배" · 12M Fwd P/E → "1년 뒤 이익 대비 주가".
-    용어 {config.OVERLAY_GLOSS_TERM_MAX_CHARS}자·풀이 {config.OVERLAY_GLOSS_MAX_CHARS}자 이내, 컷당 하나.
-    그런 말이 없는 컷에는 **붙이지 마라** — 영어 요약어(GRID BOTTLENECK · PRICE HIKE)는 새 정보가 없다.
-  ★ **화살표(pointer)는 웬만하면 쓰지 마라.** 어디를 보라고 손가락질하기 전에, 설명할 대상이
-    **화면에서 제일 크고 한가운데**에 오도록 구도를 짜라. 그래도 도저히 가리킬 수 없을 때만
-    type: pointer 를 쓰고, 그때도 구역 이름만 적어라(좌표·픽셀 금지 — 너는 그 그림을 본 적이 없다).
-  ★ visual_role 이 MECHANISM 인 컷은 **아래 구조를 반드시 채운다**(안 채우면 승인이 막힌다):
-  "mechanism": {{ "subject": "<무엇의 원리인가(영어 한 구절)>",
-                  "components": ["<화면에 보일 물체 2개 이상 — **영어**, 보이는 물건 이름
-                                   (기업명·지표명·개념어 금지: a stacked battery cell, a cathode layer)>"],
-                  "relationship": "<구성요소가 어떻게 맞물리는가(영어)>",
-                  "initial_state": "<변화 전 모습(영어)>",
-                  "transformation": "<무엇이 무엇을 어떻게 바꾸는가(영어)>",
-                  "final_state": "<변화 후 모습(영어)>",
-                  "highlighted_element": "<강조할 하나(영어)>",
-                  "claim_ids": ["<이 도해가 지불하는 claim_id>"] }},
-  "mechanism_ko": "<위 구조를 한국어 한 문장으로(사람이 읽는 용도)>"
-  ★★ visual_prompt 는 그 components 를 **같은 이름 그대로** 그려라 — 구조에 있는 물체가 장면에
-     없으면 차단된다(photo_mechanism_prompt_detached). 구조 필드가 곧 이미지 프롬프트로 나간다.
-  ★★ 기전 컷의 색은 셋뿐이다: amber=설명하는 부분, blue=첫 집단·변화 전, coral=둘째 집단·변화 후.
-     두 쪽을 비교하는 컷은 한쪽을 muted blue, 다른 쪽을 muted coral 로 칠하고(표면색으로 적어라 —
-     'rendered in'·'glow' 는 화풍 어휘라 차단된다).{_LEGEND_CLAUSE}
-  ★★ 그 두 색은 **영상 내내 같은 뜻**이다 — 한 개체는 처음부터 끝까지 한 색만 갖는다. 그 색을
-     개체 **안의 부위**를 나누는 데 다시 쓰지 마라(화면의 범례가 거짓말이 된다). 부위를 가리키려면
-     amber 강조를 쓰고, 커지고 작아지는 것은 **크기·모양**으로 보여라.
-  ★★★ [비교는 **컷과 컷 사이**에서 한다 — 그림 한 장을 반으로 가르지 마라]
-     'Split screen' · 'Side-by-side comparison' · '왼쪽에는 …, 오른쪽에는 …' 로 시작하는
-     visual_prompt 는 차단된다. 한 장 안에 두 장면을 넣으면 둘 다 작아지고, 화면은 도해가
-     아니라 **비교표**가 된다 — 게다가 코드가 전·후를 위아래로 다시 나누므로 4칸이 된다
-     (2026-09-19 실측: 그렇게 나온 영상을 운영자가 통째로 폐기했다).
-     비교하고 싶으면 **한 장면을 유지한 채 상태를 바꿔라**: 같은 파이프가 좁았다가 넓어지고,
-     같은 흐름이 막혔다가 뚫린다. 두 상태를 나란히 보여 주는 일은 코드가 한다.
-
-{dv.SEQUENCE_SCHEMA}
-{dv._SEQUENCE_GUIDANCE}
-"""
+# ── 실사형 photo 계약 — **한 자리**(engine/photo_prompt.py, 2026-09-28 규칙 통합 2단계) ──
+# 리포트 전용 절(논증 단위 kind → 화면·source_card·컴플라이언스)도 거기 있다. 여기는 조립만.
+PHOTO_CONTRACT = photo_prompt.guidance("report")
+REPORT_DIRECTIVE_SYSTEM_PHOTO = photo_prompt.system_prompt("report")
 
 
 # ── 논증 단위 계약(설명엔진 v2 §7) — 컷이 어느 논증을 옮기는지 표시하게 한다 ──
@@ -256,9 +161,14 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
     #   건너뛰면 씬은 옛 원고다 — 그대로 실으면 지운 문장이 지시서에 되살아난다.
     scenes = draft_row.get("scenes") or []
     scenes_fresh = script_revision.scenes_match_script(scenes, script_md)
-    guidance = dv.VERSION_GUIDANCE.get(version_type, dv.VERSION_GUIDANCE[config.DEFAULT_VERSION])
     if version_type == "photo":
-        guidance += PHOTO_CONTRACT + dv.STAGING_CONTRACT + dv.HOOK_CUT_RULE
+        # ★ 컷 수는 게이트와 같은 함수로 역산해 보여준다(논문 _mode_guidance 와 같은 이유).
+        c_lo, c_hi = photo_contract.target_cut_range(config.TARGET_TOTAL_SEC)
+        guidance = (PHOTO_CONTRACT
+                    + f"\n[컷 수] 전체 약 {config.TARGET_TOTAL_SEC}초 → 컷 **{c_lo}~{c_hi}개**. 검사: 컷 수 ≥ (전체 초수 ÷"
+                    f" {config.PHOTO_CUT_SEC_MAX}), 미달이면 승인이 막힌다. 어느 컷도 {config.PHOTO_CUT_SEC_MAX}초를 넘기지 마라.\n")
+    else:
+        guidance = dv.VERSION_GUIDANCE.get(version_type, dv.VERSION_GUIDANCE[config.DEFAULT_VERSION])
     # ★ 논증 단위(설명엔진 v2 §7)를 지시서 단계에도 싣는다. 대본에만 주고 여기서 빼면
     #   컷이 어느 논증을 옮기는지 알 수 없어 reasoning_id 가 빈 채로 나온다 — 그러면 승인
     #   화면이 "설명이 빠진 논증"을 짚지 못한다.
@@ -333,7 +243,7 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
         #   DeepSeek 으로 옮길 때 이 경로가 조용히 딸려 갔다 — 재지 않은 경로에 측정
         #   결과를 밀지 않는다. config.MODEL_REPORT_DIRECTIVE 주석 참조.
         model=config.MODEL_REPORT_DIRECTIVE,
-        system=REPORT_DIRECTIVE_SYSTEM,
+        system=REPORT_DIRECTIVE_SYSTEM_PHOTO if version_type == "photo" else REPORT_DIRECTIVE_SYSTEM,
         user=user,
         # ★★ **지시서 상한을 쓴다**(2026-09-20). 여기는 `LLM_SCRIPT_MAX_TOKENS`(16,384)였다 —
         #   대본용 상한이다. 그런데 이 호출이 만드는 것은 대본이 아니라 **논문과 같은 종류의
