@@ -73,7 +73,8 @@ def test_the_prompt_also_states_the_formula_not_only_the_number():
 
 def test_the_arc_no_longer_hardcodes_a_count():
     """골격 문장이 고정 개수를 말하면 주입된 값과 싸운다."""
-    assert "최소 2개" not in directive.PHOTO_NARRATIVE_ARC
+    from engine import photo_prompt
+    assert "최소 2개" not in photo_prompt.guidance("paper")
 
 
 def test_the_warning_reports_the_length_derived_requirement():

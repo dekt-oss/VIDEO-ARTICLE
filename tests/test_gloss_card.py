@@ -55,6 +55,7 @@ def test_the_gate_asks_to_turn_old_cards_into_glosses_or_drop_them():
 
 def test_both_prompts_ask_for_glosses_only_where_needed():
     import inspect
-    for src in (inspect.getsource(dv), inspect.getsource(rd)):
+    from engine import photo_prompt   # 2026-09-28 실사형 계약은 한 자리(두 공장 공용)
+    for src in (inspect.getsource(photo_prompt),):
         assert "gloss_ko" in src and "붙이지 마라" in src
     assert "컷마다 낱말 하나를 붙여라" not in inspect.getsource(dv)

@@ -100,11 +100,11 @@ def test_other_versions_keep_their_comic_era_limits():
     assert config.CONTENT_MODE_ASSET_REUSE_TARGET["standard"] == 0.2
 
 
-# ── ⑤ 리포트는 이제 훅 약속을 **묻는다** ───────────────────────────
-def test_the_report_prompt_now_asks_for_the_promise_check():
-    """끄는 것으로만 끝내지 않는다 — 훅 약속 검증은 리포트에도 옳은 질문이고,
-    실제로 이 편의 알려진 문제였다(hook_promise_unpaid)."""
+# ── ⑤ 실사형은 훅 약속 자기보고를 **묻지 않는다**(2026-09-28, 3단계) ─────────
+def test_the_photo_prompt_no_longer_asks_for_the_promise_check():
+    """모델의 자기보고(pass/promise)는 판정이 아니었다 — 40장에 32번 "안 지켰다"가 떴고 아무도 안 봤다.
+    첫 3초 규칙(HOOK_CUT_RULE)이 그 자리를 대신하고, 안 묻는 칸은 backfilled 로 남아 판정되지 않는다."""
     from engine import report_directive as rd
 
-    assert "hook_promise_check" in rd.PHOTO_CONTRACT
-    assert "payoff_cut_no" in rd.PHOTO_CONTRACT
+    assert "hook_promise_check" not in rd.PHOTO_CONTRACT
+    assert "photo_hook_cut_too_long" in rd.PHOTO_CONTRACT

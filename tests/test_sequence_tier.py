@@ -301,13 +301,17 @@ def test_no_cut_is_silently_turned_into_a_still():
     `motion_source` 를 말없이 바꿨다. 실측 로그가 `컷 9 스틸로 강등`이었다.
     등급제 버전에서는 **하나도 바꾸지 않는다** — 대신 경고로 드러난다.
     """
-    from engine import directive as dv
+    # ★ 2026-09-28(규칙 통합 3단계): 실사형 영상/스틸은 **코드가 정한다**(photo_contract.assign_motion_sources) —
+    #   모델의 video 선언은 더 이상 읽지 않고, 결정은 header.visual_routing.video_cuts_by_code 에 **보이게** 남는다.
+    #   "조용히"가 아니라는 계약은 그대로다: 어떤 컷이 왜 스틸인지 기록에 있고, 앞단 상한 검사는 빈 경고를 만들지 않는다.
+    from engine import config, directive as dv
     d = dv.normalize_directive(_directive_obj(), "photo", cut_max_sec=8)
-    assert all(c["motion_source"] == "video" for c in d["cuts"]), \
-        [c["cut_no"] for c in d["cuts"] if c["motion_source"] != "video"]
+    by_code = d["header"]["visual_routing"]["video_cuts_by_code"]
+    assert by_code == sorted(c["cut_no"] for c in d["cuts"] if c["motion_source"] == "video")
+    assert 1 in by_code and 10 in by_code                      # 훅·마무리는 영상
+    assert config.PHOTO_VIDEO_CUTS_MIN <= len(by_code) <= config.PHOTO_VIDEO_CUTS_MAX
     warns = d["header"]["mode_warnings"]
-    assert any(w.startswith("motion_gate_would_demote") for w in warns), warns
-    assert any(w.startswith("video_cap_exceeded") for w in warns), warns
+    assert not any(w.startswith(("motion_gate_would_demote", "video_cap_exceeded")) for w in warns), warns
 
 
 def test_a_version_outside_the_scheme_keeps_the_old_demotions():

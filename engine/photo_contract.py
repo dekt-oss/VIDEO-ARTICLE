@@ -731,6 +731,45 @@ def mechanism_claim_count(fact_sheet: dict[str, Any] | None) -> int:
                and str(c.get("claim_kind") or "").strip().lower() in wanted)
 
 
+def scene_kind_for_role(visual_role: Any) -> str:
+    """실사형 scene_kind 는 역할에서 온다(2026-09-28, 3단계). 저장 컷 408개 실측: 모델이 쓴 값이 도해=motion_graphic ·
+    실사=broll_stock 이었고 그 밖의 값은 뜻이 없었다(만화식 어휘). 묻지 않고 코드가 같은 답을 준다."""
+    return "motion_graphic" if str(visual_role or "").strip().upper() == "MECHANISM" else "broll_stock"
+
+
+def assign_motion_sources(cuts: list[dict[str, Any]]) -> list[int]:
+    """실사형 영상/스틸은 코드가 정한다(2026-09-28, 3단계). 반환: 영상으로 정한 컷 번호.
+
+    규칙(옛 프롬프트 문구 셋을 그대로 코드로): ① 도해 컷(라우터 정본 base=MECHANISM_SEQUENCE 또는 visual_role
+    MECHANISM) 전부 → ② 훅(컷1) → ③ 마무리(마지막 컷) 순으로 상한(PHOTO_VIDEO_CUTS_MAX)까지.
+    ④ 하한(PHOTO_VIDEO_CUTS_MIN) 미달이면 이미 고른 컷 **옆의** 컷을 붙인다 — I2V 연쇄는 붙은 컷끼리만 이어진다.
+    모델이 6~8개를 세어 붙이라던 규칙과 그 경고 둘(photo_video_cut_count_off·_not_adjacent)이 이것으로 대체된다.
+    """
+    n = len(cuts)
+    if not n:
+        return []
+
+    def is_mech(c: dict[str, Any]) -> bool:
+        plan = c.get("resolved_visual_plan") or {}
+        return (str(plan.get("base") or "") == "MECHANISM_SEQUENCE"
+                or str(c.get("visual_role") or "").strip().upper() == "MECHANISM")
+
+    order = [i for i, c in enumerate(cuts) if is_mech(c)]
+    for i in (0, n - 1):
+        if i not in order:
+            order.append(i)
+    chosen = order[:config.PHOTO_VIDEO_CUTS_MAX]
+    while len(chosen) < min(config.PHOTO_VIDEO_CUTS_MIN, n):
+        nearby = sorted({j for i in chosen for j in (i - 1, i + 1) if 0 <= j < n and j not in chosen})
+        if not nearby:
+            break
+        chosen.append(nearby[0])
+    picked = set(chosen)
+    for i, c in enumerate(cuts):
+        c["motion_source"] = "video" if i in picked else "still"
+    return sorted(int(cuts[i].get("cut_no") or i + 1) for i in picked)
+
+
 def min_mechanism_cuts(total_sec: int) -> int:
     """영상 길이 → 기전(원리 설명) 컷 최소 개수. **고정값이 아니다.**
 
