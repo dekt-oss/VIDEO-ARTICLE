@@ -24,6 +24,8 @@ import { seqLabel, seqTitle, sequenceRoleLabel } from "@/lib/work/seqLabels";
 import { effectLabel, transitionLabel } from "@/lib/effectLabels";
 import { useToast } from "@/components/Toast";
 import { apiErrorText } from "@/lib/apiError";
+import { blockLabel } from "@/lib/blockLabels";
+import WarningSummaryView from "@/components/WarningSummaryView";
 
 
 /** 영어 문장 위에 붙는 **한글 설명**.
@@ -313,6 +315,15 @@ export default function SequenceEditor({
   return (
     <div className="seq-wrap">
       {saving && <p className="muted">저장 중…</p>}
+      {/* ★ 통합 작업 화면은 2026-09-28 까지 차단 사유·경고를 **아예** 안 보여줬다(옛 ⑤ 화면에만 있었다) —
+          삼성전자 편이 경고 22개를 달고 승인된 자리다. 순서·분류는 엔진(warning_summary)이 정하고
+          여기서는 위 3개만 크게, 나머지는 접는다. */}
+      {directive?.header?.approval_blocked && (
+        <div className="banner-warn" style={{ margin: "0 0 8px" }}>
+          ⛔ 승인 차단 — {(directive.header.block_reasons ?? []).map((r) => blockLabel(r)).join(" · ")}
+        </div>
+      )}
+      <WarningSummaryView summary={directive?.header?.warning_summary} all={directive?.header?.mode_warnings} />
 
       {blocks.map((b, bi) => (
         <section className="seq-card" key={`${b.sequenceId}-${b.stageId}-${bi}`}>

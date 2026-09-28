@@ -452,9 +452,15 @@ def test_the_label_helper_does_not_call_a_value_a_cut_number():
 
 def test_the_screens_actually_call_the_label_helpers():
     """★ 라벨을 만들어 놓고 화면이 안 부르면 아무것도 안 바뀐다(이 저장소의 단골 실패)."""
-    for name in ("DirectiveClient.tsx", "ReviewClient.tsx"):
+    # ★ 2026-09-28 지시서 화면은 경고를 WarningSummaryView 에 맡긴다(위 3개 + 접힘). 그 컴포넌트가
+    #   라벨을 불러야 하고, 두 지시서 화면(논문·리포트)이 그 컴포넌트를 실제로 그려야 한다.
+    wsv = (ROOT / "web" / "components" / "WarningSummaryView.tsx").read_text(encoding="utf-8")
+    assert "warningLabel(" in wsv, "WarningSummaryView 가 경고 라벨을 쓰지 않는다"
+    for name in ("DirectiveClient.tsx", "ReportDirectiveClient.tsx"):
         src = (ROOT / "web" / "components" / name).read_text(encoding="utf-8")
-        assert "warningLabel(" in src, f"{name} 가 경고 라벨을 쓰지 않는다"
+        assert "<WarningSummaryView" in src, f"{name} 가 경고 요약을 그리지 않는다"
+    rc = (ROOT / "web" / "components" / "ReviewClient.tsx").read_text(encoding="utf-8")
+    assert "warningLabel(" in rc, "ReviewClient.tsx 가 경고 라벨을 쓰지 않는다"
     dc = (ROOT / "web" / "components" / "DirectiveClient.tsx").read_text(encoding="utf-8")
     assert "BLOCK_LABEL[" not in dc, "차단 사유를 맵에서 직접 찾으면 접미사 붙은 코드를 놓친다"
 
@@ -472,3 +478,15 @@ def test_web_does_not_reimplement_the_judgement_heavy_checks():
     """도해가 장식적인가 같은 판단은 웹에서 재계산하지 않는다(오탐이 두 배가 된다).
     엔진이 생성 시점에 판정해 저장한 값을 쓴다."""
     assert "photo_mechanism_decorative" not in PHOTO_GATE_TS
+
+
+def test_every_triaged_warning_code_has_a_web_label():
+    """★ 경고 요약(2026-09-28)이 위 3개를 크게 보여주므로, 라벨 없는 코드는 이제 **눈에 띄게** 원문으로
+    나간다(실측: `audit_number_derived_from_source — 컷 5, 6, 9`). 분류표에 오른 코드와 시퀀스 게이트
+    경고는 전부 라벨이 있어야 한다."""
+    from engine import visual_sequence_contract, warning_triage
+
+    codes = (set(warning_triage.INFO) | set(warning_triage.SOURCE) | set(warning_triage.FACT_RED)
+             | set(warning_triage.FACT_SOFT) | set(visual_sequence_contract.WARNING_REASONS))
+    missing = sorted(c for c in codes if f"{c}:" not in PHOTO_LABELS_TS)
+    assert not missing, f"웹 라벨에 없는 경고 코드: {missing}"

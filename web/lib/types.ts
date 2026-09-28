@@ -406,6 +406,21 @@ export interface ExplainerBlock {
   gate: ExplainerGate;
 }
 
+/** 경고 요약(engine/warning_triage.py) — 순서·분류는 엔진이 정하고 화면은 라벨만 붙인다. */
+export interface WarningSummaryItem {
+  code: string;
+  category: "fact" | "action" | "source" | "info";
+  count: number;
+  cuts: number[];
+}
+export interface WarningSummary {
+  groups: WarningSummaryItem[];
+  top: WarningSummaryItem[];
+  counts: Record<WarningSummaryItem["category"], number>;
+  total: number;
+  hidden: number;
+}
+
 export interface DirectiveHeader {
   version_type: VersionType;
   aspect_ratio: string; // "9:16" | "16:9"
@@ -436,6 +451,8 @@ export interface DirectiveHeader {
   retention_plan?: RetentionPlan;
   cost_plan?: CostPlan;
   mode_warnings?: string[];
+  /** 위 3개 + 나머지 접힘. 없으면(옛 지시서) 화면이 mode_warnings 를 그대로 보여준다. */
+  warning_summary?: WarningSummary;
   /** 코드가 데이터로 확정한 차단 사유만(길이·예산·커버리지). 승인 라우트가 서버에서 재검증한다. */
   block_reasons?: string[];
   approval_blocked?: boolean;

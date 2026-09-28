@@ -376,3 +376,64 @@ def test_a_report_without_reasoning_is_unchanged():
     """★ D6 — 논증이 없으면 **아무 일도 일어나지 않는다.** 옛 리포트가 그대로 돈다."""
     assert ev.build_for_directive([{"cut_no": 1}], None) == []
     assert ev.compile_sequences({"units": []}) == []
+
+
+# ── ⑤ 모델이 쓴 시퀀스 경로(2026-09-19 이후 정본)에서도 컷이 근거를 물려받는가 ─────
+def _model_written(reasoning, cuts):
+    """모델이 썼다고 치는 시퀀스: 컴파일 결과의 **구조만** 빌리고 근거 꼬리표는 전부 지운다.
+    stage 마다 cut_refs 는 모델이 적는다(스키마가 요구한다)."""
+    seqs = ev.compile_sequences(reasoning)
+    for seq in seqs:
+        for i, st in enumerate(seq["stages"], 1):
+            st.pop("claim_ids", None)
+            st.pop("reasoning_id", None)
+            st["cut_refs"] = [i + 1]           # 컷 2..6 이 단계 1..5
+    return seqs
+
+
+def test_a_model_written_sequence_also_tells_its_cuts_what_they_pay_for():
+    """★★ 2026-09-28 실측: 최근 리포트 지시서 6장 **전부** `visual_routing.in_sequence == 0`.
+
+    `annotate` 가 stage 에는 claim_ids 를 붙이면서 컷에는 안 붙였다(옛 `assign_cuts` 는 붙였다).
+    라우터는 주장 없는 컷을 연결 컷으로 보고 세계만 잇는다 — 리포트 실사형이 기전 시퀀스 경로를
+    한 번도 안 탄 이유다. 그리고 vseq 게이트가 빈 claim_ids 를 보고 컷마다 mismatch 를 찍었다(132건).
+    """
+    reasoning = {"units": [_unit(LS_STEPS)]}
+    cuts = [{"cut_no": n, "reasoning_id": "R01", "reasoning_step": n - 1} for n in range(2, 7)]
+    seqs = ev.annotate(_model_written(reasoning, cuts), cuts, reasoning)
+    assert [c.get("claim_ids") for c in cuts] == [["F00"], ["F01"], ["F02"], [], ["F03"]]
+    assert all(st["claim_ids"] == c["claim_ids"]
+               for seq in seqs for st, c in zip(seq["stages"], cuts))
+
+
+def test_a_cut_that_declared_its_own_claims_survives_annotate_too():
+    reasoning = {"units": [_unit(LS_STEPS)]}
+    cuts = [{"cut_no": 2, "reasoning_id": "R01", "reasoning_step": 1, "claim_ids": ["F09"]}]
+    seqs = _model_written(reasoning, cuts)
+    seqs[0]["stages"][0]["cut_refs"] = [2]
+    ev.annotate(seqs, cuts, reasoning)
+    assert cuts[0]["claim_ids"] == ["F09"]
+
+
+def test_the_router_finally_sees_report_cuts_inside_the_sequence():
+    """배선 끝까지: annotate → 공용 정규화 → `in_sequence > 0`, mismatch 경고 0, 충돌은 지표로."""
+    reasoning = {"units": [_unit(LS_STEPS)]}
+    cuts = [{"cut_no": 1, "narration_ko": "훅", "narration_en": "h", "estimated_sec": 4,
+             "visual_prompt": "x", "reasoning_id": "", "reasoning_step": 0}]
+    for n, step in enumerate(range(1, 6), start=2):
+        cuts.append({"cut_no": n, "narration_ko": f"단계{step}", "narration_en": "s",
+                     "estimated_sec": 5, "visual_prompt": "y",
+                     "reasoning_id": "R01", "reasoning_step": step})
+    seqs = ev.annotate(_model_written(reasoning, cuts), cuts, reasoning)
+    obj = {"header": {"aspect_ratio": "9:16", "hook_ko": "a", "hook_en": "b",
+                      "cta_ko": "c", "cta_en": "d"}, "cuts": cuts, "visual_sequences": seqs}
+    d = dv.normalize_directive(obj, "photo", cut_max_sec=8)
+    routing = d["header"]["visual_routing"]
+    assert routing["in_sequence"] >= 3, routing
+    warns = d["header"].get("mode_warnings") or []
+    assert not any(w.startswith("vseq_cut_claim_mismatch") for w in warns), warns
+    assert not any(w.startswith("vseq_route_contract_conflict") for w in warns), warns
+    assert "route_contract_conflicts" in d["header"]["visual_sequence_gate"]["metrics"]
+    # 경고 요약이 헤더에 붙는다 — 화면이 위 3개만 보여주는 근거.
+    summary = d["header"]["warning_summary"]
+    assert set(summary) == {"groups", "top", "counts", "total", "hidden"}

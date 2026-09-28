@@ -56,7 +56,6 @@ WARNING_REASONS: tuple[str, ...] = (
     "vseq_claim_unlinked",        # stage 가 근거를 가리키지 않는다
     "vseq_cut_claim_mismatch",    # stage 에 든 컷인데 주장이 겹치지 않는다(물려받지 못함)
     "vseq_invalid_return_snapshot",  # 되돌아간 세계의 상태가 원래 stage 와 어긋난다
-    "vseq_route_contract_conflict",  # 옛 역할 선언과 새 정본 계획이 서로 다른 결론이다
 )
 
 # 정확한 수치를 **화면 물체로** 표현하려는 시도.
@@ -383,10 +382,12 @@ def evaluate(sequences: list[dict[str, Any]],
                     if cno in cut_claims and stage_claims and not (stage_claims & cut_claims[cno]):
                         warns.append(f"vseq_cut_claim_mismatch:{tag}#{cno}")
 
-    warns.extend(route_contract_conflicts(cuts or [], routed or []))
-
     metrics = sequence_metrics(sequences, total_stages, continued, new_worlds,
                                entity_linked, entity_named, entity_resolved)
+    # ★ 옛 역할 선언(visual_role)과 정본(resolved_visual_plan)의 어긋남은 **지표**다(2026-09-28).
+    #   경고로 두었더니 20장에 188건 — 장당 9개, 대부분의 컷이 해당했다. 정본이 무엇인지는 코드가
+    #   이미 정했고(R3) 모델이 고칠 것도 없다. 운영자가 볼 숫자는 남기되 경고 목록에서 뺀다.
+    metrics["route_contract_conflicts"] = len(route_contract_conflicts(cuts or [], routed or []))
     if metrics.get("world_reset_rate", 0.0) > config.VSEQ_WORLD_RESET_WARN:
         warns.append(f"vseq_world_reset_high:{metrics['world_reset_rate']}")
 

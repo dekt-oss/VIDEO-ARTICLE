@@ -93,6 +93,49 @@ export const BLOCK_LABEL: Record<string, string> = {
 //   그 신호는 없는 것과 같다 — 이 저장소가 차단 쪽에서 이미 겪은 실패다.
 // ★ 정본은 engine/photo_contract.WARNING_REASONS. 여기는 표시 문자열뿐이다.
 export const WARNING_LABEL: Record<string, string> = {
+  // ── 2026-09-28 경고 요약(WarningSummaryView)이 생기면서 라벨 없던 34개를 채웠다 — 요약 위 3개에
+  //    `audit_number_not_in_source` 같은 코드가 그대로 떴다. 분류(근거 확인/고칠 것/…)는 엔진이 정한다.
+  audit_number_not_in_source: "나레이션·카드의 수치가 Fact Sheet 에 없음(원문과 대조)",
+  audit_hook_number_not_in_source: "훅의 수치가 Fact Sheet 에 없음(원문과 대조)",
+  audit_claim_id_unknown: "컷이 원장에 없는 근거를 가리킴",
+  audit_number_derived_from_source: "원장 수치의 차/합으로 계산한 값(맞는지 확인)",
+  audit_number_restated_from_source: "원장 수치를 단위·표기만 바꿔 말함(확인)",
+  directive_ungrounded: "최종 나레이션의 근거를 자기검증이 확인 못 함",
+  directive_selfcheck_failed: "자기검증을 돌리지 못함(생성은 계속됨)",
+  cut_relation_not_in_source: "컷이 말하는 관계·인과가 원문에 없음",
+  hook_promise_unpaid: "훅이 약속한 것을 본문 컷이 지불하지 않음",
+  bold_hook_on_weak_evidence: "근거가 약한데 단정형 훅",
+  too_many_spoken_numbers: "소리 내 읽는 숫자가 너무 많음(대본 단계)",
+  eq_v2_attribution_lost: "증권사 귀속이 시퀀스에서 사라짐",
+  eq_v3_forecast_as_actual: "전망을 실적처럼 그림",
+  equity_steps_off_screen: "논증 단계 일부가 화면에 안 나감",
+  equity_steps_out_of_order: "논증 단계가 화면에서 순서가 뒤바뀜",
+  vseq_cut_claim_mismatch: "단계에 든 컷인데 근거가 단계와 겹치지 않음",
+  vseq_claim_unlinked: "단계가 근거를 가리키지 않음",
+  vseq_invalid_return_snapshot: "되돌아간 세계의 상태가 원래 단계와 어긋남",
+  vseq_static_repeat: "같은 세계·같은 상태·같은 연산이 반복됨",
+  vseq_world_reset_high: "세계를 너무 자주 새로 만듦",
+  photo_stage_no_transformation: "단계가 나타남·강조뿐 — 실제 변형이 없어 8초를 못 받음",
+  unique_assets_over_budget: "새 이미지 컷이 모드 예산을 넘음",
+  outside_mode_duration_range: "총 길이가 모드 범위 밖",
+  // 코드가 이미 처리한 알림
+  mode_overridden: "모드를 규칙이 바꿈",
+  mode_differs_from_rule: "모델이 고른 모드가 규칙과 다름(유지)",
+  forced_series_split_multiple_main_claims: "핵심 주장이 둘 이상이라 시리즈 분할로 전환",
+  video_budget_not_enforced_by_demotion: "영상 예산 초과를 강등 대신 승인 전 차단으로 다룸",
+  video_cap_exceeded: "영상 상한을 넘어 스틸로 강등된 컷",
+  motion_gate_would_demote: "움직임 판정상 강등 대상이었던 컷",
+  asset_reuse_below_target: "재사용 비율이 목표보다 낮음(실사형은 해당 없음)",
+  no_novelty_event: "novelty_event 가 빈 컷(엔진이 쓰지 않는 칸)",
+  photo_temporal_beats_backfilled: "영상 비트를 코드가 채움",
+  photo_style_word_normalized: "화풍 어휘를 코드가 치환함",
+  narration_repeat_removed: "인접 컷의 같은 문장을 코드가 한 번만 남김",
+  extended_demoted_no_compression_risk: "압축 위험 근거가 없어 extended → deep 으로 내림",
+  flash_with_many_evidence_units: "flash 인데 근거 단위가 많음(유지)",
+  vseq_stage_without_cut: "어느 컷도 담당하지 않는 단계",
+  // 2026-09-28 에 경고에서 뺐다 — 그 전에 저장된 지시서에만 남아 있다.
+  vseq_route_contract_conflict: "옛 역할 선언과 정본 계획이 다름(지표로만 남김)",
+  photo_mechanism_structured: "어휘는 장식적이나 단계가 진행을 구조로 선언함(면제)",
   // 벤치마크(발행된 설명 영상 105초) 실측에서 나온 것들
   photo_narrative_no_mechanism:
     "대본이 원리를 설명하는 컷이 부족함 — 그림만 도해라 화면이 겉돕니다",
@@ -120,7 +163,6 @@ export const WARNING_LABEL: Record<string, string> = {
   photo_cut_too_long: "한 컷이 권장 상한보다 김",
   photo_mechanism_thin: "도해가 장식적일 수 있음(근거 1개)",
   photo_mechanism_spec_inherited: "재사용 컷이 기준 컷의 구조를 물려받음(면제)",
-  photo_mechanism_structured: "어휘는 장식적이나 단계가 진행을 구조로 선언함",
   photo_mechanism_unlabeled: "기전 시퀀스에 범례·캡션이 없음(어느 쪽이 무엇인지 화면이 말하지 않는다)",
   eq_v6_repeat_across_sequences:
     "다른 시퀀스가 같은 변화를 되풀이함(영상 전체로 보면 같은 말을 두 번)",

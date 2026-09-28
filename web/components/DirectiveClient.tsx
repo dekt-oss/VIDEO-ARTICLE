@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import type { Cut, Directive, DirectiveHeader, DirectiveStatus, VersionType } from "@/lib/types";
 import { VERSION_META } from "@/lib/versions";
 // 차단 사유 표시 문자열(판정은 서버·approvalGate 가 한다).
-import { TIER_LABEL, blockLabel, warningLabel } from "@/lib/blockLabels";
+import { TIER_LABEL, blockLabel } from "@/lib/blockLabels";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
 import UnsavedGuard from "@/components/UnsavedGuard";
 import SaveStatus, { type SaveState } from "@/components/SaveStatus";
+import WarningSummaryView from "@/components/WarningSummaryView";
 import { useGeneration, genPhaseLabel } from "@/lib/useGeneration";
 import { apiErrorText } from "@/lib/apiError";
 import { effectLabel, transitionLabel } from "@/lib/effectLabels";
@@ -445,13 +446,9 @@ export default function DirectiveClient({
               ⛔ 승인 차단 — {(h.block_reasons ?? []).map((r) => blockLabel(r)).join(" · ")}
             </div>
           )}
-          {!!h.mode_warnings?.length && (
-            <p className="muted" style={{ marginTop: 4 }}>
-              {/* ★ 경고도 읽는 말로 — 종전에는 `photo_world_churn:3.38/분` 이 그대로 나갔다.
-                  감지는 하는데 운영자가 못 읽으면 그 신호는 없는 것과 같다. */}
-              ⚠ {h.mode_warnings.map((w) => warningLabel(w)).join(" · ")}
-            </p>
-          )}
+          {/* ★ 경고는 위 3개만 크게, 나머지는 접는다(2026-09-28). 라벨은 warningLabel — 종전에는
+              `photo_world_churn:3.38/분` 이 그대로 나갔다. 요약이 없는 옛 지시서는 한 줄로 전부. */}
+          <WarningSummaryView summary={h.warning_summary} all={h.mode_warnings} />
         </div>
       )}
 

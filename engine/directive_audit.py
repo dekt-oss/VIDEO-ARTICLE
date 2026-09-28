@@ -75,6 +75,26 @@ def _numbers(text: str) -> set[str]:
             if any(ch.isdigit() for ch in m.group(0))}
 
 
+def known_claim_refs(fact_sheet: dict[str, Any] | None) -> set[str]:
+    """컷이 `claim_ids` 로 가리킬 수 있는 원장 식별자 전부.
+
+    ★ 논문은 `claims[].claim_id` 다. **리포트에는 claims 가 없다** — 컷·stage 는 Fact Sheet 키
+      (`basis[1]`·`numbers[7]`·`what[0]`)와 `number_facts[].fact_id`(`num_target_price`)로 근거를
+      가리킨다. 2026-09-28 리포트 컷이 stage 의 claim_ids 를 물려받게 되자 이 검사가 그 전부를
+      '원장에 없는 주장'(빨강)으로 찍었다(재현 6장 중 4장, 최대 8컷). 원장에 **실제로 있는**
+      항목만 통과시킨다 — 범위 밖 인덱스(`basis[9]`)는 여전히 빨강이다.
+    """
+    fs = fact_sheet if isinstance(fact_sheet, dict) else {}
+    out = {str(c.get("claim_id")) for c in (fs.get("claims") or [])
+           if isinstance(c, dict) and c.get("claim_id")}
+    out |= {str(f.get("fact_id")) for f in (fs.get("number_facts") or [])
+            if isinstance(f, dict) and f.get("fact_id")}
+    for key, val in fs.items():
+        if isinstance(val, list):
+            out |= {f"{key}[{i}]" for i in range(len(val))}
+    return out
+
+
 def source_numbers(fact_sheet: dict[str, Any] | None) -> set[str]:
     """Fact Sheet 전체가 지불하는 숫자 집합(문자열 값과 숫자 값을 전부 훑는다).
 
@@ -114,6 +134,7 @@ def audit(header: dict[str, Any], cuts: list[dict[str, Any]],
     claims = {str(c.get("claim_id")): c for c in (fs.get("claims") or [])
               if isinstance(c, dict) and c.get("claim_id")}
     known_nums = source_numbers(fs)
+    known_refs = known_claim_refs(fs)
     raw_nums = {x for x in (_bare(n) for n in known_nums) if x is not None}
     findings: list[dict[str, Any]] = []
 
@@ -147,9 +168,9 @@ def audit(header: dict[str, Any], cuts: list[dict[str, Any]],
                                      "cut_no": no, "number": n,
                                      "detail": f"{scope}의 '{n}' 이 Fact Sheet 에 없다"})
 
-        # ② 없는 주장 참조.
+        # ② 없는 주장 참조 — 논문 claim_id 와 리포트 원장 키 둘 다 안다(known_claim_refs).
         for cid in (cut.get("claim_ids") or []):
-            if str(cid) not in claims:
+            if str(cid) not in known_refs:
                 findings.append({"level": "red", "code": "claim_id_unknown",
                                  "cut_no": no, "detail": f"원장에 없는 주장 {cid}"})
 
