@@ -18,11 +18,11 @@ on:
   workflow_dispatch:
     inputs:
       factsheet_model:
-        description: "Fact Sheet 추출 모델"
-        default: "gemini-2.5-flash"
+        description: "Fact Sheet 추출 모델 (2026-09-28: gemini-3.8-flash)"
+        default: "gemini-3.8-flash"
       script_model:
-        description: "대본 합성 모델 (품질 중요 — 여유되면 claude-opus-4-8)"
-        default: "gemini-2.5-flash"
+        description: "대본 합성 모델 (2026-09-28: gemini-3.8-flash — 4막 대본이 화면을 정한다)"
+        default: "gemini-3.8-flash"
       selfcheck_model:
         description: "자기검증 모델"
         default: "gemini-2.5-flash"

@@ -16,11 +16,11 @@ on:
   workflow_dispatch:
     inputs:
       factsheet_model:
-        description: "Fact Sheet 추출 모델"
-        default: "gemini-2.5-flash"
+        description: "Fact Sheet 추출 모델 (2026-09-28: gemini-3.8-flash)"
+        default: "gemini-3.8-flash"
       script_model:
-        description: "대본 합성 모델 (품질 높이려면 claude-opus-4-8 + ANTHROPIC_API_KEY)"
-        default: "gemini-2.5-pro"
+        description: "대본 합성 모델 (2026-09-28: 2.5-pro → gemini-3.8-flash, 더 좋고 출력은 더 쌈)"
+        default: "gemini-3.8-flash"
       selfcheck_model:
         description: "자기검증 모델"
         default: "gemini-2.5-flash"
@@ -84,7 +84,7 @@ jobs:
         # ★ 수동 실행에서만. 크론에서도 돌면 큐가 비어 있어도 매 실행마다 그냥 태운다.
         if: github.event_name == 'workflow_dispatch'
         run: |
-          for M in gemini-2.5-flash gemini-2.5-pro; do
+          for M in gemini-2.5-flash gemini-3.8-flash; do
             echo "── $M ──"
             curl -sS -o /tmp/resp.json -w "HTTP %{http_code}\n" \
               "https://generativelanguage.googleapis.com/v1beta/models/${M}:generateContent" \
@@ -99,8 +99,8 @@ jobs:
         env:
           # 러너의 GEMINI_API_KEY(논문 렌더가 쓰는 유료 키)로 돌도록 기본은 gemini.
           # push 트리거는 inputs 가 비므로 || 기본값 필수(빈 문자열 env 방지).
-          MODEL_REPORT_FACTSHEET: ${{ inputs.factsheet_model || 'gemini-2.5-flash' }}
-          MODEL_REPORT_SCRIPT: ${{ inputs.script_model || 'gemini-2.5-pro' }}
+          MODEL_REPORT_FACTSHEET: ${{ inputs.factsheet_model || 'gemini-3.8-flash' }}
+          MODEL_REPORT_SCRIPT: ${{ inputs.script_model || 'gemini-3.8-flash' }}
           MODEL_REPORT_SELFCHECK: ${{ inputs.selfcheck_model || 'gemini-2.5-flash' }}
           MODEL_REPORT_COMPLIANCE: ${{ inputs.compliance_model || 'gemini-2.5-flash' }}
           # 논증 단위(설명엔진 v2 §7). 추출과 같은 급이면 충분하다 — 원문을 읽고 단계를

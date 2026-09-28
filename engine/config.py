@@ -178,13 +178,16 @@ BATCH_MAX_AGE_DAYS: int = _get_int("BATCH_MAX_AGE_DAYS", 21)
 # 기본은 품질 우선(sonnet/opus)이지만, 비용 절감을 위해 env 로 모델을 교체할 수 있다.
 # 예: MODEL_SCORING=claude-haiku-4-5-20251001 로 채점 비용 1/5~1/10.
 MODEL_SCORING: str = os.getenv("MODEL_SCORING", "gemini-2.5-flash")       # 5축 채점
-MODEL_FACTSHEET: str = os.getenv("MODEL_FACTSHEET", "gemini-2.5-flash")    # Fact Sheet 추출
+# ★★ 2026-09-28 운영자 결정 — Fact Sheet·대본은 **gemini-3.8-flash**(입력 $1.50/출력 $7.50 /M, 2.5-flash 의 5배).
+#   4막 대본이 이제 화면을 정하므로 편당 +$0.10 이 값어치가 있다. 채점·자기검증은 2.5-flash 유지 —
+#   채점은 하루 수백 편이라 5배가 곧바로 돈이고, 자기검증은 판정(문장 생성 아님)이라 싼 모델로 충분하다.
+MODEL_FACTSHEET: str = os.getenv("MODEL_FACTSHEET", "gemini-3.8-flash")    # Fact Sheet 추출
 MODEL_SELFCHECK: str = os.getenv("MODEL_SELFCHECK", "gemini-2.5-flash")    # 자기검증
 # ★ 기본을 flash 로 내렸다(2026-08-29). pro/opus 는 flash 의 25~30배이고, 어제 실측에서
 #   대본 합성이 그날 텍스트 비용의 큰 몫을 먹었다(논문 16편 × 3안 = 48벌).
 #   품질이 필요한 편은 MODEL_SCRIPT 를 **명시로** 올려 쓴다 — 비싼 것이 기본값이면
 #   아무도 모르는 사이에 돈이 나간다.
-MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", "gemini-2.5-flash")            # 대본 합성
+MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", "gemini-3.8-flash")            # 대본 합성 (2026-09-28 ↑, 위 주석)
 # 한국어 채점/추출 JSON(긴 rationale·red_flag 포함)이 잘리지 않도록 넉넉히.
 # ★ 2048 은 한글 출력에 부족해 JSON 이 잘려 파싱 실패→전 축 0점이 되던 원인이었다.
 LLM_MAX_TOKENS: int = 8192
@@ -3309,8 +3312,10 @@ REPORT_BATCH_EXCLUDE_PRIOR: bool = _get_bool("REPORT_BATCH_EXCLUDE_PRIOR", True)
 MODEL_REPORT_SCORING: str = os.getenv("MODEL_REPORT_SCORING", "gemini-2.5-flash")
 
 # ─ PF1 초안 파이프라인 모델 (논문 MODEL_FACTSHEET/SCRIPT/SELFCHECK 대응) ─
-MODEL_REPORT_FACTSHEET: str = os.getenv("MODEL_REPORT_FACTSHEET", "gemini-2.5-flash")
-MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-2.5-pro")     # 대본 합성
+# ★ 2026-09-28 운영자 결정: Fact Sheet 2.5-flash → 3.8-flash, 대본 2.5-pro($1.25/$10) → 3.8-flash($1.50/$7.50) —
+#   더 새 모델이 출력 단가는 더 싸다. 자기검증·컴플라이언스·논증은 2.5-flash 유지(판정용).
+MODEL_REPORT_FACTSHEET: str = os.getenv("MODEL_REPORT_FACTSHEET", "gemini-3.8-flash")
+MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-3.8-flash")     # 대본 합성
 # ★★ 리포트 지시서 모델 — **재지 않은 자리에 밀지 않는다**(2026-09-19).
 #   종전에 `report_directive._generate_once` 는 `MODEL_DIRECTIVE` 를 그대로 썼다. 그래서
 #   논문 지시서를 DeepSeek 으로 바꾸면 **리포트 지시서까지 같이 딸려 간다** — 내가 재지
