@@ -271,6 +271,27 @@ def step_kinds(reasoning: dict[str, Any] | None) -> dict[tuple[str, int], str]:
     return out
 
 
+def step_refs(reasoning: dict[str, Any] | None) -> set[str]:
+    """컷·stage 의 claim_ids 가 가리킬 수 있는 논증 참조 전부 — `R01`(단위) 과 `R01_2`(단계).
+
+    ★ 2026-09-28 첫 실측(마켓 BEAT 재생성): 모델이 stage claim_ids 에 `R01_1` 을 적었고, 컷이 그것을
+      물려받자 숫자 감사가 컷 2~12 전부를 '원장에 없는 주장'(빨강)으로 찍었다. 리포트 원장은 Fact Sheet
+      키만이 아니라 논증 단계이기도 하다 — 존재하는 단위·단계만 통과시킨다.
+    """
+    out: set[str] = set()
+    for u in (reasoning or {}).get("units") or []:
+        if not isinstance(u, dict):
+            continue
+        rid = str(u.get("reasoning_id") or "").strip()
+        if not rid:
+            continue
+        out.add(rid)
+        for st in u.get("steps") or []:
+            if isinstance(st, dict) and st.get("step") is not None:
+                out.add(f"{rid}_{st.get('step')}")
+    return out
+
+
 def process_step_count(reasoning: dict[str, Any] | None) -> int:
     """이 리포트가 **도해로 지불할 수 있는** 원리의 개수 = 과정 단계의 수.
 

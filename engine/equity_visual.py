@@ -394,6 +394,7 @@ def annotate(sequences: list[dict[str, Any]] | None,
                 for rid, u in units.items()}
     cut_tag = {}
     cut_by_no: dict[int, dict[str, Any]] = {}
+    n_cuts = max((int(c.get("cut_no") or 0) for c in cuts or [] if str(c.get("cut_no") or "").isdigit()), default=0)
     for c in cuts or []:
         try:
             cut_by_no[int(c.get("cut_no"))] = c
@@ -421,6 +422,10 @@ def annotate(sequences: list[dict[str, Any]] | None,
                     break
             st["reasoning_id"] = rid
             st["reasoning_step"] = step_no
+            # ★ 훅·마무리 stage(컷1·마지막 컷만 담당)는 논증을 옮기지 않는 것이 정상이다(2026-09-28 실측:
+            #   마켓 BEAT 재생성이 S1_HOOK_PUZZLE 하나로 EQ-V1 차단). 표시를 남겨 계약이 면제한다.
+            refs = [int(x) for x in (st.get("cut_refs") or []) if str(x).isdigit()]
+            st["hook_or_close"] = bool(refs) and all(x in (1, n_cuts) for x in refs)
             if rid:
                 rids.append(rid)
             text = str((step or {}).get("text") or "")

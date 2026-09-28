@@ -78,7 +78,9 @@ def block_reasons(sequences: list[dict[str, Any]] | None) -> list[str]:
 
     # EQ-V1 — 각 stage 는 자기가 나온 논증 단계를 가리킨다.
     #   ★ 연결이 끊기면 "리포트가 말한 것"과 "화면이 말하는 것"을 대조할 방법이 사라진다.
-    miss = [s.get("stage_id") for s in stages if not str(s.get("reasoning_id") or "").strip()]
+    #   ★ 훅·마무리 stage 는 면제(2026-09-28) — 컷1·마지막 컷만 담당하는 stage 는 논증을 옮기지 않는 것이 정상.
+    miss = [s.get("stage_id") for s in stages
+            if not str(s.get("reasoning_id") or "").strip() and not s.get("hook_or_close")]
     if miss:
         out.append(f"eq_v1_reasoning_link_missing:{','.join(str(m) for m in miss[:6])}")
 

@@ -123,7 +123,8 @@ def source_numbers(fact_sheet: dict[str, Any] | None) -> set[str]:
 
 
 def audit(header: dict[str, Any], cuts: list[dict[str, Any]],
-          fact_sheet: dict[str, Any] | None) -> dict[str, Any]:
+          fact_sheet: dict[str, Any] | None,
+          extra_claim_refs: set[str] | None = None) -> dict[str, Any]:
     """지시서 → {findings[], stats}. 순수 함수, 네트워크·LLM 없음.
 
     finding = {level: "red"|"yellow", code, cut_no, detail}
@@ -134,7 +135,7 @@ def audit(header: dict[str, Any], cuts: list[dict[str, Any]],
     claims = {str(c.get("claim_id")): c for c in (fs.get("claims") or [])
               if isinstance(c, dict) and c.get("claim_id")}
     known_nums = source_numbers(fs)
-    known_refs = known_claim_refs(fs)
+    known_refs = known_claim_refs(fs) | set(extra_claim_refs or ())   # 리포트: 논증 단계 참조(R01_2)
     raw_nums = {x for x in (_bare(n) for n in known_nums) if x is not None}
     findings: list[dict[str, Any]] = []
 

@@ -302,7 +302,9 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
         source_depth=visual_router.source_depth_of(draft_row.get("fact_sheet")),
         # ★ 리포트의 원리 공급량 = 논증 단위의 과정 단계 수(2026-09-24). Fact Sheet 의
         #   claim 으로 재면 리포트는 늘 0 이라 모든 편에 "원리 없는 소재" 경고가 떴다.
-        mechanism_supply=report_reasoning.process_step_count(reasoning))
+        mechanism_supply=report_reasoning.process_step_count(reasoning),
+        # ★ 리포트 컷·stage 는 논증 단계(R01_2)도 근거로 가리킨다(2026-09-28 실측 — 없으면 전부 빨강).
+        extra_claim_refs=report_reasoning.step_refs(reasoning))
     # ★★ [도해가 숫자·리스크 단계를 옮긴다] 실측 컷3: "13.7조원"을 블록 막대그래프로 그렸다.
     #   화면 어휘가 아니라 **논증 단계의 종류**로 잡는다. photo_gate 에 합류시키는 이유:
     #   generate() 의 재생성 조건과 dv._contract_feedback 의 처방이 거기서 읽는다 —
