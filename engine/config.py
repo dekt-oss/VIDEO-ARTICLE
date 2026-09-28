@@ -2935,6 +2935,14 @@ DUCK_MERGE_GAP_MS: int = 800      # 인접 VO 간극 < 이 값이면 병합(펌�
 
 # 페이싱(참고 상수 — 프롬프트·검증용).
 PACING_VISUAL_CHANGE_SEC: tuple[float, float] = (2.0, 4.0)
+# ── 템포: 한 컷 안에서 2~3초마다 확대↔원래 크기로 끊는다(2026-09-28 벤치마크 2번, 운영자 승인) ──
+# 벤치마크는 2~3초마다 화면이 바뀐다. 우리 컷은 6~9초 동안 한 화면이 천천히 흐른다. 클립을 더 사지 않고
+# 편집의 "펀치인"(같은 화면을 한 단계 확대해 컷처럼 끊기)으로 템포를 만든다 — 추가 비용 0.
+# 전·후 분할 컷은 제외한다(확대하면 반쪽이 잘린다). 짧은 컷(TEMPO_MIN_CUT_SEC 미만)은 이미 빠르다.
+TEMPO_PUNCH_ENABLED: bool = _get_bool("TEMPO_PUNCH_ENABLED", True)
+TEMPO_SEGMENT_SEC: float = _get_float("TEMPO_SEGMENT_SEC", 2.5)
+TEMPO_PUNCH_ZOOM: float = _get_float("TEMPO_PUNCH_ZOOM", 1.15)
+TEMPO_MIN_CUT_SEC: float = _get_float("TEMPO_MIN_CUT_SEC", 4.0)
 PACING_DEAD_AIR_MAX_MS: int = 250
 PACING_NO_DISSOLVE_FIRST_SEC: int = 5
 KEN_BURNS_ROLE: str = "micro_motion_only"

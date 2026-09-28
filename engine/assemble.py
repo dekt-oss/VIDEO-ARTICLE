@@ -337,6 +337,26 @@ def build_pad_video_command(*, video_path: str, out_path: str,
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out_path]
 
 
+def build_punch_in_command(*, in_path: str, out_path: str) -> list[str]:
+    """컷 mp4 → 2~3초마다 확대↔원래 크기로 끊어 보이는 컷 mp4 (2026-09-28 벤치마크 2번).
+
+    ★ zoompan 을 d=1(입력 한 프레임 → 출력 한 프레임)로 쓰고, 확대율을 **입력 시각(it)** 으로 정한다:
+      구간 번호가 홀수면 TEMPO_PUNCH_ZOOM, 짝수면 1. 부드러운 확대가 아니라 **계단**이라 편집의 컷처럼
+      읽힌다. 확대 중심은 화면 가운데(주인공이 가운데 오도록 그림을 시킨다 — 화면 구성 계약 ①).
+    ★ 오디오는 건드리지 않는다(-c:a copy). 길이·싱크 불변.
+    """
+    seg = float(config.TEMPO_SEGMENT_SEC)
+    z = float(config.TEMPO_PUNCH_ZOOM)
+    w, h = config.RENDER_WIDTH, config.RENDER_HEIGHT
+    vf = (f"zoompan=z='if(eq(mod(floor(it/{seg}),2),1),{z},1)'"
+          f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+          f":d=1:s={w}x{h}:fps={config.RENDER_FPS}")
+    return ["ffmpeg", "-y", "-i", in_path,
+            "-vf", vf,
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy",
+            out_path]
+
+
 def build_slice_cut_command(*, video_path: str, audio_path: str,
                             start_sec: float, duration: float, out_path: str) -> list[str]:
     """stage 영상의 **한 구간** + 그 컷의 나레이션 → 컷 mp4.

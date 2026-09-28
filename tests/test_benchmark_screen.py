@@ -46,3 +46,40 @@ def test_switching_it_off_restores_the_full_length_footer(monkeypatch):
 def test_the_report_render_passes_the_footer_start():
     import inspect
     assert "footer_from=_footer_start(cut_map, total)" in inspect.getsource(report_render)
+
+
+# ── 템포: 2~3초마다 확대↔원래 크기(벤치마크 2번) ────────────────────────
+from engine import assemble, render  # noqa: E402
+
+
+def test_long_photo_cuts_get_punch_ins():
+    assert render.tempo_punch_applies({"cut_no": 2}, {"version_type": "photo"}, 7.0)
+
+
+def test_short_cuts_and_other_versions_are_left_alone():
+    assert not render.tempo_punch_applies({"cut_no": 1}, {"version_type": "photo"}, 3.0)
+    assert not render.tempo_punch_applies({"cut_no": 2}, {"version_type": "comic"}, 7.0)
+
+
+def test_before_after_split_cuts_are_not_zoomed(monkeypatch):
+    """확대하면 위·아래 반쪽 화면이 둘 다 잘린다."""
+    monkeypatch.setattr(render, "split_before_after_applies", lambda c, h: True)
+    assert not render.tempo_punch_applies({"cut_no": 3}, {"version_type": "photo"}, 7.0)
+
+
+def test_the_switch_turns_it_off(monkeypatch):
+    monkeypatch.setattr(config, "TEMPO_PUNCH_ENABLED", False)
+    assert not render.tempo_punch_applies({"cut_no": 2}, {"version_type": "photo"}, 7.0)
+
+
+def test_the_punch_in_is_a_step_not_a_drift_and_keeps_audio():
+    argv = assemble.build_punch_in_command(in_path="a.mp4", out_path="b.mp4")
+    vf = argv[argv.index("-vf") + 1]
+    assert f"floor(it/{config.TEMPO_SEGMENT_SEC})" in vf and f",{config.TEMPO_PUNCH_ZOOM},1)" in vf
+    assert argv[argv.index("-c:a") + 1] == "copy", "오디오를 다시 인코딩하면 싱크가 흔들릴 수 있다"
+
+
+def test_the_render_loop_applies_it_before_collecting_the_cut():
+    import inspect
+    src = inspect.getsource(render._render_cut_clips)
+    assert src.index("tempo_punch_applies(cut, header, clip_dur)") < src.index("cut_files.append(out)")
