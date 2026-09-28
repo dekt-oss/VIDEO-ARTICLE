@@ -21,6 +21,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Edge 런타임 백그라운드 태스크(응답 후에도 계속 실행)
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
+// ★ 대본 4막(2026-09-28) — engine/narrative.ARC_STAGES 의 트윈.
+const ARC_STAGES = ["problem", "situation", "turn", "result"];
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -226,10 +228,18 @@ Fact Sheet 에 claims(주장 원장)가 있으면 각 씬에 claim_ids 로 **원
    권장: 핵심 결과·대표 수치=both, 표본·기간=visual, 연구 방법=한 문장 spoken,
         상세 통계=visual, 부차 한계=caption, 핵심 일반화 한계=spoken.
 
-[★ 서사 배치 — 근거를 "설명"으로 나열하지 말고 반전 장치로 써라]
+[★ 서사 배치 — 근거를 "설명"으로 나열하지 말고 아래 4막에 얹어라]
 나쁨: 결과 → 방법 설명 → 표본 설명 → 기간 설명 → 한계 설명(면책 문구)
-좋음: 강한 결과 → "그런데 이건 X 자체를 조사한 게 아닙니다" → 실제 연구 범위 공개 →
-     비교 결과 → 예외 조건 → 한계를 포함한 정확한 결론
+[★ 대본 구조 — 4막(논문·리포트 공통)] 문제 제기 → 오해 또는 문제 상황 → 반전 또는 원리 → 결과/결론
+  ① 문제 제기(problem) 1~2씬: 시청자가 "왜?"를 품게 하는 질문·역설. 첫 씬은 짧은 한마디다.
+  ② 오해 또는 문제 상황(situation) 1~2씬: 흔히 그렇게 여기는 이유, 또는 지금 무엇이 막혀·어긋나 있는지.
+     ★ 오해를 지어내지 마라 — 소재에 오해가 없으면 문제 상황만 설명한다.
+  ③ 반전 또는 원리(turn) 2~4씬: 실제로는 어떻게 되는가. 원리·과정을 **한 씬에 한 단계씩**,
+     "그래서·하지만·즉"으로 잇는다(논문: 연구 결과·기전 / 리포트: 논증 단위 driver → 실적 → 밸류).
+  ④ 결과/결론(result) 1~2씬: 그래서 무엇이 달라지나 + ①의 질문에 답한다. 한계·리스크는 여기서 한 줄.
+  ★ 출처(기관·증권사)는 한두 번이면 된다 — 매 씬 "OO은 …했습니다"로 시작하지 마라.
+    두 번째부터는 주어를 사물·현상으로 둔다("HBM 이 웨이퍼를 더 먹습니다").
+  ★ 각 씬에 arc_stage 를 적는다: problem|situation|turn|result. 차례대로 가고 되돌아가지 않는다.
 ★ 한 영상에 핵심 주장은 1개다. 보조 주장은 핵심 주장을 설명하거나 제한하는 역할만 한다.
   독립적인 두 번째 결과가 중요하면 나열하지 말고 series_split 을 제안하라.
 각 씬은 evidence_role 로 자기가 맡은 근거 역할을 밝힌다:
@@ -357,6 +367,7 @@ image_prompt_ko(어떤 스틸 장면인지)·video_prompt_ko(어떻게 움직이
       "video_prompt_ko": "<video_prompt의 한국어 설명 — 어떻게 움직이는지 1~2문장>",
       "source_facts": ["<Fact Sheet 항목 키>"],
       "claim_ids": ["<이 씬이 근거하는 claim_id — 원장에 있는 것만>"],
+      "arc_stage": "<problem|situation|turn|result — 4막 중 이 씬의 자리>",
       "evidence_role": "<${EVIDENCE_ROLES.join("|")}>",
       "evidence_delivery": "<${EVIDENCE_DELIVERY.join("|")} — 이 씬의 근거를 어떻게 전달하는가>"
     }
@@ -884,6 +895,9 @@ function normalizeScript(obj: any, factSheet?: any) {
       video_prompt_ko: String(s.video_prompt_ko ?? ""),
       source_facts: (Array.isArray(sf) ? sf : []).map((x: any) => String(x)),
       claim_ids: cid,
+      // engine/narrative.arc_stage 의 트윈 — 모르면 빈 문자열(판정 불가를 지어내지 않는다).
+      arc_stage: ARC_STAGES.includes(String(s.arc_stage ?? "").trim().toLowerCase())
+        ? String(s.arc_stage).trim().toLowerCase() : "",
       evidence_role: sanEnum(s.evidence_role, EVIDENCE_ROLES, DEFAULT_EVIDENCE_ROLE),
       evidence_delivery: sanEnum(s.evidence_delivery, EVIDENCE_DELIVERY, DEFAULT_EVIDENCE_DELIVERY),
     });

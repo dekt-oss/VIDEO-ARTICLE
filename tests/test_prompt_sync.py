@@ -25,7 +25,7 @@ TS_SRC = (ROOT / "supabase" / "functions" / "generate-directive" / "index.ts").r
 # 초안 파이프라인은 파이썬 3모듈이 TS 1파일에 대응한다.
 ENGINE_DRAFT_SRC = "\n".join(
     (ROOT / "engine" / f"{name}.py").read_text(encoding="utf-8")
-    for name in ("factsheet", "scriptgen", "selfcheck", "content_mode", "script_polish")
+    for name in ("factsheet", "scriptgen", "selfcheck", "content_mode", "script_polish", "narrative")
 )
 TS_DRAFT_SRC = (ROOT / "supabase" / "functions" / "generate-draft" / "index.ts").read_text(encoding="utf-8")
 
@@ -38,6 +38,10 @@ TS_DRAFT_SRC = (ROOT / "supabase" / "functions" / "generate-draft" / "index.ts")
 
 # 초안 파이프라인 앵커(Claim Ledger·계획·훅 후보·자기검증 축).
 DRAFT_ANCHORS = [
+    # ★ 대본 4막(2026-09-28, engine/narrative.NARRATIVE_ARC) — 두 공장 공통 뼈대.
+    "4막(논문·리포트 공통)",
+    "오해를 지어내지 마라",
+    "arc_stage",
     "claims",
     "causal_strength",
     "evidence_grade",
@@ -299,13 +303,17 @@ def test_approval_gate_never_blocks_on_llm_judgment():
 # ─────────────────────────────────────────────────────────────
 ENGINE_REPORT_SRC = "\n".join(
     (ROOT / "engine" / f"{name}.py").read_text(encoding="utf-8")
-    for name in ("report_factsheet", "report_scriptgen", "report_selfcheck", "report_draft")
+    for name in ("report_factsheet", "report_scriptgen", "report_selfcheck", "report_draft", "narrative")
 )
 TS_REPORT_SRC = (
     ROOT / "supabase" / "functions" / "generate-report-draft" / "index.ts"
 ).read_text(encoding="utf-8")
 
 REPORT_ANCHORS = [
+    # ★ 대본 4막(2026-09-28, engine/narrative.NARRATIVE_ARC) — 두 공장 공통 뼈대.
+    "4막(논문·리포트 공통)",
+    "오해를 지어내지 마라",
+    "arc_stage",
     # §4 전문 주입 — 마커와 지시문이 양쪽에 다 있어야 한다.
     "<<FULL_SOURCE>>",
     "요약만 보고 답하지 마라",

@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from . import config, report_reasoning, report_source
+from . import config, narrative, report_reasoning, report_source
+from .narrative import NARRATIVE_ARC
 from .llm import call_json
 
 SCRIPT_SYSTEM = """너는 증권사 리포트를 대중용 숏폼 대본으로 각색하는 작가다.
@@ -46,26 +47,22 @@ JSON only. 설명·마크다운·코드펜스 금지.
     (면책은 영상에서 하단 고정 자막으로 렌더되므로 나레이션으로 낭독하지 않는다).
 
 [대본 구조 — 숏폼 리텐션 문법] 총 20~30초, 씬 6~7개, 씬당 2~5초(빠른 컷 전환).
-바이럴 숏츠의 4비트(후크→맥락→페이오프→여운)를 리포트에 맞게 확장한 구조다:
+""" + NARRATIVE_ARC + """
+리포트에 얹으면 이렇게 된다:
 
-씬1 후크 (2~3초): 스크롤을 멈추게 하는 한 문장. 질문/충격/반전형
-  ("택배기사가 사라진다?", "9만원? 증권가가 움직였다").
-  비주얼: 가장 임팩트 있는 장면 하나. 도입부 인사·제목 낭독 절대 금지.
+씬1 후크 (2~3초) = ① 문제 제기: 스크롤을 멈추게 하는 한마디. 질문·역설형
+  ("주가는 반토막인데 이익은 2배?"). 도입부 인사·제목 낭독 절대 금지.
 
-씬2 맥락 (3~4초): 누가·무엇을 — 회사 + 출처 귀속을 여기서 해결
-  ("신한투자증권에 따르면, 현대차가…"). 근거: company, source.broker.
+씬2 = ② 문제 상황 (3~4초): 지금 무엇이 막혀·어긋나 있나(시장이 흔히 보는 시각이 있으면 그것).
+  회사 + 출처 귀속은 **여기서 한 번**("SK증권은 …라고 봅니다"). 근거: company, source.broker.
 
-씬3~5 팩트 비트 (각 3~5초): 한 씬 = 한 팩트. 앞 씬을 받아 점점 구체적으로
-  (기술/이벤트 → 수치/실증 → 증권사 논리·목표가 인용).
-  수치는 나레이션+화면 텍스트로 크게(시청자 다수가 무음 시청).
-  근거: what[], numbers[], basis[], opinion.
-  데이터가 풍부하면 비트 3개(총 7씬), 적으면 2개(총 6씬). 억지로 늘리지 마라.
+씬3~5 = ③ 반전·원리 (각 3~5초): 논증 단위 순서대로 한 씬 = 한 단계(driver → 실적 → 밸류).
+  "그래서·하지만"으로 잇고, 주어는 사물·현상으로 둔다(증권사 이름 반복 금지).
+  수치는 나레이션+화면 카드로. 근거: what[], numbers[], basis[], opinion.
+  데이터가 풍부하면 단계 3개(총 7씬), 적으면 2개(총 6씬). 억지로 늘리지 마라.
 
-씬(끝-1) 리스크 턴 (3~4초): "다만—"으로 긴장 전환. risks[] 한 줄, 짧고 명확하게.
-  ★ risks 가 비어 있으면 이 씬을 **건너뛰고** 팩트 비트를 하나 더 둔다.
-
-씬(끝) 페이오프 (2~4초): 이 소식의 의미 한 줄로 마무리. 후크의 질문에 답하는
-  느낌으로 끝내 루프(재시청)를 유도. CTA는 반 문장 이내.
+씬(끝) = ④ 결과/결론 페이오프 (2~4초): 그래서 무엇이 달라지나 + 후크의 질문에 답한다.
+  risks[] 가 있으면 여기서 "다만—" 한 줄로 붙인다(없으면 생략). CTA 는 반 문장 이내.
 
 [씬 구성 원칙]
 - 마지막 씬까지 콘텐츠다. 면책·경고 전용 씬 금지(면책은 script_md 엔딩 텍스트
@@ -118,6 +115,7 @@ HOOK/CTA 를 붙이지 마라** — 수치를 말하는 씬은 EVIDENCE 다.
     {
       "scene": <int>,
       "scene_role": "<HOOK|QUESTION|CLAIM|EVIDENCE|MECHANISM|RISK|WATCHPOINT|CTA|BRIDGE>",
+      "arc_stage": "<problem|situation|turn|result — 4막 중 이 씬의 자리>",
       "title": "<씬 제목>",
       "narration_ko": "<한국어 나레이션>", "narration_en": "<영어 나레이션>",
       "duration_sec": <int>,
@@ -275,6 +273,7 @@ def normalize_script(obj: dict[str, Any],
             # v3 §5-4 — 씬 역할. 지금까지 없어서 자기검증이 훅·마무리까지 사실 대조 대상으로
             # 삼았고, 최근 초안 6/6 에서 첫·마지막 씬이 오탐으로 찍혔다.
             "scene_role": _enum_role(s.get("scene_role")),
+            "arc_stage": narrative.arc_stage(s.get("arc_stage")),
             "title": str(s.get("title") or ""),
             "narration_ko": str(s.get("narration_ko") or ""),
             "narration_en": str(s.get("narration_en") or ""),

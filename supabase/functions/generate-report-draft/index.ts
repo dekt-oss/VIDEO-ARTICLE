@@ -17,6 +17,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
+// ★ 대본 4막(2026-09-28) — engine/narrative.ARC_STAGES 의 트윈.
+const ARC_STAGES = ["problem", "situation", "turn", "result"];
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -138,14 +140,21 @@ JSON only. 설명·마크다운·코드펜스 금지.
     (영상에서 하단 고정 자막으로 자동 렌더된다).
 
 [대본 구조 — 숏폼 리텐션 문법] 총 20~30초, 씬 6~7개, 씬당 2~5초(빠른 컷 전환):
-씬1 후크(2~3초): 스크롤을 멈추는 한 문장(질문/충격형). 인사·제목 낭독 금지.
-씬2 맥락(3~4초): 누가·무엇을 — 회사+출처 귀속 ("OO증권에 따르면, XX가…").
-씬3~5 팩트 비트(각 3~5초): 한 씬 = 한 팩트, 점점 구체적으로(기술/이벤트 →
-  수치/실증 → 증권사 논리·목표가 인용). 수치는 화면 텍스트로도 크게(무음 시청 대비).
-  데이터 풍부하면 비트 3개(총 7씬), 적으면 2개(총 6씬). 억지로 늘리지 마라.
-씬(끝-1) 리스크 턴(3~4초): "다만—"으로 전환, risks[] 한 줄 짧고 명확하게.
-  ★ risks 가 비어 있으면 이 씬을 **건너뛰고** 팩트 비트를 하나 더 둔다.
-씬(끝) 페이오프(2~4초): 의미 한 줄로 마무리, 후크에 답해 루프 유도. CTA 반 문장.
+[★ 대본 구조 — 4막(논문·리포트 공통)] 문제 제기 → 오해 또는 문제 상황 → 반전 또는 원리 → 결과/결론
+  ① 문제 제기(problem) 1~2씬: 시청자가 "왜?"를 품게 하는 질문·역설. 첫 씬은 짧은 한마디다.
+  ② 오해 또는 문제 상황(situation) 1~2씬: 흔히 그렇게 여기는 이유, 또는 지금 무엇이 막혀·어긋나 있는지.
+     ★ 오해를 지어내지 마라 — 소재에 오해가 없으면 문제 상황만 설명한다.
+  ③ 반전 또는 원리(turn) 2~4씬: 실제로는 어떻게 되는가. 원리·과정을 **한 씬에 한 단계씩**,
+     "그래서·하지만·즉"으로 잇는다(논문: 연구 결과·기전 / 리포트: 논증 단위 driver → 실적 → 밸류).
+  ④ 결과/결론(result) 1~2씬: 그래서 무엇이 달라지나 + ①의 질문에 답한다. 한계·리스크는 여기서 한 줄.
+  ★ 출처(기관·증권사)는 한두 번이면 된다 — 매 씬 "OO은 …했습니다"로 시작하지 마라.
+    두 번째부터는 주어를 사물·현상으로 둔다("HBM 이 웨이퍼를 더 먹습니다").
+  ★ 각 씬에 arc_stage 를 적는다: problem|situation|turn|result. 차례대로 가고 되돌아가지 않는다.
+리포트에 얹으면: 씬1 후크(2~3초) = ① 문제 제기(질문·역설 한마디, 인사·제목 낭독 금지).
+씬2 = ② 문제 상황(3~4초): 무엇이 막혀·어긋나 있나. 회사 + 출처 귀속은 여기서 한 번.
+씬3~5 = ③ 반전·원리(각 3~5초): 논증 단계 순서대로 한 씬 = 한 단계, 증권사 이름 반복 금지.
+  데이터 풍부하면 단계 3개(총 7씬), 적으면 2개(총 6씬). 억지로 늘리지 마라.
+씬(끝) = ④ 결과/결론 페이오프(2~4초): 후크의 질문에 답한다. risks[] 가 있으면 "다만—" 한 줄.
 마지막 씬까지 콘텐츠다 — source_facts 가 "source.disclaimer" 뿐인 씬 금지.
 
 [각 씬 필수] source_facts 에 근거가 된 Fact Sheet 키를 적는다(예: "numbers[0]","basis[1]","opinion").
@@ -180,6 +189,7 @@ HOOK/CTA 를 붙이지 마라** — 수치를 말하는 씬은 EVIDENCE 다.
     {
       "scene": <int>,
       "scene_role": "<HOOK|QUESTION|CLAIM|EVIDENCE|MECHANISM|RISK|WATCHPOINT|CTA|BRIDGE>",
+      "arc_stage": "<problem|situation|turn|result — 4막 중 이 씬의 자리>",
       "title": "<씬 제목>",
       "narration_ko": "<한국어 나레이션>", "narration_en": "<영어 나레이션>",
       "duration_sec": <int>,
@@ -616,6 +626,9 @@ function normalizeScript(obj: any) {
       // 기본값으로 떨어뜨린다(자유 텍스트가 들어오면 면제도 검사도 안 걸린다).
       scene_role: SCENE_ROLES.includes(String(s.scene_role ?? "").trim().toUpperCase())
         ? String(s.scene_role).trim().toUpperCase() : SCENE_ROLE_DEFAULT,
+      // engine/narrative.arc_stage 의 트윈 — 모르면 빈 문자열.
+      arc_stage: ARC_STAGES.includes(String(s.arc_stage ?? "").trim().toLowerCase())
+        ? String(s.arc_stage).trim().toLowerCase() : "",
       title: String(s.title ?? ""),
       narration_ko: String(s.narration_ko ?? ""),
       narration_en: String(s.narration_en ?? ""),
