@@ -21,11 +21,15 @@ from engine import assemble, config
 EFFECT_BRANCHES = ["ken_burns_zoom_in", "ken_burns_zoom_out", "pan_left", "pan_right"]
 
 
-def test_the_layout_actually_differs_from_the_frame():
-    """★ 이 테스트가 지키는 위험이 실재하는지부터 본다 — 두 크기가 같으면 애초에 안 눌린다."""
+def test_the_layout_actually_differs_from_the_frame(monkeypatch):
+    """★ 이 테스트가 지키는 위험이 실재하는지부터 본다 — 두 크기가 같으면 애초에 안 눌린다.
+
+    ★ 2026-09-28 기본 레이아웃이 full_bleed 가 됐다(벤치마크 3번). 이 회귀는 center_band 에서만
+      생기지만 center_band 는 되돌리기 스위치(LAYOUT_MODE)로 살아 있다 — **건너뛰지 말고 그 경로를
+      강제해서** 계속 지킨다(CI 는 건너뛴 테스트 수가 늘면 실패한다: 검사가 헐거워졌다는 뜻이다).
+    """
+    monkeypatch.setattr(config, "LAYOUT_MODE", "center_band")
     w, h = assemble.layout_content_dims()
-    if (w, h) == (config.RENDER_WIDTH, config.RENDER_HEIGHT):
-        pytest.skip("full_bleed 레이아웃 — 이 회귀는 center_band 에서만 생긴다")
     assert h != config.RENDER_HEIGHT
 
 
