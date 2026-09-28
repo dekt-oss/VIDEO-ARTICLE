@@ -106,8 +106,10 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
     # 하단 고정 자막(리포트 면책/출처). footer_text 있을 때만 스타일 정의 → 논문 출력 바이트 불변.
     footer = (footer_text or "").strip().replace("\n", " ")
     footer_style = (
+        # ★ 반투명 상자(BorderStyle=3, 상자색 = OutlineColour — 키워드 카드와 같은 문법). full_bleed 에서는
+        #   바탕 검은 띠가 없어 밝은 그림 위 옅은 글씨가 안 읽혔다(2026-09-28 미리보기 실측).
         f"Style: Footer,{font_name},{config.FOOTER_FONT_SIZE},{config.FOOTER_COLOR_ASS},"
-        f"&H00000000,&H64000000,1,0,1,1,0,2,40,40,"
+        f"{config.FOOTER_BOX_ASS},&H64000000,1,0,3,8,0,2,40,40,"
         f"{config.FOOTER_MARGIN_V if footer_margin_v is None else int(footer_margin_v)}\n"
     ) if footer else ""
     # 【§11】 근거 오버레이 스타일. Alignment=2(하단 중앙 기준) + 큰 MarginV 로 중상단에 띄운다.

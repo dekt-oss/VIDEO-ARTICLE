@@ -3564,6 +3564,10 @@ REPORT_SERIES_TITLE_BY_LANG: dict[str, str] = {
 FOOTER_FONT_SIZE: int = 30            # 본문 자막보다 작게(눈에 띄되 방해 안 되게)
 FOOTER_COLOR_ASS: str = "&H00D0D0D0&"  # 옅은 회색(&HAABBGGRR&)
 FOOTER_MARGIN_V: int = 24             # 화면 맨 아래 근접(캡션 밴드 아래)
+# ★ 면책·출처 줄 바탕 상자(2026-09-28). full_bleed 에서는 검은 띠가 없어 옅은 회색 글씨가 **밝은 그림 위에서
+#   안 읽혔다**(무료 미리보기 실측 — 하얀 스튜디오 바닥). 법적 문구라 읽혀야 한다 → 반투명 검정 상자(BorderStyle=3).
+#   &HAABBGGRR& 의 AA=00 불투명 ~ FF 투명. 60(hex) ≈ 62% 불투명.
+FOOTER_BOX_ASS: str = "&H60000000&"
 
 # ─ 금융 리포트 영상 시각·서사 강화 (C안 v1.1 · docs/강화지시서_금융리포트시각화_C안_v1.1.md) ─
 # fin_charts 코드 도표 5종 + Arc A 서사 + Veo≤1 오프닝. 전 상수는 여기서(매직넘버 금지, CLAUDE.md 규칙).
