@@ -453,6 +453,10 @@ export interface DirectiveHeader {
   mode_warnings?: string[];
   /** 위 3개 + 나머지 접힘. 없으면(옛 지시서) 화면이 mode_warnings 를 그대로 보여준다. */
   warning_summary?: WarningSummary;
+  /** 이 지시서를 만든 엔진 버전(engine/config.DIRECTIVE_ENGINE_VERSION). 없으면 2026-09-29 이전. */
+  engine_version?: string;
+  /** 만든 워커의 커밋(GitHub Actions 의 GITHUB_SHA 앞 7자). 로컬 실행이면 빈값. */
+  engine_commit?: string;
   /** 코드가 데이터로 확정한 차단 사유만(길이·예산·커버리지). 승인 라우트가 서버에서 재검증한다. */
   block_reasons?: string[];
   approval_blocked?: boolean;

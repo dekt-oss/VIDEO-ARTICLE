@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from decimal import Decimal
@@ -1915,6 +1916,9 @@ def normalize_directive(
     header["approval_blocked"] = bool(header["block_reasons"])
     # ★ 경고를 넷으로 갈라 위 3개만 고른다(2026-09-28). 새 판정은 없다 — 정렬·분류만.
     warning_triage.attach(header)
+    # ★ 어느 엔진으로 만들었나 — 화면이 옛 엔진 지시서를 가려낸다(config.DIRECTIVE_ENGINE_VERSION 주석).
+    header["engine_version"] = config.DIRECTIVE_ENGINE_VERSION
+    header["engine_commit"] = str(os.getenv("GITHUB_SHA") or "")[:7]
     return {"version_type": version, "header": header, "cuts": cuts}
 
 

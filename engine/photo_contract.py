@@ -51,6 +51,7 @@ BLOCK_REASONS: tuple[str, ...] = (
     "photo_split_composition",           # 화면을 갈라 두 장면을 넣는다(비교는 컷 사이에서 한다)
     "photo_mechanism_on_number",         # 도해 컷이 숫자·전망치 단계를 옮긴다(블록 막대그래프가 된다)
     "photo_mechanism_on_risk",           # 도해 컷이 리스크·규제 단계를 옮긴다(은유가 된다)
+    "photo_hook_copied_example",         # 컷1 이 프롬프트의 형식 예시를 그대로 베꼈다(2026-09-29 "피일까요?")
 )
 WARNING_REASONS: tuple[str, ...] = (
     "photo_side_by_side_layout",       # 한 장면 안에서 좌·우로 갈라 견준다(분할은 아니다)
@@ -775,6 +776,16 @@ def assign_motion_sources(cuts: list[dict[str, Any]]) -> list[int]:
     return sorted(int(cuts[i].get("cut_no") or i + 1) for i in picked)
 
 
+def _hook_key(text: Any) -> str:
+    return re.sub(r"[\s\.\,\!\?…·'\"“”‘’~]+", "", str(text or ""))
+
+
+def hook_copies_example(narration: Any) -> bool:
+    """컷1 나레이션이 프롬프트의 형식 예시(config.HOOK_EXAMPLE_PHRASES)를 그대로 쓰는가. 공백·문장부호 무시."""
+    key = _hook_key(narration)
+    return bool(key) and any(_hook_key(p) and _hook_key(p) in key for p in config.HOOK_EXAMPLE_PHRASES)
+
+
 def min_mechanism_cuts(total_sec: int) -> int:
     """영상 길이 → 기전(원리 설명) 컷 최소 개수. **고정값이 아니다.**
 
@@ -1480,6 +1491,9 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
         n1 = len(re.sub(r"\s", "", str(cuts[0].get("narration_ko") or "")))
         if n1 > config.HOOK_CUT_MAX_CHARS_KO:
             warns.append(f"photo_hook_cut_too_long:{n1}자")
+        # ★ 예시를 그대로 베꼈다(2026-09-29 실측 — 관절 연골 논문의 컷1 이 "피일까요?"였다). 결정적 비교라 차단한다.
+        if hook_copies_example(cuts[0].get("narration_ko")):
+            blocks.append("photo_hook_copied_example")
 
     # ② 역할 선언 — 실사형의 모든 컷은 자기가 무엇을 하는 컷인지 밝혀야 한다.
     roleless = [c["cut_no"] for c in cuts if not str(c.get("visual_role") or "").strip()]
@@ -2000,6 +2014,10 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                      " **1컷 나레이션을 그대로 옮기면 코드가 지운다** — 화면 위(훅)와 아래(자막)에 같은"
                      " 문장이 겹치기 때문이다. 훅은 제목처럼 짧은 명사구로 써라"
                      " (예: 나레이션 '나무도 목마르면 성장을 멈춘다?' → 훅 '나무 성장의 임계점').")
+    if "photo_hook_copied_example" in codes:
+        fixes.append("- **컷1 나레이션이 프롬프트의 형식 예시를 그대로 베꼈다** — 그 예시는 다른 영상(고기 핏물·조선업)의"
+                     " 것이라 이 소재와 상관이 없다. 컷1 은 **이 대본의 첫 문장**을 질문·역설 한마디"
+                     f" ({config.HOOK_CUT_MAX_CHARS_KO}자 이내)로 줄인 것이어야 한다. 줄이면서 뺀 사실은 컷2 로 옮겨라.")
     if "photo_visual_role_missing" in codes:
         fixes.append("- 모든 컷에 visual_role 을 MECHANISM 또는 REALITY 로 선언하라.")
     if "photo_forbidden_screen_request" in codes:
@@ -2281,8 +2299,8 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
         if "photo_hook_cut_too_long" in wcodes:
             wfix.append(
                 f"- **컷1 나레이션이 3초를 넘는다.** 시청자는 첫 3초에 넘길지 정한다. 컷1 은 질문·역설"
-                f" 한마디, **{config.HOOK_CUT_MAX_CHARS_KO}자 이내**로 줄여라(예: '피일까요?' · '주가는 반토막인데"
-                " 이익은 2배?'). 지운 설명·출처·수치는 **컷2 로 옮겨라** — 사실을 버리지 말고 자리만 바꾼다."
+                f" 한마디, **{config.HOOK_CUT_MAX_CHARS_KO}자 이내**로 줄여라 — **이 대본의 첫 문장**에서 틀('A인데 B?' ·"
+                " '왜 A일까?')만 빌려 쓴다. 지운 설명·출처·수치는 **컷2 로 옮겨라** — 사실을 버리지 말고 자리만 바꾼다."
                 " 컷1 화면은 그 말의 물건 자체를 가까이서.")
         if "photo_scene_not_answering" in wcodes:
             wfix.append(

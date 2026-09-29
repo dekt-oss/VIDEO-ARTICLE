@@ -26,6 +26,7 @@ import { useToast } from "@/components/Toast";
 import { apiErrorText } from "@/lib/apiError";
 import { blockLabel } from "@/lib/blockLabels";
 import WarningSummaryView from "@/components/WarningSummaryView";
+import { isOutdatedEngine, DIRECTIVE_ENGINE_VERSION } from "@/lib/work/decision";
 
 
 /** 영어 문장 위에 붙는 **한글 설명**.
@@ -315,6 +316,13 @@ export default function SequenceEditor({
   return (
     <div className="seq-wrap">
       {saving && <p className="muted">저장 중…</p>}
+      {/* ★ 옛 엔진으로 만든 지시서(2026-09-29) — 결정 바와 같은 판정(isOutdatedEngine). */}
+      {directive && directive.status === "draft" && isOutdatedEngine(directive.header?.engine_version) && (
+        <div className="banner-warn" style={{ margin: "0 0 8px" }}>
+          ⛔ 옛 엔진({directive.header?.engine_version ?? "기록 없음"})으로 만든 지시서입니다 — 지금 엔진 {DIRECTIVE_ENGINE_VERSION} 의
+          수정이 반영되지 않습니다. 렌더하기 전에 [지시서 재생성]을 누르세요.
+        </div>
+      )}
       {/* ★ 통합 작업 화면은 2026-09-28 까지 차단 사유·경고를 **아예** 안 보여줬다(옛 ⑤ 화면에만 있었다) —
           삼성전자 편이 경고 22개를 달고 승인된 자리다. 순서·분류는 엔진(warning_summary)이 정하고
           여기서는 위 3개만 크게, 나머지는 접는다. */}

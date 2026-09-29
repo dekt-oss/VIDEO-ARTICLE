@@ -25,7 +25,7 @@ import {
   REPORT_VERSION_META, REPORT_DEFAULT_VERSION_KEY, reportVersionLabel,
   type VersionMeta,
 } from "@/lib/versions";
-import { decide, type VersionState } from "@/lib/work/decision";
+import { decide, isOutdatedEngine, DIRECTIVE_ENGINE_VERSION, type VersionState } from "@/lib/work/decision";
 import { pickInitialVersions } from "@/lib/work/versionSelection";
 import type { ScriptPaneHandle, CutsPaneHandle } from "@/lib/work/panes";
 import { estimateOrder, formatUsd, LANG_COST_NOTE } from "@/lib/orderCost";
@@ -267,6 +267,7 @@ export default function WorkspaceClient({
       createdAt: s.directive?.created_at ?? null,
       pending: chain.has(s.key) ? "processing" : (directivePending[s.key] ?? null),
       blocked: s.directive?.header?.approval_blocked ? (s.directive.header.block_reasons ?? ["approval_blocked"]) : [],
+      engineVersion: s.directive?.header?.engine_version ?? null,
     })),
     [slots, chain, directivePending],
   );
@@ -280,6 +281,8 @@ export default function WorkspaceClient({
     dirty,
   });
   const targetSlots = slots.filter((s) => decision.targets.includes(s.key));
+  // 재생성 권장 = 옛 대본 기준(stale) ∪ 옛 엔진(outdated).
+  const regenTargets = [...new Set([...decision.stale, ...decision.outdated])];
   const estimate = useMemo(
     () => estimateOrder(targetSlots.map((s) => ({ key: s.key, directive: s.directive })), langs),
     [targetSlots, langs],
@@ -491,6 +494,12 @@ export default function WorkspaceClient({
           {decision.stale.length > 0 && (
             <span className="work-stale">⚠ {decision.stale.map(cfg.label).join(", ")} 지시서가 옛 대본 기준입니다</span>
           )}
+          {decision.outdated.length > 0 && (
+            // ★ 2026-09-29: 수정 머지 7분 전에 만든 지시서가 렌더돼 $5.19 가 나갔다. 지시서는 만든 순간의 스냅샷이다.
+            <span className="work-stale" title={`지금 엔진 ${DIRECTIVE_ENGINE_VERSION} 이전에 만든 지시서입니다. 렌더하면 그 뒤의 수정이 반영되지 않습니다.`}>
+              ⛔ {decision.outdated.map(cfg.label).join(", ")} 지시서는 옛 엔진으로 만들었습니다 — 재생성 후 렌더하세요
+            </span>
+          )}
           {decision.blockedReasons.length > 0 && (
             // ★ 버튼을 없애는 대신 여기서 알린다(2026-09-17). 눌러야 할 곳은 그대로 두고,
             //   "그냥 누르면 안 되는 상태"라는 것만 보이게 한다.
@@ -526,11 +535,11 @@ export default function WorkspaceClient({
           </button>
           {/* ★ 낡았을 때의 권장 동작을 **주 버튼 옆에 보이게** 둔다(2026-09-17). ▾ 안에 숨겼더니
               운영자가 못 찾았고, 주 버튼으로 만들었더니 이번엔 승인·렌더가 사라졌다. 둘 다 보인다. */}
-          {decision.stale.length > 0 && (
+          {regenTargets.length > 0 && (
             <button className="btn" disabled={busy}
-              title="지금 대본으로 지시서를 다시 만듭니다(LLM 비용)"
-              onClick={() => setShowRegenDirective(decision.stale as VersionType[])}>
-              지시서 재생성 ({decision.stale.map(cfg.label).join(", ")})
+              title="지금 대본·지금 엔진으로 지시서를 다시 만듭니다(LLM 비용 ≈ $0.15)"
+              onClick={() => setShowRegenDirective(regenTargets as VersionType[])}>
+              지시서 재생성 ({regenTargets.map(cfg.label).join(", ")})
             </button>
           )}
           {draft && (
@@ -629,7 +638,8 @@ export default function WorkspaceClient({
             const h = s.directive?.header;
             const ung = (s.directive?.cuts ?? []).filter((c) => (c.source_facts?.length ?? 0) === 0).length;
             return `· 지시서(${cfg.label(s.key)}): 컷 ${s.directive?.cuts?.length ?? 0} · 근거 없는 컷 ${ung}` +
-              (h?.cost_plan ? ` · 예상 생성비 $${h.cost_plan.estimated_total_generation_cost_usd.toFixed(2)}` : "");
+              (h?.cost_plan ? ` · 예상 생성비 $${h.cost_plan.estimated_total_generation_cost_usd.toFixed(2)}` : "") +
+              (isOutdatedEngine(h?.engine_version) ? `\n  ⛔ 옛 엔진(${h?.engine_version ?? "기록 없음"})으로 만든 지시서 — 지금 엔진 ${DIRECTIVE_ENGINE_VERSION} 의 수정이 반영되지 않습니다. 재생성을 권합니다.` : "");
           }).join("\n") +
           `\n· 렌더 언어: ${renderLang === "both" ? "한국어 + 영어" : renderLang === "en" ? "영어" : "한국어"} (${LANG_COST_NOTE})` +
           `\n· 합계(추정): ${formatUsd(estimate.total)} · 렌더 잡 ${estimate.renderJobCount}건` +

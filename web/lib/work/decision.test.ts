@@ -3,7 +3,7 @@
 // 결정 바의 주 버튼이 상태마다 **하나로** 정해지는지 못박는다(설계안 v2 §2-2 표).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decide, isStale, type DecisionInput } from "./decision.ts";
+import { decide, isStale, isOutdatedEngine, DIRECTIVE_ENGINE_VERSION, type DecisionInput } from "./decision.ts";
 
 const base: DecisionInput = {
   hasDraft: true,
@@ -103,4 +103,26 @@ test("체크한 버전이 없으면 생성 버튼은 이유를 말한다", () =>
   const d = decide({ ...base, hasDraft: false, chosen: [], versions: [] });
   assert.equal(d.action, "generate");
   assert.match(d.reason, /하나 이상/);
+});
+
+
+test("옛 엔진 지시서 → outdated 로 알리되 주 버튼은 [승인 → 렌더] 그대로", () => {
+  const d = decide({ ...base, versions: [{ ...base.versions[0], engineVersion: null }] });
+  assert.equal(d.action, "approve_render");
+  assert.deepEqual(d.outdated, ["photo"]);
+  const now = decide({ ...base, versions: [{ ...base.versions[0], engineVersion: DIRECTIVE_ENGINE_VERSION }] });
+  assert.deepEqual(now.outdated, []);
+});
+
+test("엔진 버전 비교 — 없으면 옛 것, 같거나 새로우면 최신", () => {
+  assert.equal(isOutdatedEngine(undefined), true);
+  assert.equal(isOutdatedEngine("2026-09-01"), true);
+  assert.equal(isOutdatedEngine(DIRECTIVE_ENGINE_VERSION), false);
+  assert.equal(isOutdatedEngine("2099-01-01"), false);
+});
+
+test("승인·렌더로 넘어간 지시서는 옛 엔진이어도 알리지 않는다(이미 늦었다 — 렌더 결과 보기)", () => {
+  const d = decide({ ...base, versions: [{ ...base.versions[0], status: "rendered", engineVersion: null }] });
+  assert.equal(d.action, "view_render");
+  assert.deepEqual(d.outdated, []);
 });
