@@ -1399,6 +1399,7 @@ def normalize_directive(
     source_text: str = "",
     source_depth: str | None = None,
     mechanism_supply: int | None = None,
+    extra_claim_refs: set[str] | None = None,
 ) -> dict[str, Any]:
     """LLM 출력 → 명세 §4 지시서 shape 보장. visual_type 은 버전에서 강제,
     total_estimated_sec 은 컷 합으로 재계산(모델 자기보고 불신).
@@ -1872,7 +1873,7 @@ def normalize_directive(
     #   운영자가 화면에서 또 고친다. 훅이 가장 많이 바뀌고 가장 과장되기 쉬운 자리다.
     #   ① 기계 판정(무료) ② 의미 판정(LLM 1회). 둘 다 경고이며 승인을 막지 않는다.
     if config.DIRECTIVE_AUDIT_ENABLED:
-        audit = directive_audit.audit(header, cuts, fact_sheet)
+        audit = directive_audit.audit(header, cuts, fact_sheet, extra_claim_refs=extra_claim_refs)
         _release_restated_numbers(audit, header, cuts, fact_sheet)
         header["directive_audit"] = audit
         if audit["findings"]:

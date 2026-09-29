@@ -437,3 +437,31 @@ def test_the_router_finally_sees_report_cuts_inside_the_sequence():
     # 경고 요약이 헤더에 붙는다 — 화면이 위 3개만 보여주는 근거.
     summary = d["header"]["warning_summary"]
     assert set(summary) == {"groups", "top", "counts", "total", "hidden"}
+
+
+def test_reasoning_step_refs_are_known_to_the_number_audit():
+    """★ 2026-09-28 첫 실측(마켓 BEAT): 모델이 stage claim_ids 에 R01_1 을 적자 컷 2~12 가 전부 빨강이 됐다."""
+    from engine import directive_audit, report_reasoning as rr
+    reasoning = {"units": [_unit(LS_STEPS)]}
+    refs = rr.step_refs(reasoning)
+    assert {"R01", "R01_1", "R01_5"} <= refs and "R01_6" not in refs
+    cuts = [{"cut_no": 2, "narration_ko": "x", "claim_ids": ["R01_2", "R09_1"]}]
+    got = directive_audit.audit({}, cuts, {"basis": ["a"]}, extra_claim_refs=refs)
+    unknown = [f["detail"] for f in got["findings"] if f["code"] == "claim_id_unknown"]
+    assert unknown == ["원장에 없는 주장 R09_1"], unknown
+
+
+def test_a_hook_stage_is_not_an_eq_v1_violation():
+    """훅 stage(컷1만 담당)는 논증을 옮기지 않는 것이 정상이다 — 마켓 BEAT 재생성이 이것 하나로 차단됐다."""
+    from engine import equity_contract as ec
+    reasoning = {"units": [_unit(LS_STEPS)]}
+    cuts = [{"cut_no": 1, "reasoning_id": "", "reasoning_step": 0}] + \
+           [{"cut_no": n, "reasoning_id": "R01", "reasoning_step": n - 1} for n in range(2, 7)]
+    seqs = _model_written(reasoning, cuts)
+    seqs[0]["stages"].insert(0, {**seqs[0]["stages"][0], "stage_id": "S0_HOOK", "cut_refs": [1]})
+    ev.annotate(seqs, cuts, reasoning)
+    assert seqs[0]["stages"][0]["hook_or_close"] is True
+    assert not any(b.startswith("eq_v1_reasoning_link_missing") for b in ec.block_reasons(seqs)), ec.block_reasons(seqs)
+    # 가운데 stage 가 안 묶이면 여전히 차단이다.
+    seqs[0]["stages"][2]["reasoning_id"] = ""
+    assert any(b.startswith("eq_v1_reasoning_link_missing") for b in ec.block_reasons(seqs))
