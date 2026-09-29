@@ -8,6 +8,16 @@
 
 export type DirectiveStatus = "draft" | "approved" | "rendering" | "rendered" | "failed";
 
+/** 지금 엔진 버전 — engine/config.py 의 DIRECTIVE_ENGINE_VERSION 과 **같아야** 한다(tests/test_prompt_sync.py).
+ *  이보다 옛 엔진으로 만든 지시서는 "재생성 후 렌더"를 띄운다(2026-09-29 — 발뒤꿈치 편이 수정 7분 전
+ *  지시서로 렌더돼 $5.19 를 썼다). 날짜 문자열이라 문자열 비교로 충분하다. */
+export const DIRECTIVE_ENGINE_VERSION = "2026-09-29";
+
+/** 헤더에 찍힌 엔진 버전이 지금보다 옛 것인가. 값이 없으면(2026-09-29 이전 지시서) 옛 것이다. */
+export function isOutdatedEngine(engineVersion: string | null | undefined): boolean {
+  return !engineVersion || engineVersion < DIRECTIVE_ENGINE_VERSION;
+}
+
 export interface VersionState {
   key: string;
   /** 최신 지시서 상태. 없으면 null. */
@@ -18,6 +28,8 @@ export interface VersionState {
   pending?: "queued" | "processing" | null;
   /** 엔진이 박아 둔 승인 차단 사유(참고용 — 서버가 승인 시점에 다시 센다). */
   blocked?: string[];
+  /** 이 지시서를 만든 엔진 버전(header.engine_version). */
+  engineVersion?: string | null;
 }
 
 export interface DecisionInput {
@@ -53,6 +65,8 @@ export interface Decision {
   /** 대본이 지시서보다 새로운 버전들. 화면이 ⚠ 경고 + 별도 [지시서 재생성] 버튼으로 쓴다.
    *  ★ 이것 때문에 주 버튼을 바꾸지 않는다 — 바꾸면 승인·렌더로 가는 길이 사라진다. */
   stale: string[];
+  /** 옛 엔진으로 만든 draft 지시서 버전들. stale 과 같은 자리(⚠ + [지시서 재생성])로 알린다 — 주 버튼은 안 바꾼다. */
+  outdated: string[];
   /** 왜 이 버튼인지 한 줄(툴팁·빈 상태 문구). */
   reason: string;
   /** 승인 게이트가 잡은 사유. 비어 있지 않으면 **강제 승인**이 된다.
@@ -83,25 +97,25 @@ export function decide(input: DecisionInput): Decision {
   const pickedLabel = chosen.join(", ") || "(버전 없음)";
 
   if (draftPending) {
-    return { action: "wait_draft", blockedReasons: [], label: "초안 만드는 중…", targets: chosen, stale: [],
+    return { action: "wait_draft", blockedReasons: [], label: "초안 만드는 중…", targets: chosen, stale: [], outdated: [],
              reason: "초안이 끝나면 고른 버전의 지시서가 이어서 만들어집니다" };
   }
   if (!hasDraft) {
-    return { action: "generate", blockedReasons: [], label: `초안 + 지시서 생성 (${chosen.length}건)`, targets: chosen, stale: [],
+    return { action: "generate", blockedReasons: [], label: `초안 + 지시서 생성 (${chosen.length}건)`, targets: chosen, stale: [], outdated: [],
              reason: chosen.length ? `${pickedLabel} 지시서까지 한 번에 만듭니다` : "만들 버전을 하나 이상 고르세요" };
   }
 
   // ★ 초안은 있는데 고른 버전이 없다 — "할 일 없음"이 아니라 "골라라"다. 실측: 체크를 다 풀면
   //   [렌더 결과 보기]가 떴고 버전 선택칸까지 숨어 다시 고를 길이 없었다.
   if (chosen.length === 0) {
-    return { action: "choose_version", blockedReasons: [], label: "만들·승인할 버전을 고르세요", targets: [], stale: [],
+    return { action: "choose_version", blockedReasons: [], label: "만들·승인할 버전을 고르세요", targets: [], stale: [], outdated: [],
              reason: "위 체크에서 버전을 하나 이상 고르면 다음 할 일이 정해집니다" };
   }
 
   const generating = picked.filter((v) => v.pending);
   if (generating.length) {
     return { action: "wait_directive", blockedReasons: [], label: `지시서 만드는 중 · ${generating.map((v) => v.key).join(", ")}`,
-             targets: generating.map((v) => v.key), stale: [],
+             targets: generating.map((v) => v.key), stale: [], outdated: [],
              reason: "보통 1~3분. 이 화면을 닫았다 열어도 이어집니다" };
   }
 
@@ -109,14 +123,15 @@ export function decide(input: DecisionInput): Decision {
   const handedOff = picked.filter((v) => v.status && HANDED_OFF.includes(v.status));
   const missing = picked.filter((v) => !v.status);
   const stale = picked.filter((v) => v.status === "draft" && isStale(draftUpdatedAt, v.createdAt)).map((v) => v.key);
+  const outdated = picked.filter((v) => v.status === "draft" && isOutdatedEngine(v.engineVersion)).map((v) => v.key);
 
   if (missing.length) {
     return { action: "make_directive", blockedReasons: [], label: `지시서 생성 (${missing.map((v) => v.key).join(", ")})`,
-             targets: missing.map((v) => v.key), stale,
+             targets: missing.map((v) => v.key), stale, outdated,
              reason: "초안은 있는데 이 버전의 지시서가 아직 없습니다" };
   }
   if (picked.length && handedOff.length === picked.length) {
-    return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [],
+    return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [], outdated: [],
              reason: "고른 버전이 전부 승인·렌더로 넘어갔습니다(편집 잠금)" };
   }
   // ★ 대본이 더 새로워도(stale) 주 버튼을 [지시서 재생성]으로 **바꾸지 않는다**(2026-09-17).
@@ -125,7 +140,7 @@ export function decide(input: DecisionInput): Decision {
   //   내보내 화면이 ⚠ 경고와 **별도 [지시서 재생성] 버튼**으로 알린다. 버튼을 없애서 알리지 않는다.
   const approvable = picked.filter((v) => v.status === "draft");
   if (!approvable.length) {
-    return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [],
+    return { action: "view_render", blockedReasons: [], label: "렌더 결과 보기", targets: chosen, stale: [], outdated: [],
              reason: "승인할 지시서가 없습니다" };
   }
   // ★ 막혀 있어도 **버튼은 [승인 → 렌더] 그대로 둔다**(2026-09-17 운영자 결정).
@@ -135,7 +150,7 @@ export function decide(input: DecisionInput): Decision {
   const blockedReasons = [...new Set(approvable.flatMap((v) => v.blocked ?? []))];
   return { action: "approve_render", blockedReasons,
            label: `${blockedReasons.length ? "⚠ " : ""}${scriptApproved ? "" : "대본 확정 + "}승인 → 렌더 (${approvable.map((v) => v.key).join(", ")})`,
-           targets: approvable.map((v) => v.key), stale,
+           targets: approvable.map((v) => v.key), stale, outdated,
            reason: blockedReasons.length
              ? "승인 게이트가 잡은 문제가 있습니다 — 누르면 사유를 보여주고, 그래도 진행하면 강제 승인입니다"
              : (dirty ? "저장하지 않은 편집을 먼저 저장하고 승인합니다" : "확인창에서 비용·언어를 보고 렌더를 시작합니다") };

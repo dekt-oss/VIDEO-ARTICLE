@@ -54,3 +54,20 @@ def test_titles_are_asked_as_riddles_in_both_factories():
     import inspect
     assert "수수께끼형" in inspect.getsource(scriptgen)
     assert "수수께끼형" in inspect.getsource(report_scriptgen)
+
+
+
+def test_a_first_cut_that_copies_the_prompt_example_is_blocked():
+    """★ 2026-09-29 실측: 관절 연골(GAG) 논문의 컷1 이 "피일까요?" 였다 — 고기 핏물 벤치마크 예시를 베꼈다.
+    16자 규칙은 지켰고 숫자도 없어 다른 검사는 다 통과했다. 결정적 비교라 차단하고 처방을 되먹인다."""
+    from engine import photo_contract as pc
+    got = _eval("피일까요?")
+    assert "photo_hook_copied_example" in got["block_reasons"]
+    assert "이 대본의 첫 문장" in pc.feedback_prompt(got["block_reasons"])
+    assert "photo_hook_copied_example" not in _eval("관절 쿠션이 3배 적다?")["block_reasons"]
+    assert pc.hook_copies_example(" 주가는 반토막인데, 이익은 2배? ")
+    # 프롬프트가 같은 목록을 보여 주고, 베끼면 막힌다고 말한다.
+    from engine import photo_prompt as pp
+    for phrase in config.HOOK_EXAMPLE_PHRASES:
+        assert phrase in pp.HOOK_CUT_RULE
+    assert "photo_hook_copied_example" in pp.HOOK_CUT_RULE and "첫 문장을 줄여서" in pp.HOOK_CUT_RULE

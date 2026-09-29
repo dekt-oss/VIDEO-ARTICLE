@@ -1048,6 +1048,14 @@ MECHANISM_START_SHARE_WARN: float = _get_float("MECHANISM_START_SHARE_WARN", 0.4
 #   말을 건네지 않고 있었다 — 경고가 장식으로 끝나는 구조였다.
 # ★★ 승인 차단은 **아니다.** 계약은 "경고 → 재생성 1회 → 그래도 남으면 경고인 채로
 #   사람에게 보여준다". 오탐이 생산을 막지 않는다는 기존 철학을 그대로 지킨다.
+# ★★ 지시서 엔진 버전 — 지시서 헤더에 찍히고, 화면이 이보다 옛 것이면 "옛 엔진으로 만든 지시서 — 재생성 후
+#   렌더"를 띄운다(2026-09-29 운영자 지시). 계기: 발뒤꿈치 편이 수정 머지 **7분 전**에 만든 지시서로 렌더돼
+#   $5.19 를 썼다. 지시서는 만든 순간의 스냅샷이라 머지가 바꿔 주지 않는다.
+#   ★ 언제 올리나: 지시서 **내용**을 바꾸는 변경(프롬프트·정규화·게이트·영상 배정)을 머지할 때. 날짜 문자열이고
+#     문자열 비교를 한다. web/lib/work/decision.ts 의 같은 이름 상수와 **같아야** 한다(tests/test_prompt_sync.py).
+#     프롬프트 문자열이 바뀌었는데 이 값을 안 올리면 tests/test_directive_engine_version.py 가 실패한다.
+DIRECTIVE_ENGINE_VERSION: str = "2026-09-29"
+
 # ★ 경고 요약 — 승인 화면 위에 크게 보이는 개수(engine/warning_triage.py). 실측 중앙값 56개 중 진짜
 #   고칠 것은 5~8개였다(docs/규칙통합_분석_2026-09-28.md §1-2). 나머지는 접는다.
 WARNING_SUMMARY_TOP_N: int = 3
@@ -2713,6 +2721,9 @@ JEV_LABEL_RELEASE_BELOW: float = _get_float("JEV_LABEL_RELEASE_BELOW", 0.35)
 # TTS 실측 초당 5.1자(공백 제외, 렌더 2편 cut_map 중앙값) → 16자 ≈ 3.1초. 우리 데이터에도 이미 좋은 예가
 # 있다: "나무도 목마르면 성장을 멈춘다?"(14자) · "비만치료제가 노화를 늦춘다고요?"(15자).
 HOOK_CUT_MAX_CHARS_KO: int = _get_int("HOOK_CUT_MAX_CHARS_KO", 16)
+# ★ 첫 컷 **형식** 예시 — 프롬프트가 보여 주고, 게이트가 "그대로 베꼈다"를 잡는다(2026-09-29 실측: 관절 연골 논문의
+#   컷1 이 "피일까요?" 였다 — 고기 핏물 벤치마크 예시를 통째로 가져왔다). 한 벌만 두어야 둘이 안 어긋난다.
+HOOK_EXAMPLE_PHRASES: tuple[str, ...] = ("피일까요?", "주가는 반토막인데 이익은 2배?")
 JEV_COMPONENT_RECOGNIZABLE_BELOW: float = _get_float("JEV_COMPONENT_RECOGNIZABLE_BELOW", 0.35)
 # 실사 컷이 나레이션에 "답하는" 확률이 이 아래이고, 나레이션에 보여줄 내용이 있으면(아래 값 이상)
 #   경고(되묻기). 실측 2026-09-27(staging_shadow_v2, 596컷): 0.1 은 계약 뒤 지시서에서 편당 약 2.7컷
