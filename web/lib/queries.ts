@@ -223,7 +223,7 @@ export async function getDraft(
   const { data } = await supabase
     .from("drafts")
     .select(
-      "paper_id, fact_sheet, upload_title_ko, upload_title_en, script_md, video_flow, video_prompts, self_check, updated_at"
+      "paper_id, fact_sheet, upload_title_ko, upload_title_en, script_md, video_flow, video_prompts, self_check, created_at, updated_at"
     )
     .eq("paper_id", paperId)
     .maybeSingle();

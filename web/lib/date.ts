@@ -49,6 +49,26 @@ export function seoulDateOf(timestamp: string): string {
   return todayInSeoul(new Date(timestamp));
 }
 
+// timestamptz → "오늘 20:53" · "어제 21:10" · "9/28(일) 14:02" (Asia/Seoul).
+// 초안 생성 시각처럼 "오늘 만든 건지 어제 만든 건지"가 헷갈리는 자리에 쓴다(2026-09-30 운영자 요청).
+export function seoulDateTimeLabel(timestamp: string | null | undefined, now: Date = new Date()): string {
+  if (!timestamp) return "";
+  const t = new Date(timestamp);
+  if (Number.isNaN(t.getTime())) return "";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: TZ, month: "numeric", day: "numeric", weekday: "short",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(t).map((p) => [p.type, p.value]),
+  );
+  const hm = `${parts.hour}:${parts.minute}`;
+  const diff = daysAgoFromToday(todayInSeoul(t), now);
+  if (diff === 0) return `오늘 ${hm}`;
+  if (diff === 1) return `어제 ${hm}`;
+  const dow: Record<string, string> = { Sun: "일", Mon: "월", Tue: "화", Wed: "수", Thu: "목", Fri: "금", Sat: "토" };
+  return `${parts.month}/${parts.day}(${dow[parts.weekday] ?? parts.weekday}) ${hm}`;
+}
+
 // 주간/월간 버킷 키 (성과 리포트 페이지 집계용). 주는 월요일 시작(모호성 없음), 월은 YYYY-MM.
 // YYYY-MM-DD 가 속한 주의 월요일 날짜(YYYY-MM-DD).
 export function mondayOf(isoDate: string): string {

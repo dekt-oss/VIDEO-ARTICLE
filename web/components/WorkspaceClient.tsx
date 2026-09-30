@@ -37,6 +37,7 @@ import SequenceEditor from "@/components/SequenceEditor";
 import RenderList from "@/components/RenderList";
 import ReportRenderList from "@/components/ReportRenderList";
 import { apiErrorText } from "@/lib/apiError";
+import { seoulDateTimeLabel } from "@/lib/date";
 
 export type Factory = "paper" | "report";
 
@@ -464,6 +465,21 @@ export default function WorkspaceClient({
   const scriptSummary = scriptRef.current
     ? `근거 없는 씬 ${scriptRef.current.flaggedScenes}`
     : draft ? `근거 없는 씬 ${flaggedFromDraft}` : "초안 없음";
+  // ★ 초안이 언제 만들어졌나(2026-09-30 운영자 요청). 낙점은 오늘, 지시서는 내일 하는 날이 있어
+  //   "이 대본이 오늘 것인가 어제 것인가"가 헷갈렸다. created_at = 처음 생성(재생성해도 안 바뀐다),
+  //   updated_at = 대본 내용이 마지막으로 바뀐 때(재생성·손 수정 둘 다). 2분 넘게 다를 때만 둘째를 붙인다.
+  const draftTimes = (() => {
+    if (!draft?.created_at) return null;
+    const made = seoulDateTimeLabel(draft.created_at);
+    const changedLater = draft.updated_at
+      && new Date(draft.updated_at).getTime() - new Date(draft.created_at).getTime() > 2 * 60 * 1000;
+    return {
+      label: changedLater ? `초안 ${made} · 대본 변경 ${seoulDateTimeLabel(draft.updated_at)}` : `초안 ${made}`,
+      title: changedLater
+        ? "초안 = 처음 생성한 시각 · 대본 변경 = 재생성이나 손 수정으로 대본이 마지막으로 바뀐 시각 (한국 시간)"
+        : "초안을 처음 생성한 시각 (한국 시간)",
+    };
+  })();
   const cutsSummary = cutsRef.current?.directiveId
     ? `근거 없는 컷 ${cutsRef.current.ungrounded}`
     : activeSlot?.directive ? `근거 없는 컷 ${(activeSlot.directive.cuts ?? []).filter((c) => (c.source_facts?.length ?? 0) === 0).length}` : "지시서 없음";
@@ -485,6 +501,9 @@ export default function WorkspaceClient({
       <div className="work-decision">
         <div className="work-decision-left">
           <span className="muted">{scriptSummary} · {cutsSummary}</span>
+          {draftTimes && (
+            <span className="muted" title={draftTimes.title}>{draftTimes.label}</span>
+          )}
           {gen.busy && (
             <span className="gen-progress"><span className="spinner" /> {genPhaseLabel(gen.phase)} {gen.elapsedSec > 0 && `· ${gen.elapsedSec}s`}</span>
           )}
