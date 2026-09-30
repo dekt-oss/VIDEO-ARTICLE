@@ -2755,6 +2755,17 @@ JEV_CAUSE_SHOWN_BELOW: float = _get_float("JEV_CAUSE_SHOWN_BELOW", 0.1)
 # 세계 문장이 장소를 둘 이상 적었을 확률이 이 이상이면 경고(되묻기). 실측 2026-09-27(저장 세계 130개):
 #   걸린 3개가 0.91~0.97, 나머지는 전부 0.5 미만이라 문턱 위치에 민감하지 않다.
 JEV_WORLD_MULTI_PLACE_MIN: float = _get_float("JEV_WORLD_MULTI_PLACE_MIN", 0.7)
+# 나레이션이 원문(메타·초록/요약·Fact Sheet)을 넘었을 확률이 이 이상이면 경고(리포트 라인, engine/grounding.py).
+#   문턱은 2026-09-30 원문 대조 측정으로 정했다 — docs/jev_감사_2026-09-30.md §4.
+#   실측(258컷, 운영 입력 모양): 0.5 이상 31건을 보관 원문과 대조해 O 13 · X 8 · △ 10.
+#   0.6 이상 → O 9 · △ 5 · X 1. 리포트 컷은 걸린 것이 전부 O(0.6 이상 3/3). 0.7 로 올리면 X 0 이지만
+#   O 가 7 로 준다. 경고(사람이 원문 대조)라서 재현율을 조금 더 샀다. 숫자 3배 합성 양성: 0.6 이상 22/22.
+#   ★ 판정은 Claude 의 원문 대조다(운영자 판정 아님). 걸린 것만 봤으니 재현율은 상대값이다.
+JEV_UNSUPPORTED_CLAIM_MIN: float = _get_float("JEV_UNSUPPORTED_CLAIM_MIN", 0.6)
+JEV_GROUNDING_REPORT_ENABLED: bool = _get_bool("JEV_GROUNDING_REPORT_ENABLED", True)
+#: 근거 판정만 상태 상한을 늘린다 — 4,000자로는 메타·초록을 넣으면 Fact Sheet 가 잘렸다(20건 재측정의 교란).
+JEV_GROUNDING_STATE_MAX_CHARS: int = _get_int("JEV_GROUNDING_STATE_MAX_CHARS", 7000)
+JEV_GROUNDING_ABSTRACT_CHARS: int = _get_int("JEV_GROUNDING_ABSTRACT_CHARS", 1500)
 #: 판정에 보낼 문장 길이 상한. Jev 의 컨텍스트는 32,000 토큰이라 여유가 크지만,
 #  입력 토큰이 곧 비용이고 판정에 필요한 것은 따옴표 주변 문맥이다. 프롬프트 한 컷이
 #  실측 400~1,500자라 넉넉하다.

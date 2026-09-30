@@ -171,25 +171,9 @@ def cmd_bundle(a: argparse.Namespace) -> None:
 
 # ── 새 탐지기 그림자(근거·확신 과장·교차 모순) ───────────────────────────
 def facts_text(fs: dict[str, Any], limit: int = 2600) -> str:
-    """Fact Sheet → 판정용 근거 문자열. 논문은 claim 마다 종류·인과 강도·등급·한계를 붙인다."""
-    parts: list[str] = []
-    for c in fs.get("claims") or []:
-        if not isinstance(c, dict):
-            continue
-        lim = "; ".join(str(x) for x in (c.get("limitations") or [])[:2])
-        parts.append(f"[{c.get('claim_id')} {c.get('claim_kind')} causal={c.get('causal_strength')} "
-                     f"grade={c.get('evidence_grade')}] {c.get('claim_ko')}"
-                     + (f" (population: {c['population']})" if c.get("population") else "")
-                     + (f" (effect: {c['effect_size']} {c.get('effect_unit') or ''})" if c.get("effect_size") else "")
-                     + (f" (limits: {lim})" if lim else ""))
-    for key in ("what", "basis", "numbers", "risks", "what_found", "limitations"):
-        for x in fs.get(key) or []:
-            parts.append(f"[{key}] {x if not isinstance(x, dict) else json.dumps(x, ensure_ascii=False)}")
-    if fs.get("claim_strength"):
-        parts.append(f"[claim_strength] {fs['claim_strength']}")
-    if fs.get("opinion"):
-        parts.append(f"[opinion] {fs['opinion']}")
-    return "\n".join(parts)[:limit]
+    """운영 모듈과 같은 근거 문자열(두 벌이 되면 그림자와 운영이 다른 것을 잰다)."""
+    from engine import grounding
+    return grounding.facts_text(fs, limit)
 
 
 _DIRECTION_SWAPS = [("증가", "감소"), ("늘", "줄"), ("높", "낮"), ("상승", "하락"), ("오르", "내리"),
@@ -309,6 +293,61 @@ def cmd_detectors(a: argparse.Namespace) -> None:
     print(json.dumps(summary, ensure_ascii=False, indent=1))
     print("저장:", _save("detectors", {"summary": summary, "real": real_rows,
                                        "synthetic": synth_rows, "audit_sheet": sheet}))
+
+
+# ── 근거 판정 재측정(운영 입력 모양 그대로: 메타·초록/요약 + Fact Sheet) ────────────
+def cmd_grounding(a: argparse.Namespace) -> None:
+    """engine/grounding 이 운영에서 보내는 **그 상태**로 실제 컷 전부를 잰다. 합성 양성은 숫자 3배만(가장 깨끗하다)."""
+    _need_jev()
+    from engine import db, grounding
+    c = db.client()
+    rng = random.Random(a.seed)
+    rows: list[dict[str, Any]] = []
+    synth: list[dict[str, Any]] = []
+    for table, draft_table, key in (("report_directives", "report_drafts", "report_id"),
+                                    ("directives", "drafts", "paper_id")):
+        ds = (c.table(table).select(f"id,{key},cuts,created_at").eq("version_type", "photo")
+              .order("created_at", desc=True).limit(a.directives).execute().data or [])
+        seen: set[str] = set()
+        for d in ds:
+            if d[key] in seen:
+                continue
+            seen.add(d[key])
+            dr = c.table(draft_table).select("fact_sheet").eq(key, d[key]).maybe_single().execute()
+            fs = ((dr.data if dr else None) or {}).get("fact_sheet") or {}
+            if not fs:
+                continue
+            if key == "report_id":
+                meta = c.table("reports").select("title,broker,company,summary").eq("id", d[key]).maybe_single().execute()
+                ctx = grounding.report_context((meta.data if meta else None) or {})
+            else:
+                meta = c.table("papers").select("title,venue,authors,abstract").eq("id", d[key]).maybe_single().execute()
+                ctx = grounding.paper_context((meta.data if meta else None) or {})
+            src = grounding.source_state(ctx, fs)
+            for cu in d.get("cuts") or []:
+                nar = str((cu or {}).get("narration_ko") or "").strip()
+                if not nar:
+                    continue
+                p = decide.unsupported_claim_p(nar, src)
+                rows.append({"factory": "report" if key == "report_id" else "paper",
+                             "directive": d["id"][:8], "source_id": d[key], "cut": cu.get("cut_no"),
+                             "narration": nar, "p": p, "state_chars": len(src)})
+                inflated = _inflate_number(nar)
+                if inflated and rng.random() < a.synth_rate:
+                    synth.append({"directive": d["id"][:8], "cut": cu.get("cut_no"), "narration": inflated,
+                                  "p": decide.unsupported_claim_p(inflated, src)})
+    ps = [r["p"] for r in rows if r["p"] is not None]
+    summary: dict[str, Any] = {"cuts": len(rows), "answered": len(ps),
+                               "state_chars_max": max((r["state_chars"] for r in rows), default=0),
+                               "truncated_states": sum(r["state_chars"] > config.JEV_GROUNDING_STATE_MAX_CHARS for r in rows)}
+    for fac in ("report", "paper"):
+        v = [r["p"] for r in rows if r["factory"] == fac and r["p"] is not None]
+        summary[fac] = {"n": len(v), **{f">={t}": sum(x >= t for x in v) for t in (0.5, 0.6, 0.7, 0.8, 0.9)}}
+    sv = [r["p"] for r in synth if r["p"] is not None]
+    summary["synthetic_inflated_number"] = {"n": len(sv), **{f">={t}": sum(x >= t for x in sv)
+                                                             for t in (0.5, 0.6, 0.7, 0.8, 0.9)}}
+    print(json.dumps(summary, ensure_ascii=False, indent=1))
+    print("저장:", _save("grounding", {"summary": summary, "rows": rows, "synthetic": synth}))
 
 
 # ── 지시 주입(prompt injection) ─────────────────────────────────────────
@@ -434,9 +473,14 @@ def main() -> None:
     i.add_argument("--size", type=int, default=1500)
     i.add_argument("--seed", type=int, default=7)
     sub.add_parser("injection-scan")
+    g = sub.add_parser("grounding")
+    g.add_argument("--directives", type=int, default=40)
+    g.add_argument("--synth-rate", type=float, default=0.3)
+    g.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
     {"thresholds": cmd_thresholds, "bundle": cmd_bundle, "detectors": cmd_detectors,
-     "injection": cmd_injection, "injection-scan": cmd_injection_scan}[a.cmd](a)
+     "injection": cmd_injection, "injection-scan": cmd_injection_scan,
+     "grounding": cmd_grounding}[a.cmd](a)
 
 
 if __name__ == "__main__":

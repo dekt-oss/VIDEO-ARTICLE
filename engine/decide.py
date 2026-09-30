@@ -181,18 +181,19 @@ def _record(usage: dict[str, Any], model: str) -> None:
 
 
 def ask(state: str, questions: dict[str, tuple[str, dict[str, str]]],
-        site: str = "", subject: str = "") -> dict[str, float] | None:
+        site: str = "", subject: str = "", max_chars: int = 0) -> dict[str, float] | None:
     """한 상태에 참/거짓 질문 여럿 → {질문 id: '예'일 확률}. 못 물었으면 **None**.
 
     모든 판정이 이 한 곳을 지난다 — 기록·차단기·비용 원장이 여기 있다.
     `site` 는 호출 자리(게이트 이름), `subject` 는 대상(컷 번호 등). 기록에만 쓴다.
+    `max_chars` 는 상태 길이 상한(기본 `JEV_STATE_MAX_CHARS`). 근거 판정처럼 원문을 싣는 자리만 늘린다.
     `criteria` 는 필수다 — 빼면 API 가 400 `api_usage_error` 를 낸다(실측).
     ★ 질문을 나눠 보내면 같은 입력을 질문 수만큼 다시 보낸다 — 입력 토큰이 곧 비용이다.
     """
     if not (enabled() and str(state or "").strip()):
         return None
     state = str(state)
-    sent = state[:config.JEV_STATE_MAX_CHARS]
+    sent = state[:max_chars or config.JEV_STATE_MAX_CHARS]
     entry: dict[str, Any] = {
         "site": site, "subject": subject or _SUBJECT.get(),
         "questions": {k: question_version(q, crit) for k, (q, crit) in questions.items()},
@@ -496,6 +497,19 @@ def unsupported_claim(narration: str, facts: str, subject: str = "") -> dict[str
                      {"unsupported_claim": UNSUPPORTED_CLAIM_Q,
                       "overstated_certainty": OVERSTATED_CERTAINTY_Q},
                      site="shadow_grounding", subject=subject)
+
+
+def unsupported_claim_p(narration: str, source: str) -> float | None:
+    """나레이션이 근거(메타·초록/요약·Fact Sheet)를 넘었을 확률 — **운영용**(리포트 라인 경고, engine/grounding.py).
+
+    질문 문구는 그림자 측정과 같은 UNSUPPORTED_CLAIM_Q 다(문턱의 근거가 그 문구에 묶여 있다).
+    """
+    if not (str(narration or "").strip() and str(source or "").strip()):
+        return None
+    got = ask(f"SOURCE: {source}\nNARRATION: {narration}",
+              {"unsupported_claim": UNSUPPORTED_CLAIM_Q},
+              site="unsupported_claim", max_chars=config.JEV_GROUNDING_STATE_MAX_CHARS)
+    return None if got is None else got["unsupported_claim"]
 
 
 def instruction_in_material(material: str, subject: str = "") -> float | None:

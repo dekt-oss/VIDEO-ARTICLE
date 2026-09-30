@@ -20,6 +20,7 @@ from typing import Any
 from . import config, report_db
 from . import equity_visual
 from . import equity_contract
+from . import grounding
 from . import report_reasoning
 from . import directive as dv
 from . import photo_contract
@@ -185,6 +186,19 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
 
 def generate(draft_row: dict[str, Any], version_type: str,
              report: dict[str, Any] | None = None) -> dict[str, Any]:
+    """리포트 대본 행 + 버전 → 정규화된 지시서 dict. 최종본에 근거 판정 경고를 붙인다.
+
+    ★ 근거 판정(engine/grounding.py, 2026-09-30 운영자 승인)은 **남는 한 벌에만** 한 번 묻는다 —
+      경고만 내고 재생성을 띄우지 않으므로, 버려질 첫 시도에 물을 이유가 없다.
+    """
+    d = _generate_with_retry(draft_row, version_type, report)
+    grounding.attach_report_warning(d, draft_row, report)
+    warning_triage.attach(d["header"])
+    return d
+
+
+def _generate_with_retry(draft_row: dict[str, Any], version_type: str,
+                         report: dict[str, Any] | None = None) -> dict[str, Any]:
     """리포트 대본 행 + 버전 → 정규화된 지시서 dict(논문 normalize 재사용).
 
     ★ 2026-08-28: 설명판형(explainer)을 폐기하면서 **게이트 되먹임 재생성도 함께 사라졌다.**

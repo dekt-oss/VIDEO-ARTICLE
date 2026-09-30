@@ -109,6 +109,8 @@ export const WARNING_LABEL: Record<string, string> = {
   too_many_spoken_numbers: "소리 내 읽는 숫자가 너무 많음(대본 단계)",
   eq_v2_attribution_lost: "증권사 귀속이 시퀀스에서 사라짐",
   eq_v3_forecast_as_actual: "전망을 실적처럼 그림",
+  report_claim_unsupported:
+    "나레이션이 리포트 원문보다 세게 말함(가능성 → 단정, 일부 → 전체 등) — 판정 모델 경고, 원문과 대조해 보세요",
   equity_steps_off_screen: "논증 단계 일부가 화면에 안 나감",
   equity_steps_out_of_order: "논증 단계가 화면에서 순서가 뒤바뀜",
   vseq_cut_claim_mismatch: "단계에 든 컷인데 근거가 단계와 겹치지 않음",

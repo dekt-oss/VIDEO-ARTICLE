@@ -206,3 +206,75 @@ def test_source_text_goes_only_into_the_material_frame(monkeypatch):
     assert "<<<" in body["state"] and ">>>" in body["state"]
     q = body["questions"]["shadow_injection"]
     assert hostile not in q["instructions"] and hostile not in str(q["criteria"])
+
+
+# ── ⑦ 근거 판정 — 리포트 라인 경고(2026-09-30 운영자 승인 "1~3 진행해") ─────────────
+from engine import grounding, report_directive, warning_triage  # noqa: E402
+
+_REPORT = {"title": "리레이팅의 조건", "broker": "SK증권", "company": "조선", "summary": "요약 문장"}
+_FS = {"what": ["국내 조선사는 수주 파이프라인을 보유하고 있다."], "numbers": ["합산 영업이익 13.7조원"]}
+
+
+def _report_directive():
+    return {"version_type": "photo", "header": {"mode_warnings": []},
+            "cuts": [{"cut_no": 1, "narration_ko": "조선주가 반토막 났습니다."},
+                     {"cut_no": 2, "narration_ko": "한국 도크가 해외 설비를 대체하고 있습니다."},
+                     {"cut_no": 3, "narration_ko": ""}]}
+
+
+def test_an_overstated_report_cut_gets_a_fact_warning(monkeypatch):
+    sent = []
+    _on(monkeypatch, _fake_post(lambda k, s: 0.77 if "대체하고" in s else 0.1, sent))
+    d = _report_directive()
+    grounding.attach_report_warning(d, {"fact_sheet": _FS}, _REPORT)
+    assert "report_claim_unsupported:2" in d["header"]["mode_warnings"]
+    assert d["header"]["grounding_check"]["flagged"] == [{"cut_no": 2, "p": 0.77}]
+    assert len(sent) == 2, "빈 나레이션은 묻지 않는다"
+    assert {c["site"] for c in d["header"]["jev_trace"]["calls"]} == {"unsupported_claim"}
+    warning_triage.attach(d["header"])
+    assert "report_claim_unsupported" in warning_triage.FACT_SOFT, "사람이 원문과 대조하는 노랑"
+
+
+def test_the_state_carries_meta_summary_and_the_whole_fact_sheet(monkeypatch):
+    sent = []
+    _on(monkeypatch, _fake_post(calls=sent))
+    big = {"what": ["가" * 5000], "numbers": ["끝에 있는 수치 13.7조원"]}
+    grounding.attach_report_warning(_report_directive(), {"fact_sheet": big}, _REPORT)
+    st = sent[0]["state"]
+    assert "broker: SK증권" in st and "SUMMARY: 요약 문장" in st
+    assert "끝에 있는 수치" in st, "4,000자 상한이면 Fact Sheet 끝이 잘렸다 — 근거 판정은 상한을 따로 둔다"
+    assert config.JEV_GROUNDING_STATE_MAX_CHARS > config.JEV_STATE_MAX_CHARS
+
+
+def test_a_dead_judge_adds_no_grounding_warning(monkeypatch):
+    _on(monkeypatch, lambda _b: None)
+    d = _report_directive()
+    grounding.attach_report_warning(d, {"fact_sheet": _FS}, _REPORT)
+    assert not any(w.startswith("report_claim_unsupported") for w in d["header"]["mode_warnings"])
+    assert d["header"]["grounding_check"]["flagged"] == []
+
+
+def test_grounding_is_silent_when_the_judge_is_off():
+    d = _report_directive()
+    grounding.attach_report_warning(d, {"fact_sheet": _FS}, _REPORT)
+    assert "grounding_check" not in d["header"] and "jev_trace" not in d["header"]
+
+
+def test_report_generate_asks_once_on_the_kept_directive(monkeypatch):
+    seen = []
+    monkeypatch.setattr(report_directive, "_generate_with_retry", lambda *a, **k: _report_directive())
+    monkeypatch.setattr(grounding, "attach_report_warning", lambda d, *a: seen.append(d))
+    out = report_directive.generate({"fact_sheet": _FS}, "photo", _REPORT)
+    assert seen == [out], "재생성 전후 두 벌이 아니라 남는 한 벌에만"
+    assert "warning_summary" in out["header"] or out["header"].get("mode_warnings") == []
+
+
+def test_grounding_is_wired_only_into_the_report_line():
+    assert "grounding.attach_report_warning" in (ROOT / "engine/report_directive.py").read_text(encoding="utf-8")
+    for mod in ("engine/directive.py", "engine/photo_contract.py", "engine/draft.py"):
+        assert "grounding." not in (ROOT / mod).read_text(encoding="utf-8"), f"{mod}: 논문 라인은 측정 뒤에 정한다"
+
+
+def test_the_label_exists_for_the_dashboard():
+    src = (ROOT / "web/lib/blockLabels.ts").read_text(encoding="utf-8")
+    assert "report_claim_unsupported" in src
