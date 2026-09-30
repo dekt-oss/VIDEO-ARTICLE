@@ -250,7 +250,7 @@ def test_the_retry_is_triggered_by_shortfall_alone():
     "재생성 1회"가 사실상 존재하지 않았다.
     """
     import inspect
-    src = inspect.getsource(dv.generate)
+    src = inspect.getsource(dv._generate_with_retry)  # 재생성 로직 본체(generate 는 근거 판정을 붙이는 겉껍질)
     assert "first_short" in src
     # ★ 2026-09-09: 품질 경고도 재생성을 띄우게 되면서 조건에 항이 하나 늘었다.
     #   이 검사의 뜻은 그대로다 — **차단 사유만으로 판단하지 않는다.**
@@ -269,7 +269,7 @@ def test_tc1_stays_a_demotion_not_a_block():
     여기를 차단으로 만들면 "모든 것을 막는 게이트"가 하나 더 생긴다.
     """
     import inspect
-    src = inspect.getsource(dv.generate)
+    src = inspect.getsource(dv._generate_with_retry)  # 재생성 로직 본체(generate 는 근거 판정을 붙이는 겉껍질)
     assert "강등된다" in src
     # shortfall 이 approval_blocked 를 켜지 않는다
     assert "approval_blocked" not in src.split("retry_short")[-1][:400]

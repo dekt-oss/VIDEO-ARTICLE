@@ -2738,7 +2738,14 @@ JEV_COMPONENT_RECOGNIZABLE_BELOW: float = _get_float("JEV_COMPONENT_RECOGNIZABLE
 #   경고(되묻기). 실측 2026-09-27(staging_shadow_v2, 596컷): 0.1 은 계약 뒤 지시서에서 편당 약 2.7컷
 #   — 0.2 로 올리면 4.0컷이 되며 그 사이는 은유 연출(점수 → 못판)처럼 판단이 갈리는 컷이 늘었다.
 #   업로드 편의 약한 두 컷은 0.04·0.03 이다.
-JEV_SCENE_ANSWERS_BELOW: float = _get_float("JEV_SCENE_ANSWERS_BELOW", 0.1)
+# ★ 재보정 2026-09-30(운영자 "기준값 정확하게"): 실사 컷 72개를 확률 구간별로 층화 추출해 3회씩 다시 묻고,
+#   컷마다 "장면이 나레이션이 말하는 그것을 보여주나"를 사람 판정(Claude 대조, 운영자 판정 아님)으로 붙였다.
+#     0.05 미만: 11건 전부 맞음(정밀도 1.00) · 0.1 미만: 25건 중 16건(0.64) — 0.05~0.1 구간은 14건 중 9건이 오탐
+#     (위성 컷에 "위성이 1Tbps 검증", 엔진 공장에 "엔진 4GW 증설" 같은 멀쩡한 장면).
+#   반복 흔들림은 최대 ±0.04(대부분 ±0.005) — 09-30 오전의 8→5 흔들림은 문턱이 표본이 가장 촘촘한 0.1 에 있어서였다.
+#   이 경고는 재생성(돈)을 띄우므로 정밀도를 택했다. 재현율은 0.34 로 낮다 — 약한 장면 상당수는 질문이 못 가른다.
+#   근거 파일: docs/jev_감사_2026-09-30.md §5 · 재현 scripts/jev_monitor_shadow.py(표본은 staging_shadow_v2).
+JEV_SCENE_ANSWERS_BELOW: float = _get_float("JEV_SCENE_ANSWERS_BELOW", 0.05)
 JEV_SCENE_SHOWABLE_MIN: float = _get_float("JEV_SCENE_SHOWABLE_MIN", 0.5)
 # 수치를 사물 개수·높이로 옮겼을 확률이 이 이상이면 경고(되묻기). 실측 2026-09-27
 #   (number_objects_shadow, 숫자 나오는 126컷): 0.7 이상 21컷은 전부 개수·높이 표현이었고,
@@ -2763,6 +2770,12 @@ JEV_WORLD_MULTI_PLACE_MIN: float = _get_float("JEV_WORLD_MULTI_PLACE_MIN", 0.7)
 #   ★ 판정은 Claude 의 원문 대조다(운영자 판정 아님). 걸린 것만 봤으니 재현율은 상대값이다.
 JEV_UNSUPPORTED_CLAIM_MIN: float = _get_float("JEV_UNSUPPORTED_CLAIM_MIN", 0.6)
 JEV_GROUNDING_REPORT_ENABLED: bool = _get_bool("JEV_GROUNDING_REPORT_ENABLED", True)
+JEV_GROUNDING_PAPER_ENABLED: bool = _get_bool("JEV_GROUNDING_PAPER_ENABLED", True)   # 2026-09-30 운영자 "논문에도"
+# Fact Sheet 요약 객관화(engine/factsheet_check.py, 2026-09-30 운영자 "최대한 객관화해서 수집").
+#   요약(what_found) 줄이 초록 + 검증된 claim 인용문보다 셀 확률이 이 이상이면 요약에서 뺀다(기록은 남김).
+#   문턱은 저장 Fact Sheet 실측으로 정했다 — docs/jev_감사_2026-09-30.md §4-2.
+FACTSHEET_OBJECTIFY_ENABLED: bool = _get_bool("FACTSHEET_OBJECTIFY_ENABLED", True)
+FACTSHEET_SUMMARY_DROP_MIN: float = _get_float("FACTSHEET_SUMMARY_DROP_MIN", 0.8)
 #: 근거 판정만 상태 상한을 늘린다 — 4,000자로는 메타·초록을 넣으면 Fact Sheet 가 잘렸다(20건 재측정의 교란).
 JEV_GROUNDING_STATE_MAX_CHARS: int = _get_int("JEV_GROUNDING_STATE_MAX_CHARS", 7000)
 JEV_GROUNDING_ABSTRACT_CHARS: int = _get_int("JEV_GROUNDING_ABSTRACT_CHARS", 1500)

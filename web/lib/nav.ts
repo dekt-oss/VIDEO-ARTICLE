@@ -14,7 +14,8 @@ export interface NavGroup {
 // ★ 상단 메뉴(2026-09-30 운영자 결정 1-1): **매일 쓰는 4개는 직접 탭**, 가끔 쓰는 보관함·데이터만 드롭다운.
 //   종전(NAV-01 3축)은 선별·④·⑤·⑥ 이 전부 "오늘의 작업 ▾" 안에 있어 옮길 때마다 두 번 눌러야 했다.
 //   · 작업함 = ④⑤ 를 합친 한 목록(결정 2-1). 주소는 /review 그대로 — /directive 는 작업함으로 넘긴다.
-//   · 성과는 공장과 무관한 한 화면이라(리포트 영상도 같은 표에 나온다) 두 공장 모두 같은 /analytics 로 간다.
+//   · 성과는 공장과 무관한 한 화면이다(리포트 영상도 같은 표에 나온다). 리포트 공장은 /finance/analytics 로 같은
+//     화면을 연다 — 주소가 /finance 여야 위쪽 공장 표시가 리포트로 남는다.
 //   TopBar 는 항목 1개 그룹을 직접 탭으로, 2개 이상을 드롭다운으로 그린다 — 그 규칙을 그대로 쓴다.
 //   기존 라우트는 하나도 없애지 않는다.
 
@@ -47,7 +48,7 @@ export const GROUPS_FINANCE: NavGroup[] = [
   { title: "선별", items: [{ href: "/finance", label: "선별", match: "exact" }] },
   { title: "작업함", items: [{ href: "/finance/review", label: "작업함", match: "prefix" }] },
   { title: "렌더·업로드", items: [{ href: "/finance/render", label: "렌더·업로드", match: "exact" }] },
-  { title: "성과", items: [{ href: "/analytics", label: "성과", match: "prefix" }] },
+  { title: "성과", items: [{ href: "/finance/analytics", label: "성과", match: "prefix" }] },
   { title: "보관함", items: [{ href: "/finance/archive", label: "아카이브", match: "prefix" }] },
   {
     title: "데이터",
