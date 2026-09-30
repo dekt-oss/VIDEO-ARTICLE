@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPicked } from "@/lib/queries";
-import { dayLabelWithDate, seoulDateOf } from "@/lib/date";
+import { dayLabelWithDate, seoulDateOf, seoulDateTimeLabel } from "@/lib/date";
 import type { PickedPaper } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +56,12 @@ export default async function ReviewListPage() {
             {g.items.map((p) => (
               <div className="list-row" key={p.paper_id}>
                 <a href={`/review/${p.paper_id}`}>{p.title_ko || p.title}</a>
+                <span className="list-row-meta">
+                {p.has_draft && p.draft_created_at && (
+                  <span className="muted" title="초안을 처음 생성한 시각 (한국 시간)">
+                    초안 {seoulDateTimeLabel(p.draft_created_at)}
+                  </span>
+                )}
                 <span
                   className={`status-pill ${
                     p.has_draft
@@ -66,6 +72,7 @@ export default async function ReviewListPage() {
                   }`}
                 >
                   {p.has_draft ? "초안 있음" : STATUS_LABEL[p.request_status ?? ""] ?? "초안 없음"}
+                </span>
                 </span>
               </div>
             ))}

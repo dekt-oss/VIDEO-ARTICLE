@@ -163,6 +163,7 @@ export interface PickedReport {
   company: string | null;
   theme: string | null;
   has_draft: boolean;
+  draft_created_at?: string | null; // 초안 처음 생성 시각 — 목록에 "초안 오늘 20:54" 로 보인다
   blocked: boolean | null; // 컴플라이언스 차단 여부(초안 있을 때)
   request_status: string | null; // queued | processing | done | error | null
   decided_at: string | null;

@@ -152,8 +152,8 @@ export async function getPickedReports(supabase: SupabaseClient): Promise<Picked
     selectIn<Record<string, any> & { id: string }>(
       ids, (c) => supabase.from("reports").select("id, external_id, title, company, theme").in("id", c),
       "reports.id"),
-    selectIn<{ report_id: string; compliance: { blocked?: boolean } | null }>(
-      ids, (c) => supabase.from("report_drafts").select("report_id, compliance").in("report_id", c),
+    selectIn<{ report_id: string; compliance: { blocked?: boolean } | null; created_at: string | null }>(
+      ids, (c) => supabase.from("report_drafts").select("report_id, compliance, created_at").in("report_id", c),
       "report_drafts.report_id"),
     selectIn<{ report_id: string; status: string; requested_at: string }>(
       ids,
@@ -187,6 +187,7 @@ export async function getPickedReports(supabase: SupabaseClient): Promise<Picked
         company: r.company ?? null,
         theme: r.theme ?? null,
         has_draft: !!draft,
+        draft_created_at: draft?.created_at ?? null,
         blocked: draft ? !!draft.compliance?.blocked : null,
         request_status: reqMap.get(d.report_id) ?? null,
         decided_at: d.decided_at ?? null,
