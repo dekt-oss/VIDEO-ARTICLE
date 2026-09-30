@@ -5,7 +5,7 @@
 // 한 줄이 길어지지 않게 한다(사용자 요구: 옆으로 쭉 나열 불편).
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { MouseEvent } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import type { Factory } from "@/components/AppShell";
 import { groupsFor, isActive } from "@/lib/nav";
 
@@ -13,13 +13,27 @@ export default function TopBar({ factory }: { factory: Factory }) {
   const pathname = usePathname() ?? "/";
   const groups = groupsFor(factory);
 
+  // ★ 이 바의 실제 높이를 --topbar-h 로 알린다(2026-09-30 UI/UX 리뷰 #1). 작업 화면의 결정 바도
+  //   sticky top:0 이라 스크롤하면 이 바 **밑으로** 숨어 상태·경고 줄이 가려졌다. 휴대폰에서는
+  //   메뉴가 두 줄로 접혀 높이가 바뀌므로 숫자를 박지 않고 재서 넣는다.
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const set = () => document.documentElement.style.setProperty("--topbar-h", `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // 드롭다운 안의 링크를 누르면 이동하면서 열린 <details>를 닫는다(상태·라이브러리 불필요).
   const closeDropdown = (e: MouseEvent<HTMLAnchorElement>) => {
     e.currentTarget.closest("details")?.removeAttribute("open");
   };
 
   return (
-    <div className="top-bar">
+    <div className="top-bar" ref={barRef}>
       <div className="factory-switch" role="group" aria-label="공장 선택">
         <Link href="/" data-active={factory === "paper"} aria-current={factory === "paper" ? "true" : undefined}>
           🎬 논문 공장

@@ -543,9 +543,12 @@ details.render-group[open] > summary { margin-bottom: 10px; }
    결정 바는 화면 위에 붙고, 두 칸은 각자 스크롤한다 — 페이지가 길어져 버튼이 사라지던
    FLOW-01 의 문제가 돌아오지 않게. 좁은 화면(<1200px)은 탭으로 바뀐다. */
 .container--work { max-width: 1480px; }
-.work-decision { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; gap: 10px;
+.work-decision { position: sticky; top: var(--topbar-h, 0px); z-index: 30; display: flex; flex-wrap: wrap; gap: 10px;
   align-items: center; justify-content: space-between; padding: 10px 12px; margin: 8px 0 12px;
   background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+/* 휴대폰: 상단 메뉴(두 줄 ≈98px)와 결정 바(≈218px)를 둘 다 고정하면 화면의 40%가 막힌다 — 메뉴는 스크롤로
+   넘기고 결정 바만 맨 위에 붙인다(2026-09-30). 메뉴는 맨 위로 올리면 다시 보인다. */
+@media (max-width: 720px) { .top-bar { position: static; } .work-decision { top: 0; } }
 .work-decision-left { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 13px; min-width: 0; }
 .work-decision-right { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
 .work-versions { display: inline-flex; gap: 6px; }
@@ -573,10 +576,13 @@ details.render-group[open] > summary { margin-bottom: 10px; }
    한 장에 시퀀스 → 단계 → 컷 이 세로로 쌓인다. 종전 [대본 | 지시서] 가로 2분할을 대신한다.
    ★ 한글 나레이션과 시각 지시를 **같은 줄에 나란히** 두는 것이 이 화면의 핵심이다 —
      둘을 함께 읽고 함께 고치려고 합친 것이므로, 좁은 화면에서만 위아래로 떨어진다. */
-.work-one { max-width: 1100px; margin: 0 auto; }
+/* ★ 본문도 머리·결정 바와 같은 폭·왼쪽 기준선(2026-09-30 UI/UX 리뷰 #10) — 1100px 가운데 정렬이면
+   한 화면 안에서 왼쪽 끝이 두 번 어긋났다. */
+.work-one { max-width: none; }
 .seq-wrap { display: flex; flex-direction: column; gap: 18px; }
 
-.seq-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.seq-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  min-width: 0; overflow-wrap: anywhere; }
 .seq-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .seq-head h3 { margin: 0; font-size: 15px; }
 
@@ -590,6 +596,7 @@ details.render-group[open] > summary { margin-bottom: 10px; }
 .seq-stage > label { display: block; margin-bottom: 10px; }
 
 .seq-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.seq-hint { cursor: help; opacity: .7; }
 
 .seq-cut { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
 .seq-cut-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 13px; }
@@ -597,8 +604,13 @@ details.render-group[open] > summary { margin-bottom: 10px; }
 .seq-cut-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 860px) { .seq-cut-body { grid-template-columns: 1fr; } }
 .seq-cut-body label { display: block; }
-.seq-move { margin-left: auto; font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
-.seq-move select { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
+.seq-move { margin-left: auto; font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center;
+  max-width: 100%; min-width: 0; }
+.seq-move select { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px;
+  max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+/* ★ 휴대폰에서 긴 시퀀스 이름(SEQ1_CHARTER_SURGE · S1_HOOK_TANKER)·주장 id 줄(num_a·num_b…)이 줄바꿈되지 않아
+   페이지가 586px 로 그려졌다 — 브라우저가 화면을 넓혀 위쪽 고정 바가 밀려났다(2026-09-30 실측). */
+.seq-claims { overflow-wrap: anywhere; word-break: break-all; }
 
 .seq-wrap textarea { width: 100%; background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; line-height: 1.55; resize: vertical; }

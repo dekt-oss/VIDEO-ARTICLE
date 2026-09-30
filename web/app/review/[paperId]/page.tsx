@@ -22,7 +22,7 @@ import StageStepper, { type StepNo } from "@/components/StageStepper";
 import { sourceFrom, buildPublishCaption } from "@/lib/publishCaption";
 import { buildStages } from "@/lib/work/steps";
 import { renderProgress } from "@/lib/work/renderQueue";
-import { DEFAULT_VERSION_KEY, VERSION_KEYS, VERSION_META, isOfferedVersion } from "@/lib/versions";
+import { DEFAULT_VERSION_KEY, VERSION_KEYS, isOfferedVersion } from "@/lib/versions";
 import type { VersionType } from "@/lib/types";
 import type { PendingStatus } from "@/lib/queries";
 
@@ -93,29 +93,7 @@ export default async function ReviewDetailPage(props: {
   const captionKo = buildPublishCaption(src, score?.one_liner_ko ?? "", "ko");
   const captionEn = buildPublishCaption(src, score?.one_liner_en ?? "", "en");
 
-  // 상태 띠 요약 — 근거 없는 씬/컷 수를 항상 보여준다(접어 숨기지 않는다).
-  const unsupportedScenes = (draft?.self_check?.scenes ?? []).filter((s) => s.unsupported.length > 0).length;
-  const ungroundedByVersion = slots
-    .filter((s) => s.directive)
-    .map((s) => ({
-      key: s.key,
-      count: (s.directive?.cuts ?? []).filter((c) => (c.source_facts?.length ?? 0) === 0).length,
-    }));
-  const ungroundedTotal = ungroundedByVersion.reduce((n, v) => n + v.count, 0);
-  const hasAnyDirective = slots.some((s) => s.directive);
-  const stepperSummary =
-    draft || hasAnyDirective
-      ? [
-          unsupportedScenes > 0 ? `⛔ 근거 없는 씬 ${unsupportedScenes}개` : "근거 없는 씬 0",
-          ungroundedTotal > 0
-            ? `⛔ 근거 없는 컷 ${ungroundedByVersion
-                .filter((v) => v.count > 0)
-                .map((v) => `${VERSION_META.find((m) => m.key === v.key)?.label ?? v.key} ${v.count}개`)
-                .join(" · ")}`
-            : "근거 없는 컷 0",
-        ].join(" · ")
-      : null;
-
+  // ★ 스테퍼 아래 '근거 없는 씬·컷' 요약은 뺐다 — 결정 바(늘 보이는 위쪽 바)가 같은 줄을 보여 준다(2026-09-30).
   return (
     <main className="container container--work">
       <div className="header">
@@ -124,7 +102,7 @@ export default async function ReviewDetailPage(props: {
       </div>
 
       {/* 상태 띠 — 단계 이동이 아니라 "어디까지 왔나"를 보여준다. 링크는 같은 화면으로 온다. */}
-      <StageStepper steps={steps} current={step} basePath={`/review/${params.paperId}`} summary={stepperSummary} />
+      <StageStepper steps={steps} current={step} basePath={`/review/${params.paperId}`} />
 
       {/* ★ key 로 논문이 바뀌면 통째로 새로 마운트한다. 이 컴포넌트는 서버 props 를
           useState 초기값으로 잡는데, 초기값은 **첫 마운트에서만** 쓰인다 — key 가 없으면
@@ -162,6 +140,8 @@ export default async function ReviewDetailPage(props: {
                 </details>
               )}
             </details>
+            <details className="aux-panel">
+              <summary title="유튜브에 올릴 때 쓰는 제목과 설명란 문구입니다">발행 제목 · 캡션 (업로드할 때)</summary>
             {draft && (
               <PublishTitles
                 key={params.paperId}
@@ -172,6 +152,7 @@ export default async function ReviewDetailPage(props: {
               />
             )}
             <PublishCaption captionKo={captionKo} captionEn={captionEn} />
+            </details>
           </>
         }
       />

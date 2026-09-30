@@ -135,6 +135,8 @@ export default async function ReportReviewDetailPage(props: {
             )}
             {report?.report_url && <a className="btn" href={report.report_url} target="_blank" rel="noreferrer">원문 ↗</a>}
           </details>
+            <details className="aux-panel">
+              <summary title="유튜브에 올릴 때 쓰는 제목과 설명란 문구입니다">발행 제목 · 캡션 (업로드할 때)</summary>
             {draft && (
               <PublishTitles
                 key={reportId}
@@ -146,6 +148,7 @@ export default async function ReportReviewDetailPage(props: {
               />
             )}
             <PublishCaption captionKo={captionKo} captionEn={captionEn} />
+            </details>
           </>
         }
       />
