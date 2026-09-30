@@ -2,8 +2,9 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getPicked } from "@/lib/queries";
-import { dayLabelWithDate, seoulDateOf, seoulDateTimeLabel } from "@/lib/date";
-import type { PickedPaper } from "@/lib/types";
+import { dayLabelWithDate, seoulDateTimeLabel } from "@/lib/date";
+import { groupForReview, parseReviewSort } from "@/lib/reviewSort";
+import ReviewSortToggle from "@/components/ReviewSortToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -14,25 +15,11 @@ const STATUS_LABEL: Record<string, string> = {
   error: "생성 오류",
 };
 
-// 낙점 시각(KST 달력일)별로 그룹핑. 날짜 없는 건 마지막에 "날짜 미상"으로.
-function groupByDecidedDate(picked: PickedPaper[]): { date: string | null; items: PickedPaper[] }[] {
-  const groups: { date: string | null; items: PickedPaper[] }[] = [];
-  const index = new Map<string, number>();
-  for (const p of picked) {
-    const key = p.decided_at ? seoulDateOf(p.decided_at) : "__none__";
-    if (!index.has(key)) {
-      index.set(key, groups.length);
-      groups.push({ date: key === "__none__" ? null : key, items: [] });
-    }
-    groups[index.get(key)!].items.push(p);
-  }
-  return groups;
-}
-
-export default async function ReviewListPage() {
+export default async function ReviewListPage(props: { searchParams: Promise<{ sort?: string }> }) {
+  const sort = parseReviewSort((await props.searchParams).sort);
   const supabase = createClient();
   const picked = await getPicked(supabase);
-  const groups = groupByDecidedDate(picked);
+  const groups = groupForReview(picked, sort);
 
   return (
     <main className="container">
@@ -41,6 +28,7 @@ export default async function ReviewListPage() {
         <span className="muted">낙점된 논문 {picked.length}편</span>
       </div>
       <div className="flow">① 수집 → ② 채점 → ③ 최종선별 → <b>④ 초안</b></div>
+      <ReviewSortToggle base="/review" sort={sort} />
 
       {picked.length === 0 ? (
         <p className="muted" style={{ marginTop: 24 }}>
@@ -50,7 +38,9 @@ export default async function ReviewListPage() {
         groups.map((g) => (
           <div className="section" key={g.date ?? "none"}>
             <h3 className="group-header">
-              {g.date ? dayLabelWithDate(g.date) : "날짜 미상"}{" "}
+              {sort === "draft"
+                ? (g.date ? `초안 ${dayLabelWithDate(g.date)}` : "초안 없음")
+                : (g.date ? dayLabelWithDate(g.date) : "날짜 미상")}{" "}
               <span className="muted">· {g.items.length}편</span>
             </h3>
             {g.items.map((p) => (

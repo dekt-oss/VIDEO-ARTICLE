@@ -1,7 +1,9 @@
 // 리포트 검수 목록 — 낙점된 리포트, 낙점일자별 그룹. 논문 review/page.tsx 미러.
 import { createClient } from "@/lib/supabase/server";
 import { getPickedReports } from "@/lib/reportQueries";
-import { dayLabelWithDate, seoulDateOf, seoulDateTimeLabel } from "@/lib/date";
+import { dayLabelWithDate, seoulDateTimeLabel } from "@/lib/date";
+import { groupForReview, parseReviewSort } from "@/lib/reviewSort";
+import ReviewSortToggle from "@/components/ReviewSortToggle";
 import type { PickedReport } from "@/lib/reportTypes";
 
 export const dynamic = "force-dynamic";
@@ -17,17 +19,11 @@ function statusPill(p: PickedReport): { cls: string; label: string } {
   return { cls: "badge-rendered", label: "초안 완료" };
 }
 
-export default async function FinanceReviewPage() {
+export default async function FinanceReviewPage(props: { searchParams: Promise<{ sort?: string }> }) {
+  const sort = parseReviewSort((await props.searchParams).sort);
   const supabase = createClient();
   const picked = await getPickedReports(supabase);
-
-  const groups = new Map<string, PickedReport[]>();
-  for (const p of picked) {
-    const d = p.decided_at ? seoulDateOf(p.decided_at) : "날짜 미상";
-    if (!groups.has(d)) groups.set(d, []);
-    groups.get(d)!.push(p);
-  }
-  const dates = [...groups.keys()].sort((a, b) => (a < b ? 1 : -1));
+  const groups = groupForReview(picked, sort);
 
   return (
     <main className="container">
@@ -36,14 +32,20 @@ export default async function FinanceReviewPage() {
         <span className="muted">{picked.length}건</span>
       </div>
       <div className="flow">낙점 → <b>초안·컴플라이언스</b> → 승인</div>
+      <ReviewSortToggle base="/finance/review" sort={sort} />
 
       {picked.length === 0 ? (
         <p className="empty">낙점된 리포트가 없습니다. <a href="/finance">오늘의 후보</a>에서 낙점하세요.</p>
       ) : (
-        dates.map((d) => (
-          <div className="section" key={d}>
-            <div className="group-header">{d === "날짜 미상" ? d : dayLabelWithDate(d)}</div>
-            {groups.get(d)!.map((p) => {
+        groups.map((g) => (
+          <div className="section" key={g.date ?? "none"}>
+            <div className="group-header">
+              {sort === "draft"
+                ? (g.date ? `초안 ${dayLabelWithDate(g.date)}` : "초안 없음")
+                : (g.date ? dayLabelWithDate(g.date) : "날짜 미상")}
+              <span className="muted"> · {g.items.length}건</span>
+            </div>
+            {g.items.map((p) => {
               const pill = statusPill(p);
               return (
                 <a className="list-row" key={p.report_id} href={`/finance/review/${p.report_id}`}>
