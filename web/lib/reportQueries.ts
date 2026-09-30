@@ -201,7 +201,7 @@ export async function getReportDraft(
 ): Promise<ReportDraft | null> {
   const { data } = await supabase
     .from("report_drafts")
-    .select("report_id, fact_sheet, upload_title_ko, upload_title_en, script_md, scenes, self_check, compliance, story_plan, evidence, validated_script_hash, updated_at")
+    .select("report_id, fact_sheet, upload_title_ko, upload_title_en, script_md, scenes, self_check, compliance, story_plan, evidence, validated_script_hash, created_at, updated_at")
     .eq("report_id", reportId)
     .maybeSingle();
   return (data as ReportDraft | null) ?? null;

@@ -129,6 +129,8 @@ export interface ReportDraft {
   // v3 §5·§6 — 근거 게이트와 논증 설계. 워커가 채운다(엣지 초안은 null).
   story_plan: ReportStoryPlan | null;
   evidence: ReportEvidence | null;
+  /** 초안이 처음 생성된 시각. 재생성(upsert)은 이 값을 바꾸지 않는다 — 그 뒤 변화는 updated_at 이 본다. */
+  created_at?: string | null;
   /** 마지막 수정 시각(0046 트리거). 지시서 created_at 보다 뒤면 그 지시서는 옛 대본 기준이다. */
   updated_at?: string | null;
 }
