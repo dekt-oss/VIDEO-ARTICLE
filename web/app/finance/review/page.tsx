@@ -2,7 +2,7 @@
 // 편마다 "지금 단계" 하나, 칩(?stage=)으로 거르기, 정렬(?sort=). 옛 ⑤ 목록은 [지시서 검수]로 넘긴다.
 import { createClient } from "@/lib/supabase/server";
 import { getPickedReports, getReportDirectiveStatusMap, getReportRenderJobs } from "@/lib/reportQueries";
-import { getDirectiveEngineMap } from "@/lib/queries";
+import { getDirectiveMetaMap } from "@/lib/queries";
 import { parseReviewSort } from "@/lib/reviewSort";
 import { parseChip } from "@/lib/work/inbox";
 import { buildInboxRows, groupJobs } from "@/lib/work/inboxRows";
@@ -18,9 +18,9 @@ export default async function FinanceInboxPage(props: { searchParams: Promise<{ 
   const supabase = createClient();
   const picked = await getPickedReports(supabase);
   const ids = picked.map((p) => p.report_id);
-  const [statusMap, engineMap, renders] = await Promise.all([
+  const [statusMap, metaMap, renders] = await Promise.all([
     getReportDirectiveStatusMap(supabase, ids),
-    getDirectiveEngineMap(supabase, "report_directives", "report_id", ids),
+    getDirectiveMetaMap(supabase, "report_directives", "report_id", ids),
     getReportRenderJobs(supabase),
   ]);
   const rows = buildInboxRows(
@@ -35,7 +35,7 @@ export default async function FinanceInboxPage(props: { searchParams: Promise<{ 
       decidedAt: p.decided_at,
       draftCreatedAt: p.draft_created_at,
     })),
-    REPORT_VERSION_KEYS, statusMap, engineMap, groupJobs(renders, (j) => j.report_id),
+    REPORT_VERSION_KEYS, statusMap, metaMap, groupJobs(renders, (j) => j.report_id),
   );
 
   return (

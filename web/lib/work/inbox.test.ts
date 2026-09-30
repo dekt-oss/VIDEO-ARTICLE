@@ -21,6 +21,16 @@ test("지시서 쪽 단계 — 옛 엔진은 따로 보인다", () => {
   assert.equal(inboxStage({ ...d, directive: { status: "approved", outdated: false } }), "rendering");
 });
 
+test("검수 단계에서 14일 멈추면 보류 — 지시서도 같은 규칙(2026-09-30)", () => {
+  const d = { ...base, hasDraft: true, stalled: true };
+  assert.equal(inboxStage({ ...d, directive: { status: "draft", outdated: false } }), "hold");
+  assert.equal(inboxStage({ ...d, directive: { status: "draft", outdated: true } }), "hold");
+  assert.equal(inboxStage({ ...d }), "hold"); // 초안만 있고 지시서 없음
+  // 사람 손을 떠난 단계는 오래돼도 보류가 아니다
+  assert.equal(inboxStage({ ...d, directive: { status: "approved", outdated: false } }), "rendering");
+  assert.equal(inboxStage({ ...d, directive: { status: "rendered", outdated: false }, render: "upload_wait" }), "upload_wait");
+});
+
 test("렌더가 있으면 그것이 가장 뒤 단계", () => {
   const d = { ...base, hasDraft: true, directive: { status: "rendered", outdated: false } };
   assert.equal(inboxStage({ ...d, render: "upload_wait" }), "upload_wait");

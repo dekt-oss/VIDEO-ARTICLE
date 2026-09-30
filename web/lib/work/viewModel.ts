@@ -8,14 +8,14 @@
 import type { DirectiveStatusMap } from "@/lib/queries";
 import { classifyRenderJob, type QueueJob } from "@/lib/work/renderQueue";
 import type { WorkCounts } from "@/lib/work/nextAction";
-import { isOnHold } from "@/lib/work/backlog";
+import { isOnHold, isStalled } from "@/lib/work/backlog";
 
 /** 공장 무관 최소 입력. 논문·리포트 어댑터가 각자 자기 타입에서 이 모양으로 줄인다. */
 export interface WorkInput {
   /** 이번 배치 후보의 결정 상태(null = 미결정) */
   candidateDecisions: (string | null)[];
-  /** 낙점된 편: 초안 유무 · 낙점 시각(보류 판정 — lib/work/backlog.ts) */
-  picked: { paperId: string; hasDraft: boolean; decidedAt?: string | null }[];
+  /** 낙점된 편: 초안 유무 · 낙점 시각 · 마지막 산출물 시각(보류 판정 — lib/work/backlog.ts) */
+  picked: { paperId: string; hasDraft: boolean; decidedAt?: string | null; lastMadeAt?: string | null }[];
   /** 대본 승인(=published 기록)이 있는 편 id */
   approvedScriptIds: Set<string>;
   /** 편별 지시서 상태맵(getDirectiveStatusMap 결과) */
@@ -45,6 +45,9 @@ export function workCounts(input: WorkInput, now: Date = new Date()): WorkCounts
       draftMissing += 1;
       continue;
     }
+    // ★ 검수에서 14일 넘게 멈춘 편도 보류(2026-09-30 "지시서도 같은 규칙") — 작업함 inboxStage 와 같은 판정.
+    //   승인·렌더로 넘어간 편은 여기서 세지 않으므로 먼저 거른다.
+    if (!directiveHandedOff(input.directiveStatus.get(p.paperId)) && isStalled(p.lastMadeAt, now)) continue;
     if (!input.approvedScriptIds.has(p.paperId)) {
       draftPending += 1;
       continue;

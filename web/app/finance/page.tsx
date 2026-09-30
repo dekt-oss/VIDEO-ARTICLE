@@ -1,6 +1,9 @@
 // 리포트 팩토리 오늘의 후보 (SSR, 결정은 클라이언트에서 /api/report-decide 호출).
 // 논문 홈(app/page.tsx)의 report 미러 — /finance 접두로 화면 완전 분리.
 // 배치일 바(상단)·요약 통계·✓ 마커까지 논문 홈과 동일 구조.
+import { getDirectiveMetaMap } from "@/lib/queries";
+import { lastMadeAt } from "@/lib/work/inboxRows";
+import { REPORT_VERSION_KEYS } from "@/lib/versions";
 import { createClient } from "@/lib/supabase/server";
 import {
   getReportBatchDates,
@@ -58,15 +61,20 @@ export default async function FinanceHomePage(props: {
   const isReviewed = batchDate ? reviewed.has(batchDate) : false;
 
   // 여러 테이블 상태 → 작업 카운트 → 다음 작업 1개(지시서 §5-3). 논문 공장과 같은 판정을 쓴다.
-  const directiveStatus = await getReportDirectiveStatusMap(
-    supabase,
-    picked.filter((p) => p.has_draft).map((p) => p.report_id)
-  );
+  const draftedIds = picked.filter((p) => p.has_draft).map((p) => p.report_id);
+  const [directiveStatus, directiveMeta] = await Promise.all([
+    getReportDirectiveStatusMap(supabase, draftedIds),
+    // 검수 14일 멈춤 → 보류(작업함과 같은 판정) — 마지막 산출물 시각이 필요하다.
+    getDirectiveMetaMap(supabase, "report_directives", "report_id", draftedIds),
+  ]);
   // ★ 확인 완료된 날의 후보는 "미결정"으로 세지 않는다(2026-08-20 운영자 요청) — 논문 홈과 동일.
   //   탈락 버튼을 일일이 누르지 않아도, 그날 후보를 다 보고 [확인]을 눌렀으면 그 날은 끝이다.
   const counts = workCounts({
     candidateDecisions: isReviewed ? [] : candidates.map((c) => c.decision_status),
-    picked: picked.map((p) => ({ paperId: p.report_id, hasDraft: p.has_draft, decidedAt: p.decided_at })),
+    picked: picked.map((p) => ({
+      paperId: p.report_id, hasDraft: p.has_draft, decidedAt: p.decided_at,
+      lastMadeAt: lastMadeAt(p.report_id, p.draft_created_at, REPORT_VERSION_KEYS, directiveMeta),
+    })),
     approvedScriptIds: new Set(published.map((p) => p.report_id)),
     directiveStatus,
     renders,

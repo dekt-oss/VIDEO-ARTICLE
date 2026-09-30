@@ -3,7 +3,7 @@
 // 옛 ⑤ 목록(/directive)은 이 화면의 [지시서 검수]로 넘긴다.
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getPicked, getDirectiveStatusMap, getDirectiveEngineMap, getRenderJobs } from "@/lib/queries";
+import { getPicked, getDirectiveStatusMap, getDirectiveMetaMap, getRenderJobs } from "@/lib/queries";
 import { parseReviewSort } from "@/lib/reviewSort";
 import { parseChip } from "@/lib/work/inbox";
 import { buildInboxRows, groupJobs } from "@/lib/work/inboxRows";
@@ -19,9 +19,9 @@ export default async function InboxPage(props: { searchParams: Promise<{ sort?: 
   const supabase = createClient();
   const picked = await getPicked(supabase);
   const ids = picked.map((p) => p.paper_id);
-  const [statusMap, engineMap, renders] = await Promise.all([
+  const [statusMap, metaMap, renders] = await Promise.all([
     getDirectiveStatusMap(supabase, ids),
-    getDirectiveEngineMap(supabase, "directives", "paper_id", ids),
+    getDirectiveMetaMap(supabase, "directives", "paper_id", ids),
     getRenderJobs(supabase),
   ]);
   const rows = buildInboxRows(
@@ -34,7 +34,7 @@ export default async function InboxPage(props: { searchParams: Promise<{ sort?: 
       decidedAt: p.decided_at,
       draftCreatedAt: p.draft_created_at,
     })),
-    VERSION_KEYS, statusMap, engineMap, groupJobs(renders, (j) => j.paper_id),
+    VERSION_KEYS, statusMap, metaMap, groupJobs(renders, (j) => j.paper_id),
   );
 
   return (

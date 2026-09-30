@@ -8,6 +8,17 @@ export const HOLD_AFTER_DAYS = 14;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * 검수 단계에서 멈춘 편(2026-09-30 운영자: "지시서도 같은 규칙으로"). 초안은 있는데 **마지막 산출물**
+ * (가장 최근 지시서, 없으면 초안)이 만들어진 뒤 HOLD_AFTER_DAYS 동안 승인되지 않았으면 보류다.
+ * 지시서를 새로 만들면(재생성) 시각이 바뀌어 자동으로 되살아난다. 승인·렌더로 넘어간 편은 부르지 않는다.
+ */
+export function isStalled(lastMadeAt: string | null | undefined, now: Date = new Date()): boolean {
+  if (!lastMadeAt) return false;
+  const t = new Date(lastMadeAt).getTime();
+  return Number.isFinite(t) && now.getTime() - t > HOLD_AFTER_DAYS * DAY_MS;
+}
+
 export function isOnHold(
   p: { hasDraft: boolean; decidedAt: string | null | undefined },
   now: Date = new Date(),

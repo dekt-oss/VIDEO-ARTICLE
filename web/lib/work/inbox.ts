@@ -27,13 +27,23 @@ export interface InboxInput {
   /** 초안 요청 최신 상태 */
   requestStatus: string | null;
   onHold: boolean;
+  /** 초안·지시서 검수에서 14일 넘게 멈춤(backlog.isStalled) — 검수 단계면 보류로 보낸다. */
+  stalled?: boolean;
   /** 보고 있는 버전의 최신 지시서(없으면 null) */
   directive: { status: string; outdated: boolean } | null;
   /** 그 편의 최신 렌더 상태(없으면 null) */
   render: RenderState;
 }
 
+/** 사람이 검수해야 하는 단계 — 14일 넘게 멈추면 보류로 간다(결정 3-1 을 지시서까지, 2026-09-30). */
+const REVIEW_STAGES: InboxStage[] = ["draft_review", "directive_review", "directive_outdated"];
+
 export function inboxStage(i: InboxInput): InboxStage {
+  const s = stageBeforeHold(i);
+  return i.stalled && REVIEW_STAGES.includes(s) ? "hold" : s;
+}
+
+function stageBeforeHold(i: InboxInput): InboxStage {
   // 렌더가 있으면 그것이 가장 뒤 단계다.
   if (i.render === "failed") return "render_failed";
   if (i.render === "running") return "rendering";

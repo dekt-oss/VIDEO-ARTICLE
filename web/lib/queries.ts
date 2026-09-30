@@ -55,17 +55,24 @@ export async function getDirectiveStatusMap(
   return out;
 }
 
+export interface DirectiveMeta {
+  /** header.engine_version — 없으면 null(=기록 없음, 옛 엔진) */
+  engine: string | null;
+  /** 이 지시서가 만들어진 시각 — 검수에서 멈춘 기간(보류) 판정 */
+  createdAt: string | null;
+}
+
 /**
- * 편 → 버전별 최신 지시서의 엔진 버전(header.engine_version). 작업함이 "옛 엔진"을 표시하는 데 쓴다
- * (2026-09-30 결정 2-1). 두 공장이 같이 쓰도록 표·키 이름을 받는다. 없으면 null(=기록 없음, 옛 엔진).
+ * 편 → 버전별 최신 지시서의 엔진 버전·생성 시각. 작업함이 "옛 엔진"과 "검수 14일 멈춤 → 보류"를 판정하는 데
+ * 쓴다(2026-09-30 결정 2-1·3-1). 두 공장이 같이 쓰도록 표·키 이름을 받는다.
  */
-export async function getDirectiveEngineMap(
+export async function getDirectiveMetaMap(
   supabase: SupabaseClient,
   table: "directives" | "report_directives",
   idCol: "paper_id" | "report_id",
   ids: string[],
-): Promise<Map<string, Partial<Record<VersionType, string | null>>>> {
-  const out = new Map<string, Partial<Record<VersionType, string | null>>>();
+): Promise<Map<string, Partial<Record<VersionType, DirectiveMeta>>>> {
+  const out = new Map<string, Partial<Record<VersionType, DirectiveMeta>>>();
   if (ids.length === 0) return out;
   const data = await selectIn<Record<string, string | null>>(
     ids,
@@ -84,7 +91,7 @@ export async function getDirectiveEngineMap(
       out.set(id, m);
     }
     const v = d.version_type as VersionType;
-    if (!(v in m)) m[v] = d.engine ?? null; // 최신만
+    if (!(v in m)) m[v] = { engine: d.engine ?? null, createdAt: d.created_at ?? null }; // 최신만
   }
   return out;
 }

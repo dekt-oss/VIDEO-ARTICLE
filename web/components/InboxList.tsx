@@ -53,7 +53,9 @@ export default function InboxList({
         {INBOX_CHIPS.map((c) => (
           <Link key={c.key} href={hrefWith(base, c.key, sort)} scroll={false}
             className={`chip${c.key === chip ? " chip-on" : ""}`}
-            title={c.key === "hold" ? `낙점 뒤 ${HOLD_AFTER_DAYS}일이 지나도 초안이 없는 편 — 초안을 만들면 되살아납니다` : undefined}>
+            title={c.key === "hold"
+              ? `낙점 뒤 ${HOLD_AFTER_DAYS}일 동안 초안이 없거나, 초안·지시서가 ${HOLD_AFTER_DAYS}일 넘게 승인되지 않은 편 — 초안·지시서를 새로 만들면 되살아납니다`
+              : undefined}>
             {c.label} <b>{counts[c.key]}</b>
           </Link>
         ))}
