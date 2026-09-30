@@ -5,11 +5,27 @@
 // 왜 훅으로 뺐나(2026-08-20 운영자 요청): 후보를 다 훑고 나면 화면 **맨 아래**에 있는데,
 // 확인·다음날 버튼은 맨 위에만 있었다. 그래서 아래에도 같은 버튼을 놓는다(BatchDateFooter).
 // 두 곳이 각자 fetch 를 짜면 API 경로·낙관적 갱신·이동 규칙이 갈라진다 — 여기 한 곳에 둔다.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { dayLabelWithDate } from "@/lib/date";
 import { apiErrorText } from "@/lib/apiError";
+
+// ★ 위·아래 두 바가 **같은 상태**를 보게 하는 신호(2026-09-30 운영자 제보: "맨 아래 확인 버튼이 안 먹힌다").
+//   원인: 두 바가 각자 useState 로 확인 목록을 들고 있었고, 그 값은 **처음 열 때 한 번만** props 에서 읽었다.
+//   아래 버튼으로 확인하면 아래 바만 "확인 완료"가 되고, 위 바는 계속 [✓ 확인 완료] 버튼과 "미확인 1일"을
+//   보여줬다 — 저장(DB)은 됐는데 화면이 안 된 것처럼 보였다. router.refresh 로 props 가 새로 와도
+//   useState 초기값은 다시 안 읽으니 위 바는 새로고침 전까지 그대로였다.
+//   그래서 ① 저장 성공을 같은 페이지의 다른 바에 즉시 알리고 ② 서버 값(props)이 바뀌면 그걸 따른다.
+const CHANGED = "batch-review-changed";
+type ChangedDetail = { apiPath: string; dates: string[]; reviewed: boolean };
+
+/** 확인 목록에 변경을 적용한 새 집합(순수 — 테스트 대상). */
+export function applyReviewChange(prev: Set<string>, dates: string[], reviewed: boolean): Set<string> {
+  const s = new Set(prev);
+  for (const d of dates) reviewed ? s.add(d) : s.delete(d);
+  return s;
+}
 
 export interface BatchReviewArgs {
   /** 지금 보고 있는 배치일(YYYY-MM-DD) */
@@ -35,6 +51,22 @@ export function useBatchReview({
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState<Set<string>>(() => new Set(reviewedDates));
+
+  // ② 서버 값이 바뀌면(router.refresh 뒤) 그것이 정본이다. 배열은 매 렌더 새로 오므로 내용으로 비교한다.
+  const serverKey = [...reviewedDates].sort().join(",");
+  useEffect(() => {
+    setReviewed(new Set(serverKey ? serverKey.split(",") : []));
+  }, [serverKey]);
+
+  // ① 같은 페이지의 다른 바가 저장에 성공하면 곧바로 따라간다(새로고침을 기다리지 않는다).
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<ChangedDetail>).detail;
+      if (d && d.apiPath === apiPath) setReviewed((prev) => applyReviewChange(prev, d.dates, d.reviewed));
+    };
+    window.addEventListener(CHANGED, on);
+    return () => window.removeEventListener(CHANGED, on);
+  }, [apiPath]);
 
   const isReviewed = reviewed.has(batchDate);
   const idx = dates.indexOf(batchDate);
@@ -65,11 +97,10 @@ export function useBatchReview({
       toast.show(apiErrorText(e, res.status, "확인 상태를 저장"), "err");
       return false;
     }
-    setReviewed((prev) => {
-      const s = new Set(prev);
-      for (const d of batch) next ? s.add(d) : s.delete(d);
-      return s;
-    });
+    // 자기 자신도 이 신호로 갱신된다(위 리스너) — 두 바가 같은 길로 바뀐다.
+    window.dispatchEvent(new CustomEvent<ChangedDetail>(CHANGED, {
+      detail: { apiPath, dates: batch, reviewed: next },
+    }));
     return true;
   }
 
