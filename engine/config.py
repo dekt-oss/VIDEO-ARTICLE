@@ -2707,6 +2707,15 @@ JEV_ENABLED: bool = _get_bool("JEV_ENABLED", False)
 JEV_BASE: str = os.getenv("JEV_BASE", "https://api.typesafe.ai/v1/systemone")
 JEV_MODEL: str = os.getenv("JEV_MODEL", "jev-latest")
 JEV_TIMEOUT_SEC: int = _get_int("JEV_TIMEOUT_SEC", 20)
+# 차단기(2026-09-30). 지시서 한 장이 Jev 를 수십 번 순서대로 부르므로, Jev 가 죽은 날은 호출마다
+#   타임아웃(20초)을 기다려 한 장이 10분을 넘길 수 있었다. 연속 실패가 이만큼이면 쿨다운 동안
+#   묻지 않는다 — 판정 결과는 어차피 "못 물었다"(종전 동작)라 게이트 의미는 그대로다.
+JEV_CIRCUIT_BREAK_AFTER: int = _get_int("JEV_CIRCUIT_BREAK_AFTER", 3)
+JEV_CIRCUIT_COOLDOWN_SEC: int = _get_int("JEV_CIRCUIT_COOLDOWN_SEC", 300)
+# 실사이면서 숫자를 말하는 컷의 "답하나"·"숫자" 질문을 한 호출로(상태가 글자 그대로 같다).
+#   실측(2026-09-30, 80컷): 확률 차이가 같은 호출 반복의 흔들림 수준(중앙 0.01·최대 0.07~0.10).
+#   다섯 질문을 컷당 한 번에 묶는 안은 3~8배 흔들려 기각했다 — docs/jev_감사_2026-09-30.md §3.
+JEV_MERGE_SAME_STATE: bool = _get_bool("JEV_MERGE_SAME_STATE", True)
 #: 이 확률 **미만**이면 "라벨이 아니다"로 보고 차단을 푼다.
 #  ★ 0.35 의 근거(위 실측 31건): 겁따옴표들이 0.04~0.15 에 몰려 있고, 사람이 봐도
 #    라벨인 것들은 0.62~0.93 이다. 그 사이가 비어 있어 문턱을 어디 두든 같은 답이 나온다.

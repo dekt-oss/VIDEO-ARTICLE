@@ -1182,9 +1182,11 @@ def quoted_label_cuts(cuts: list[dict[str, Any]]) -> list[str]:
         # ★ 도해 구조 문장도 본다 — 그 문장이 이미지에 가므로(2026-09-18) 거기 따옴표가 있으면
         #   장면에 있는 것과 똑같이 글자로 구워진다.
         found: dict[str, list[str]] = {}
+        from . import decide              # 기록용 대상 표시만 — 판정 경로는 아래 함수가 정한다
         for field, text in _image_text_fields(c):
-            hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)
-                           if not _quote_is_only_a_scare_quote(text, m, asked)})
+            with decide.about(f"cut{c.get('cut_no')}.{field}"):
+                hits = sorted({m.group(1) for m in _QUOTED_LABEL.finditer(text)
+                               if not _quote_is_only_a_scare_quote(text, m, asked)})
             if hits:
                 found.setdefault(field, []).extend(hits)
         if found:
@@ -1467,6 +1469,39 @@ def role_claim_mismatches(cuts: list[dict[str, Any]],
     return out
 
 
+def _cut_judgements(cuts: list[dict[str, Any]], real: list[dict[str, Any]],
+                    numeric: list[dict[str, Any]]) -> dict[int, dict[str, float]]:
+    """컷별 Jev 판정(답하나·숫자·원인) → {id(컷): {질문: 확률}}. 못 물은 질문은 키가 없다.
+
+    ★ 상태 모양은 문턱을 잰 그대로다. 실사이면서 숫자를 말하는 컷만 **같은 상태의 두 질문을
+      한 호출로** 묻는다(`config.JEV_MERGE_SAME_STATE`, 실측으로 반복 흔들림 수준 확인 —
+      decide.scene_and_number 주석). 못 물으면 키가 빠지고 검사는 경고를 안 낸다(fail-open).
+    """
+    from . import decide
+    real_ids = {id(c) for c in real}
+    num_ids = {id(c) for c in numeric}
+    out: dict[int, dict[str, float]] = {}
+    prev = ""
+    for c in cuts:
+        nar = str(c.get("narration_ko") or "")
+        vis = str(c.get("visual_prompt") or "")
+        got: dict[str, float] = {}
+        with decide.about(f"cut{c.get('cut_no')}"):
+            if config.JEV_MERGE_SAME_STATE and id(c) in real_ids and id(c) in num_ids:
+                got.update(decide.scene_and_number(nar, vis) or {})
+            else:
+                if id(c) in real_ids:
+                    got.update(decide.scene_answers(nar, vis) or {})
+                if id(c) in num_ids:
+                    p = decide.number_as_objects(nar, vis)
+                    if p is not None:
+                        got["number_as_objects"] = p
+            got.update(decide.cause_shown(nar, prev, vis) or {})
+        out[id(c)] = got
+        prev = vis
+    return out
+
+
 def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
              fact_sheet: dict[str, Any] | None = None, *,
              mechanism_supply: int | None = None) -> dict[str, Any]:
@@ -1508,18 +1543,21 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     #   업로드한 편(620e66be)의 약한 두 컷 — 밸류에이션 나레이션에 설계 사무실 책상, 13.7조 원
     #   나레이션에 드라이독 — 이 답함 0.04·0.03 으로 최하점이었다. 연결 문장("바로 설명합니다")은
     #   어떤 장면으로도 답할 수 없어 `showable` 로 거른다. 경고이고 fail-open 이다.
-    if real:
-        from . import decide
-        if decide.enabled():
-            weak: list[str] = []
-            for c in real:
-                got = decide.scene_answers(str(c.get("narration_ko") or ""),
-                                           str(c.get("visual_prompt") or ""))
-                if (got and got["answers"] < config.JEV_SCENE_ANSWERS_BELOW
-                        and got["showable"] >= config.JEV_SCENE_SHOWABLE_MIN):
-                    weak.append(str(c.get("cut_no")))
-            if weak:
-                warns.append("photo_scene_not_answering:" + ",".join(weak[:6]))
+    # ★ 아래 세 검사(답하나·숫자·원인)는 같은 나레이션·장면을 본다. 판정은 `_cut_judgements`
+    #   한 곳에서 모은다 — 따로 보내든(기본) 컷당 한 번에 묶든(JEV_CUT_BUNDLE) 검사 쪽 문턱·
+    #   경고 모양은 같다. 2026-09-30 Jev 감사(docs/jev_감사_2026-09-30.md §3).
+    numeric = [c for c in cuts if re.search(r"\d", str(c.get("narration_ko") or ""))]
+    from . import decide
+    jv = _cut_judgements(cuts, real, numeric) if decide.enabled() else {}
+    if real and jv:
+        weak: list[str] = []
+        for c in real:
+            got = jv.get(id(c)) or {}
+            if ("answers" in got and got["answers"] < config.JEV_SCENE_ANSWERS_BELOW
+                    and got["showable"] >= config.JEV_SCENE_SHOWABLE_MIN):
+                weak.append(str(c.get("cut_no")))
+        if weak:
+            warns.append("photo_scene_not_answering:" + ",".join(weak[:6]))
 
     # ★ [수치를 사물 개수·높이로 옮겼다] 2026-09-27. 운영자 판정(09-24): "4GW" 를 엔진 네 대로,
     #   13.7조 원을 블록 막대로 그리면 억지 비교다 — 수치는 카드가 쓴다. 어휘로는 못 잡아서
@@ -1527,36 +1565,27 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
     #   실측(scripts/number_objects_shadow.py, 숫자 나오는 126컷): 0.7 이상 21컷은 카드 더미 높이·
     #   큐브 더미·표식 1,260개 같은 진짜였고, 계약이 권하는 저울 연출(0.56)은 그 아래였다.
     #   역할 무관 — 실사에서도(카드 더미) 도해에서도(DNA 표식 1,260개) 일어난다. 경고, fail-open.
-    numeric = [c for c in cuts if re.search(r"\d", str(c.get("narration_ko") or ""))]
-    if numeric:
-        from . import decide
-        if decide.enabled():
-            counted = [str(c.get("cut_no")) for c in numeric
-                       if (p := decide.number_as_objects(str(c.get("narration_ko") or ""),
-                                                         str(c.get("visual_prompt") or ""))) is not None
-                       and p >= config.JEV_NUMBER_AS_OBJECTS_MIN]
-            if counted:
-                warns.append("photo_number_as_objects:" + ",".join(counted[:6]))
+    if numeric and jv:
+        counted = [str(c.get("cut_no")) for c in numeric
+                   if (jv.get(id(c)) or {}).get("number_as_objects", -1.0)
+                   >= config.JEV_NUMBER_AS_OBJECTS_MIN]
+        if counted:
+            warns.append("photo_number_as_objects:" + ",".join(counted[:6]))
 
     # ★ [원인이 화면에 없다] 2026-09-27, 화면 구성 계약 ⑨. 운영자 판정(09-24): "자리가 없어서
     #   바다에 짓는다"는데 바다 위 플랫폼만 있었다. 계약이 원인을 **앞 stage** 로 나누라고 하므로
     #   앞 컷 장면까지 같이 보여 준다. 실측(scripts/cause_shown_shadow.py, 605컷 중 원인을 말하는
     #   129컷): 0.1 미만 12컷 — 1위가 바로 그 부유식 데이터센터 컷이었고(같은 리포트 지시서 5장 전부),
     #   '전력 부족을 해결하는 엔진'에 엔진 단면만 있는 컷이 뒤를 이었다. 경고, fail-open.
-    if cuts:
-        from . import decide
-        if decide.enabled():
-            missing: list[str] = []
-            prev = ""
-            for c in cuts:
-                vis = str(c.get("visual_prompt") or "")
-                got = decide.cause_shown(str(c.get("narration_ko") or ""), prev, vis)
-                if (got and got["states_cause"] >= config.JEV_CAUSE_STATED_MIN
-                        and got["cause_shown"] < config.JEV_CAUSE_SHOWN_BELOW):
-                    missing.append(str(c.get("cut_no")))
-                prev = vis
-            if missing:
-                warns.append("photo_cause_not_shown:" + ",".join(missing[:6]))
+    if cuts and jv:
+        missing: list[str] = []
+        for c in cuts:
+            got = jv.get(id(c)) or {}
+            if ("states_cause" in got and got["states_cause"] >= config.JEV_CAUSE_STATED_MIN
+                    and got["cause_shown"] < config.JEV_CAUSE_SHOWN_BELOW):
+                missing.append(str(c.get("cut_no")))
+        if missing:
+            warns.append("photo_cause_not_shown:" + ",".join(missing[:6]))
 
     # ③ 도해가 아예 없으면 이 버전을 고른 의미가 없다.
     if n and not mech:
@@ -1667,7 +1696,9 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
         _comp = tuple(str(x) for x in (spec.get("components") or []))
         if _comp and _comp not in _asked_components:
             from . import decide
-            _asked_components[_comp] = decide.components_recognizable(list(_comp)) if decide.enabled() else None
+            with decide.about(f"cut{c['cut_no']}"):
+                _asked_components[_comp] = (decide.components_recognizable(list(_comp))
+                                            if decide.enabled() else None)
         _p = _asked_components.get(_comp)
         if _p is not None and _p < config.JEV_COMPONENT_RECOGNIZABLE_BELOW:
             warns.append(f"photo_component_unrecognizable:{c['cut_no']}")
@@ -1862,7 +1893,8 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
         split_worlds = []
         for s in sequences or []:
             w = visual_sequence.world_prose((s or {}).get("world") or {})
-            p = decide.world_multi_place(w) if w else None
+            with decide.about(f"seq {(s or {}).get('sequence_id') or '?'}"):
+                p = decide.world_multi_place(w) if w else None
             if p is not None and p >= config.JEV_WORLD_MULTI_PLACE_MIN:
                 split_worlds.append(str((s or {}).get("sequence_id") or "?"))
         if split_worlds:
