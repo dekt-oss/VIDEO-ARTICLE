@@ -12,8 +12,11 @@ import {
   getPicked,
   getRenderJobs,
   getDirectiveStatusMap,
+  getDirectiveMetaMap,
   getPublished,
 } from "@/lib/queries";
+import { lastMadeAt } from "@/lib/work/inboxRows";
+import { VERSION_KEYS } from "@/lib/versions";
 import { dayLabelWithDate } from "@/lib/date";
 import { workCounts } from "@/lib/work/viewModel";
 import { nextStep, summarize, HOME_SKIP, PAPER_HREFS } from "@/lib/work/nextAction";
@@ -63,10 +66,12 @@ export default async function HomePage(props: {
   const isReviewed = batchDate ? reviewed.has(batchDate) : false;
 
   // 지시서 승인 여부 — 초안이 있는 낙점 편만 조회(다음 작업 판정에 필요).
-  const directiveStatus = await getDirectiveStatusMap(
-    supabase,
-    picked.filter((p) => p.has_draft).map((p) => p.paper_id)
-  );
+  const draftedIds = picked.filter((p) => p.has_draft).map((p) => p.paper_id);
+  const [directiveStatus, directiveMeta] = await Promise.all([
+    getDirectiveStatusMap(supabase, draftedIds),
+    // 검수 14일 멈춤 → 보류(작업함과 같은 판정) — 마지막 산출물 시각이 필요하다.
+    getDirectiveMetaMap(supabase, "directives", "paper_id", draftedIds),
+  ]);
 
   // 여러 테이블 상태 → 작업 카운트 → 다음 작업 1개(지시서 §5-3 우선순위).
   // ★ 확인 완료된 날의 후보는 "미결정"으로 세지 않는다(2026-08-20 운영자 요청).
@@ -75,7 +80,10 @@ export default async function HomePage(props: {
   //   후보 카드 자체는 그대로 보인다 — 카운트에서만 빠진다(decisions 행은 건드리지 않는다).
   const counts = workCounts({
     candidateDecisions: isReviewed ? [] : candidates.map((c) => c.decision_status),
-    picked: picked.map((p) => ({ paperId: p.paper_id, hasDraft: p.has_draft })),
+    picked: picked.map((p) => ({
+      paperId: p.paper_id, hasDraft: p.has_draft, decidedAt: p.decided_at,
+      lastMadeAt: lastMadeAt(p.paper_id, p.draft_created_at, VERSION_KEYS, directiveMeta),
+    })),
     approvedScriptIds: new Set(published.map((p) => p.paper_id)),
     directiveStatus,
     renders,

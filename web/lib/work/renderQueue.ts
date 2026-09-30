@@ -13,12 +13,17 @@
 // (engine/config.py ↔ lib/renderStatus.ts 쌍둥이를 지키는 것과 같은 방식이다).
 const AWAITING_HUMAN = ["qa_pending", "degraded"];
 
-export type RenderTab = "action" | "running" | "done" | "saved";
+export type RenderTab = "action" | "running" | "done" | "stale" | "saved";
+
+/** ★ 밀린 일 정리 규칙(2026-09-30 운영자 결정 3-1): 조치가 필요한 채로 이만큼 지난 잡은 "보관 제안"으로 뺀다.
+ *  7월에 끝난 영상이 '조치 필요 26'에 계속 섞여 숫자가 줄지 않았다. 지우지 않는다 — 탭만 옮긴다. */
+export const STALE_ACTION_DAYS = 30;
 
 export const RENDER_TABS: { key: RenderTab; label: string }[] = [
   { key: "action", label: "조치 필요" },
   { key: "running", label: "진행 중" },
   { key: "done", label: "완료" },
+  { key: "stale", label: `보관 제안(${STALE_ACTION_DAYS}일+)` },
   { key: "saved", label: "보관" },
 ];
 
@@ -29,6 +34,19 @@ export interface QueueJob {
   saved_at?: string | null;
   qa?: { hard_fail?: string[] } | null;
   youtube_status?: "queued" | "processing" | "done" | "error" | null;
+  /** 나이 판정용(보관 제안). 없으면 나이를 모르는 것으로 보고 옮기지 않는다. */
+  created_at?: string | null;
+  finished_at?: string | null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** 조치 필요 잡이 보관 제안으로 갈 만큼 오래됐나. 시각을 모르면 false. */
+function isStale(j: QueueJob, now: Date): boolean {
+  const ts = j.finished_at ?? j.created_at;
+  if (!ts) return false;
+  const t = new Date(ts).getTime();
+  return Number.isFinite(t) && now.getTime() - t > STALE_ACTION_DAYS * DAY_MS;
 }
 
 /**
@@ -38,7 +56,12 @@ export interface QueueJob {
  *   done    : 유튜브 업로드까지 끝난 것
  *   saved   : 보관 표시한 것
  */
-export function classifyRenderJob(j: QueueJob): RenderTab {
+export function classifyRenderJob(j: QueueJob, now: Date = new Date()): RenderTab {
+  const tab = classifyByStatus(j);
+  return tab === "action" && isStale(j, now) ? "stale" : tab;
+}
+
+function classifyByStatus(j: QueueJob): RenderTab {
   if (j.saved_at) return "saved";
   if (j.status === "failed") return "action";
   // ★ 사람이 봐야 끝나는 상태(§8-3)는 '조치 필요'다. 아래 `status !== "done"` 한 줄이
@@ -114,7 +137,7 @@ export function primaryAction(j: QueueJob): PrimaryAction {
 
 /** 탭별 건수(빈 탭을 숨기지 않고 0 으로 보여주기 위해 전부 계산). */
 export function countByTab(jobs: QueueJob[]): Record<RenderTab, number> {
-  const out: Record<RenderTab, number> = { action: 0, running: 0, done: 0, saved: 0 };
+  const out: Record<RenderTab, number> = { action: 0, running: 0, done: 0, stale: 0, saved: 0 };
   for (const j of jobs) out[classifyRenderJob(j)] += 1;
   return out;
 }

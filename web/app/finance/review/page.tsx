@@ -1,68 +1,54 @@
-// 리포트 검수 목록 — 낙점된 리포트, 낙점일자별 그룹. 논문 review/page.tsx 미러.
+// 작업함(리포트) — 논문 작업함(app/review/page.tsx)의 미러(2026-09-30 운영자 결정 2-1).
+// 편마다 "지금 단계" 하나, 칩(?stage=)으로 거르기, 정렬(?sort=). 옛 ⑤ 목록은 [지시서 검수]로 넘긴다.
 import { createClient } from "@/lib/supabase/server";
-import { getPickedReports } from "@/lib/reportQueries";
-import { dayLabelWithDate, seoulDateTimeLabel } from "@/lib/date";
-import { groupForReview, parseReviewSort } from "@/lib/reviewSort";
-import ReviewSortToggle from "@/components/ReviewSortToggle";
-import type { PickedReport } from "@/lib/reportTypes";
+import { getPickedReports, getReportDirectiveStatusMap, getReportRenderJobs } from "@/lib/reportQueries";
+import { getDirectiveMetaMap } from "@/lib/queries";
+import { parseReviewSort } from "@/lib/reviewSort";
+import { parseChip } from "@/lib/work/inbox";
+import { buildInboxRows, groupJobs } from "@/lib/work/inboxRows";
+import { REPORT_VERSION_KEYS } from "@/lib/versions";
+import InboxList from "@/components/InboxList";
 
 export const dynamic = "force-dynamic";
 
-function statusPill(p: PickedReport): { cls: string; label: string } {
-  if (!p.has_draft) {
-    if (p.request_status === "error") return { cls: "badge-trash", label: "생성 오류" };
-    if (p.request_status === "processing") return { cls: "badge-draft", label: "생성 중" };
-    if (p.request_status === "queued") return { cls: "badge-draft", label: "생성 대기" };
-    return { cls: "badge-draft", label: "초안 없음" };
-  }
-  if (p.blocked) return { cls: "badge-trash", label: "🚫 컴플라이언스 차단" };
-  return { cls: "badge-rendered", label: "초안 완료" };
-}
-
-export default async function FinanceReviewPage(props: { searchParams: Promise<{ sort?: string }> }) {
-  const sort = parseReviewSort((await props.searchParams).sort);
+export default async function FinanceInboxPage(props: { searchParams: Promise<{ sort?: string; stage?: string }> }) {
+  const sp = await props.searchParams;
+  const sort = parseReviewSort(sp.sort);
+  const chip = parseChip(sp.stage);
   const supabase = createClient();
   const picked = await getPickedReports(supabase);
-  const groups = groupForReview(picked, sort);
+  const ids = picked.map((p) => p.report_id);
+  const [statusMap, metaMap, renders] = await Promise.all([
+    getReportDirectiveStatusMap(supabase, ids),
+    getDirectiveMetaMap(supabase, "report_directives", "report_id", ids),
+    getReportRenderJobs(supabase),
+  ]);
+  const rows = buildInboxRows(
+    picked.map((p) => ({
+      id: p.report_id,
+      title: p.title_ko || p.title,
+      // 컴플라이언스 차단은 단계가 아니라 사실이라 제목 옆에 적는다(종전 목록과 같은 정보).
+      sub: [p.company, p.theme].filter(Boolean).join(" · ") + (p.blocked ? " · 🚫 컴플라이언스 차단" : ""),
+      href: `/finance/review/${p.report_id}`,
+      hasDraft: p.has_draft,
+      requestStatus: p.request_status,
+      decidedAt: p.decided_at,
+      draftCreatedAt: p.draft_created_at,
+    })),
+    REPORT_VERSION_KEYS, statusMap, metaMap, groupJobs(renders, (j) => j.report_id),
+  );
 
   return (
     <main className="container">
       <div className="header">
-        <h1>④ 리포트 초안 검수</h1>
-        <span className="muted">{picked.length}건</span>
+        <h1>작업함</h1>
+        <span className="muted">낙점된 리포트 {picked.length}건</span>
       </div>
-      <div className="flow">낙점 → <b>초안·컴플라이언스</b> → 승인</div>
-      <ReviewSortToggle base="/finance/review" sort={sort} />
-
+      <div className="flow">낙점 → <b>초안 · 지시서 · 렌더</b> → 업로드</div>
       {picked.length === 0 ? (
-        <p className="empty">낙점된 리포트가 없습니다. <a href="/finance">오늘의 후보</a>에서 낙점하세요.</p>
+        <p className="empty">낙점된 리포트가 없습니다. <a href="/finance">선별</a>에서 낙점하세요.</p>
       ) : (
-        groups.map((g) => (
-          <div className="section" key={g.date ?? "none"}>
-            <div className="group-header">
-              {sort === "draft"
-                ? (g.date ? `초안 ${dayLabelWithDate(g.date)}` : "초안 없음")
-                : (g.date ? dayLabelWithDate(g.date) : "날짜 미상")}
-              <span className="muted"> · {g.items.length}건</span>
-            </div>
-            {g.items.map((p) => {
-              const pill = statusPill(p);
-              return (
-                <a className="list-row" key={p.report_id} href={`/finance/review/${p.report_id}`}>
-                  <span>{p.title_ko || p.title}<span className="muted"> · {[p.company, p.theme].filter(Boolean).join(" · ")}</span></span>
-                  <span className="list-row-meta">
-                    {p.has_draft && p.draft_created_at && (
-                      <span className="muted" title="초안을 처음 생성한 시각 (한국 시간)">
-                        초안 {seoulDateTimeLabel(p.draft_created_at)}
-                      </span>
-                    )}
-                    <span className={`status-pill ${pill.cls}`}>{pill.label}</span>
-                  </span>
-                </a>
-              );
-            })}
-          </div>
-        ))
+        <InboxList base="/finance/review" rows={rows} chip={chip} sort={sort} unit="건" />
       )}
     </main>
   );

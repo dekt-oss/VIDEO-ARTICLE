@@ -55,6 +55,47 @@ export async function getDirectiveStatusMap(
   return out;
 }
 
+export interface DirectiveMeta {
+  /** header.engine_version — 없으면 null(=기록 없음, 옛 엔진) */
+  engine: string | null;
+  /** 이 지시서가 만들어진 시각 — 검수에서 멈춘 기간(보류) 판정 */
+  createdAt: string | null;
+}
+
+/**
+ * 편 → 버전별 최신 지시서의 엔진 버전·생성 시각. 작업함이 "옛 엔진"과 "검수 14일 멈춤 → 보류"를 판정하는 데
+ * 쓴다(2026-09-30 결정 2-1·3-1). 두 공장이 같이 쓰도록 표·키 이름을 받는다.
+ */
+export async function getDirectiveMetaMap(
+  supabase: SupabaseClient,
+  table: "directives" | "report_directives",
+  idCol: "paper_id" | "report_id",
+  ids: string[],
+): Promise<Map<string, Partial<Record<VersionType, DirectiveMeta>>>> {
+  const out = new Map<string, Partial<Record<VersionType, DirectiveMeta>>>();
+  if (ids.length === 0) return out;
+  const data = await selectIn<Record<string, string | null>>(
+    ids,
+    (c) => supabase
+      .from(table)
+      .select(`${idCol}, version_type, engine:header->>engine_version, created_at`)
+      .in(idCol, c)
+      .order("created_at", { ascending: false }),
+    `${table}.${idCol}.engine`,
+  );
+  for (const d of data) {
+    const id = String(d[idCol]);
+    let m = out.get(id);
+    if (!m) {
+      m = {};
+      out.set(id, m);
+    }
+    const v = d.version_type as VersionType;
+    if (!(v in m)) m[v] = { engine: d.engine ?? null, createdAt: d.created_at ?? null }; // 최신만
+  }
+  return out;
+}
+
 export async function getLatestBatchDate(supabase: SupabaseClient): Promise<string | null> {
   const { data } = await supabase
     .from("daily_batch")

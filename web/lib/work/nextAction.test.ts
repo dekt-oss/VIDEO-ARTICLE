@@ -111,7 +111,7 @@ test("완료인데 mp4 주소가 없으면 업로드가 아니라 확인", () =>
 
 test("탭 건수는 전 탭을 0 으로라도 채운다", () => {
   const c = countByTab([job({ status: "failed" }), job({ status: "tts" }), job({ youtube_status: "done" })]);
-  assert.deepEqual(c, { action: 1, running: 1, done: 1, saved: 0 });
+  assert.deepEqual(c, { action: 1, running: 1, done: 1, stale: 0, saved: 0 }); // stale = 보관 제안(결정 3-1)
 });
 
 // ── §8-3 사람 대기 상태 ──────────────────────────────────────
