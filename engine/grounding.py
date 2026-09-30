@@ -14,8 +14,8 @@ docs/jev_감사_2026-09-30.md §4)에서 Jev 가 이런 것을 잡았다.
 
 ★ **경고만 낸다**(차단·재생성 없음). Jev 가 꺼졌거나 죽으면 아무 경고도 없다(fail-open).
   "원문을 사람이 대조하라"는 종류라 경고 분류는 근거 확인(fact)이다.
-★ 지금은 **리포트 라인에만** 붙어 있다 — 리포트 Fact Sheet 에는 claims 가 없어 LLM 자기검증이 스스로
-  꺼지므로, 의미 근거 판정이 하나도 없던 자리다. 논문 라인은 자기검증이 있고 측정 뒤에 정한다.
+★ 두 라인 모두에 붙어 있다. 리포트(2026-09-30 첫 적용)는 Fact Sheet 에 claims 가 없어 LLM 자기검증이
+  스스로 꺼지던 자리이고, 논문(같은 날 운영자 "논문에도 당연히")은 자기검증과 겹치지 않는 사례를 잡는다.
 """
 
 from __future__ import annotations
@@ -87,16 +87,11 @@ def unsupported_cuts(cuts: list[dict[str, Any]], source: str) -> list[dict[str, 
     return out
 
 
-def attach_report_warning(directive: dict[str, Any], draft_row: dict[str, Any],
-                          report: dict[str, Any] | None) -> None:
-    """리포트 지시서 헤더에 `report_claim_unsupported:컷,컷` 경고와 판정 기록을 붙인다(제자리 수정)."""
-    if not (config.JEV_GROUNDING_REPORT_ENABLED and decide.enabled()):
-        return
+def _attach(directive: dict[str, Any], source: str, code: str) -> None:
     header = directive["header"]
-    src = source_state(report_context(report or {}), draft_row.get("fact_sheet") or {})
     with decide.tracing() as calls:
         n0 = len(calls)
-        flagged = unsupported_cuts(directive.get("cuts") or [], src)
+        flagged = unsupported_cuts(directive.get("cuts") or [], source)
         mine = list(calls[n0:])
     if mine:
         prev = header.get("jev_trace") or {}
@@ -105,4 +100,31 @@ def attach_report_warning(directive: dict[str, Any], draft_row: dict[str, Any],
     if flagged:
         header["mode_warnings"] = sorted(set([
             *(header.get("mode_warnings") or []),
-            "report_claim_unsupported:" + ",".join(str(f["cut_no"]) for f in flagged[:6])]))
+            f"{code}:" + ",".join(str(f["cut_no"]) for f in flagged[:6])]))
+
+
+def attach_report_warning(directive: dict[str, Any], draft_row: dict[str, Any],
+                          report: dict[str, Any] | None) -> None:
+    """리포트 지시서 헤더에 `report_claim_unsupported:컷,컷` 경고와 판정 기록을 붙인다(제자리 수정)."""
+    if not (config.JEV_GROUNDING_REPORT_ENABLED and decide.enabled()):
+        return
+    _attach(directive, source_state(report_context(report or {}), draft_row.get("fact_sheet") or {}),
+            "report_claim_unsupported")
+
+
+def attach_paper_warning(directive: dict[str, Any], draft_row: dict[str, Any],
+                         paper: dict[str, Any] | None = None) -> None:
+    """논문 지시서 헤더에 `paper_claim_unsupported:컷,컷` 경고(2026-09-30 운영자: "논문에도 당연히 근거 켜야지").
+
+    논문 라인에는 LLM 자기검증(directive_ungrounded)도 있다 — 둘은 겹치지 않았다(같은 컷에서 자기검증 0건,
+    Jev 6건, docs/jev_감사_2026-09-30.md §4). 입력은 제목·저자·소속·초록 + Fact Sheet 전체.
+    """
+    if not (config.JEV_GROUNDING_PAPER_ENABLED and decide.enabled()):
+        return
+    if paper is None:
+        paper = draft_row.get("paper")
+    if paper is None:
+        from . import db
+        paper = db.get_paper(str(draft_row.get("paper_id") or "")) or {}
+    _attach(directive, source_state(paper_context(paper), draft_row.get("fact_sheet") or {}),
+            "paper_claim_unsupported")

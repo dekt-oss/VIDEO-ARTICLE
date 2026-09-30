@@ -25,6 +25,14 @@ FACTSHEET_SYSTEM = f"""너는 사실 검증관이다. **아래 주어진 자료 
      · 저자가 추정·해석으로 제시하면(증명 아님)  claim_kind="author_interpretation"
    ★ 없으면 지어내지 마라. 결과만 보고하는 논문은 그대로 두면 된다 — 코드가 그 사실을
      보고 영상 판형을 바꾼다. **없는 것을 만들어 내는 것이 훨씬 나쁘다.**
+★ [객관화 — 요약도 원문의 세기 그대로] (2026-09-30 운영자: "팩트 시트에서는 최대한 객관화해서 수집")
+   what_found·how·numbers·limitations 는 **원문 문장을 옮기는 자리**다. 해석하거나 세게 말하지 마라.
+   · 원문의 단서를 지워라 말고 **그대로 옮겨라**: may/suggest/associated/likely/in mice → "~와 관련", "~할 수 있다",
+     "생쥐에서". 가능성을 단정으로, 연관을 원인으로 바꾸지 마라.
+   · 범위를 넓히지 마라: 일부 지역·집단·조건("호주 제외 비극지 대륙", "암컷 생쥐")을 "전 세계"·"사람"으로 바꾸지 마라.
+   · 원문에 없는 최상급·평가어 금지: "주요 원인", "처음으로 밝혀졌다", "획기적", "놀라운", "유일하게" 는 원문이 그렇게
+     말할 때만 쓴다. 수치는 원문이 말한 대상에만 붙인다(3개 과제의 결과를 "6개 이상"으로 묶지 마라).
+   코드가 요약 줄마다 원문과 대조해 **원문보다 센 줄은 뺀다** — 세게 쓰면 그 사실이 영상에서 사라진다.
 JSON only. 설명 문장·마크다운·코드펜스 금지.
 {{
   "what_found": ["<핵심 발견들>"],
@@ -254,4 +262,12 @@ def extract(title: str, venue: str | None, abstract: str,
         #   상한은 안전장치이지 비용 조절 수단이 아니다 — 출력은 쓴 만큼만 과금된다.
         max_tokens=config.LLM_FACTSHEET_MAX_TOKENS,
     )
-    return normalize_factsheet(obj)
+    fs = normalize_factsheet(obj)
+    # ★ 요약 객관화(2026-09-30) — 요약 줄이 초록·검증된 인용·관련 원문 구절보다 세면 뺀다(기록은 남긴다).
+    #   판정 모델이 꺼졌거나 죽으면 아무것도 안 뺀다(fail-open). engine/factsheet_check.py
+    try:
+        from . import factsheet_check
+        fs = factsheet_check.objectify_summaries(fs, abstract, str((packet or {}).get("text") or ""))
+    except Exception as exc:  # noqa: BLE001 — 검사 실패가 Fact Sheet 추출을 막지 않는다
+        log.warning("요약 객관화 건너뜀(무시): %s", exc)
+    return fs

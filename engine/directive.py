@@ -2213,6 +2213,22 @@ def _contract_feedback(directive: dict[str, Any]) -> str:
 
 
 def generate(draft_row: dict[str, Any], version_type: str) -> dict[str, Any]:
+    """대본 행 + 버전 → 정규화된 지시서 dict. 남는 한 벌에 근거 판정 경고를 붙인다.
+
+    ★ 근거 판정(engine/grounding.py)은 2026-09-30 운영자("논문에도 당연히 근거 켜야지")로 논문 라인에도 켰다.
+      경고만 내고 재생성은 띄우지 않으므로 버려질 첫 시도에는 묻지 않는다(리포트 라인과 같은 모양).
+    """
+    d = _generate_with_retry(draft_row, version_type)
+    try:
+        from . import grounding
+        grounding.attach_paper_warning(d, draft_row)
+        warning_triage.attach(d["header"])
+    except Exception as exc:  # noqa: BLE001 — 판정 실패가 지시서 생성을 막지 않는다(fail-open)
+        log.warning("근거 판정 건너뜀(무시): %s", exc)
+    return d
+
+
+def _generate_with_retry(draft_row: dict[str, Any], version_type: str) -> dict[str, Any]:
     """대본 행 + 버전 → 정규화된 지시서 dict.
 
     ★ 계약 위반이면 **1회만** 다시 만든다(2026-08-29 리뷰 §7). 되먹임은 "다시 만들어라"가

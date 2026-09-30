@@ -269,10 +269,36 @@ def test_report_generate_asks_once_on_the_kept_directive(monkeypatch):
     assert "warning_summary" in out["header"] or out["header"].get("mode_warnings") == []
 
 
-def test_grounding_is_wired_only_into_the_report_line():
+def test_grounding_is_wired_into_both_lines_at_the_final_directive():
+    """2026-09-30 운영자: "논문에도 당연히 근거 켜야지". 두 공장 모두 **남는 한 벌**에서 한 번 묻는다."""
     assert "grounding.attach_report_warning" in (ROOT / "engine/report_directive.py").read_text(encoding="utf-8")
-    for mod in ("engine/directive.py", "engine/photo_contract.py", "engine/draft.py"):
-        assert "grounding." not in (ROOT / mod).read_text(encoding="utf-8"), f"{mod}: 논문 라인은 측정 뒤에 정한다"
+    assert "grounding.attach_paper_warning" in (ROOT / "engine/directive.py").read_text(encoding="utf-8")
+    for mod in ("engine/photo_contract.py", "engine/draft.py"):
+        assert "grounding." not in (ROOT / mod).read_text(encoding="utf-8"), f"{mod}: 게이트·초안 단계에는 안 붙인다"
+
+
+def test_a_paper_directive_gets_its_own_warning_code(monkeypatch):
+    _on(monkeypatch, _fake_post(lambda k, s: 0.9 if "밝혀졌습니다" in s else 0.1))
+    d = {"version_type": "photo", "header": {"mode_warnings": []},
+         "cuts": [{"cut_no": 1, "narration_ko": "나무가 자랍니다."},
+                  {"cut_no": 2, "narration_ko": "인간 활동이 전 세계 물 저장량 변화의 주요 원인임이 밝혀졌습니다."}]}
+    paper = {"title": "Spatially refined gravimetry", "venue": "PNAS", "abstract": "humans account for a significant share",
+             "authors": [{"name": "A", "institution": "U. Texas"}]}
+    grounding.attach_paper_warning(d, {"fact_sheet": {"claims": []}}, paper)
+    assert d["header"]["mode_warnings"] == ["paper_claim_unsupported:2"]
+    assert "paper_claim_unsupported" in warning_triage.FACT_SOFT
+
+
+def test_paper_generate_attaches_once_and_survives_a_grounding_crash(monkeypatch):
+    from engine import directive as dvm
+    base = {"version_type": "photo", "header": {"mode_warnings": []}, "cuts": []}
+    monkeypatch.setattr(dvm, "_generate_with_retry", lambda *a, **k: dict(base))
+    seen = []
+    monkeypatch.setattr(grounding, "attach_paper_warning", lambda d, row: seen.append(d))
+    out = dvm.generate({"paper_id": "p"}, "photo")
+    assert seen == [out]
+    monkeypatch.setattr(grounding, "attach_paper_warning", lambda d, row: (_ for _ in ()).throw(RuntimeError("x")))
+    assert dvm.generate({"paper_id": "p"}, "photo")["version_type"] == "photo", "판정이 죽어도 지시서는 나온다"
 
 
 def test_the_label_exists_for_the_dashboard():
