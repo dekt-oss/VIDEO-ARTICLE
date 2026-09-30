@@ -4,6 +4,7 @@
 //   version_type(단수)은 기존 호출부 호환용 별칭이다.
 // report_directive_requests 큐에 적재 후 report-video.yml(mode=directive) 워커를 트리거한다.
 // (논문과 달리 엣지 함수를 두지 않고 Actions 러너에서 python -m engine.report_directive 로 생성.)
+import { DEFAULT_VERSION_KEY } from "@/lib/versions";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { triggerReportRender } from "@/lib/trigger-render";
@@ -24,12 +25,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "report_id required" }, { status: 400 });
   }
 
-  // 단수·복수 둘 다 받는다. 중복은 접고, 미허용 값은 버린다. 아무것도 안 남으면 comic.
+  // 단수·복수 둘 다 받는다. 중복은 접고, 미허용 값은 버린다. 아무것도 안 남으면 기본 버전.
   const requested: unknown[] = Array.isArray(body.version_types)
     ? body.version_types
     : [body.version_type];
   const versions = [...new Set(requested.map(String).filter((v) => REPORT_VERSIONS.has(v)))];
-  if (versions.length === 0) versions.push("comic");
+  // ★ 기본값은 화면 기본값과 같게(2026-09-30: 만화식은 화면에서 쉬는 중 — lib/versions.ts PAUSED_VERSIONS).
+  //   만화식을 명시해 보내면 그대로 받는다 — 엔진은 지우지 않았다.
+  if (versions.length === 0) versions.push(DEFAULT_VERSION_KEY);
 
   const results: { version_type: string; status: "queued" | "processing"; warn?: string }[] = [];
 
