@@ -98,6 +98,10 @@ textarea.script { width: 100%; min-height: 240px; background: var(--card); color
 .list-row { display: flex; justify-content: space-between; align-items: center;
   border-bottom: 1px solid var(--border); padding: 10px 0; }
 .list-row a { text-decoration: none; }
+/* 목록 오른쪽 — 초안 생성 시각 + 상태 알약. 좁은 화면에서는 시각이 알약 위로 접힌다(2026-09-30). */
+.list-row-meta { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center;
+  gap: 4px 10px; flex-shrink: 0; font-size: 13px; }
+@media (max-width: 720px) { .list-row { gap: 8px; } .list-row-meta { flex-direction: column; align-items: flex-end; font-size: 12px; } }
 
 .banner-ok { background: rgba(80,200,120,0.12); border: 1px solid #50c878; color: #7fdca0;
   border-radius: 8px; padding: 10px 12px; font-size: 14px; }

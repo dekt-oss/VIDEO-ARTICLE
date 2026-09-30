@@ -1,7 +1,7 @@
 // 리포트 검수 목록 — 낙점된 리포트, 낙점일자별 그룹. 논문 review/page.tsx 미러.
 import { createClient } from "@/lib/supabase/server";
 import { getPickedReports } from "@/lib/reportQueries";
-import { dayLabelWithDate, seoulDateOf } from "@/lib/date";
+import { dayLabelWithDate, seoulDateOf, seoulDateTimeLabel } from "@/lib/date";
 import type { PickedReport } from "@/lib/reportTypes";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,14 @@ export default async function FinanceReviewPage() {
               return (
                 <a className="list-row" key={p.report_id} href={`/finance/review/${p.report_id}`}>
                   <span>{p.title_ko || p.title}<span className="muted"> · {[p.company, p.theme].filter(Boolean).join(" · ")}</span></span>
-                  <span className={`status-pill ${pill.cls}`}>{pill.label}</span>
+                  <span className="list-row-meta">
+                    {p.has_draft && p.draft_created_at && (
+                      <span className="muted" title="초안을 처음 생성한 시각 (한국 시간)">
+                        초안 {seoulDateTimeLabel(p.draft_created_at)}
+                      </span>
+                    )}
+                    <span className={`status-pill ${pill.cls}`}>{pill.label}</span>
+                  </span>
                 </a>
               );
             })}

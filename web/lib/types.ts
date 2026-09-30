@@ -296,6 +296,7 @@ export interface PickedPaper {
   title_ko: string | null;
   external_id: string;
   has_draft: boolean;
+  draft_created_at?: string | null; // 초안 처음 생성 시각 — 목록에 "초안 오늘 20:54" 로 보인다
   request_status: string | null; // queued | processing | done | error | null
   decided_at: string | null; // 낙점 시각(timestamptz). 일자별 그룹핑에 사용
 }

@@ -183,8 +183,8 @@ export async function getPicked(supabase: SupabaseClient): Promise<PickedPaper[]
     selectIn<{ paper_id: string; title_ko: string | null }>(
       ids, (c) => supabase.from("scores").select("paper_id, title_ko").in("paper_id", c),
       "scores.paper_id"),
-    selectIn<{ paper_id: string }>(
-      ids, (c) => supabase.from("drafts").select("paper_id").in("paper_id", c), "drafts.paper_id"),
+    selectIn<{ paper_id: string; created_at: string | null }>(
+      ids, (c) => supabase.from("drafts").select("paper_id, created_at").in("paper_id", c), "drafts.paper_id"),
     // 정렬 후 "논문별 첫 행"을 쓰지만, 묶는 키가 청크 기준이라 청크 분할에 안전하다.
     selectIn<{ paper_id: string; status: string }>(
       ids, (c) => supabase
@@ -198,6 +198,7 @@ export async function getPicked(supabase: SupabaseClient): Promise<PickedPaper[]
   const paperMap = new Map(papers.map((p) => [p.id, p]));
   const koMap = new Map(scores.map((s) => [s.paper_id, s.title_ko]));
   const draftSet = new Set(drafts.map((d) => d.paper_id));
+  const draftAt = new Map(drafts.map((d) => [d.paper_id, d.created_at]));
   const reqMap = new Map<string, string>();
   for (const r of reqs) if (!reqMap.has(r.paper_id)) reqMap.set(r.paper_id, r.status);
 
@@ -210,6 +211,7 @@ export async function getPicked(supabase: SupabaseClient): Promise<PickedPaper[]
       title_ko: koMap.get(id) ?? null,
       external_id: p?.external_id ?? "",
       has_draft: draftSet.has(id),
+      draft_created_at: draftAt.get(id) ?? null,
       request_status: reqMap.get(id) ?? null,
       decided_at: decidedMap.get(id) ?? null,
     };
