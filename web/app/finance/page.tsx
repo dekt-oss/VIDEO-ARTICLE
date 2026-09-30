@@ -66,7 +66,7 @@ export default async function FinanceHomePage(props: {
   //   탈락 버튼을 일일이 누르지 않아도, 그날 후보를 다 보고 [확인]을 눌렀으면 그 날은 끝이다.
   const counts = workCounts({
     candidateDecisions: isReviewed ? [] : candidates.map((c) => c.decision_status),
-    picked: picked.map((p) => ({ paperId: p.report_id, hasDraft: p.has_draft })),
+    picked: picked.map((p) => ({ paperId: p.report_id, hasDraft: p.has_draft, decidedAt: p.decided_at })),
     approvedScriptIds: new Set(published.map((p) => p.report_id)),
     directiveStatus,
     renders,

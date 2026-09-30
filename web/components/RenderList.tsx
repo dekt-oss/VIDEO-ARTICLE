@@ -294,7 +294,7 @@ export default function RenderList({ jobs }: { jobs: RenderJob[] }) {
   if (jobs.length === 0) {
     return (
       <p className="empty">
-        렌더 잡이 없습니다. <Link href="/directive">⑤ 영상 지시서</Link>에서 승인하면 여기 나타납니다.
+        렌더 잡이 없습니다. <Link href="/review?stage=directive">작업함</Link>에서 지시서를 승인하면 여기 나타납니다.
       </p>
     );
   }

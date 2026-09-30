@@ -75,7 +75,7 @@ export default async function HomePage(props: {
   //   후보 카드 자체는 그대로 보인다 — 카운트에서만 빠진다(decisions 행은 건드리지 않는다).
   const counts = workCounts({
     candidateDecisions: isReviewed ? [] : candidates.map((c) => c.decision_status),
-    picked: picked.map((p) => ({ paperId: p.paper_id, hasDraft: p.has_draft })),
+    picked: picked.map((p) => ({ paperId: p.paper_id, hasDraft: p.has_draft, decidedAt: p.decided_at })),
     approvedScriptIds: new Set(published.map((p) => p.paper_id)),
     directiveStatus,
     renders,

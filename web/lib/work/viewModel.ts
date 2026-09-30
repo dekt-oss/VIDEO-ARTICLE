@@ -8,13 +8,14 @@
 import type { DirectiveStatusMap } from "@/lib/queries";
 import { classifyRenderJob, type QueueJob } from "@/lib/work/renderQueue";
 import type { WorkCounts } from "@/lib/work/nextAction";
+import { isOnHold } from "@/lib/work/backlog";
 
 /** 공장 무관 최소 입력. 논문·리포트 어댑터가 각자 자기 타입에서 이 모양으로 줄인다. */
 export interface WorkInput {
   /** 이번 배치 후보의 결정 상태(null = 미결정) */
   candidateDecisions: (string | null)[];
-  /** 낙점된 편: 초안 유무 */
-  picked: { paperId: string; hasDraft: boolean }[];
+  /** 낙점된 편: 초안 유무 · 낙점 시각(보류 판정 — lib/work/backlog.ts) */
+  picked: { paperId: string; hasDraft: boolean; decidedAt?: string | null }[];
   /** 대본 승인(=published 기록)이 있는 편 id */
   approvedScriptIds: Set<string>;
   /** 편별 지시서 상태맵(getDirectiveStatusMap 결과) */
@@ -31,13 +32,15 @@ function directiveHandedOff(m: DirectiveStatusMap | undefined): boolean {
   );
 }
 
-export function workCounts(input: WorkInput): WorkCounts {
+export function workCounts(input: WorkInput, now: Date = new Date()): WorkCounts {
   const undecided = input.candidateDecisions.filter((d) => !d).length;
 
   let draftMissing = 0;
   let draftPending = 0;
   let directivePending = 0;
   for (const p of input.picked) {
+    // ★ 보류(낙점 14일 · 초안 없음)는 할 일로 세지 않는다(결정 3-1). 작업함 [보류] 칩에서 본다.
+    if (isOnHold({ hasDraft: p.hasDraft, decidedAt: p.decidedAt }, now)) continue;
     if (!p.hasDraft) {
       draftMissing += 1;
       continue;
@@ -54,7 +57,7 @@ export function workCounts(input: WorkInput): WorkCounts {
   let renderFailed = 0;
   let renderNeedsCheck = 0;
   for (const j of input.renders) {
-    if (classifyRenderJob(j) !== "action") continue;
+    if (classifyRenderJob(j, now) !== "action") continue; // 30일 넘은 것은 "보관 제안"(결정 3-1)
     if (j.status === "failed") renderFailed += 1;
     else renderNeedsCheck += 1;
   }

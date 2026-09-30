@@ -50,17 +50,18 @@ export interface WorkHrefs {
   render: string;
 }
 
+// ★ ④⑤ 목록은 작업함 하나다(2026-09-30 결정 2-1) — 지시서 검수는 작업함의 [지시서 검수] 칩으로 간다.
 export const PAPER_HREFS: WorkHrefs = {
   home: "/",
   review: "/review",
-  directive: "/directive",
+  directive: "/review?stage=directive",
   render: "/render",
 };
 
 export const FINANCE_HREFS: WorkHrefs = {
   home: "/finance",
   review: "/finance/review",
-  directive: "/finance/directive",
+  directive: "/finance/review?stage=directive",
   render: "/finance/render",
 };
 

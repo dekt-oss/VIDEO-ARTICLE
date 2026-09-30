@@ -66,6 +66,8 @@ a { color: var(--accent); }
 .btn { border: 1px solid var(--border); background: var(--card); color: var(--text);
   padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; }
 .btn.pick { border-color: var(--accent); color: var(--accent); }
+/* 가능은 하지만 권하지 않는 동작(옛 엔진 지시서 그대로 승인 등) — 경고색 테두리. */
+.btn.btn-warnline { border-color: var(--warn); color: var(--warn); }
 .btn.reject { border-color: var(--danger); color: var(--danger); }
 .btn[data-active="true"] { background: var(--accent); color: white; }
 .btn:disabled { opacity: 0.5; cursor: default; }
@@ -379,6 +381,18 @@ details.render-group[open] > summary { margin-bottom: 10px; }
   color: var(--muted); background: transparent; cursor: pointer; }
 .chip:hover { color: var(--text); }
 .chip[data-on="true"] { border-color: var(--accent); color: #fff; background: var(--accent); }
+
+/* ── 작업함(2026-09-30 결정 2-1): 단계 칩 · 단계 알약 ── */
+.inbox-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 4px; }
+.inbox-chips .chip { text-decoration: none; }
+.inbox-chips .chip b { font-variant-numeric: tabular-nums; color: var(--text); }
+.inbox-chips .chip-on { border-color: var(--accent); background: var(--accent); color: #fff; }
+.inbox-chips .chip-on b { color: #fff; }
+.stage-bad { border-color: var(--danger); color: var(--danger); }
+.stage-warn { border-color: var(--warn); color: var(--warn); }
+.stage-blue { border-color: var(--accent); color: var(--accent); }
+.stage-ok { border-color: #50c878; color: #7fdca0; }
+.stage-muted { border-color: var(--muted); color: var(--muted); }
 .chip .x { cursor: pointer; opacity: 0.7; }
 .chip .x:hover { opacity: 1; }
 

@@ -284,6 +284,8 @@ export default function WorkspaceClient({
   const targetSlots = slots.filter((s) => decision.targets.includes(s.key));
   // 재생성 권장 = 옛 대본 기준(stale) ∪ 옛 엔진(outdated).
   const regenTargets = [...new Set([...decision.stale, ...decision.outdated])];
+  // 옛 엔진 지시서를 승인하려는 상태 — 강조 버튼을 [지시서 재생성]으로 바꾼다(결정 4-1).
+  const oldEngineFirst = decision.action === "approve_render" && decision.outdated.length > 0;
   const estimate = useMemo(
     () => estimateOrder(targetSlots.map((s) => ({ key: s.key, directive: s.directive })), langs),
     [targetSlots, langs],
@@ -547,14 +549,25 @@ export default function WorkspaceClient({
               변경사항 저장{dirty && <span className="dirty-dot" />}
             </button>
           )}
-          <button className="btn pick" onClick={onPrimary} disabled={primaryDisabled} title={decision.reason}>
+          {/* ★ 옛 엔진 지시서면 **강조 버튼이 [지시서 재생성]** 이다(2026-09-30 운영자 결정 4-1). 화면은
+              "재생성 후 렌더하세요"라고 하는데 파란 버튼이 [승인 → 렌더]라 서로 다른 말을 했다(9/29 $5.19 사고와 같은 모양).
+              승인·렌더는 **없애지 않고** 경고색으로 옆에 둔다 — 2026-09-17 결정(렌더로 가는 길을 지운다 = 사고)은 그대로. */}
+          {oldEngineFirst && (
+            <button className="btn pick" disabled={busy}
+              title="지금 대본·지금 엔진으로 지시서를 다시 만듭니다(LLM 비용 ≈ $0.15)"
+              onClick={() => setShowRegenDirective(regenTargets as VersionType[])}>
+              지시서 재생성 ({regenTargets.map(cfg.label).join(", ")})
+            </button>
+          )}
+          <button className={oldEngineFirst ? "btn btn-warnline" : "btn pick"} onClick={onPrimary} disabled={primaryDisabled}
+            title={oldEngineFirst ? "옛 엔진 지시서 그대로 렌더합니다 — 지금 엔진의 수정이 반영되지 않습니다" : decision.reason}>
             {/* 상태표는 버전 **키**로 말한다(순수 함수). 화면에서만 사람 말로 바꾼다 — 어디에 있든. */}
-            {busy ? "처리 중…" : cfg.versionMeta.reduce(
+            {busy ? "처리 중…" : (oldEngineFirst ? "그래도 " : "") + cfg.versionMeta.reduce(
               (s, m) => s.replace(new RegExp(`\\b${m.key}\\b`, "g"), m.label), decision.label)}
           </button>
           {/* ★ 낡았을 때의 권장 동작을 **주 버튼 옆에 보이게** 둔다(2026-09-17). ▾ 안에 숨겼더니
               운영자가 못 찾았고, 주 버튼으로 만들었더니 이번엔 승인·렌더가 사라졌다. 둘 다 보인다. */}
-          {regenTargets.length > 0 && (
+          {regenTargets.length > 0 && !oldEngineFirst && (
             <button className="btn" disabled={busy}
               title="지금 대본·지금 엔진으로 지시서를 다시 만듭니다(LLM 비용 ≈ $0.15)"
               onClick={() => setShowRegenDirective(regenTargets as VersionType[])}>

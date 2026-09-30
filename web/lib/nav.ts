@@ -11,22 +11,19 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-// ★ 상단 메뉴는 3축이다: 오늘의 작업 / 보관함 / 데이터 (개선 지시서 NAV-01 §4-1).
-//   이전에는 "검수 · 제작"(④⑤⑥)이 별 그룹이라 상단이 4축이었다. ④⑤⑥ 은 매일의 작업이므로
-//   "오늘의 작업" 안으로 넣었다 — 상단은 3개로 줄고 직접 링크는 그대로 남는다.
-//   기존 라우트는 하나도 없애지 않는다(지시서 §4-2 1차 방침).
+// ★ 상단 메뉴(2026-09-30 운영자 결정 1-1): **매일 쓰는 4개는 직접 탭**, 가끔 쓰는 보관함·데이터만 드롭다운.
+//   종전(NAV-01 3축)은 선별·④·⑤·⑥ 이 전부 "오늘의 작업 ▾" 안에 있어 옮길 때마다 두 번 눌러야 했다.
+//   · 작업함 = ④⑤ 를 합친 한 목록(결정 2-1). 주소는 /review 그대로 — /directive 는 작업함으로 넘긴다.
+//   · 성과는 공장과 무관한 한 화면이라(리포트 영상도 같은 표에 나온다) 두 공장 모두 같은 /analytics 로 간다.
+//   TopBar 는 항목 1개 그룹을 직접 탭으로, 2개 이상을 드롭다운으로 그린다 — 그 규칙을 그대로 쓴다.
+//   기존 라우트는 하나도 없애지 않는다.
 
 // 논문 공장 — 루트 경로.
 export const GROUPS_PAPER: NavGroup[] = [
-  {
-    title: "오늘의 작업",
-    items: [
-      { href: "/", label: "🏠 홈 · 오늘의 작업", match: "exact" },
-      { href: "/review", label: "④ 초안 검수", match: "prefix" },
-      { href: "/directive", label: "⑤ 영상 지시서", match: "prefix" },
-      { href: "/render", label: "⑥ 렌더 결과", match: "exact" },
-    ],
-  },
+  { title: "선별", items: [{ href: "/", label: "선별", match: "exact" }] },
+  { title: "작업함", items: [{ href: "/review", label: "작업함", match: "prefix" }] },
+  { title: "렌더·업로드", items: [{ href: "/render", label: "렌더·업로드", match: "exact" }] },
+  { title: "성과", items: [{ href: "/analytics", label: "성과", match: "prefix" }] },
   {
     title: "보관함",
     items: [
@@ -40,23 +37,17 @@ export const GROUPS_PAPER: NavGroup[] = [
       { href: "/papers", label: "① 수집 원자료", match: "prefix" },
       { href: "/scored", label: "② 채점 결과", match: "prefix" },
       { href: "/measure", label: "P0 측정", match: "prefix" },
-      { href: "/analytics", label: "쇼츠 성과", match: "exact" },
       { href: "/analytics/report", label: "성과 리포트", match: "prefix" },
     ],
   },
 ];
 
-// 리포트 공장(하루 한 리포트) — /finance 접두. 논문 공장과 같은 3축.
+// 리포트 공장(하루 한 리포트) — /finance 접두. 논문 공장과 같은 모양.
 export const GROUPS_FINANCE: NavGroup[] = [
-  {
-    title: "오늘의 작업",
-    items: [
-      { href: "/finance", label: "🏠 홈 · 오늘의 작업", match: "exact" },
-      { href: "/finance/review", label: "④ 초안 검수", match: "prefix" },
-      { href: "/finance/directive", label: "⑤ 영상 지시서", match: "prefix" },
-      { href: "/finance/render", label: "⑥ 렌더 결과", match: "exact" },
-    ],
-  },
+  { title: "선별", items: [{ href: "/finance", label: "선별", match: "exact" }] },
+  { title: "작업함", items: [{ href: "/finance/review", label: "작업함", match: "prefix" }] },
+  { title: "렌더·업로드", items: [{ href: "/finance/render", label: "렌더·업로드", match: "exact" }] },
+  { title: "성과", items: [{ href: "/analytics", label: "성과", match: "prefix" }] },
   { title: "보관함", items: [{ href: "/finance/archive", label: "아카이브", match: "prefix" }] },
   {
     title: "데이터",
