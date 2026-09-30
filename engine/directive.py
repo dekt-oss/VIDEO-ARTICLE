@@ -24,7 +24,7 @@ from decimal import Decimal
 from typing import Any
 
 from . import (
-    config, content_mode, cost, cut_skeleton, db, directive_audit, evidence_overlay,
+    config, content_mode, cost, cut_skeleton, db, decide, directive_audit, evidence_overlay,
     factsheet, paper_evidence, selfcheck, visual_router, visual_sequence,
     visual_sequence_contract)
 from . import generation_spec
@@ -1427,6 +1427,7 @@ def normalize_directive(
     """
     version = version_type if version_type in config.VIDEO_VERSIONS else config.DEFAULT_VERSION
     visual_type = config.VERSION_VISUAL_TYPE[version]
+    jev_calls: list[dict[str, Any]] = []   # 이 정규화에서 나간 Jev 판정(header.jev_trace)
     known_claims = factsheet.claim_ids(fact_sheet) if fact_sheet else ()
 
     header_in = obj.get("header") if isinstance(obj.get("header"), dict) else {}
@@ -1864,8 +1865,11 @@ def normalize_directive(
                 *header.get("mode_warnings", []),
                 "photo_prompt_number_removed:" + ", ".join(numbers_fixed[:6])]))
 
-        photo_gate = photo_contract.evaluate(header, cuts, fact_sheet,
-                                             mechanism_supply=mechanism_supply)
+        with decide.tracing() as _t:
+            _n0 = len(_t)
+            photo_gate = photo_contract.evaluate(header, cuts, fact_sheet,
+                                                 mechanism_supply=mechanism_supply)
+            jev_calls.extend(_t[_n0:])
         header["photo_gate"] = photo_gate
         header["mode_warnings"] = sorted(set([*header["mode_warnings"],
                                               *photo_gate["warnings"]]))
@@ -1875,8 +1879,15 @@ def normalize_directive(
     #   ① 기계 판정(무료) ② 의미 판정(LLM 1회). 둘 다 경고이며 승인을 막지 않는다.
     if config.DIRECTIVE_AUDIT_ENABLED:
         audit = directive_audit.audit(header, cuts, fact_sheet, extra_claim_refs=extra_claim_refs)
-        _release_restated_numbers(audit, header, cuts, fact_sheet)
+        with decide.tracing() as _t:
+            _n0 = len(_t)
+            _release_restated_numbers(audit, header, cuts, fact_sheet)
+            jev_calls.extend(_t[_n0:])
         header["directive_audit"] = audit
+    # ★ Jev 판정 원값을 지시서에 남긴다(2026-09-30 감사). 경고가 안 떠도 남긴다 — 문턱을
+    #   운영 데이터로 다시 재려면 안 걸린 쪽 분포가 필요하다. 꺼져 있으면 칸 자체가 없다.
+    if jev_calls:
+        header["jev_trace"] = decide.trace_summary(jev_calls)
         if audit["findings"]:
             header["mode_warnings"] = sorted(set([
                 *header["mode_warnings"],
@@ -1975,7 +1986,8 @@ def _release_restated_numbers(audit: dict[str, Any], header: dict[str, Any],
                                  *(str(o.get("text") or "") for o in (c.get("overlay_plan") or []) if isinstance(o, dict))])
         key = (n, sentence)
         if key not in asked:
-            asked[key] = decide.number_restated(n, sentence, facts)
+            with decide.about(f"cut{f.get('cut_no')}:{n}"):
+                asked[key] = decide.number_restated(n, sentence, facts)
         p = asked[key]
         if p is not None and p >= config.JEV_NUMBER_RESTATED_MIN:
             f["level"] = "yellow"

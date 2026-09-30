@@ -84,7 +84,7 @@ def test_the_warning_is_retryable_and_has_a_prescription():
 
 def test_components_recognizable_asks_with_the_items_in_the_state(monkeypatch):
     seen = {}
-    monkeypatch.setattr(decide, "noul", lambda state, q, crit: (seen.setdefault("state", state), 0.8)[1])
+    monkeypatch.setattr(decide, "noul", lambda state, q, crit, **_: (seen.setdefault("state", state), 0.8)[1])
     assert decide.components_recognizable(["a barge", "a server rack"]) == 0.8
     assert "a barge" in seen["state"] and "a server rack" in seen["state"]
     assert decide.components_recognizable([]) is None

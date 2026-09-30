@@ -51,6 +51,8 @@ FACT_RED: frozenset[str] = frozenset({
 FACT_SOFT: frozenset[str] = frozenset({
     "audit_number_derived_from_source", "audit_number_restated_from_source",
     "qualifier_dropped", "scope_expanded", "editorial_inference",
+    # 판정 모델(Jev)의 확률 판정이라 빨강이 아니라 노랑이다 — 사람이 원문과 대조한다(engine/grounding.py).
+    "report_claim_unsupported",
 })
 
 CATEGORIES: tuple[str, ...] = ("fact", "action", "source", "info")

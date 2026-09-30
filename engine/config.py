@@ -2707,6 +2707,15 @@ JEV_ENABLED: bool = _get_bool("JEV_ENABLED", False)
 JEV_BASE: str = os.getenv("JEV_BASE", "https://api.typesafe.ai/v1/systemone")
 JEV_MODEL: str = os.getenv("JEV_MODEL", "jev-latest")
 JEV_TIMEOUT_SEC: int = _get_int("JEV_TIMEOUT_SEC", 20)
+# 차단기(2026-09-30). 지시서 한 장이 Jev 를 수십 번 순서대로 부르므로, Jev 가 죽은 날은 호출마다
+#   타임아웃(20초)을 기다려 한 장이 10분을 넘길 수 있었다. 연속 실패가 이만큼이면 쿨다운 동안
+#   묻지 않는다 — 판정 결과는 어차피 "못 물었다"(종전 동작)라 게이트 의미는 그대로다.
+JEV_CIRCUIT_BREAK_AFTER: int = _get_int("JEV_CIRCUIT_BREAK_AFTER", 3)
+JEV_CIRCUIT_COOLDOWN_SEC: int = _get_int("JEV_CIRCUIT_COOLDOWN_SEC", 300)
+# 실사이면서 숫자를 말하는 컷의 "답하나"·"숫자" 질문을 한 호출로(상태가 글자 그대로 같다).
+#   실측(2026-09-30, 80컷): 확률 차이가 같은 호출 반복의 흔들림 수준(중앙 0.01·최대 0.07~0.10).
+#   다섯 질문을 컷당 한 번에 묶는 안은 3~8배 흔들려 기각했다 — docs/jev_감사_2026-09-30.md §3.
+JEV_MERGE_SAME_STATE: bool = _get_bool("JEV_MERGE_SAME_STATE", True)
 #: 이 확률 **미만**이면 "라벨이 아니다"로 보고 차단을 푼다.
 #  ★ 0.35 의 근거(위 실측 31건): 겁따옴표들이 0.04~0.15 에 몰려 있고, 사람이 봐도
 #    라벨인 것들은 0.62~0.93 이다. 그 사이가 비어 있어 문턱을 어디 두든 같은 답이 나온다.
@@ -2746,6 +2755,17 @@ JEV_CAUSE_SHOWN_BELOW: float = _get_float("JEV_CAUSE_SHOWN_BELOW", 0.1)
 # 세계 문장이 장소를 둘 이상 적었을 확률이 이 이상이면 경고(되묻기). 실측 2026-09-27(저장 세계 130개):
 #   걸린 3개가 0.91~0.97, 나머지는 전부 0.5 미만이라 문턱 위치에 민감하지 않다.
 JEV_WORLD_MULTI_PLACE_MIN: float = _get_float("JEV_WORLD_MULTI_PLACE_MIN", 0.7)
+# 나레이션이 원문(메타·초록/요약·Fact Sheet)을 넘었을 확률이 이 이상이면 경고(리포트 라인, engine/grounding.py).
+#   문턱은 2026-09-30 원문 대조 측정으로 정했다 — docs/jev_감사_2026-09-30.md §4.
+#   실측(258컷, 운영 입력 모양): 0.5 이상 31건을 보관 원문과 대조해 O 13 · X 8 · △ 10.
+#   0.6 이상 → O 9 · △ 5 · X 1. 리포트 컷은 걸린 것이 전부 O(0.6 이상 3/3). 0.7 로 올리면 X 0 이지만
+#   O 가 7 로 준다. 경고(사람이 원문 대조)라서 재현율을 조금 더 샀다. 숫자 3배 합성 양성: 0.6 이상 22/22.
+#   ★ 판정은 Claude 의 원문 대조다(운영자 판정 아님). 걸린 것만 봤으니 재현율은 상대값이다.
+JEV_UNSUPPORTED_CLAIM_MIN: float = _get_float("JEV_UNSUPPORTED_CLAIM_MIN", 0.6)
+JEV_GROUNDING_REPORT_ENABLED: bool = _get_bool("JEV_GROUNDING_REPORT_ENABLED", True)
+#: 근거 판정만 상태 상한을 늘린다 — 4,000자로는 메타·초록을 넣으면 Fact Sheet 가 잘렸다(20건 재측정의 교란).
+JEV_GROUNDING_STATE_MAX_CHARS: int = _get_int("JEV_GROUNDING_STATE_MAX_CHARS", 7000)
+JEV_GROUNDING_ABSTRACT_CHARS: int = _get_int("JEV_GROUNDING_ABSTRACT_CHARS", 1500)
 #: 판정에 보낼 문장 길이 상한. Jev 의 컨텍스트는 32,000 토큰이라 여유가 크지만,
 #  입력 토큰이 곧 비용이고 판정에 필요한 것은 따옴표 주변 문맥이다. 프롬프트 한 컷이
 #  실측 400~1,500자라 넉넉하다.

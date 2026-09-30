@@ -26,6 +26,7 @@ def _real_cuts():
 
 def _judge(monkeypatch, fn):
     monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(config, "JEV_MERGE_SAME_STATE", False)  # 질문별 경로를 본다(묶음은 test_jev_monitor.py)
     monkeypatch.setattr(decide, "scene_answers", fn)
 
 
@@ -94,6 +95,7 @@ def test_scene_answers_asks_both_questions_in_one_call(monkeypatch):
         seen.update(body)
         return {"answers": {k: {"noul": 0.2} for k in body["questions"]}, "usage": {}}
     monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(config, "JEV_MERGE_SAME_STATE", False)  # 질문별 경로를 본다(묶음은 test_jev_monitor.py)
     monkeypatch.setattr(decide, "_post", fake_post)
     monkeypatch.setattr(decide, "_record", lambda *_a: None)
     assert decide.scene_answers("나레이션", "scene") == {"answers": 0.2, "showable": 0.2}
@@ -112,6 +114,7 @@ def _numeric(header_cuts):
 def test_a_number_drawn_as_stack_heights_is_warned(monkeypatch):
     header, cuts = _numeric(_good_directive(10))
     monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(config, "JEV_MERGE_SAME_STATE", False)  # 질문별 경로를 본다(묶음은 test_jev_monitor.py)
     monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
     monkeypatch.setattr(decide, "number_as_objects", lambda n, v: 0.9)
     got = pc.evaluate(header, cuts, None)
@@ -124,6 +127,7 @@ def test_the_balance_scale_the_contract_recommends_is_not_warned(monkeypatch):
     """실측 0.56 — 계약이 권하는 저울 연출이 문턱 아래여야 한다."""
     header, cuts = _numeric(_good_directive(10))
     monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(config, "JEV_MERGE_SAME_STATE", False)  # 질문별 경로를 본다(묶음은 test_jev_monitor.py)
     monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
     monkeypatch.setattr(decide, "number_as_objects", lambda n, v: 0.56)
     got = pc.evaluate(header, cuts, None)
@@ -135,6 +139,7 @@ def test_cuts_without_numbers_are_not_asked(monkeypatch):
     for c in cuts:
         c["narration_ko"] = "숫자가 없는 문장."
     monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(config, "JEV_MERGE_SAME_STATE", False)  # 질문별 경로를 본다(묶음은 test_jev_monitor.py)
     monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
     monkeypatch.setattr(decide, "number_as_objects",
                         lambda n, v: (_ for _ in ()).throw(AssertionError("불렸다")))
@@ -151,6 +156,7 @@ def test_number_rule_has_notice_check_and_feedback():
 # ── "~해서 ~한다"의 원인이 화면에 있나 (2026-09-27, 계약 ⑨) ─────────────
 def _cause_judge(monkeypatch, fn):
     monkeypatch.setattr(decide, "enabled", lambda: True)
+    monkeypatch.setattr(config, "JEV_MERGE_SAME_STATE", False)  # 질문별 경로를 본다(묶음은 test_jev_monitor.py)
     monkeypatch.setattr(decide, "scene_answers", lambda n, v: None)
     monkeypatch.setattr(decide, "number_as_objects", lambda n, v: None)
     monkeypatch.setattr(decide, "cause_shown", fn)
