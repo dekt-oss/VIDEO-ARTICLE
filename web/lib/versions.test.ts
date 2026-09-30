@@ -15,12 +15,24 @@ import {
   reportVersionLabel,
   VERSION_META,
   REPORT_VERSION_META,
+  DEFAULT_VERSION_KEY,
+  PAUSED_VERSIONS,
+  versionLabel,
 } from "./versions.ts";
 
-test("두 공장 모두 만화식·3D 그래픽만 발주한다", () => {
-  assert.deepEqual(REPORT_VERSION_KEYS, ["comic", "photo"]);
-  assert.deepEqual(VERSION_KEYS, ["comic", "photo"]);
-  assert.equal(REPORT_DEFAULT_VERSION_KEY, "comic");
+// ★ 2026-09-30 운영자: "만화식으로 만드는 건 안 보이게. 엔진은 삭제하는 게 아닌데 당분간 렌더할 일은 없어."
+//   화면(발주·탭·기본값)에서만 뺀다. 이름표는 남아 옛 기록이 "만화식"으로 보인다.
+test("두 공장 모두 지금은 3D 그래픽만 발주하고, 기본값도 3D 그래픽이다", () => {
+  assert.deepEqual(PAUSED_VERSIONS, ["comic"]);
+  assert.deepEqual(REPORT_VERSION_KEYS, ["photo"]);
+  assert.deepEqual(VERSION_KEYS, ["photo"]);
+  assert.equal(REPORT_DEFAULT_VERSION_KEY, "photo");
+  assert.equal(DEFAULT_VERSION_KEY, "photo");
+});
+
+test("쉬는 버전도 이름표는 남는다 — 옛 지시서·렌더가 키로 보이지 않게", () => {
+  assert.equal(versionLabel("comic"), "만화식");
+  assert.equal(reportVersionLabel("comic"), "만화식");
 });
 
 test("폐기된 버전은 어느 화면에서도 발주할 수 없다", () => {
@@ -31,7 +43,7 @@ test("폐기된 버전은 어느 화면에서도 발주할 수 없다", () => {
 });
 
 test("?v= 검증은 발주 가능한 버전만 통과시킨다", () => {
-  assert.equal(isOfferedReportVersion("comic"), true);
+  assert.equal(isOfferedReportVersion("comic"), false, "쉬는 버전은 ?v= 로도 열지 않는다");
   assert.equal(isOfferedReportVersion("photo"), true);
   // 폐기된 버전을 ?v= 로 요청해도 통과시키지 않는다(기본값으로 떨어진다).
   assert.equal(isOfferedReportVersion("webtoon"), false);
@@ -40,7 +52,7 @@ test("?v= 검증은 발주 가능한 버전만 통과시킨다", () => {
   assert.equal(isOfferedReportVersion(undefined), false);
   assert.equal(isOfferedReportVersion(""), false);
   // 논문 쪽 검증도 대칭으로 동작한다.
-  assert.equal(isOfferedVersion("comic"), true);
+  assert.equal(isOfferedVersion("comic"), false);
   assert.equal(isOfferedVersion("photo"), true);
   assert.equal(isOfferedVersion("webtoon"), false);
   assert.equal(isOfferedVersion("explainer"), false);
