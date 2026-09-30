@@ -62,5 +62,8 @@ def test_the_screens_show_the_outdated_warning():
     ws = (ROOT / "web" / "components" / "WorkspaceClient.tsx").read_text(encoding="utf-8")
     assert "decision.outdated" in ws and "isOutdatedEngine(h?.engine_version)" in ws   # 결정 바 + 승인 확인창
     assert "engineVersion: s.directive?.header?.engine_version" in ws
+    # ★ 지시서 칸의 배너는 2026-09-30 UI 정리(#81)로 뺐다 — 같은 경고가 결정 바·본문·승인 확인창 **세 번**
+    #   나왔다. 결정 바는 스크롤해도 늘 보이므로(sticky) 거기와 승인 확인창 두 곳이면 충분하다(위 두 줄이 지킨다).
+    #   본문에 다시 붙이면 3중 반복이 돌아온다.
     se = (ROOT / "web" / "components" / "SequenceEditor.tsx").read_text(encoding="utf-8")
-    assert "isOutdatedEngine(directive.header?.engine_version)" in se                  # 지시서 칸 배너
+    assert "isOutdatedEngine(directive.header?.engine_version)" not in se
