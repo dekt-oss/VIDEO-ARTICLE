@@ -26,7 +26,6 @@ import { useToast } from "@/components/Toast";
 import { apiErrorText } from "@/lib/apiError";
 import { blockLabel } from "@/lib/blockLabels";
 import WarningSummaryView from "@/components/WarningSummaryView";
-import { isOutdatedEngine, DIRECTIVE_ENGINE_VERSION } from "@/lib/work/decision";
 
 
 /** 영어 문장 위에 붙는 **한글 설명**.
@@ -37,6 +36,17 @@ import { isOutdatedEngine, DIRECTIVE_ENGINE_VERSION } from "@/lib/work/decision"
  * ★ 한글이 없으면(옛 지시서) 아무것도 그리지 않는다 — 빈 상자가 늘어나면 화면만 길어진다.
  *   그때는 [지시서 재생성]을 하면 한글이 함께 만들어진다.
  */
+/** 칸 이름. 긴 설명은 늘 띄우지 않고 ⓘ 툴팁으로 둔다 — 컷마다 같은 문장이 반복되면 화면이 빽빽해진다
+ *  (2026-09-30 UI/UX 리뷰 #5). 매일 쓰는 사람에게 설명은 한 번 읽으면 끝이다. */
+function SeqLabel({ text, hint }: { text: string; hint?: string }) {
+  return (
+    <span className="seq-label">
+      {text}
+      {hint && <span className="seq-hint" title={hint} aria-label={hint}> ⓘ</span>}
+    </span>
+  );
+}
+
 /** 한글을 앞에 세우고 **영문 원문은 접어 둔다** (2026-09-17 운영자 지시).
  *
  * ★ 지시: "실제로 구현하는 영문 지시서는 숨기고 한글 위주로 보여줘. 내가 판단하고 수정하고
@@ -46,9 +56,11 @@ import { isOutdatedEngine, DIRECTIVE_ENGINE_VERSION } from "@/lib/work/decision"
  * ★ 한글이 아직 없는 옛 지시서는 영문을 **펼친 채로** 보여 준다 — 접어 버리면 화면이 텅 빈다.
  */
 function KoBox({
-  label, koText, enText, onEn, readOnly, rows = 2,
+  label, hint, koText, enText, onEn, readOnly, rows = 2,
 }: {
   label: string;
+  /** 설명 — 화면에 늘 띄우지 않고 라벨의 ⓘ 에 마우스를 올리면 보인다(2026-09-30 UI 정리). */
+  hint?: string;
   koText?: string | null;
   enText: string;
   onEn: (v: string) => void;
@@ -58,7 +70,7 @@ function KoBox({
   const ko = String(koText ?? "").trim();
   return (
     <div className="seq-field">
-      <span className="seq-label">{label}</span>
+      <SeqLabel text={label} hint={hint} />
       {ko ? <p className="seq-ko">{ko}</p> : null}
       {/* ★ 영문은 **언제나 접어 둔다**(2026-09-17 운영자 지시: "실제로 구현하는 영문 지시서는
           숨기고 한글 위주로 보여줘"). 한글이 없을 때도 영문을 펼쳐 두지 않는다 — 그러면
@@ -66,7 +78,9 @@ function KoBox({
           고치거나 대조할 사람만 펼친다. 렌더가 읽는 정본은 여전히 이 영문이다. */}
       <details className="seq-en">
         <summary>
-          {ko ? "영문 원문 보기 (실제 발주 문장)" : "⚠ 한글 설명 없음 — 영문 보기"}
+          <span title="렌더가 실제로 읽는 발주 문장입니다. 고치면 이것이 반영됩니다.">
+            {ko ? "영문 원문" : "⚠ 한글 설명 없음 — 영문 보기"}
+          </span>
         </summary>
         {!ko && (
           <p className="muted">
@@ -223,7 +237,7 @@ export default function SequenceEditor({
             </span>
           )}
           {(c.claim_ids?.length ?? 0) > 0 && (
-            <span className="muted" title="이 컷이 말하는 주장">주장 {c.claim_ids!.join("·")}</span>
+            <span className="muted seq-claims" title="이 컷이 말하는 주장">주장 {c.claim_ids!.join(" · ")}</span>
           )}
           {ungrounded
             ? <span className="flag">⛔ 근거 없음</span>
@@ -249,13 +263,13 @@ export default function SequenceEditor({
           <label className="seq-field">
             {/* ★ 나레이션은 한글이 **정본**이다 — 이 문장이 그대로 음성으로 나간다.
                 그래서 여기만은 접지 않고 늘 펼쳐 둔다. */}
-            <span className="seq-label">한글 나레이션 — 이 문장이 그대로 음성으로 나갑니다</span>
+            <SeqLabel text="나레이션" hint="한글이 정본입니다 — 이 문장이 그대로 음성으로 나갑니다." />
             <textarea
               rows={3} value={c.narration_ko ?? ""} readOnly={readOnly}
               onChange={(ev) => patchCut(cutNo, { narration_ko: ev.target.value })}
             />
           </label>
-          <KoBox label="이 컷의 화면 — 무엇이 보이나" rows={3}
+          <KoBox label="화면" hint="이 컷에서 무엇이 보이나" rows={3}
             koText={(c as unknown as { visual_prompt_ko?: string }).visual_prompt_ko}
             enText={c.visual_prompt ?? ""}
             onEn={(v) => patchCut(cutNo, { visual_prompt: v })} readOnly={readOnly} />
@@ -270,7 +284,7 @@ export default function SequenceEditor({
             </p>
           )}
           {c.motion_source === "video" && (
-            <KoBox label="움직임 — 영상으로 어떻게 움직이나"
+            <KoBox label="움직임" hint="영상 컷에서 무엇이 어떻게 움직이나"
               koText={(c as unknown as { motion_prompt_ko?: string }).motion_prompt_ko}
               enText={c.motion_prompt ?? ""}
               onEn={(v) => patchCut(cutNo, { motion_prompt: v })} readOnly={readOnly} />
@@ -316,13 +330,7 @@ export default function SequenceEditor({
   return (
     <div className="seq-wrap">
       {saving && <p className="muted">저장 중…</p>}
-      {/* ★ 옛 엔진으로 만든 지시서(2026-09-29) — 결정 바와 같은 판정(isOutdatedEngine). */}
-      {directive && directive.status === "draft" && isOutdatedEngine(directive.header?.engine_version) && (
-        <div className="banner-warn" style={{ margin: "0 0 8px" }}>
-          ⛔ 옛 엔진({directive.header?.engine_version ?? "기록 없음"})으로 만든 지시서입니다 — 지금 엔진 {DIRECTIVE_ENGINE_VERSION} 의
-          수정이 반영되지 않습니다. 렌더하기 전에 [지시서 재생성]을 누르세요.
-        </div>
-      )}
+      {/* 옛 엔진 경고는 결정 바(늘 보이는 위쪽 바)에만 둔다 — 같은 경고가 세 번 나오던 것을 줄였다(2026-09-30). */}
       {/* ★ 통합 작업 화면은 2026-09-28 까지 차단 사유·경고를 **아예** 안 보여줬다(옛 ⑤ 화면에만 있었다) —
           삼성전자 편이 경고 22개를 달고 승인된 자리다. 순서·분류는 엔진(warning_summary)이 정하고
           여기서는 위 3개만 크게, 나머지는 접는다. */}
@@ -366,7 +374,7 @@ export default function SequenceEditor({
                 onEn={(v) => patchWorld(b.seqIndex, { background: v })} readOnly={readOnly} rows={1} />
               {b.entities.length > 0 && (
                 <div className="seq-entities">
-                  <span className="seq-label">등장하는 것 — 시퀀스 내내 같은 모습으로 유지된다</span>
+                  <SeqLabel text="등장하는 것" hint="시퀀스 내내 같은 모습으로 유지됩니다." />
                   {b.entities.map((e, ei) => (
                     <KoBox key={e.entity_id ?? ei} label={e.entity_id ?? `등장물 ${ei + 1}`}
                       koText={e.visual_identity_ko} enText={e.visual_identity ?? ""}
@@ -387,7 +395,7 @@ export default function SequenceEditor({
                     <span className="chip" key={k} title={seqTitle(k, v)}>{seqLabel(k, v)}</span>
                   ))}
               </div>
-              <KoBox label="이 단계에서 무엇이 어떻게 변하나"
+              <KoBox label="이 단계의 변화" hint="이 단계에서 무엇이 어떻게 변하나"
                 koText={String(b.stage.observable_change_ko ?? "")}
                 enText={String(b.stage.observable_change ?? "")}
                 onEn={(v) => patchStage(b.seqIndex, b.stageIndex, { observable_change: v })}
