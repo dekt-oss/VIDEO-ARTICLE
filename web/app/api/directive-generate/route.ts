@@ -5,6 +5,7 @@
 // 버전마다 directive_requests 큐에 상태 행을 적재한 뒤 Edge Function(generate-directive)을 호출한다.
 // 함수는 202로 즉시 반환하고 백그라운드로 생성하므로 UI 는 /api/directive-status 로 폴링한다.
 // (/api/generate-draft 와 동일 패턴)
+import { DEFAULT_VERSION_KEY } from "@/lib/versions";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireOperator } from "@/lib/apiGuard";
@@ -38,12 +39,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "paper_id required" }, { status: 400 });
   }
 
-  // 단수·복수 둘 다 받는다. 중복은 접고, 미허용 값은 버린다. 아무것도 안 남으면 comic.
+  // 단수·복수 둘 다 받는다. 중복은 접고, 미허용 값은 버린다. 아무것도 안 남으면 기본 버전.
   const requested: unknown[] = Array.isArray(body.version_types)
     ? body.version_types
     : [body.version_type];
   const versions = [...new Set(requested.map(String).filter((v) => VERSIONS.has(v)))];
-  if (versions.length === 0) versions.push("comic");
+  // ★ 기본값은 화면 기본값과 같게(2026-09-30: 만화식은 화면에서 쉬는 중 — lib/versions.ts PAUSED_VERSIONS).
+  //   만화식을 명시해 보내면 그대로 받는다 — 엔진은 지우지 않았다.
+  if (versions.length === 0) versions.push(DEFAULT_VERSION_KEY);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const edgeKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

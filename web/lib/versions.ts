@@ -15,7 +15,13 @@ export interface VersionMeta {
   hint: string;
 }
 
-export const VERSION_META: VersionMeta[] = [
+// ★ 잠시 쉬는 버전(2026-09-30 운영자: "만화식으로 만드는 건 안 보이게. 엔진 자체는 삭제하는 게 아닌데
+//   당분간 그걸로 렌더할 일은 없어"). **화면에서만** 뺀다 — 엔진·API·저장된 옛 지시서/렌더는 그대로다.
+//   되살리려면 이 목록에서 지우면 된다. 이름표(versionLabel)는 전체 목록을 쓰므로 옛 기록은 계속 "만화식"으로 보인다.
+export const PAUSED_VERSIONS: VersionType[] = ["comic"];
+const notPaused = (m: VersionMeta) => !PAUSED_VERSIONS.includes(m.key);
+
+const ALL_VERSION_META: VersionMeta[] = [
   { key: "comic", label: "만화식", hint: "컷마다 새 장면을 그린다(기존 방식)" },
   // 2026-08-20 부터 두 공장 모두에서 발주한다(운영자 결정: 논문·리포트 각각 준비).
   // ★ 이름이 "실사형" → "3D 그래픽" 으로 바뀌었다(2026-09-08 운영자 지시).
@@ -25,14 +31,16 @@ export const VERSION_META: VersionMeta[] = [
   { key: "photo", label: "3D 그래픽", hint: "무광 CG 한 화풍. 원리는 단면 도해로, 현장은 같은 재질의 3D 장면으로" },
 ];
 
+/** 화면이 **발주·표시**하는 버전(쉬는 버전 제외). */
+export const VERSION_META: VersionMeta[] = ALL_VERSION_META.filter(notPaused);
 export const VERSION_KEYS: VersionType[] = VERSION_META.map((v) => v.key);
-export const DEFAULT_VERSION_KEY: VersionType = "comic";
+export const DEFAULT_VERSION_KEY: VersionType = VERSION_KEYS[0] ?? "photo";
 
 // ── 리포트 공장이 발주할 수 있는 버전 ──
 // 설명판형·웹툰을 걷어낸 뒤로 두 공장의 목록이 같아졌다. 그래도 배열은 나눠 둔다 —
 // 한쪽만 버전을 늘리는 일이 지금까지 반복됐고, 합쳐 두면 그때 다른 공장 화면에 새 버전이
 // 조용히 나타난다.
-export const REPORT_VERSION_META: VersionMeta[] = [
+const ALL_REPORT_VERSION_META: VersionMeta[] = [
   { key: "comic", label: "만화식", hint: "컷마다 장면을 그린다(기존 방식)" },
   {
     key: "photo",
@@ -41,8 +49,9 @@ export const REPORT_VERSION_META: VersionMeta[] = [
   },
 ];
 
+export const REPORT_VERSION_META: VersionMeta[] = ALL_REPORT_VERSION_META.filter(notPaused);
 export const REPORT_VERSION_KEYS: VersionType[] = REPORT_VERSION_META.map((v) => v.key);
-export const REPORT_DEFAULT_VERSION_KEY: VersionType = "comic";
+export const REPORT_DEFAULT_VERSION_KEY: VersionType = REPORT_VERSION_KEYS[0] ?? "photo";
 
 /**
  * 초안 요청에 실어 보낼 "이어서 만들 지시서 버전"(0046). 미허용 값·중복을 걷어낸다.
@@ -63,9 +72,9 @@ export function isOfferedReportVersion(v: string | undefined | null): v is Versi
 }
 
 export function reportVersionLabel(v: VersionType | string): string {
-  return REPORT_VERSION_META.find((m) => m.key === v)?.label ?? String(v);
+  return ALL_REPORT_VERSION_META.find((m) => m.key === v)?.label ?? String(v);
 }
 
 export function versionLabel(v: VersionType | string): string {
-  return VERSION_META.find((m) => m.key === v)?.label ?? String(v);
+  return ALL_VERSION_META.find((m) => m.key === v)?.label ?? String(v);
 }
