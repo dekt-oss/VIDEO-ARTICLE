@@ -212,6 +212,7 @@ def test_approval_gate_mirrors_python_block_reasons():
     #   화면에 푸는 길이 없는데 초안 100% 가 걸렸다 — content_mode.block_reasons 주석 참조).
     #   양쪽 다 더는 내보내지 않으므로 동기화 대상에서도 뺀다.
     for reason in ("over_max_duration",
+                   "source_depth_duration_exceeded", "source_depth_cut_count_exceeded",
                    "video_budget_exceeded", "missing_required_claims",
                    "primary_claim_not_covered"):
         assert reason in engine_src, f"engine 에 사유 코드 없음: {reason}"
