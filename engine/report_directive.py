@@ -22,6 +22,7 @@ from . import equity_visual
 from . import equity_contract
 from . import grounding
 from . import report_reasoning
+from . import source_adequacy
 from . import directive as dv
 from . import photo_contract
 from . import photo_prompt
@@ -162,14 +163,23 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
     #   건너뛰면 씬은 옛 원고다 — 그대로 실으면 지운 문장이 지시서에 되살아난다.
     scenes = draft_row.get("scenes") or []
     scenes_fresh = script_revision.scenes_match_script(scenes, script_md)
+    policy = source_adequacy.from_fact_sheet(fact_sheet, "report") or {}
+    source_max = int(policy.get("max_duration_sec") or 0)
+    target_sec = min(config.TARGET_TOTAL_SEC, source_max) if source_max else config.TARGET_TOTAL_SEC
     if version_type == "photo":
-        # ★ 컷 수는 게이트와 같은 함수로 역산해 보여준다(논문 _mode_guidance 와 같은 이유).
-        c_lo, c_hi = photo_contract.target_cut_range(config.TARGET_TOTAL_SEC)
+        # ★ 컷 수는 게이트와 같은 함수로 역산해 보여준다. Source가 얕으면 전역 TARGET_TOTAL_SEC로
+        # 다시 부풀리지 않는다 — NH partial_text 초안 24초→지시서 50초 사고의 직접 원인.
+        c_lo, c_hi = photo_contract.target_cut_range(target_sec)
+        source_max_cuts = int(policy.get("max_cuts") or 0)
+        if source_max_cuts:
+            c_hi = min(c_hi, source_max_cuts)
+            c_lo = min(c_lo, c_hi)
         guidance = (PHOTO_CONTRACT
-                    + f"\n[컷 수] 전체 약 {config.TARGET_TOTAL_SEC}초 → 컷 **{c_lo}~{c_hi}개**. 검사: 컷 수 ≥ (전체 초수 ÷"
+                    + f"\n[컷 수] 이번 Source 기준 전체 약 {target_sec}초 이내 → 컷 **{c_lo}~{c_hi}개**. 검사: 컷 수 ≥ (전체 초수 ÷"
                     f" {config.PHOTO_CUT_SEC_MAX}), 미달이면 승인이 막힌다. 어느 컷도 {config.PHOTO_CUT_SEC_MAX}초를 넘기지 마라.\n")
     else:
         guidance = dv.VERSION_GUIDANCE.get(version_type, dv.VERSION_GUIDANCE[config.DEFAULT_VERSION])
+    guidance += source_adequacy.guidance(fact_sheet, "report")
     # ★ 논증 단위(설명엔진 v2 §7)를 지시서 단계에도 싣는다. 대본에만 주고 여기서 빼면
     #   컷이 어느 논증을 옮기는지 알 수 없어 reasoning_id 가 빈 채로 나온다 — 그러면 승인
     #   화면이 "설명이 빠진 논증"을 짚지 못한다.
