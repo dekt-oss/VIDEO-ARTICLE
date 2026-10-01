@@ -22,6 +22,19 @@ export interface Candidate {
 
 export type DecisionStatus = "shortlisted" | "picked" | "rejected";
 
+export interface SourceAdequacyPolicy {
+  contract_version: string;
+  domain: "paper" | "report";
+  source_depth: string;
+  source_chars: number;
+  source_mode: "FULL_EXPLAINER" | "SOURCE_EXPLAINER" | "BRIEF_EXPLAINER" | "SUMMARY_ONLY";
+  max_duration_sec: number;
+  max_content_mode: string;
+  max_reasoning_units: number;
+  max_reasoning_steps: number;
+  warnings: string[];
+}
+
 export interface FactSheetSource {
   title: string;
   venue: string;
@@ -39,6 +52,7 @@ export interface FactSheet {
   claim_strength: string;
   source?: Partial<FactSheetSource>; // 출처 블록(구체화·발행 캡션 근거). 재생성 후 존재
   claims?: Claim[]; // Claim Ledger(수정명세 §4). 원장 없는 과거 초안은 undefined
+  source_adequacy?: SourceAdequacyPolicy; // Explanation Engine v2 Phase 1
 }
 
 // ── 근거밀도·가변길이 개정 (docs/수정명세서_근거밀도_가변길이_v1.md) ──
@@ -453,6 +467,8 @@ export interface DirectiveHeader {
   evidence_coverage?: EvidenceCoverage;
   retention_plan?: RetentionPlan;
   cost_plan?: CostPlan;
+  /** Source depth가 허용하는 최종 길이·컷·논증 상한. 승인 시 컷에서 다시 검사한다. */
+  source_adequacy?: SourceAdequacyPolicy;
   mode_warnings?: string[];
   /** 위 3개 + 나머지 접힘. 없으면(옛 지시서) 화면이 mode_warnings 를 그대로 보여준다. */
   warning_summary?: WarningSummary;
