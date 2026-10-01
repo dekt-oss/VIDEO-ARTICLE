@@ -225,3 +225,29 @@ def test_background_context_is_traceable_but_not_promoted_to_verified_evidence()
     assert context
     assert all(item["evidence_id"] and item["raw_ref"] for item in context)
     assert all(item["verification_state"] == "NOT_CHECKED" for item in context)
+
+
+def test_supported_does_not_mean_semantic_entailment():
+    """Quote-presence verification must not become a blanket truth label in Phase 3."""
+    paper = evidence_pack.build(paper_fact_sheet(), "paper")
+    claim = paper["claims"][0]
+    assert claim["verification_state"] == "SUPPORTED"
+    assert claim["verification_scope"]["quote_presence"] is True
+    assert claim["verification_scope"]["semantic_entailment"] is False
+
+    report = evidence_pack.build(report_fact_sheet(), "report")
+    number = report["numbers"][0]
+    assert number["verification_state"] == "SUPPORTED"
+    assert number["verification_scope"] == {
+        "quote_presence": True,
+        "numeric_value": True,
+        "unit": True,
+        "period": False,
+        "semantic_entailment": False,
+    }
+
+
+def test_validate_rejects_missing_verification_scope():
+    pack = evidence_pack.build(paper_fact_sheet(), "paper")
+    del pack["claims"][0]["verification_scope"]
+    assert "verification_scope_invalid:paper:C01" in evidence_pack.validate(pack)
