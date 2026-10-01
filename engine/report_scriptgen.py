@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from . import config, narrative, report_reasoning, report_source
+from . import config, narrative, report_reasoning, report_source, source_adequacy
 from .narrative import NARRATIVE_ARC
 from .llm import call_json
 
@@ -154,6 +154,7 @@ def script_user_prompt(fact_sheet: dict[str, Any], instruction: str = "",
     base = (f"{config.DRAFT_EVIDENCE_MARKER}\n"
             + json.dumps(fact_sheet, ensure_ascii=False, indent=2)
             + f"\n{config.DRAFT_EVIDENCE_END_MARKER}")
+    base += source_adequacy.guidance(fact_sheet, "report")
     if config.DRAFT_INCLUDE_FULLTEXT:
         block = report_source.fulltext_block(packet or {})
         if block:
