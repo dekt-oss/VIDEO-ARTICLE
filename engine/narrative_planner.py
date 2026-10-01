@@ -1,0 +1,346 @@
+"""Phase 5 deterministic shadow narrative planner.
+
+This module orders already validated explanation material. It does not write
+narration, call a model, or infer missing prerequisite knowledge.
+"""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from typing import Any
+
+from . import explanation_ir, prerequisite_resolver
+
+
+CONTRACT_VERSION = "narrative-plan-v1"
+STAGES = frozenset({
+    "HOOK", "SETUP", "CONFLICT", "EXPLANATION", "EVIDENCE", "PAYOFF", "BOUNDARY",
+})
+STATUSES = frozenset({"READY", "BLOCKED_PREREQUISITE", "BLOCKED_NO_REASONING"})
+_STAGE_BY_ROLE = {
+    "phenomenon": "CONFLICT",
+    "prerequisite": "SETUP",
+    "cause": "EXPLANATION",
+    "mechanism": "EXPLANATION",
+    "bridge": "EXPLANATION",
+    "result": "EVIDENCE",
+    "limitation": "BOUNDARY",
+    "risk": "BOUNDARY",
+    "payoff": "PAYOFF",
+}
+
+
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    return list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
+
+
+def _resolution_errors(resolution: Any, ir: dict[str, Any]) -> list[str]:
+    if not isinstance(resolution, dict):
+        return ["resolution_not_dict"]
+    errors: list[str] = []
+    if resolution.get("contract_version") != "prerequisite-resolution-v1":
+        errors.append("contract_version_invalid")
+    if resolution.get("domain") != ir.get("domain"):
+        errors.append("domain_mismatch")
+    if resolution.get("content_id") != ir.get("content_id"):
+        errors.append("content_id_mismatch")
+    concepts = resolution.get("concepts")
+    if not isinstance(concepts, list):
+        return sorted(set(errors + ["concepts_not_list"]))
+    required_unresolved: list[str] = []
+    all_unresolved: list[str] = []
+    for position, concept in enumerate(concepts, 1):
+        if not isinstance(concept, dict):
+            errors.append(f"concept_invalid:{position}")
+            continue
+        concept_id = _text(concept.get("concept_id"))
+        status = concept.get("status")
+        if not concept_id:
+            errors.append(f"concept_id_missing:{position}")
+        if status not in {"RESOLVED_SOURCE", "RESOLVED_GLOSSARY", "UNRESOLVED"}:
+            errors.append(f"concept_status_invalid:{concept_id or position}")
+        if status == "UNRESOLVED":
+            all_unresolved.append(concept_id)
+            if concept.get("required") is not False:
+                required_unresolved.append(concept_id)
+        elif not _text(concept.get("simple_explanation")):
+            errors.append(f"concept_explanation_missing:{concept_id}")
+    if resolution.get("unresolved_concepts") != all_unresolved:
+        errors.append("unresolved_concepts_invalid")
+    expected_action = "NARROW_SCOPE" if required_unresolved else "KEEP"
+    if resolution.get("scope_action") != expected_action:
+        errors.append("scope_action_invalid")
+    return sorted(set(errors))
+
+
+def _unique_from_units(units: list[dict[str, Any]], field: str) -> list[str]:
+    values: list[str] = []
+    for unit in units:
+        values.extend(_strings(unit.get(field)))
+    return list(dict.fromkeys(values))
+
+
+def _unique_from_concepts(concepts: list[dict[str, Any]], field: str) -> list[str]:
+    values: list[str] = []
+    for concept in concepts:
+        values.extend(_strings(concept.get(field)))
+    return list(dict.fromkeys(values))
+
+
+def _beat(beat_id: str, stage: str, purpose: str, content_points: list[str], *,
+          units: list[dict[str, Any]] | None = None,
+          concepts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    units = units or []
+    concepts = concepts or []
+    return {
+        "beat_id": beat_id,
+        "stage": stage,
+        "purpose": purpose,
+        "content_points": content_points,
+        "reasoning_ids": [_text(unit.get("reasoning_id")) for unit in units],
+        "evidence_ids": list(dict.fromkeys(
+            _unique_from_units(units, "evidence_ids")
+            + _unique_from_concepts(concepts, "evidence_ids")
+        )),
+        "raw_refs": _unique_from_units(units, "raw_refs"),
+        "concept_ids": [_text(concept.get("concept_id")) for concept in concepts],
+        "knowledge_refs": list(dict.fromkeys(
+            ref for concept in concepts for ref in _strings(concept.get("knowledge_refs"))
+        )),
+        "causal_levels": list(dict.fromkeys(
+            value for unit in units if (value := _text(unit.get("causal_level")))
+        )),
+        "uncertainties": list(dict.fromkeys(
+            value for unit in units if (value := _text(unit.get("uncertainty")))
+        )),
+        "attributions": list(dict.fromkeys(
+            value for unit in units if (value := _text(unit.get("attribution")))
+        )),
+        "transition_relations": list(dict.fromkeys(
+            value for unit in units if (value := _text(unit.get("transition_relation")))
+        )),
+    }
+
+
+def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
+    unresolved_required = [
+        concept for concept in resolution["concepts"]
+        if concept.get("status") == "UNRESOLVED" and concept.get("required") is not False
+    ]
+    warnings = _strings(ir.get("warnings")) + _strings(resolution.get("warnings"))
+    if unresolved_required:
+        warnings.extend(
+            f"required_prerequisite_unresolved:{_text(concept.get('concept_id'))}"
+            for concept in unresolved_required
+        )
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "domain": ir.get("domain"),
+            "content_id": ir.get("content_id"),
+            "planning_status": "BLOCKED_PREREQUISITE",
+            "core_question": ir.get("core_question"),
+            "thesis": ir.get("thesis"),
+            "beats": [],
+            "excluded_reasoning_ids": list(ir.get("explanation_chain") or []),
+            "warnings": sorted(set(warnings)),
+            "source": deepcopy(ir.get("source") or {}),
+        }
+    if not ir.get("reasoning_units"):
+        warnings.append("reasoning_units_missing")
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "domain": ir.get("domain"),
+            "content_id": ir.get("content_id"),
+            "planning_status": "BLOCKED_NO_REASONING",
+            "core_question": ir.get("core_question"),
+            "thesis": ir.get("thesis"),
+            "beats": [],
+            "excluded_reasoning_ids": [],
+            "warnings": sorted(set(warnings)),
+            "source": deepcopy(ir.get("source") or {}),
+        }
+
+    beats: list[dict[str, Any]] = []
+    beats.append(_beat("NB01", "HOOK", "open_core_question", [ir["core_question"]]))
+    resolved = [
+        concept for concept in resolution["concepts"]
+        if concept.get("status") in {"RESOLVED_SOURCE", "RESOLVED_GLOSSARY"}
+    ]
+    if resolved:
+        beats.append(_beat(
+            f"NB{len(beats) + 1:02d}", "SETUP", "establish_prerequisite",
+            [_text(concept.get("simple_explanation")) for concept in resolved], concepts=resolved,
+        ))
+
+    grouped: list[tuple[str, list[dict[str, Any]]]] = []
+    for unit in ir.get("reasoning_units") or []:
+        stage = _STAGE_BY_ROLE[unit["role"]]
+        if grouped and grouped[-1][0] == stage:
+            grouped[-1][1].append(unit)
+        else:
+            grouped.append((stage, [unit]))
+    for stage, units in grouped:
+        beats.append(_beat(
+            f"NB{len(beats) + 1:02d}", stage, f"carry_{stage.lower()}_logic",
+            [_text(unit.get("text")) for unit in units], units=units,
+        ))
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "domain": ir.get("domain"),
+        "content_id": ir.get("content_id"),
+        "planning_status": "READY",
+        "core_question": ir.get("core_question"),
+        "thesis": ir.get("thesis"),
+        "beats": beats,
+        "excluded_reasoning_ids": [],
+        "warnings": sorted(set(warnings)),
+        "source": deepcopy(ir.get("source") or {}),
+    }
+
+
+def build(ir: dict[str, Any], resolution: dict[str, Any],
+          pack: dict[str, Any]) -> dict[str, Any]:
+    """Build a narrative order without adding facts or rewriting explanation text."""
+    ir_errors = explanation_ir.validate(ir, pack)
+    if ir_errors:
+        raise ValueError("explanation_ir_invalid:" + ",".join(ir_errors))
+    resolution_errors = _resolution_errors(resolution, ir)
+    resolution_errors.extend(prerequisite_resolver.validate(resolution, ir, pack))
+    if resolution_errors:
+        raise ValueError("prerequisite_resolution_invalid:" + ",".join(resolution_errors))
+    plan = _build(ir, resolution)
+    errors = validate(plan, ir, resolution, pack)
+    if errors:
+        raise ValueError("narrative_plan_invalid:" + ",".join(errors))
+    return plan
+
+
+def validate(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
+             pack: dict[str, Any]) -> list[str]:
+    """Validate stable references and exact, non-synthesized content points."""
+    if not isinstance(plan, dict):
+        return ["plan_not_dict"]
+    upstream_errors = [
+        f"explanation_ir_invalid:{error}" for error in explanation_ir.validate(ir, pack)
+    ]
+    upstream_errors.extend(
+        f"prerequisite_resolution_invalid:{error}"
+        for error in prerequisite_resolver.validate(resolution, ir, pack)
+    )
+    if upstream_errors:
+        return sorted(set(upstream_errors))
+    errors: list[str] = []
+    if plan.get("contract_version") != CONTRACT_VERSION:
+        errors.append("contract_version_invalid")
+    if plan.get("domain") != ir.get("domain"):
+        errors.append("domain_mismatch")
+    if plan.get("content_id") != ir.get("content_id"):
+        errors.append("content_id_mismatch")
+    if plan.get("planning_status") not in STATUSES:
+        errors.append("planning_status_invalid")
+    if plan.get("core_question") != ir.get("core_question"):
+        errors.append("core_question_invalid")
+    if plan.get("thesis") != ir.get("thesis"):
+        errors.append("thesis_invalid")
+    beats = plan.get("beats")
+    if not isinstance(beats, list):
+        return sorted(set(errors + ["beats_not_list"]))
+
+    unit_index = {unit["reasoning_id"]: unit for unit in ir.get("reasoning_units") or []}
+    concept_index = {concept["concept_id"]: concept for concept in resolution.get("concepts") or []}
+    seen_reasoning: list[str] = []
+    for position, beat in enumerate(beats, 1):
+        if not isinstance(beat, dict):
+            errors.append(f"beat_invalid:{position}")
+            continue
+        beat_id = _text(beat.get("beat_id"))
+        if beat_id != f"NB{position:02d}":
+            errors.append(f"beat_id_invalid:{beat_id or position}")
+        if beat.get("stage") not in STAGES:
+            errors.append(f"beat_stage_invalid:{beat_id or position}")
+        reasoning_ids = _strings(beat.get("reasoning_ids"))
+        unknown = [rid for rid in reasoning_ids if rid not in unit_index]
+        errors.extend(f"reasoning_ref_unknown:{beat_id}:{rid}" for rid in unknown)
+        seen_reasoning.extend(rid for rid in reasoning_ids if rid in unit_index)
+        concept_ids = _strings(beat.get("concept_ids"))
+        if any(cid not in concept_index for cid in concept_ids):
+            errors.append(f"concept_ref_unknown:{beat_id}")
+
+        if beat.get("stage") == "HOOK":
+            expected_points = [ir.get("core_question")]
+        elif concept_ids:
+            expected_points = [concept_index[cid].get("simple_explanation") for cid in concept_ids]
+        else:
+            expected_points = [unit_index[rid].get("text") for rid in reasoning_ids if rid in unit_index]
+        if beat.get("content_points") != expected_points:
+            errors.append(f"content_points_invalid:{beat_id or position}")
+        expected_units = [unit_index[rid] for rid in reasoning_ids if rid in unit_index]
+        expected_concepts = [concept_index[cid] for cid in concept_ids if cid in concept_index]
+        expected_evidence = list(dict.fromkeys(
+            _unique_from_units(expected_units, "evidence_ids")
+            + _unique_from_concepts(expected_concepts, "evidence_ids")
+        ))
+        if beat.get("evidence_ids") != expected_evidence:
+            errors.append(f"evidence_refs_invalid:{beat_id or position}")
+        if beat.get("raw_refs") != _unique_from_units(expected_units, "raw_refs"):
+            errors.append(f"raw_refs_invalid:{beat_id or position}")
+        expected_knowledge = _unique_from_concepts(expected_concepts, "knowledge_refs")
+        if beat.get("knowledge_refs") != expected_knowledge:
+            errors.append(f"knowledge_refs_invalid:{beat_id or position}")
+        expected_causal = list(dict.fromkeys(
+            value for unit in expected_units if (value := _text(unit.get("causal_level")))
+        ))
+        if beat.get("causal_levels") != expected_causal:
+            errors.append(f"causal_levels_invalid:{beat_id or position}")
+        expected_uncertainties = list(dict.fromkeys(
+            value for unit in expected_units if (value := _text(unit.get("uncertainty")))
+        ))
+        if beat.get("uncertainties") != expected_uncertainties:
+            errors.append(f"uncertainties_invalid:{beat_id or position}")
+        expected_attributions = list(dict.fromkeys(
+            value for unit in expected_units if (value := _text(unit.get("attribution")))
+        ))
+        if beat.get("attributions") != expected_attributions:
+            errors.append(f"attributions_invalid:{beat_id or position}")
+        expected_transitions = list(dict.fromkeys(
+            value for unit in expected_units if (value := _text(unit.get("transition_relation")))
+        ))
+        if beat.get("transition_relations") != expected_transitions:
+            errors.append(f"transition_relations_invalid:{beat_id or position}")
+
+    blocked_prerequisite = resolution.get("scope_action") == "NARROW_SCOPE"
+    blocked_no_reasoning = not ir.get("reasoning_units") and not blocked_prerequisite
+    blocked = blocked_prerequisite or blocked_no_reasoning
+    expected_status = (
+        "BLOCKED_PREREQUISITE" if blocked_prerequisite
+        else "BLOCKED_NO_REASONING" if blocked_no_reasoning
+        else "READY"
+    )
+    if plan.get("planning_status") != expected_status:
+        errors.append("planning_status_scope_mismatch")
+    expected_chain = list(ir.get("explanation_chain") or [])
+    if blocked:
+        if beats:
+            errors.append("blocked_plan_has_beats")
+        if plan.get("excluded_reasoning_ids") != expected_chain:
+            errors.append("blocked_excluded_reasoning_invalid")
+    else:
+        if seen_reasoning != expected_chain:
+            errors.append("reasoning_chain_coverage_invalid")
+        if plan.get("excluded_reasoning_ids") != []:
+            errors.append("ready_excluded_reasoning_invalid")
+        setup_positions = [i for i, beat in enumerate(beats) if beat.get("stage") == "SETUP"
+                           and beat.get("concept_ids")]
+        reasoning_positions = [i for i, beat in enumerate(beats) if beat.get("reasoning_ids")]
+        if setup_positions and reasoning_positions and max(setup_positions) > min(reasoning_positions):
+            errors.append("prerequisite_after_reasoning")
+    return sorted(set(errors))
