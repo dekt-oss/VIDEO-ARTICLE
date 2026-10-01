@@ -80,10 +80,19 @@ def from_fact_sheet(fact_sheet: dict[str, Any] | None,
             return build_policy(fs, dom)
 
     dom = domain
-    if dom is None:
+    # ★ 레거시 보호: domain 을 호출자가 알고 있어도 **source metadata 자체가 없으면**
+    # 정책을 추정하지 않는다. 예전 report Fact Sheet에는 source_depth 필드가 없고,
+    # 그것을 summary_only 로 간주하면 저장된 모든 reasoning 을 0개로 만드는 소급 회귀가 된다.
+    if dom == "paper":
+        if not isinstance(fs.get("source_provenance"), dict):
+            return None
+    elif dom == "report":
+        if "source_depth" not in fs:
+            return None
+    elif dom is None:
         if isinstance(fs.get("source_provenance"), dict):
             dom = "paper"
-        elif fs.get("source_depth") is not None:
+        elif "source_depth" in fs:
             dom = "report"
     if dom not in ("paper", "report"):
         return None
