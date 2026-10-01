@@ -15,7 +15,7 @@
 
 빠져 있던 것은 다음 계약이다.
 
-> 확보한 Source 깊이가 실제 영상의 설명 깊이·길이·컷 수·논증 규모를 제한해야 한다.
+> 확보한 Source 깊이가 실제 영상의 설명 깊이·길이·논증 규모를 제한해야 한다.
 
 종전에는 source_depth가 주로 시각의 `LITERAL_OBSERVATION` 허용 여부에 쓰였고,
 영상 전체가 얼마나 깊게 설명해도 되는지는 충분히 제한하지 않았다.
@@ -107,8 +107,7 @@ DB migration을 만들지 않고 기존 Fact Sheet JSON에 다음을 저장한�
     "source_chars": 0,
     "source_mode": "...",
     "max_duration_sec": 0,
-    "max_cuts": 0,
-    "max_content_mode": "...",
+    "    "max_content_mode": "...",
     "max_reasoning_units": 0,
     "max_reasoning_steps": 0
   }
@@ -123,23 +122,40 @@ DB migration을 만들지 않고 기존 Fact Sheet JSON에 다음을 저장한�
 
 ### 논문
 
-| Source depth | Mode | 길이 상한 | 컷 상한 | content mode 상한 |
-|---|---|---:|---:|---|
-| full_body | FULL_EXPLAINER | 80초 | 기존 규칙 | extended |
-| partial_body | SOURCE_EXPLAINER | 50초 | 7 | standard |
-| abstract_only | BRIEF_EXPLAINER | 35초 | 5 | flash |
-| parse_failed / none | BRIEF_EXPLAINER | 35초 | 5 | flash |
+| Source depth | Mode | 길이 상한 | content mode 상한 |
+|---|---|---:|---|
+| full_body | FULL_EXPLAINER | 80초 | extended |
+| partial_body | SOURCE_EXPLAINER | 50초 | standard |
+| abstract_only | BRIEF_EXPLAINER | 35초 | flash |
+| parse_failed / none | BRIEF_EXPLAINER | 35초 | flash |
 
 ### 리포트
 
-| Source depth | Mode | 길이 상한 | 컷 상한 | Reasoning |
-|---|---|---:|---:|---|
-| full_text | FULL_EXPLAINER | 80초 | 기존 규칙 | 기존 최대 5 unit × 5 step |
-| partial_text | BRIEF_EXPLAINER | 35초 | 7 | 최대 1 unit × 3 step |
-| summary_only / none | SUMMARY_ONLY | 30초 | 6 | 독립 Reasoning 생성 안 함 |
+| Source depth | Mode | 길이 상한 | Reasoning |
+|---|---|---:|---|
+| full_text | FULL_EXPLAINER | 80초 | 기존 최대 5 unit × 5 step |
+| partial_text | BRIEF_EXPLAINER | 35초 | 최대 1 unit × 3 step |
+| summary_only / none | SUMMARY_ONLY | 30초 | 독립 Reasoning 생성 안 함 |
 
 **의도:** full source는 이번 Phase에서 기존 동작을 거의 건드리지 않는다.
 실제 Production 사고가 확인된 shallow source만 우선 제한한다.
+
+### 컷 수는 Source Adequacy가 제한하지 않는다
+
+적대적 리뷰에서 초기안의 컷 상한과 기존 `photo` 최소 8컷 계약이 충돌했다.
+더 근본적으로 **컷 수는 정보량과 같은 개념이 아니다.** 30초 영상도 화면을 10번 바꾸면
+설명 주장이 10개가 되는 것이 아니라, 하나의 설명을 여러 시각 상태로 보여줄 수 있다.
+
+따라서 Source Adequacy는:
+
+- 설명 길이
+- content mode
+- Reasoning unit/step
+
+을 제한한다.
+
+시각 컷 수와 pacing은 기존 `photo_contract`가 담당한다.
+이 경계를 섞지 않는다.
 
 ---
 
@@ -175,22 +191,22 @@ report_source.resolve
 
 ## 7. 최종 하드 게이트
 
-최종 Directive에서 실제 초수와 컷 수를 다시 센다.
+최종 Directive에서 실제 초수를 다시 센다.
 
 사유 코드:
 
 - `source_depth_duration_exceeded:<actual>><max>`
-- `source_depth_cut_count_exceeded:<actual>><max>`
 
 예:
 
 ```text
-partial_text / max 35초·7컷
-실제 50초·12컷
+partial_text / max 35초
+실제 50초
 
 → source_depth_duration_exceeded:50>35
-→ source_depth_cut_count_exceeded:12>7
 → approval_blocked=true
+
+※ 12컷이라는 사실만으로는 차단하지 않는다. 35초 안에서 12컷이면 빠른 시각 리듬일 수 있다.
 ```
 
 운영자가 지시서 컷을 편집한 뒤에도 `web/lib/approvalGate.ts`가 같은 값을 다시 계산한다.
@@ -211,7 +227,7 @@ target = min(TARGET_TOTAL_SEC, source_max_duration)
 
 을 사용한다.
 
-partial_text라면 35초를 목표로 하고 Source 컷 상한도 함께 적용한다.
+partial_text라면 35초를 목표로 하고 기존 photo pacing 계약은 그대로 적용한다.
 
 ---
 
@@ -238,9 +254,9 @@ Phase 1에서는 이를 숨기지 않는다.
 
 고정 사례:
 
-1. paper abstract-only → 35초/5컷/flash
-2. paper partial-body → 50초/7컷/standard
-3. report partial-text 1,072자 → 35초/7컷/1×3 reasoning
+1. paper abstract-only → 35초/flash
+2. paper partial-body → 50초/standard
+3. report partial-text 1,072자 → 35초/1×3 reasoning
 4. report summary-only → reasoning LLM 생략
 5. NH형 24초/6컷 → 통과
 6. NH형 50초/12컷 → 길이+컷 하드 차단
@@ -287,7 +303,7 @@ Source Adequacy를 되돌려야 할 경우 변경 경계는 한 곳이다.
 - [x] 논문 content mode 상한 연결
 - [x] 리포트 reasoning 상한 연결
 - [x] report directive의 고정 60초 팽창 제거
-- [x] 최종 directive 길이/컷 하드 게이트
+- [x] 최종 directive 길이 하드 게이트
 - [x] 운영 화면 편집 후 재검증 mirror
 - [x] Edge fallback을 abstract-only로 명시
 - [ ] 전체 Python tests
