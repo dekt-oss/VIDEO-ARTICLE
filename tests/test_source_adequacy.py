@@ -47,6 +47,17 @@ def test_paper_source_modes_follow_existing_depth_classifier():
     )
 
 
+def test_legacy_report_without_source_metadata_keeps_existing_reasoning_limits():
+    # Phase 1은 새 source metadata가 있는 콘텐츠부터 적용한다. 옛 Fact Sheet를
+    # summary_only로 추정해 소급 차단하면 안 된다.
+    legacy = {"number_facts": [{"fact_id": "F01", "value": 1}]}
+    assert source_adequacy.from_fact_sheet(legacy, "report") is None
+    assert source_adequacy.reasoning_limits(legacy) == (
+        __import__("engine.config", fromlist=["config"]).REASONING_MAX_UNITS,
+        __import__("engine.config", fromlist=["config"]).REASONING_MAX_STEPS,
+    )
+
+
 def test_report_partial_source_is_brief_not_full_explainer():
     p = source_adequacy.build_policy(report_fs("partial_text", 1072), "report")
     assert p["source_mode"] == "BRIEF_EXPLAINER"
