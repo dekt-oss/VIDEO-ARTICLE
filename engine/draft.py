@@ -13,7 +13,7 @@ import sys
 from typing import Any
 
 from . import (attribution, config, db, factsheet, paper_evidence, paper_source,
-               script_polish, scriptgen, selfcheck)
+               script_polish, scriptgen, selfcheck, source_adequacy)
 from .util import log
 
 
@@ -43,6 +43,9 @@ def generate_draft(paper: dict[str, Any]) -> dict[str, Any]:
     #   잡을 수 있는 것도 못 잡는다 — 오늘의 사고("이중맹검·위약대조")가 정확히 그 경우다.
     verify_packet = paper_evidence.verification_packet(packet, paper.get("abstract"))
     paper_evidence.attach_evidence(fact_sheet, verify_packet)
+    # Explanation Engine v2 Phase 1: 확보 수준을 설명용 production contract 로 고정한다.
+    # Fact Sheet 안에 넣어 DB migration 없이 script → directive 까지 같은 정책을 본다.
+    source_adequacy.attach(fact_sheet, "paper")
     audit = paper_evidence.audit(fact_sheet)
     log.info("주장 대조: %s개 중 %s개 검증(판정불가 %s) depth=%s",
              audit["claims"], audit["verified"], audit["unverifiable"], audit["source_depth"])
