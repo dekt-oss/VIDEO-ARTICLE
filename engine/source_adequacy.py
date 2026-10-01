@@ -49,7 +49,6 @@ def build_policy(fact_sheet: dict[str, Any], domain: str) -> dict[str, Any]:
         "source_chars": chars,
         "source_mode": spec["source_mode"],
         "max_duration_sec": int(spec.get("max_duration_sec") or 0),
-        "max_cuts": int(spec.get("max_cuts") or 0),
         "max_content_mode": str(spec.get("max_content_mode") or ""),
         "max_reasoning_units": int(spec.get("max_reasoning_units") or 0),
         "max_reasoning_steps": int(spec.get("max_reasoning_steps") or 0),
@@ -103,8 +102,6 @@ def guidance(fact_sheet: dict[str, Any] | None,
     ]
     if policy["max_duration_sec"]:
         bits.append(f"최종 영상은 {policy['max_duration_sec']}초를 넘기지 마라.")
-    if policy["max_cuts"]:
-        bits.append(f"최종 컷은 {policy['max_cuts']}개를 넘기지 마라.")
     if policy["max_content_mode"]:
         bits.append(f"논문 content_mode 상한은 {policy['max_content_mode']}다.")
     if policy["domain"] == "report":
@@ -139,14 +136,12 @@ def apply_content_plan(plan: dict[str, Any],
     out["source_mode"] = policy["source_mode"]
     out["source_depth"] = policy["source_depth"]
     out["source_max_duration_sec"] = policy["max_duration_sec"]
-    out["source_max_cuts"] = policy["max_cuts"]
     out["mode_warnings"] = sorted(set(warnings))
     return out
 
 
 def output_block_reasons(fact_sheet: dict[str, Any] | None,
                          total_sec: int | float | None,
-                         cut_count: int,
                          domain: str | None = None) -> list[str]:
     """Hard limits checked again at the final directive, where expansion occurs."""
     policy = from_fact_sheet(fact_sheet, domain)
@@ -154,11 +149,8 @@ def output_block_reasons(fact_sheet: dict[str, Any] | None,
         return []
     out: list[str] = []
     max_sec = int(policy.get("max_duration_sec") or 0)
-    max_cuts = int(policy.get("max_cuts") or 0)
     if max_sec and total_sec is not None and float(total_sec) > max_sec:
         out.append(f"source_depth_duration_exceeded:{int(round(float(total_sec)))}>{max_sec}")
-    if max_cuts and int(cut_count) > max_cuts:
-        out.append(f"source_depth_cut_count_exceeded:{int(cut_count)}>{max_cuts}")
     return out
 
 
