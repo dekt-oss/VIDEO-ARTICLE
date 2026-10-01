@@ -3257,23 +3257,23 @@ SOURCE_ADEQUACY_POLICIES: dict[str, dict[str, dict[str, object]]] = {
             "max_content_mode": "extended", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "partial_body": {
-            "source_mode": "SOURCE_EXPLAINER", "max_duration_sec": 50, "max_cuts": 7,
+            "source_mode": "SOURCE_EXPLAINER", "max_duration_sec": 50, "max_cuts": 0,
             "max_content_mode": "standard", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "abstract_only": {
-            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 5,
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 0,
             "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "parse_failed": {
-            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 5,
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 0,
             "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "none": {
-            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 5,
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 0,
             "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "__default__": {
-            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 5,
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 0,
             "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
     },
@@ -3283,19 +3283,19 @@ SOURCE_ADEQUACY_POLICIES: dict[str, dict[str, dict[str, object]]] = {
             "max_content_mode": "", "max_reasoning_units": 5, "max_reasoning_steps": 5,
         },
         "partial_text": {
-            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 7,
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35, "max_cuts": 0,
             "max_content_mode": "", "max_reasoning_units": 1, "max_reasoning_steps": 3,
         },
         "summary_only": {
-            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30, "max_cuts": 6,
+            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30, "max_cuts": 0,
             "max_content_mode": "", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "none": {
-            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30, "max_cuts": 6,
+            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30, "max_cuts": 0,
             "max_content_mode": "", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "__default__": {
-            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30, "max_cuts": 6,
+            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30, "max_cuts": 0,
             "max_content_mode": "", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
     },
