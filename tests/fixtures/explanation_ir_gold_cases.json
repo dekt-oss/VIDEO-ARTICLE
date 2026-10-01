@@ -1,0 +1,193 @@
+[
+  {
+    "case_id": "heel-strike-2026-09",
+    "domain": "paper",
+    "source_depth": "full_body",
+    "source_mode": "FULL_EXPLAINER",
+    "evidence": [
+      {
+        "evidence_id": "paper:C01",
+        "raw_ref": "claims:C01",
+        "text": "인간은 일관되게 heel-strike하지만 아프리카 유인원도 heel-strike할 수 있다.",
+        "claim_type": "main_result",
+        "causal_strength": "descriptive",
+        "verification_state": "SUPPORTED"
+      }
+    ]
+  },
+  {
+    "case_id": "deaf-retinotopic-remap-2026-09",
+    "domain": "paper",
+    "source_depth": "full_body",
+    "source_mode": "FULL_EXPLAINER",
+    "evidence": [
+      {
+        "evidence_id": "paper:C01",
+        "raw_ref": "claims:C01",
+        "text": "시각 구조 내부에서 peripheral과 central representation의 분포가 달라졌다.",
+        "claim_type": "main_result",
+        "causal_strength": "descriptive",
+        "verification_state": "SUPPORTED"
+      }
+    ]
+  },
+  {
+    "case_id": "personality-gwas-2026-09",
+    "domain": "paper",
+    "source_depth": "full_body",
+    "source_mode": "FULL_EXPLAINER",
+    "evidence": [
+      {
+        "evidence_id": "paper:C02",
+        "raw_ref": "claims:C02",
+        "text": "1,260개 lead genetic variants가 personality와 연관됐다.",
+        "claim_type": "main_result",
+        "causal_strength": "association_only",
+        "verification_state": "SUPPORTED"
+      }
+    ]
+  },
+  {
+    "case_id": "samsung-memory-cycle-2026-09",
+    "domain": "report",
+    "source_depth": "full_text",
+    "source_mode": "FULL_EXPLAINER",
+    "source_attribution": {
+      "broker": "유안타증권",
+      "company": "삼성전자"
+    },
+    "evidence": [
+      {
+        "evidence_id": "report:num_memory_price",
+        "raw_ref": "number_facts:num_memory_price",
+        "text": "메모리 가격 상승 전망",
+        "value": 1,
+        "unit": "%",
+        "period": "2026F",
+        "metric": "메모리 가격",
+        "attribution": "유안타증권",
+        "verification_state": "SUPPORTED"
+      }
+    ],
+    "financial_reasoning": {
+      "units": [
+        {
+          "reasoning_id": "R01",
+          "unit_type": "EARNINGS_BRIDGE",
+          "title": "메모리 가격 전망이 실적으로 이어지는 경로",
+          "carries_thesis": true,
+          "attributed_to": "유안타증권",
+          "assumption": "가격 상승이 유지돼야 한다.",
+          "breaks_if": "가격이 하락하면 깨진다.",
+          "steps": [
+            {
+              "step": 1,
+              "text": "유안타증권은 메모리 가격 상승이 매출 전망으로 이어진다고 봤다.",
+              "fact_ids": ["num_memory_price"],
+              "source_refs": []
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "nh-ai-mid-cycle-2026-09",
+    "domain": "report",
+    "source_depth": "partial_text",
+    "source_chars": 1072,
+    "source_mode": "BRIEF_EXPLAINER",
+    "source_attribution": {
+      "broker": "NH투자증권",
+      "company": "AI 투자 사이클"
+    },
+    "evidence": [
+      {
+        "evidence_id": "report:num_cycle",
+        "raw_ref": "number_facts:num_cycle",
+        "text": "AI 투자 Mid Cycle 전망",
+        "value": 1,
+        "unit": "단계",
+        "period": "현재",
+        "metric": "투자 사이클",
+        "attribution": "NH투자증권",
+        "verification_state": "SUPPORTED"
+      }
+    ],
+    "financial_reasoning": {
+      "units": [
+        {
+          "reasoning_id": "R01",
+          "unit_type": "SCENARIO",
+          "title": "NH투자증권의 Mid Cycle 판단",
+          "carries_thesis": true,
+          "attributed_to": "NH투자증권",
+          "assumption": "",
+          "breaks_if": "",
+          "steps": [
+            {"step": 1, "text": "AI 투자가 이어진다고 전망했다.", "fact_ids": ["num_cycle"], "source_refs": []},
+            {"step": 2, "text": "투자 사이클의 중간 단계로 판단했다.", "fact_ids": ["num_cycle"], "source_refs": []},
+            {"step": 3, "text": "전망의 범위를 Mid Cycle로 한정했다.", "fact_ids": ["num_cycle"], "source_refs": []},
+            {"step": 4, "text": "추가 배경을 확장했다.", "fact_ids": ["num_cycle"], "source_refs": []}
+          ]
+        },
+        {
+          "reasoning_id": "R02",
+          "unit_type": "SCENARIO",
+          "title": "얕은 자료에서 제거돼야 할 두 번째 논증",
+          "carries_thesis": false,
+          "attributed_to": "NH투자증권",
+          "assumption": "",
+          "breaks_if": "",
+          "steps": [
+            {"step": 1, "text": "추가 논증", "fact_ids": ["num_cycle"], "source_refs": []}
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "case_id": "shipbuilding-rerating-2026-09",
+    "domain": "report",
+    "source_depth": "full_text",
+    "source_mode": "FULL_EXPLAINER",
+    "source_attribution": {
+      "broker": "한국투자증권",
+      "company": "한국 조선업"
+    },
+    "evidence": [
+      {
+        "evidence_id": "report:num_pipeline",
+        "raw_ref": "number_facts:num_pipeline",
+        "text": "한국 조선사의 특수선 pipeline 기회",
+        "value": 1,
+        "unit": "기회",
+        "period": "전망",
+        "metric": "pipeline",
+        "attribution": "한국투자증권",
+        "verification_state": "SUPPORTED"
+      }
+    ],
+    "financial_reasoning": {
+      "units": [
+        {
+          "reasoning_id": "R01",
+          "unit_type": "CATALYST_PATH",
+          "title": "글로벌 역량 부족이 pipeline 기회로 이어진다는 전망",
+          "carries_thesis": true,
+          "attributed_to": "한국투자증권",
+          "assumption": "수주 기회가 실제 계약으로 이어져야 한다.",
+          "breaks_if": "pipeline이 계약으로 전환되지 않으면 깨진다.",
+          "steps": [
+            {
+              "step": 1,
+              "text": "한국투자증권은 글로벌 건조 역량 부족이 한국 조선사의 pipeline 기회가 될 수 있다고 봤다.",
+              "fact_ids": ["num_pipeline"],
+              "source_refs": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+]
