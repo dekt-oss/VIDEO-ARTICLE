@@ -303,7 +303,7 @@ Source가 얕으면:
 
 - mechanism을 새로 만들어내지 않는다.
 - 영상 길이를 억지로 늘리지 않는다.
-- scene/cut 수를 제한한다.
+- **설명 단위의 수와 깊이**를 제한한다. 시각 컷 수는 별도 pacing 계약에 맡긴다.
 - 결과 소개형으로 낮춘다.
 - 필요하면 full source 확보를 우선한다.
 
@@ -314,10 +314,15 @@ Source가 얕으면:
 Source depth가 낮은 사례에서:
 
 ```text
-50초 12컷 deep explainer
+1,072자 partial source
+→ 50초 deep explainer
 ```
 
-가 자동 생성되지 않아야 한다.
+처럼 **근거보다 긴 설명**이 자동 생성되지 않아야 한다.
+
+> 구현 리뷰 정정(2026-10-01): `12컷` 자체는 실패 조건이 아니다. 30초 안에서 12컷을 쓰는 것은
+> 하나의 설명을 빠르게 시각화하는 편집일 수 있다. Source Gate는 영상 길이·content mode·Reasoning
+> unit/step을 제한하고, 컷 수는 기존 `photo_contract`의 pacing 규칙이 담당한다.
 
 ---
 
