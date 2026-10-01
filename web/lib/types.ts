@@ -29,7 +29,6 @@ export interface SourceAdequacyPolicy {
   source_chars: number;
   source_mode: "FULL_EXPLAINER" | "SOURCE_EXPLAINER" | "BRIEF_EXPLAINER" | "SUMMARY_ONLY";
   max_duration_sec: number;
-  max_cuts: number;
   max_content_mode: string;
   max_reasoning_units: number;
   max_reasoning_steps: number;
