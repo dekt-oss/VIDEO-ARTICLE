@@ -38,10 +38,10 @@ def test_paper_source_modes_follow_existing_depth_classifier():
     partial = source_adequacy.build_policy(paper_fs("partial_body", 4000), "paper")
     full = source_adequacy.build_policy(paper_fs("full_body", 12000), "paper")
 
-    assert (abstract["source_mode"], abstract["max_duration_sec"], abstract["max_cuts"],
-            abstract["max_content_mode"]) == ("BRIEF_EXPLAINER", 35, 5, "flash")
-    assert (partial["source_mode"], partial["max_duration_sec"], partial["max_cuts"],
-            partial["max_content_mode"]) == ("SOURCE_EXPLAINER", 50, 7, "standard")
+    assert (abstract["source_mode"], abstract["max_duration_sec"],
+            abstract["max_content_mode"]) == ("BRIEF_EXPLAINER", 35, "flash")
+    assert (partial["source_mode"], partial["max_duration_sec"],
+            partial["max_content_mode"]) == ("SOURCE_EXPLAINER", 50, "standard")
     assert (full["source_mode"], full["max_duration_sec"], full["max_content_mode"]) == (
         "FULL_EXPLAINER", 80, "extended"
     )
@@ -51,7 +51,6 @@ def test_report_partial_source_is_brief_not_full_explainer():
     p = source_adequacy.build_policy(report_fs("partial_text", 1072), "report")
     assert p["source_mode"] == "BRIEF_EXPLAINER"
     assert p["max_duration_sec"] == 35
-    assert p["max_cuts"] == 7
     assert (p["max_reasoning_units"], p["max_reasoning_steps"]) == (1, 3)
 
 
@@ -83,23 +82,24 @@ def test_final_directive_blocks_the_nh_style_re_expansion():
     fs = report_fs("partial_text", 1072)
     source_adequacy.attach(fs, "report")
 
-    assert source_adequacy.output_block_reasons(fs, 24, 6, "report") == []
-    assert source_adequacy.output_block_reasons(fs, 50, 12, "report") == [
-        "source_depth_cut_count_exceeded:12>7",
+    assert source_adequacy.output_block_reasons(fs, 24, "report") == []
+    assert source_adequacy.output_block_reasons(fs, 50, "report") == [
         "source_depth_duration_exceeded:50>35",
     ]
 
+    # 12컷 자체는 금지하지 않는다. 35초 안에서 컷을 자주 바꾸는 것은 정보 과장이 아니라
+    # 편집 리듬일 수 있다. Source gate는 증거 깊이/설명 길이를 제한한다.
     header = {"total_estimated_sec": 50, "cost_plan": {}}
     cuts = [{"cut_no": i + 1, "estimated_sec": 4} for i in range(12)]
     reasons = directive.directive_block_reasons(header, cuts, fact_sheet=fs)
-    assert "source_depth_cut_count_exceeded:12>7" in reasons
     assert "source_depth_duration_exceeded:50>35" in reasons
+    assert not any(r.startswith("source_depth_cut_count") for r in reasons)
 
 
 def test_full_report_keeps_existing_envelope():
     fs = report_fs("full_text", 11997)
     source_adequacy.attach(fs, "report")
-    assert source_adequacy.output_block_reasons(fs, 64, 10, "report") == []
+    assert source_adequacy.output_block_reasons(fs, 64, "report") == []
     assert source_adequacy.reasoning_limits(fs) == (5, 5)
 
 
@@ -148,7 +148,6 @@ def test_edge_fallback_declares_abstract_only_and_same_ceiling():
     src = (ROOT / "supabase/functions/generate-draft/index.ts").read_text(encoding="utf-8")
     assert 'SOURCE_ADEQUACY_CONTRACT_VERSION = "source-adequacy-v1"' in src
     assert "EDGE_SOURCE_MAX_DURATION_SEC = 35" in src
-    assert "EDGE_SOURCE_MAX_CUTS = 5" in src
     assert 'source_depth: "abstract_only"' in src
     assert "applySourceAdequacyPlan" in src
     assert "source_depth_duration_exceeded" in src
