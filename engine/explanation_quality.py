@@ -109,7 +109,7 @@ def validate_case(case: dict[str, Any]) -> None:
         _require_text(finding, "observed", where=where)
         _require_text(finding, "expected", where=where)
         evidence = finding.get("evidence")
-        if not isinstance(evidence, list) or not all(str(x).strip() for x in evidence):
+        if not isinstance(evidence, list) or not evidence or not all(str(x).strip() for x in evidence):
             raise GoldSetError(f"{where}.evidence: non-empty text list required")
 
 
