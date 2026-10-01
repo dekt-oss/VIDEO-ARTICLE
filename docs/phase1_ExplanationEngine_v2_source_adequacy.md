@@ -305,10 +305,19 @@ Source Adequacy를 되돌려야 할 경우 변경 경계는 한 곳이다.
 - [x] 최종 directive 길이 하드 게이트
 - [x] 운영 화면 편집 후 재검증 mirror
 - [x] Edge fallback을 abstract-only로 명시
-- [ ] 전체 Python tests
-- [ ] Web typecheck/lint/tests
-- [ ] GitHub Actions CI
-- [ ] Vercel check
+- [x] 전체 Python tests
+- [x] Web typecheck/lint/tests
+- [x] GitHub Actions CI
+- [x] Vercel check
 - [ ] 실제 신규 shallow-source 1편 Production 생성 검증
 
 마지막 항목은 merge·배포 이후에만 검증 가능하므로 PR 단계에서는 **미검증**으로 남긴다.
+
+
+## 14. 2026-10-01 adversarial review
+
+- 첫 CI에서 레거시 report Fact Sheet가 source metadata 부재 때문에 summary-only로 오인되어 reasoning이 0개가 되는 회귀를 확인했고 수정했다.
+- shallow source에 별도 cut-count 상한을 두는 초기안은 기존 photo pacing 계약과 충돌하고 정보량과 컷 수를 혼동하므로 기각했다.
+- Phase 1은 source depth에 따라 **길이 / paper content mode / report reasoning depth**만 제한한다.
+- GitHub Actions tests #183, 전체 Python pytest, web node tests/tsc/lint, Vercel preview가 성공했다.
+- 실제 신규 shallow-source Production 생성은 merge/deploy 이전이라 계속 미검증이다.
