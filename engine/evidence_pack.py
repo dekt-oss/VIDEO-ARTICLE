@@ -58,7 +58,7 @@ def _source_block(fact_sheet: dict[str, Any], domain: str) -> dict[str, Any]:
             "url": str(source.get("url") or ""),
         }
     else:
-        depth = str((policy or {}).get("source_depth") or fact_sheet.get("source_depth") or "summary_only")
+        depth = str((policy or {}).get("source_depth") or fact_sheet.get("source_depth") or "none")
         chars = int((policy or {}).get("source_chars") or fact_sheet.get("source_chars") or 0)
         provider = ""
         attribution = {
@@ -286,9 +286,13 @@ def build(fact_sheet: dict[str, Any] | None, domain: str,
             for i, text in enumerate(_list_text(fs.get("limitations")), 1)
         ]
         context = [
-            *({"role": "finding_summary", "raw_ref": f"what_found[{i - 1}]", "text": text}
+            *({"evidence_id": f"paper:context:finding:{i:02d}",
+               "role": "finding_summary", "raw_ref": f"what_found[{i - 1}]",
+               "text": text, "verification_state": "NOT_CHECKED"}
               for i, text in enumerate(_list_text(fs.get("what_found")), 1)),
-            *({"role": "method_summary", "raw_ref": f"how[{i - 1}]", "text": text}
+            *({"evidence_id": f"paper:context:method:{i:02d}",
+               "role": "method_summary", "raw_ref": f"how[{i - 1}]",
+               "text": text, "verification_state": "NOT_CHECKED"}
               for i, text in enumerate(_list_text(fs.get("how")), 1)),
         ]
     else:
@@ -308,7 +312,9 @@ def build(fact_sheet: dict[str, Any] | None, domain: str,
         ]
         limitations = []
         company = str(fs.get("company") or "").strip()
-        context = ([{"role": "company", "raw_ref": "company", "text": company}]
+        context = ([{"evidence_id": "report:context:company",
+                     "role": "company", "raw_ref": "company", "text": company,
+                     "verification_state": "NOT_CHECKED"}]
                    if company else [])
 
     return {
@@ -338,7 +344,7 @@ def validate(pack: dict[str, Any]) -> list[str]:
             errors.append(f"{key}_not_list")
 
     seen: set[str] = set()
-    for section in ("claims", "numbers", "risks", "limitations"):
+    for section in ("claims", "numbers", "risks", "limitations", "background_context"):
         for item in pack.get(section) or []:
             if not isinstance(item, dict):
                 errors.append(f"{section}_item_invalid")
