@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
 
-from engine import explanation_ir, paper_reasoning_adapter
+from engine import explanation_ir, paper_reasoning_adapter, report_reasoning_adapter
 
 
 def _scope(*, semantic: bool = False) -> dict[str, bool]:
@@ -273,3 +275,203 @@ def test_paper_adapter_does_not_promote_background_context_to_reasoning():
         "paper:context:method:01" not in unit["evidence_ids"]
         for unit in ir["reasoning_units"]
     )
+
+
+def _report_pack(*, depth: str = "full_text") -> dict:
+    mode = "FULL_EXPLAINER" if depth == "full_text" else "BRIEF_EXPLAINER"
+    return {
+        "contract_version": "evidence-pack-v1",
+        "domain": "report",
+        "content_id": "report-1",
+        "source": {
+            "source_depth": depth,
+            "source_chars": 12000 if depth == "full_text" else 1072,
+            "source_mode": mode,
+            "provider": "",
+            "attribution": {"broker": "하나증권", "company": "LS일렉트릭"},
+        },
+        "claims": [],
+        "numbers": [
+            {
+                "evidence_id": "report:num_op",
+                "raw_ref": "number_facts:num_op",
+                "value": 860,
+                "unit": "억원",
+                "period": "2026F",
+                "metric": "영업이익",
+                "scope": "company",
+                "basis": "broker_estimate",
+                "attribution": "하나증권",
+                "display": "2026F 영업이익 860억원",
+                "comparator": {},
+                "interpretation": "growth",
+                "verification_state": "SUPPORTED",
+                "verification_scope": {
+                    "quote_presence": True,
+                    "numeric_value": True,
+                    "unit": True,
+                    "period": True,
+                    "semantic_entailment": False,
+                },
+                "validation": {},
+                "source_refs": [],
+            }
+        ],
+        "risks": [],
+        "limitations": [],
+        "background_context": [],
+    }
+
+
+def _report_reasoning(unit_count: int = 1, steps_per_unit: int = 1) -> dict:
+    return {
+        "units": [
+            {
+                "reasoning_id": f"R{unit_no:02d}",
+                "unit_type": "EARNINGS_BRIDGE",
+                "title": "수주가 실적으로 이어지는 경로",
+                "carries_thesis": unit_no == 1,
+                "attributed_to": "하나증권",
+                "assumption": "수주가 계획대로 인식돼야 한다.",
+                "breaks_if": "납기가 지연되면 깨진다.",
+                "steps": [
+                    {
+                        "step": step_no,
+                        "text": f"수주 단계 {step_no}가 실적 전망으로 이어진다.",
+                        "fact_ids": ["num_op"],
+                        "source_refs": [],
+                    }
+                    for step_no in range(1, steps_per_unit + 1)
+                ],
+            }
+            for unit_no in range(1, unit_count + 1)
+        ]
+    }
+
+
+def test_report_adapter_maps_existing_fact_ids_and_preserves_attribution():
+    """Catches report steps losing their ledger link or becoming objective facts."""
+    ir = report_reasoning_adapter.build(_report_pack(), _report_reasoning())
+
+    unit = ir["reasoning_units"][0]
+    assert unit["evidence_ids"] == ["report:num_op"]
+    assert unit["raw_refs"] == ["number_facts:num_op"]
+    assert unit["attribution"] == "하나증권"
+    assert unit["causal_level"] == "broker_projection"
+    assert ir["thesis"] == "수주가 실적으로 이어지는 경로"
+
+
+def test_report_adapter_drops_source_only_and_unknown_fact_steps():
+    """Catches raw quotes or invented fact IDs bypassing Evidence Pack traceability."""
+    reasoning = _report_reasoning()
+    reasoning["units"][0]["steps"] = [
+        {"step": 1, "text": "원문 인용만 있는 단계", "fact_ids": [],
+         "source_refs": [{"quote": "원문 문장"}]},
+        {"step": 2, "text": "없는 숫자", "fact_ids": ["num_ghost"], "source_refs": []},
+    ]
+
+    ir = report_reasoning_adapter.build(_report_pack(), reasoning)
+
+    assert ir["reasoning_units"] == []
+    assert "report_step_without_evidence_id:R01#1" in ir["warnings"]
+    assert "evidence_ref_unknown:report:num_ghost" in ir["warnings"]
+
+
+def test_report_adapter_reapplies_partial_source_one_by_three_ceiling():
+    """Catches a shallow report recovering deep reasoning in the shadow layer."""
+    ir = report_reasoning_adapter.build(
+        _report_pack(depth="partial_text"),
+        _report_reasoning(unit_count=3, steps_per_unit=5),
+    )
+
+    assert len(ir["reasoning_units"]) == 3
+    assert all(unit["attribution"] == "하나증권" for unit in ir["reasoning_units"])
+    assert "source_reasoning_units_capped:3>1" in ir["warnings"]
+    assert "source_reasoning_steps_capped:R01:5>3" in ir["warnings"]
+
+
+def _pack_from_gold_case(case: dict) -> dict:
+    domain = case["domain"]
+    pack = {
+        "contract_version": "evidence-pack-v1",
+        "domain": domain,
+        "content_id": case["case_id"],
+        "source": {
+            "source_depth": case["source_depth"],
+            "source_chars": case.get("source_chars", 12000),
+            "source_mode": case["source_mode"],
+            "provider": "",
+            "attribution": case.get("source_attribution", {}),
+        },
+        "claims": [],
+        "numbers": [],
+        "risks": [],
+        "limitations": [],
+        "background_context": [],
+    }
+    for item in case["evidence"]:
+        projected = deepcopy(item)
+        projected["verification_scope"] = {
+            "quote_presence": True,
+            "numeric_value": domain == "report",
+            "unit": domain == "report",
+            "period": domain == "report",
+            "semantic_entailment": False,
+        }
+        if domain == "paper":
+            projected.update(
+                domain_role="claim", evidence_grade="B", source_refs=[],
+                uncertainty=projected.get("uncertainty"),
+                limitations=projected.get("limitations", []),
+                attribution=projected.get("attribution", ""),
+                domain_fields={},
+            )
+            pack["claims"].append(projected)
+        else:
+            projected.update(
+                value=projected.get("value"), unit=projected.get("unit", ""),
+                period=projected.get("period", ""), metric=projected.get("metric", ""),
+                scope="company", basis="broker_estimate",
+                attribution=projected.get("attribution", ""),
+                display=projected["text"], comparator={},
+                interpretation=projected.get("interpretation", "neutral"),
+                validation={}, source_refs=[],
+            )
+            projected.pop("text")
+            pack["numbers"].append(projected)
+    return pack
+
+
+def test_six_gold_cases_have_deterministic_calibrated_shadow_ir():
+    """Catches recurrence of the six Phase 0 semantic failure anchors."""
+    path = Path(__file__).parent / "fixtures" / "explanation_ir_gold_cases.json"
+    cases = json.loads(path.read_text(encoding="utf-8"))
+    assert len(cases) == 6
+
+    outputs: dict[str, dict] = {}
+    for case in cases:
+        pack = _pack_from_gold_case(case)
+        if case["domain"] == "paper":
+            first = paper_reasoning_adapter.build(pack)
+            second = paper_reasoning_adapter.build(pack)
+        else:
+            first = report_reasoning_adapter.build(pack, case["financial_reasoning"])
+            second = report_reasoning_adapter.build(pack, case["financial_reasoning"])
+        assert json.dumps(first, ensure_ascii=False, sort_keys=True) == json.dumps(
+            second, ensure_ascii=False, sort_keys=True)
+        assert explanation_ir.validate(first, pack) == []
+        outputs[case["case_id"]] = first
+
+    heel = outputs["heel-strike-2026-09"]
+    assert "유일" not in " ".join(unit["text"] for unit in heel["reasoning_units"])
+    remap = outputs["deaf-retinotopic-remap-2026-09"]
+    assert "청각" not in " ".join(unit["text"] for unit in remap["reasoning_units"])
+    personality = outputs["personality-gwas-2026-09"]
+    assert {u["causal_level"] for u in personality["reasoning_units"]} == {"association_only"}
+    samsung = outputs["samsung-memory-cycle-2026-09"]
+    assert samsung["reasoning_units"][0]["attribution"] == "유안타증권"
+    nh = outputs["nh-ai-mid-cycle-2026-09"]
+    assert len(nh["reasoning_units"]) <= 3
+    ship = outputs["shipbuilding-rerating-2026-09"]
+    assert all(u["causal_level"] == "broker_projection" for u in ship["reasoning_units"])
+    assert all(u["attribution"] == "한국투자증권" for u in ship["reasoning_units"])
