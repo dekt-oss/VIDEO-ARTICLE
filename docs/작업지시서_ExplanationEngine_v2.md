@@ -998,3 +998,447 @@ FOLLOW_PATH
 PARTICLE_FLOW
 COUNT_UP
 LAYER_SPLIT
+```
+
+---
+
+## 기존 Operation 매핑
+
+```text
+FLOW
+→ path + particle_flow
+
+TRANSFER
+→ follow_path
+
+ACCUMULATE
+→ object/count accumulation
+
+CUTAWAY
+→ mask/layer reveal
+
+ZOOM_INTO
+→ scale + push
+
+SPLIT
+→ layer split
+
+TRANSFORM
+→ state replacement/morph
+```
+
+---
+
+## 생성영상 정책
+
+Generated Video는 기본값이 아니다.
+
+우선순위:
+
+```text
+1. deterministic code motion
+2. existing/generated still + compositing
+3. generated video
+```
+
+Veo는:
+
+```text
+Hook
+Hero Beat
+Code Motion으로 현저히 표현하기 어려운 장면
+```
+
+에 우선 사용한다.
+
+---
+
+# 14. Phase 12 — Domain Visual Semantics
+
+## Science
+
+구분:
+
+```text
+Observed
+Measured
+Modelled
+Proposed mechanism
+Hypothesis
+Metaphor
+```
+
+## Finance
+
+구분:
+
+```text
+Actual
+Company guidance
+Broker estimate
+Forecast
+Scenario
+Risk
+```
+
+화면에서도 다르게 보여준다.
+
+예:
+
+```text
+Actual
+────────▶
+
+Forecast
+- - - - ▶
+
+Scenario
+········▶
+```
+
+`LITERAL_OBSERVATION`과 `SCHEMATIC_PRINCIPLE / METAPHOR`를 엄격히 구분한다.
+
+---
+
+# 15. Phase 13 — QA 통합
+
+최종 Publish Gate를 다음 순서로 구성한다.
+
+```text
+Source QA
+↓
+Reasoning QA
+↓
+Narration QA
+↓
+Visual Semantic QA
+↓
+Render QA
+```
+
+---
+
+## 핵심 질문
+
+### Source
+
+> 이 깊이의 Source로 이 정도 설명을 해도 되는가?
+
+### Reasoning
+
+> 질문에 답하는 논리가 실제 Evidence로 연결되는가?
+
+### Narration
+
+> 사실이 맞고, 사람이 들어도 쉬운가?
+
+### Visual
+
+> 화면이 같은 내용을 설명하는가?
+
+### Render
+
+> 선언된 변화가 실제 픽셀 변화로 나타났는가?
+
+---
+
+# 16. Phase 14 — Analytics / A-B
+
+현재 영상 전체 평균 지표는 이미 수집한다.
+
+다음 단계:
+
+```text
+Beat timing
++
+Audience retention timeline
+```
+
+을 연결한다.
+
+---
+
+## 실험 순서
+
+### Experiment A — Explanation
+
+```text
+기존 Renderer
++ 기존 Script
+
+VS
+
+기존 Renderer
++ Explanation Engine v2 Script
+```
+
+---
+
+### Experiment B — Visual Explainer
+
+```text
+v2 Script
++ 기존 Visual
+
+VS
+
+v2 Script
++ Code Motion Visual
+```
+
+---
+
+### Experiment C — Hero Video
+
+```text
+Visual Explainer
+
+VS
+
+Visual Explainer + Veo Hook/Hero
+```
+
+---
+
+# 17. Model Strategy
+
+모델을 바꾸는 것만으로 해결하려 하지 않는다.
+
+그러나 Reasoning/Script는 영상당 호출 수가 적고 품질 영향이 매우 크므로:
+
+```text
+Extraction / routine validation
+→ cost-efficient model
+
+Explanation Reasoning
+→ quality-tier model 후보 A/B
+
+Spoken Narration
+→ language quality가 좋은 모델 후보 A/B
+```
+
+로 분리할 수 있다.
+
+현재 기본 모델을 즉시 교체하지 말고 Gold Set으로 비교한다.
+
+평가 축:
+
+```text
+factuality
+explanation coherence
+spoken naturalness
+compression
+latency
+cost
+```
+
+---
+
+# 18. 구현 PR 권장 순서
+
+## PR 1 — Audit + Gold Set
+
+- 감사 도구
+- 단계별 품질 평가 구조
+- 최근 샘플 Gold Set 고정
+- 코드 동작 변경 없음
+
+## PR 2 — Source Adequacy Gate
+
+- source_mode
+- 길이/복잡도 제한
+- shallow source downgrade
+
+## PR 3 — Explanation IR + Adapter Interface
+
+- 공통 schema
+- adapter registry
+- contract tests
+- 기존 출력 유지
+
+## PR 4 — Paper Reasoning Adapter
+
+- prerequisite
+- mechanism availability
+- observation/interpretation 구분
+
+## PR 5 — Report Reasoning Adapter
+
+- driver chain
+- valuation
+- forecast/risk semantics
+- attribution
+
+## PR 6 — Narrative + Spoken Narration v2
+
+- IR → story
+- spoken polish
+- TTS QA
+
+## PR 7 — Semantic Fidelity Gate
+
+- clause entailment
+- scope intensifier
+- hook grounding
+- independent critic
+
+## PR 8 — Existing Visual Planner Integration
+
+- reasoning_id / claim_id / stage 연결
+- fallback 제거
+- regression tests
+
+## PR 9 — Transition Edge
+
+- relation-based transition resolver
+
+## PR 10 — Visual Explainer Renderer MVP
+
+- deterministic primitives
+- operation mapping
+- render QA
+
+## PR 11 — Domain Visual Semantics
+
+- Science uncertainty
+- Finance forecast/estimate
+
+## PR 12 — Beat Analytics
+
+- Beat timeline 저장
+- retention 연계
+- A/B metadata
+
+---
+
+# 19. Feature Flag / Rollout
+
+기존 Production을 한 번에 교체하지 않는다.
+
+권장:
+
+```text
+EXPLANATION_ENGINE_V2=false
+```
+
+기본으로 시작.
+
+---
+
+## Shadow Mode
+
+동일 Source로:
+
+```text
+Current Script
++
+V2 Explanation Script
+```
+
+두 개를 생성하되 V2는 발행하지 않는다.
+
+사람이 비교한다.
+
+---
+
+## Limited Release
+
+Gold Set과 Shadow 검증 후:
+
+```text
+10~20% 콘텐츠
+```
+
+에만 v2 사용.
+
+그 이후 Analytics 확인 후 확대한다.
+
+---
+
+# 20. 반드시 하지 않는 것
+
+```text
+❌ 기존 Story/Visual 시스템 전체 재작성
+❌ Paper/Report 전체 Pipeline 복제
+❌ Renderer부터 대규모 재개발
+❌ Source가 얕은데 LLM으로 내용 채우기
+❌ Self-check 하나만 믿기
+❌ Prompt만 길게 만드는 방식
+❌ Field를 추가하고 consumer 연결을 확인하지 않는 방식
+❌ CI 통과를 콘텐츠 품질 검증으로 간주
+```
+
+---
+
+# 21. Adversarial Self-review
+
+각 Phase 완료 전에 다음을 묻는다.
+
+```text
+이 필드는 실제 consumer가 읽는가?
+이 Gate는 경고만 하고 실제 행동이 없는가?
+모델이 라벨만 바꾸면 통과할 수 있는가?
+Source보다 강한 주장이 생길 수 있는가?
+Paper/Report 중 한쪽만 수정돼 drift가 생기지 않는가?
+같은 질문을 두 모듈이 각자 판단하고 있지 않은가?
+```
+
+---
+
+# 22. 최종 완료 기준
+
+다음이 충족돼야 Explanation Engine v2 완료로 본다.
+
+```text
+[ ] Source depth가 콘텐츠 깊이를 실제로 제한한다.
+[ ] Script 전에 독립 Explanation IR이 존재한다.
+[ ] Paper/Report Adapter가 동일 IR contract를 통과한다.
+[ ] Heel-strike와 같은 scope hallucination이 차단된다.
+[ ] factual hook과 rhetorical hook이 구분된다.
+[ ] series_split/too_many_numbers가 실제 행동으로 이어진다.
+[ ] Spoken Narration이 별도 polish를 거친다.
+[ ] Reasoning ID가 Visual Stage까지 유지된다.
+[ ] Visual representation mode가 실제 의미와 맞는다.
+[ ] Stage mutation 일부가 deterministic motion으로 실제 렌더된다.
+[ ] 기존 영상과 v2 영상을 같은 Source로 A/B 생성할 수 있다.
+[ ] Beat timing이 Analytics와 연결된다.
+[ ] 실제 Render를 사람이 확인했다.
+```
+
+---
+
+# 23. 최상위 품질 기준
+
+VIDEO-ARTICLE이 목표로 해야 할 것은:
+
+> “논문을 1분으로 요약했습니다.”
+
+도 아니고,
+
+> “AI로 멋진 3D 영상을 만들었습니다.”
+
+도 아니다.
+
+최종 목표는:
+
+> **“내용은 전문적인데, 영상을 따라가다 보니 원리까지 이해됐다.”**
+
+이다.
+
+이를 위해 우선순위는 다음으로 고정한다.
+
+```text
+SOURCE QUALITY
+↓
+EXPLANATION QUALITY
+↓
+NARRATION QUALITY
+↓
+VISUAL PLANNING
+↓
+RENDER QUALITY
+```
+
+Renderer는 중요하지만,
+좋은 설명을 시각화하는 마지막 증폭기이지
+약한 설명을 구제하는 장치가 아니다.
