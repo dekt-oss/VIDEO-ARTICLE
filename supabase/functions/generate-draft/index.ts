@@ -1209,7 +1209,6 @@ function attachEdgeSourceAdequacy(factSheet: any, paper: any) {
     source_chars: chars,
     source_mode: "BRIEF_EXPLAINER",
     max_duration_sec: EDGE_SOURCE_MAX_DURATION_SEC,
-    max_cuts: 0,
     max_content_mode: "flash",
     max_reasoning_units: 0,
     max_reasoning_steps: 0,
