@@ -31,6 +31,20 @@ export function approvalBlockReasons(
 
   const total = rows.reduce((acc, c) => acc + (Number(c.estimated_sec) || 0), 0);
   if (hasPlan && total > CONTENT_MODE_HARD_MAX_SEC) out.add("over_max_duration");
+  // Explanation Engine v2 Phase 1: 저장된 source contract도 편집 뒤 다시 센다.
+  // 생성 시 24초였던 shallow-source 지시서를 화면에서 50초/12컷으로 늘려도 통과하면
+  // 서버 생성 게이트만으로는 충분하지 않다.
+  const source = h.source_adequacy;
+  if (source?.contract_version === "source-adequacy-v1") {
+    const maxSec = Number(source.max_duration_sec) || 0;
+    const maxCuts = Number(source.max_cuts) || 0;
+    if (maxSec > 0 && total > maxSec) {
+      out.add(`source_depth_duration_exceeded:${Math.round(total)}>${maxSec}`);
+    }
+    if (maxCuts > 0 && rows.length > maxCuts) {
+      out.add(`source_depth_cut_count_exceeded:${rows.length}>${maxCuts}`);
+    }
+  }
   // ★★ series_split 은 **차단하지 않는다**(2026-09-03). 명세가 "분할 권고까지만"이라고
   //   정했는데(수정명세서_근거밀도_가변길이_v1 §8-2) 코드가 승인 차단으로 만들어 뒀고,
   //   실측에서 원장 있는 초안 10건이 **100%** 여기 걸렸다. 화면에 푸는 길도 없다.
