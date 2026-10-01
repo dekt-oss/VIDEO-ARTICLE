@@ -1,0 +1,39 @@
+{
+  "contract_version": "explanation-glossary-v1",
+  "entries": [
+    {
+      "concept_id": "gwas_association",
+      "domains": ["paper"],
+      "label": "GWAS의 연관",
+      "aliases": ["GWAS", "genome-wide association", "lead genetic variants"],
+      "simple_explanation": "GWAS는 많은 사람의 유전체를 비교해 특정 변이가 질환이나 특성과 통계적으로 함께 나타나는지를 찾는 연구다.",
+      "guardrails": [
+        "통계적 연관은 해당 변이가 특성을 직접 결정하거나 원인임을 뜻하지 않는다."
+      ],
+      "source": {
+        "publisher": "National Human Genome Research Institute",
+        "title": "Genome-Wide Association Studies (GWAS)",
+        "url": "https://www.genome.gov/genetics-glossary/Genome-Wide-Association-Studies-GWAS",
+        "locator": "Definition and Narration",
+        "checked_at": "2026-10-02"
+      }
+    },
+    {
+      "concept_id": "polygenic_trait",
+      "domains": ["paper"],
+      "label": "다유전자 형질",
+      "aliases": ["polygenic", "다유전자", "many genes"],
+      "simple_explanation": "다유전자 형질은 하나의 유전자가 아니라 둘 이상의 유전자가 함께 영향을 주는 특성이다.",
+      "guardrails": [
+        "여러 유전자가 관여해도 환경의 영향이 배제되거나 개인의 특성이 유전자만으로 결정된다는 뜻은 아니다."
+      ],
+      "source": {
+        "publisher": "National Human Genome Research Institute",
+        "title": "Polygenic Trait",
+        "url": "https://www.genome.gov/genetics-glossary/Polygenic-Trait",
+        "locator": "Definition",
+        "checked_at": "2026-10-02"
+      }
+    }
+  ]
+}
