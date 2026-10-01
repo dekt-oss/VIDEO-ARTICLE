@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from engine import directive, report_directive, report_reasoning, source_adequacy
+from engine import config, directive, report_directive, report_reasoning, source_adequacy
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,8 +53,8 @@ def test_legacy_report_without_source_metadata_keeps_existing_reasoning_limits()
     legacy = {"number_facts": [{"fact_id": "F01", "value": 1}]}
     assert source_adequacy.from_fact_sheet(legacy, "report") is None
     assert source_adequacy.reasoning_limits(legacy) == (
-        __import__("engine.config", fromlist=["config"]).REASONING_MAX_UNITS,
-        __import__("engine.config", fromlist=["config"]).REASONING_MAX_STEPS,
+        config.REASONING_MAX_UNITS,
+        config.REASONING_MAX_STEPS,
     )
 
 
