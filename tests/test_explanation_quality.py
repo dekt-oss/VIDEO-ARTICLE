@@ -19,33 +19,51 @@ def _cases():
 def test_gold_set_has_both_domains_and_all_quality_axes():
     cases = _cases()
     assert {case["domain"] for case in cases} == {"paper", "report"}
-    assert len(cases) == 3
+    assert len(cases) == 6
+    assert sum(case["domain"] == "paper" for case in cases) == 3
+    assert sum(case["domain"] == "report" for case in cases) == 3
     for case in cases:
         assert set(case["ratings"]) == set(QUALITY_AXES)
 
 
-def test_gold_set_keeps_the_three_phase0_regression_anchors():
+def test_gold_set_keeps_phase0_regression_anchors():
     by_id = {case["case_id"]: case for case in _cases()}
     codes = lambda case: {finding["code"] for finding in case["findings"]}
 
     assert "scope_expansion_exclusivity" in codes(by_id["heel-strike-2026-09"])
     assert "reasoning_link_lost_before_visual" in codes(by_id["samsung-memory-cycle-2026-09"])
     assert "source_depth_overexpanded" in codes(by_id["nh-ai-mid-cycle-2026-09"])
+    assert "cross_sensory_transfer_invented" in codes(by_id["deaf-retinotopic-remap-2026-09"])
+    assert "association_to_determination_hook" in codes(by_id["personality-gwas-2026-09"])
+    assert "unsupported_replacement_claim" in codes(by_id["shipbuilding-rerating-2026-09"])
 
 
 def test_summary_is_deterministic_and_exposes_failure_origin():
     summary = summarize(_cases())
-    assert summary["cases"] == 3
-    assert summary["findings"] == 11
-    assert summary["by_domain"] == {"paper": 1, "report": 2}
-    assert summary["by_severity"]["p0"] == 5
-    assert summary["by_stage"]["visual"] == 3
-    assert summary["by_stage"]["source"] == 1
+    assert summary["cases"] == 6
+    assert summary["findings"] == 23
+    assert summary["by_domain"] == {"paper": 3, "report": 3}
+    assert summary["by_severity"] == {"p0": 11, "p1": 12}
+    assert summary["by_stage"] == {
+        "narration": 1,
+        "reasoning": 6,
+        "render": 1,
+        "script": 10,
+        "source": 1,
+        "visual": 4,
+    }
 
 
 def test_markdown_report_is_reviewable_without_production_access():
     report = markdown_report(_cases())
-    assert "heel-strike-2026-09" in report
-    assert "samsung-memory-cycle-2026-09" in report
-    assert "nh-ai-mid-cycle-2026-09" in report
+    for case_id in (
+        "heel-strike-2026-09",
+        "samsung-memory-cycle-2026-09",
+        "nh-ai-mid-cycle-2026-09",
+        "deaf-retinotopic-remap-2026-09",
+        "personality-gwas-2026-09",
+        "shipbuilding-rerating-2026-09",
+    ):
+        assert case_id in report
     assert "p0:scope_expansion_exclusivity" in report
+    assert "p0:association_to_determination_hook" in report
