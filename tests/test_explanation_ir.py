@@ -170,6 +170,34 @@ def test_invalid_evidence_pack_is_rejected_before_normalization():
         raise AssertionError("invalid Evidence Pack must fail closed")
 
 
+def test_validate_rejects_invalid_pack_and_disallowed_positive_evidence():
+    """Catches post-normalization tampering bypassing the evidence-state gate."""
+    pack = _pack()
+    ir = explanation_ir.normalize(_candidate(), pack)
+    ir["reasoning_units"][0]["evidence_ids"] = ["paper:C02"]
+    ir["reasoning_units"][0]["raw_refs"] = ["claims:C02"]
+
+    assert "evidence_state_disallowed:paper:C02:UNSUPPORTED" in explanation_ir.validate(
+        ir, pack)
+
+    invalid_pack = deepcopy(pack)
+    del invalid_pack["claims"][0]["raw_ref"]
+    assert any(
+        error.startswith("evidence_pack_invalid:")
+        for error in explanation_ir.validate(ir, invalid_pack)
+    )
+
+
+def test_validate_rejects_report_attribution_tampering():
+    """Catches a traced broker fact being relabeled as another broker's view."""
+    pack = _report_pack()
+    ir = report_reasoning_adapter.build(pack, _report_reasoning())
+    ir["reasoning_units"][0]["attribution"] = "다른증권"
+
+    assert "attribution_mismatch:XR01:다른증권!=하나증권" in explanation_ir.validate(
+        ir, pack)
+
+
 def test_risk_and_limitation_units_may_preserve_disallowed_state_as_constraints():
     """Catches loss of negative evidence while still forbidding it as positive proof."""
     candidate = _candidate()
@@ -242,6 +270,8 @@ def test_paper_adapter_uses_explicit_question_and_thesis_without_rewriting():
 
     assert ir["core_question"] == "성격 변이 연구가 실제로 말하는 것은 무엇인가?"
     assert ir["thesis"] == "변이는 성격과 연관됐지만 성격을 결정한다고 입증하지 않았다."
+    assert "caller_core_question_semantics_unverified" in ir["warnings"]
+    assert "caller_thesis_semantics_unverified" in ir["warnings"]
 
 
 def test_paper_adapter_rejects_report_pack():
@@ -388,6 +418,40 @@ def test_report_adapter_reapplies_partial_source_one_by_three_ceiling():
     assert all(unit["attribution"] == "하나증권" for unit in ir["reasoning_units"])
     assert "source_reasoning_units_capped:3>1" in ir["warnings"]
     assert "source_reasoning_steps_capped:R01:5>3" in ir["warnings"]
+
+
+def test_report_adapter_summary_only_does_not_leak_deep_reasoning_into_thesis():
+    """Catches a zero-unit source retaining a thesis from disabled reasoning."""
+    ir = report_reasoning_adapter.build(
+        _report_pack(depth="summary_only"),
+        _report_reasoning(),
+    )
+
+    assert ir["reasoning_units"] == []
+    assert ir["thesis"] == ""
+    assert "source_reasoning_units_capped:1>0" in ir["warnings"]
+
+
+def test_report_adapter_derives_missing_broker_attribution_from_evidence():
+    """Catches a broker projection becoming unattributed when the ledger knows the broker."""
+    reasoning = _report_reasoning()
+    reasoning["units"][0]["attributed_to"] = ""
+
+    ir = report_reasoning_adapter.build(_report_pack(), reasoning)
+
+    assert ir["reasoning_units"][0]["attribution"] == "하나증권"
+    assert "report_attribution_derived:R01#1:하나증권" in ir["warnings"]
+
+
+def test_report_adapter_corrects_conflicting_attribution_to_evidence_pack():
+    """Catches stale financial reasoning overriding the Fact Sheet broker."""
+    reasoning = _report_reasoning()
+    reasoning["units"][0]["attributed_to"] = "다른증권"
+
+    ir = report_reasoning_adapter.build(_report_pack(), reasoning)
+
+    assert ir["reasoning_units"][0]["attribution"] == "하나증권"
+    assert "report_attribution_corrected:R01#1:다른증권!=하나증권" in ir["warnings"]
 
 
 def _pack_from_gold_case(case: dict) -> dict:

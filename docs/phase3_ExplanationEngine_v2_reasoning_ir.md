@@ -1,7 +1,7 @@
 # Explanation Engine v2 — Phase 3 Reasoning IR
 
-**기준일:** 2026-10-01  
-**기준 커밋:** `f52f587ebe24b63586ca7dd5904ddc35492b8d94`  
+**기준일:** 2026-10-01
+**기준 커밋:** `f52f587ebe24b63586ca7dd5904ddc35492b8d94`
 **선행:** Phase 0 Gold Set, Phase 1 Source Adequacy, Phase 2 Common Evidence Pack
 
 ## 1. 목표
@@ -163,7 +163,10 @@ Phase 3는 문학적인 질문 생성기가 아니다.
 - Adapter 입력에 명시된 단일 질문/명제가 있으면 정규화해 사용한다.
 - 여러 질문 배열은 허용하지 않는다.
 - 비어 있으면 domain의 핵심 evidence 한 항목을 기반으로 결정론적 최소 문장을 만든다.
-- 만들어진 질문과 thesis는 reasoning unit보다 강한 인과나 확실성을 주장할 수 없다.
+- Adapter가 Evidence Pack에서 고른 기본 thesis는 원문 항목을 그대로 사용한다.
+- 호출자가 질문이나 thesis를 직접 넘기면 텍스트의 semantic entailment를 코드가 증명할 수
+  없으므로 `caller_*_semantics_unverified` warning을 남긴다. 이 warning이 있는 값을 자동으로
+  Production narration에 승격하면 안 된다.
 - 자연스러운 spoken narration과 story refinement는 Phase 4 이후 책임이다.
 
 ## 7. Gold Set Shadow Regression
@@ -224,3 +227,106 @@ fixture는 외부 LLM이나 DB 없이 같은 입력에서 byte-equivalent JSON s
 
 Production 경로에 연결하지 않으므로 rollback은 Phase 3 신규 파일과 문서 제거만으로 끝난다.
 DB, 저장 JSON, 기존 script 결과에는 복구 작업이 없다.
+
+## 12. 구현된 Shadow API
+
+Phase 3의 진입점은 기존 생성 파이프라인이 아니라 명시적인 Python 호출뿐이다.
+
+### Paper
+
+```python
+from engine import evidence_pack, paper_reasoning_adapter
+
+pack = evidence_pack.build(paper_fact_sheet, "paper", content_id=paper_id)
+ir = paper_reasoning_adapter.build(
+    pack,
+    core_question="이 연구가 실제로 보여 주는 것은 무엇인가?",
+    thesis="Fact Sheet의 세기를 넘지 않는 한 문장",
+)
+```
+
+Paper Adapter는 `claims`만 positive reasoning으로 사용한다. `what_found`와 `how`에서
+투영된 `background_context`는 항목별 semantic verification이 없으므로 prerequisite로
+자동 승격하지 않는다. claim에 붙은 limitation은 같은 evidence ID를 가진 별도
+`limitation` unit으로 이어진다.
+
+### Report
+
+```python
+from engine import evidence_pack, report_reasoning_adapter
+
+pack = evidence_pack.build(report_fact_sheet, "report", content_id=report_id)
+ir = report_reasoning_adapter.build(pack, {"units": normalized_report_reasoning_units})
+```
+
+Report Adapter는 기존 `report_reasoning.normalize_units()` 이후의 결과를 받는다.
+`fact_ids=["num_op"]`는 `evidence_ids=["report:num_op"]`로만 변환된다. 원문 quote만 있고
+Evidence Pack ID가 없는 단계는 IR에서 제외된다. `full_text`는 5×5, `partial_text`는
+1×3, `summary_only/none`은 0×0이라는 Phase 1 상한을 config 정본에서 다시 읽는다.
+
+## 13. Warning과 Validation
+
+대표 warning:
+
+- `evidence_ref_unknown:<id>`: Evidence Pack에 없는 참조
+- `evidence_state_disallowed:<id>:<state>`: unsupported/stale positive 근거
+- `semantic_entailment_unverified:<id>`: quote 존재가 claim 의미 전체를 입증하지 않음
+- `evidence_not_checked:<id>`: 항목별 검증 미실행
+- `evidence_unverifiable:<id>`: 현재 source depth에서 판정 불가
+- `report_step_without_evidence_id:<Rxx#step>`: 기존 금융 단계에 Fact Sheet ID가 없음
+- `report_attribution_derived:<Rxx#step>:<broker>`: unit 귀속이 비어 Evidence Pack에서 복구
+- `report_attribution_corrected:<Rxx#step>:<old>!=<broker>`: stale/cross-report 귀속을 정본으로 보정
+- `report_attribution_missing|ambiguous:<Rxx#step>`: broker 귀속을 안전하게 정할 수 없음
+- `caller_core_question_semantics_unverified`, `caller_thesis_semantics_unverified`: 호출자 입력의
+  의미 강도를 코드가 검증하지 못함
+- `source_reasoning_units_capped`, `source_reasoning_steps_capped`: Phase 1 상한 적용
+
+`engine.explanation_ir.validate(ir, pack)`는 contract/domain/core question/ID/chain/evidence/raw
+reference를 다시 검사한다. warning은 보존 가능한 불확실성을 나타내고, validation error는
+IR 구조를 소비하면 안 된다는 뜻이다.
+
+## 14. 실제 변경 경계
+
+- `engine/explanation_ir.py`: 공통 정규화·검증
+- `engine/paper_reasoning_adapter.py`: Paper Claim Ledger Adapter
+- `engine/report_reasoning_adapter.py`: 기존 금융 reasoning Adapter
+- `tests/test_explanation_ir.py`: 공통·도메인·Gold Set 회귀
+- `tests/fixtures/explanation_ir_gold_cases.json`: Paper 3건 + Report 3건
+
+기존 `scriptgen.py`, `report_scriptgen.py`, directive, render, web, Supabase 경로는
+변경하지 않았다. 따라서 이 PR만 배포해도 Production output은 Phase 2와 동일하며,
+새 IR은 호출자가 명시적으로 Adapter를 호출할 때만 생성된다.
+
+## 15. 검증 결과
+
+2026-10-01 로컬 격리 worktree에서 다음을 실행했다.
+
+- Phase 3 + Evidence Pack + Report Reasoning targeted: `54 passed`
+- 전체 Python: `2533 passed, 22 skipped`
+- Web Node tests: `150 passed, 0 failed`
+- TypeScript `tsc --noEmit --incremental false`: 통과
+- Next lint: warning/error 없이 통과 (`next lint` deprecation 안내만 존재)
+- Next production build: 39개 static page 생성을 포함해 통과
+- `git diff --check`: 통과
+
+전체 pytest의 최초 sandbox 실행은 Windows 임시 디렉터리 권한으로 setup error가 발생했다.
+코드 실패와 분리하기 위해 쓰기 가능한 고정 `--basetemp`로 전체 suite를 다시 실행했고 위 최종
+결과를 얻었다.
+
+## 16. Fable Review 결과
+
+실패를 전제로 evidence state, source depth, attribution, ID/ref를 다시 공격적으로 확인했고 다음
+계약 누락을 보정했다.
+
+1. 정규화 후 IR을 수동 조작하면 `validate()`가 `UNSUPPORTED` positive evidence를 놓치던 문제
+2. invalid Evidence Pack을 `validate()`가 명시적 오류로 반환하지 않던 문제
+3. `summary_only/none`에서 unit은 0개여도 기존 deep reasoning title이 thesis로 남을 수 있던 문제
+4. report reasoning의 `attributed_to`가 비었을 때 Evidence Pack의 broker 귀속을 복구하거나
+   missing/ambiguous warning을 내지 않던 문제
+5. report reasoning 또는 정규화 후 IR의 broker 귀속이 Evidence Pack과 충돌해도 정본 기준으로
+   보정·거부하지 않던 문제
+
+각 항목은 실패하는 회귀 테스트를 먼저 확인한 뒤 수정했다. 보정 후 blocking finding은 없다.
+다만 caller가 직접 제공한 core question/thesis의 의미적 타당성은 deterministic code로 검증할 수
+없어서 warning으로 표시하며, 실제 Production source→draft→directive→approval 동작과 실제 Gold Set
+payload shadow 비교는 이 PR에서 미검증이다.

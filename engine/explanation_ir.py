@@ -155,7 +155,9 @@ def validate(ir: dict[str, Any], pack: dict[str, Any] | None = None) -> list[str
     else:
         units = ir["reasoning_units"]
 
-    index = build_index(pack) if isinstance(pack, dict) and not _pack_errors(pack) else {}
+    pack_errors = _pack_errors(pack) if pack is not None else []
+    errors.extend(f"evidence_pack_invalid:{error}" for error in pack_errors)
+    index = build_index(pack) if isinstance(pack, dict) and not pack_errors else {}
     expected_chain: list[str] = []
     for position, unit in enumerate(units, 1):
         if not isinstance(unit, dict):
@@ -174,12 +176,34 @@ def validate(ir: dict[str, Any], pack: dict[str, Any] | None = None) -> list[str
         if index:
             unknown = [eid for eid in evidence_ids if eid not in index]
             errors.extend(f"evidence_ref_unknown:{eid}" for eid in unknown)
+            for evidence_id in evidence_ids:
+                item = index.get(evidence_id)
+                if item is None:
+                    continue
+                state = _text(item.get("verification_state"))
+                if state in DISALLOWED_POSITIVE_STATES and unit.get("role") not in CONSTRAINT_ROLES:
+                    errors.append(f"evidence_state_disallowed:{evidence_id}:{state}")
             expected_refs = _unique([
                 _text(index[eid].get("raw_ref"))
                 for eid in evidence_ids if eid in index and _text(index[eid].get("raw_ref"))
             ])
             if unit.get("raw_refs") != expected_refs:
                 errors.append(f"raw_refs_invalid:{reasoning_id or '?'}")
+            if ir.get("domain") == "report":
+                evidence_attributions = sorted({
+                    _text(index[eid].get("attribution"))
+                    for eid in evidence_ids
+                    if eid in index and _text(index[eid].get("attribution"))
+                })
+                if len(evidence_attributions) == 1:
+                    expected_attribution = evidence_attributions[0]
+                    actual_attribution = _text(unit.get("attribution"))
+                    if actual_attribution != expected_attribution:
+                        errors.append(
+                            f"attribution_mismatch:{reasoning_id or '?'}:"
+                            f"{actual_attribution or '?'}!={expected_attribution}")
+                elif len(evidence_attributions) > 1:
+                    errors.append(f"attribution_ambiguous:{reasoning_id or '?'}")
     if ir.get("explanation_chain") != expected_chain:
         errors.append("explanation_chain_invalid")
     if isinstance(pack, dict) and ir.get("domain") != pack.get("domain"):

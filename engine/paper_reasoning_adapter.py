@@ -37,6 +37,10 @@ def build(pack: dict[str, Any], *, core_question: str = "",
         raise ValueError("paper_reasoning_adapter_requires_paper_pack")
 
     warnings: list[str] = []
+    if _text(core_question):
+        warnings.append("caller_core_question_semantics_unverified")
+    if _text(thesis):
+        warnings.append("caller_thesis_semantics_unverified")
     units: list[dict[str, Any]] = []
     for claim in pack.get("claims") or []:
         if not isinstance(claim, dict):

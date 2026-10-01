@@ -30,8 +30,7 @@ def _source_limits(pack: dict[str, Any]) -> tuple[int, int]:
         policy.get("max_reasoning_steps") or 0)
 
 
-def _thesis(reasoning: dict[str, Any]) -> str:
-    units = reasoning.get("units") if isinstance(reasoning, dict) else []
+def _thesis(units: list[Any]) -> str:
     for unit in units if isinstance(units, list) else []:
         if isinstance(unit, dict) and unit.get("carries_thesis"):
             title = _text(unit.get("title"))
@@ -53,12 +52,18 @@ def build(pack: dict[str, Any], financial_reasoning: dict[str, Any] | None,
     raw_units = reasoning.get("units")
     raw_units = raw_units if isinstance(raw_units, list) else []
     max_units, max_steps = _source_limits(pack)
+    eligible_units = raw_units[:max_units]
+    evidence_index = explanation_ir.build_index(pack)
     warnings: list[str] = []
+    if _text(core_question):
+        warnings.append("caller_core_question_semantics_unverified")
+    if _text(thesis):
+        warnings.append("caller_thesis_semantics_unverified")
     if len(raw_units) > max_units:
         warnings.append(f"source_reasoning_units_capped:{len(raw_units)}>{max_units}")
 
     units: list[dict[str, Any]] = []
-    for unit_position, unit in enumerate(raw_units[:max_units], 1):
+    for unit_position, unit in enumerate(eligible_units, 1):
         if not isinstance(unit, dict):
             continue
         source_reasoning_id = _text(unit.get("reasoning_id")) or f"R{unit_position:02d}"
@@ -92,20 +97,45 @@ def build(pack: dict[str, Any], financial_reasoning: dict[str, Any] | None,
             if not fact_ids:
                 warnings.append(
                     f"report_step_without_evidence_id:{source_reasoning_id}#{step_no}")
+            step_attribution = attribution
+            evidence_attributions = sorted({
+                _text(evidence_index.get(f"report:{fact_id}", {}).get("attribution"))
+                for fact_id in fact_ids
+                if _text(evidence_index.get(f"report:{fact_id}", {}).get("attribution"))
+            })
+            if len(evidence_attributions) == 1:
+                evidence_attribution = evidence_attributions[0]
+                if step_attribution and step_attribution != evidence_attribution:
+                    warnings.append(
+                        f"report_attribution_corrected:{source_reasoning_id}#{step_no}:"
+                        f"{step_attribution}!={evidence_attribution}")
+                    step_attribution = evidence_attribution
+                elif not step_attribution:
+                    step_attribution = evidence_attribution
+                    warnings.append(
+                        f"report_attribution_derived:{source_reasoning_id}#{step_no}:"
+                        f"{step_attribution}")
+            elif fact_ids and not step_attribution:
+                if len(evidence_attributions) > 1:
+                    warnings.append(
+                        f"report_attribution_ambiguous:{source_reasoning_id}#{step_no}")
+                else:
+                    warnings.append(
+                        f"report_attribution_missing:{source_reasoning_id}#{step_no}")
             units.append({
                 "role": role,
                 "text": _text(step.get("text")),
                 "evidence_ids": [f"report:{fact_id}" for fact_id in fact_ids],
                 "causal_level": "broker_projection",
                 "uncertainty": uncertainty,
-                "attribution": attribution,
+                "attribution": step_attribution,
                 "transition_relation": "supports" if step_position == 1 else "continues",
             })
 
     candidate = {
         "domain": "report",
         "core_question": _text(core_question) or "왜 이 증권사는 이런 전망을 하는가?",
-        "thesis": _text(thesis) or _thesis(reasoning),
+        "thesis": _text(thesis) or _thesis(eligible_units),
         "reasoning_units": units,
         "warnings": warnings,
     }
