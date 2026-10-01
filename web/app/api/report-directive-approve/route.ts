@@ -6,6 +6,7 @@ import { triggerReportRender } from "@/lib/trigger-render";
 import { requireOperator } from "@/lib/apiGuard";
 import { queueWriter } from "@/lib/supabase/admin";
 import { RENDER_STATUS_ACTIVE } from "@/lib/renderStatus";
+import { reportApprovalBlockReasons } from "@/lib/approvalGate";
 
 export async function POST(request: Request) {
   // 비용·발행 라우트 — 운영자 키 게이트(web/lib/apiGuard.ts).
@@ -20,15 +21,17 @@ export async function POST(request: Request) {
 
   const { data: directive } = await supabase
     .from("report_directives")
-    .select("id, status, version_type, header")
+    .select("id, status, version_type, header, cuts")
     .eq("id", body.directive_id)
     .maybeSingle();
   if (!directive) return NextResponse.json({ error: "directive 없음" }, { status: 404 });
 
-  // 설명판형 게이트(개선명세 v3.3 §9-1) — 클라이언트 버튼만 잠그면 라우트를 직접 부르면 통과한다.
-  // 판정은 엔진이 지시서에 박아 둔 값을 쓴다(웹에서 재판정하지 않는다 — 규칙이 갈린다).
-  const header = (directive.header ?? {}) as { explainer?: { gate?: { block_reasons?: string[] } } };
-  const blockReasons = header.explainer?.gate?.block_reasons ?? [];
+  // 승인 시 컷에서 다시 계산한다. 생성 뒤 편집된 길이도 source adequacy 상한을 넘으면 막아야 한다.
+  // 엔진에서만 판단 가능한 claim-id 오류와 설명 게이트는 helper가 저장값에서 보존한다.
+  const blockReasons = reportApprovalBlockReasons(
+    directive.header as Parameters<typeof reportApprovalBlockReasons>[0],
+    directive.cuts as Parameters<typeof reportApprovalBlockReasons>[1],
+  );
   if (blockReasons.length > 0) {
     if (!body.force) {
       return NextResponse.json(
