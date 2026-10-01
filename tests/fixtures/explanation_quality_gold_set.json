@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "audited_at": "2026-10-01",
+  "basis": "Production rows audited read-only on 2026-10-01. Minimal excerpts only; no full source text is stored in this fixture.",
+  "cases": [
+    {
+      "case_id": "heel-strike-2026-09",
+      "domain": "paper",
+      "title": "Heel-strike mechanics reveal evolutionary trade-offs in hominin bipedalism",
+      "source": {
+        "depth": "full_body",
+        "chars": 60000
+      },
+      "output": {
+        "duration_sec": 67,
+        "cut_count": 17,
+        "render_review": "directive_only"
+      },
+      "ratings": {
+        "source_adequacy": "pass",
+        "fact_fidelity": "pass",
+        "reasoning_quality": "mixed",
+        "explanation_quality": "fail",
+        "script_coherence": "fail",
+        "narration_naturalness": "fail",
+        "visual_explanatory_power": "mixed",
+        "visual_narration_alignment": "mixed",
+        "pacing": "fail",
+        "uncertainty_calibration": "mixed"
+      },
+      "findings": [
+        {
+          "code": "scope_expansion_exclusivity",
+          "stage": "script",
+          "severity": "p0",
+          "observed": "생성 대본이 인간을 heel-strike를 하는 유일한 유인원으로 표현했다.",
+          "expected": "원문 범위를 보존해야 한다. 인간은 일관되게 heel-strike하지만 아프리카 유인원도 heel-strike할 수 있고 빈도·역학이 다르다.",
+          "evidence": [
+            "원문은 아프리카 유인원도 heel-strike를 하는 소수 동물에 포함된다고 설명한다.",
+            "당시 self-check는 해당 문장을 grounded=true, scope_match=true로 통과시켰다."
+          ]
+        },
+        {
+          "code": "results_before_mechanism",
+          "stage": "reasoning",
+          "severity": "p1",
+          "observed": "비교·방법·수치 결과를 먼저 연속 제시하고 보행 원리는 뒤늦게 설명한다.",
+          "expected": "접촉 방식 → 지렛대/에너지 효과 → 충격 trade-off → 진화적 의미 순으로 시청자의 인과모델을 먼저 세운다.",
+          "evidence": [
+            "Draft는 center-of-pressure mechanism보다 여러 결과 수치를 먼저 배치했다."
+          ]
+        },
+        {
+          "code": "content_mode_warning_not_enforced",
+          "stage": "script",
+          "severity": "p1",
+          "observed": "series_split 및 too_many_spoken_numbers 경고가 있었지만 67초·17컷 단일 영상으로 진행됐다.",
+          "expected": "포맷 변경을 뜻하는 품질 경고는 실제 생성 행동을 바꾸거나 명시적 override를 요구해야 한다.",
+          "evidence": [
+            "self_check에 forced_series_split_multiple_main_claims와 too_many_spoken_numbers가 기록됐다."
+          ]
+        },
+        {
+          "code": "academic_register_in_spoken_narration",
+          "stage": "narration",
+          "severity": "p1",
+          "observed": "기전 문장이 논문식 명사화와 긴 인과 사슬을 한 호흡에 유지했다.",
+          "expected": "숏폼 TTS에서는 한 호흡당 한 개념으로 쪼개 쉬운 spoken clause로 재작성한다.",
+          "evidence": [
+            "압력 중심→유효 사지 길이→대사 비용을 한 문장으로 읽는다."
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "samsung-memory-cycle-2026-09",
+      "domain": "report",
+      "title": "Samsung Electronics memory cycle / target price report",
+      "source": {
+        "depth": "full_text",
+        "chars": 11997
+      },
+      "output": {
+        "duration_sec": 66,
+        "cut_count": 10,
+        "render_review": "directive_only"
+      },
+      "ratings": {
+        "source_adequacy": "pass",
+        "fact_fidelity": "pass",
+        "reasoning_quality": "pass",
+        "explanation_quality": "fail",
+        "script_coherence": "mixed",
+        "narration_naturalness": "mixed",
+        "visual_explanatory_power": "mixed",
+        "visual_narration_alignment": "mixed",
+        "pacing": "mixed",
+        "uncertainty_calibration": "pass"
+      },
+      "findings": [
+        {
+          "code": "explanation_bridge_missing",
+          "stage": "reasoning",
+          "severity": "p1",
+          "observed": "목표가·이익·HBM/AI·PBR·피크아웃을 압축하지만 그 사이의 이해용 bridge를 충분히 설명하지 않는다.",
+          "expected": "핵심 질문 하나를 선택하고 driver chain을 이해시킨 뒤 valuation을 payoff로 연결한다.",
+          "evidence": [
+            "상류 financial_reasoning에는 최종 script보다 풍부한 driver/valuation unit이 존재한다."
+          ]
+        },
+        {
+          "code": "domain_profile_mismatch",
+          "stage": "reasoning",
+          "severity": "p0",
+          "observed": "증권사 리포트인데 story_plan.content_profile이 paper_explainer로 저장됐다.",
+          "expected": "도메인별 reasoning/story rule 실행 전에 report 도메인으로 정확히 라우팅돼야 한다.",
+          "evidence": [
+            "Production story_plan에서 content_profile=paper_explainer를 확인했다."
+          ]
+        },
+        {
+          "code": "reasoning_link_lost_before_visual",
+          "stage": "visual",
+          "severity": "p0",
+          "observed": "상류에 R01-R04 금융 논증이 있지만 여러 directive cut에서 claim_refs가 비고 beat_declared=false로 남았다.",
+          "expected": "reasoning_id/claim reference가 실제 Stage/Mutation까지 보존되어야 한다.",
+          "evidence": [
+            "Production directive가 상류 reasoning과 달리 connective RESULT/CODE_VIZ fallback 성격으로 반복됐다."
+          ]
+        },
+        {
+          "code": "related_visual_not_explanatory",
+          "stage": "visual",
+          "severity": "p1",
+          "observed": "일부 결과/밸류에이션 beat가 인과를 설명하기보다 관련 공장·책상 이미지를 보여준다.",
+          "expected": "인과·밸류에이션 관계가 핵심이면 state-changing explanatory visual을 우선한다.",
+          "evidence": [
+            "이익→공장 외경, PBR→애널리스트 책상과 달리 wafer-capacity 장면은 실제 설명형이다."
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "nh-ai-mid-cycle-2026-09",
+      "domain": "report",
+      "title": "NH strategy report: AI investment and Mid Cycle",
+      "source": {
+        "depth": "partial_text",
+        "chars": 1072
+      },
+      "output": {
+        "duration_sec": 50,
+        "cut_count": 12,
+        "render_review": "directive_only"
+      },
+      "ratings": {
+        "source_adequacy": "fail",
+        "fact_fidelity": "mixed",
+        "reasoning_quality": "mixed",
+        "explanation_quality": "fail",
+        "script_coherence": "mixed",
+        "narration_naturalness": "mixed",
+        "visual_explanatory_power": "mixed",
+        "visual_narration_alignment": "mixed",
+        "pacing": "mixed",
+        "uncertainty_calibration": "mixed"
+      },
+      "findings": [
+        {
+          "code": "source_depth_overexpanded",
+          "stage": "source",
+          "severity": "p0",
+          "observed": "1,072자 partial source가 다수 reasoning unit을 포함한 50초·12컷 explainer로 확장됐다.",
+          "expected": "얕은 source는 포맷/길이를 낮추거나 deep explanation 전에 full source 확보를 요구해야 한다.",
+          "evidence": [
+            "Production source_depth=partial_text, source_chars=1072였다."
+          ]
+        },
+        {
+          "code": "unsupported_factual_hook_context",
+          "stage": "script",
+          "severity": "p0",
+          "observed": "근거 참조 없이 '시장 공포가 번지고 있다'는 사실형 hook context를 추가했다.",
+          "expected": "근거 없는 hook은 수사적 질문은 가능하되 새로운 사실 맥락을 만들면 안 된다.",
+          "evidence": [
+            "hook claim의 evidence_refs=[]이고 self-check에서는 hook이 exempt였다."
+          ]
+        },
+        {
+          "code": "literal_mode_used_for_metaphor",
+          "stage": "visual",
+          "severity": "p1",
+          "observed": "부채·재고·투자 거시지표를 binder·빈 선반·멈춘 크레인 등 proxy로 표현하면서 일부를 LITERAL_OBSERVATION으로 선언했다.",
+          "expected": "설명용 은유는 schematic/metaphor로 표시하고 literal observation과 구분한다.",
+          "evidence": [
+            "Production directive에서 거시 데이터를 물리적 proxy scene으로 치환했다."
+          ]
+        }
+      ]
+    }
+  ]
+}
