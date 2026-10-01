@@ -162,10 +162,16 @@ def compare(
     """Compare machine-checkable shadow contracts with recorded legacy findings."""
     if not isinstance(legacy_case, dict) or not _text(legacy_case.get("case_id")):
         raise ValueError("legacy_case_invalid")
+    if ir.get("contract_version") != "explanation-ir-v1":
+        raise ValueError("explanation_ir_contract_invalid")
+    if resolution.get("contract_version") != "prerequisite-resolution-v1":
+        raise ValueError("resolution_contract_invalid")
     if legacy_case.get("domain") != ir.get("domain"):
         raise ValueError("legacy_ir_domain_mismatch")
     if resolution.get("domain") != ir.get("domain"):
         raise ValueError("resolution_ir_domain_mismatch")
+    if resolution.get("content_id") != ir.get("content_id"):
+        raise ValueError("resolution_ir_content_mismatch")
 
     codes = _finding_codes(legacy_case)
     axes = {

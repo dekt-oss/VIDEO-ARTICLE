@@ -201,6 +201,16 @@ def test_invalid_glossary_provenance_is_rejected():
         prerequisite_resolver.resolve(ir, pack, _request("gwas_association"), glossary=glossary)
 
 
+def test_invalid_glossary_checked_date_is_rejected():
+    pack = _pack()
+    ir = _ir(pack)
+    glossary = prerequisite_resolver.load_glossary()
+    glossary[0]["source"]["checked_at"] = "recently"
+
+    with pytest.raises(ValueError, match="source_checked_at_invalid"):
+        prerequisite_resolver.resolve(ir, pack, _request("gwas_association"), glossary=glossary)
+
+
 def test_domain_mismatch_is_rejected():
     pack = _pack()
     ir = _ir(pack)
@@ -275,6 +285,17 @@ def test_shadow_compare_detects_repaired_evidence_trace_from_legacy_directive():
 
     assert comparison["axes"]["evidence_traceability"]["outcome"] == "improved"
     assert comparison["axes"]["evidence_traceability"]["current"] == "complete_ir_trace"
+
+
+def test_shadow_compare_rejects_unvalidated_resolution_contract():
+    pack = _pack()
+    ir = _ir(pack)
+    resolution = prerequisite_resolver.resolve(ir, pack, [])
+    resolution["contract_version"] = "made-up"
+    legacy = {"case_id": "case", "domain": "paper", "findings": []}
+
+    with pytest.raises(ValueError, match="resolution_contract_invalid"):
+        explanation_shadow_compare.compare(legacy, ir, resolution)
 
 
 def test_shadow_compare_detects_shallow_source_contract_safety():

@@ -40,23 +40,23 @@
 - Consumes: `explanation-ir-v1`, its `evidence-pack-v1`, and `requested_concepts` entries with `concept_id`, optional `evidence_ids`, and `reason`.
 - Produces: `resolve(ir, pack, requested_concepts, glossary=None) -> prerequisite-resolution-v1` and `validate(result, ir, pack) -> list[str]`.
 
-- [ ] **Step 1: Write failing contract tests**
+- [x] **Step 1: Write failing contract tests**
 
 Pin deterministic output, input immutability, domain checks, verified-source priority, rejection of `semantic_entailment=false`, glossary fallback, provenance validation, unknown concept handling, and `NARROW_SCOPE` for unresolved required concepts.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run `python -m pytest tests/test_prerequisite_resolver.py -q` and confirm import failure.
 
-- [ ] **Step 3: Implement the minimal resolver**
+- [x] **Step 3: Implement the minimal resolver**
 
 Load the checked-in glossary without side effects, validate every entry, build evidence and glossary indexes, and emit deterministic concept records plus warnings and scope action.
 
-- [ ] **Step 4: Run tests and verify GREEN**
+- [x] **Step 4: Run tests and verify GREEN**
 
 Run the Task 1 test command and require all tests to pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit the glossary, resolver, and tests as one independently reviewable contract change.
 
@@ -71,23 +71,23 @@ Commit the glossary, resolver, and tests as one independently reviewable contrac
 - Consumes: a legacy Gold Set case, its Phase 3 IR, and Phase 4 resolution.
 - Produces: `compare(legacy_case, ir, resolution) -> explanation-shadow-comparison-v1` with per-axis `improved|unchanged|unresolved|not_applicable` outcomes and explicit non-claims.
 
-- [ ] **Step 1: Write failing comparison tests**
+- [x] **Step 1: Write failing comparison tests**
 
 Cover Paper and Report cases, especially Personality GWAS prerequisite recovery, unresolved concepts causing scope reduction, evidence trace retention, source-depth compliance, and the prohibition on claiming final output improvement.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run the Phase 4 tests and confirm the comparator/fixture is missing.
 
-- [ ] **Step 3: Implement comparator and fixtures**
+- [x] **Step 3: Implement comparator and fixtures**
 
 Compare only machine-checkable contract axes: prerequisite coverage, traceability, semantic calibration, one-core-question shape, and source-depth safety. Keep narration, directive, render, and retention as `not_measured`.
 
-- [ ] **Step 4: Run adjacent regressions**
+- [x] **Step 4: Run adjacent regressions**
 
 Run Phase 4, Phase 3 IR, Evidence Pack, Source Adequacy, and Explanation Quality tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit the comparator and deterministic fixtures.
 
@@ -101,15 +101,15 @@ Commit the comparator and deterministic fixtures.
 - Consumes: implemented APIs and actual verification output.
 - Produces: scope, comparison table, rollback, risks, and Draft PR evidence.
 
-- [ ] **Step 1: Document the current-to-target flow and comparison limits**
+- [x] **Step 1: Document the current-to-target flow and comparison limits**
 
 Record that Phase 4 is shadow-only and that improved contracts do not prove improved Production directives.
 
-- [ ] **Step 2: Perform adversarial Fable Review**
+- [x] **Step 2: Perform adversarial Fable Review**
 
 Attack evidence-free knowledge, qualifier loss, association-to-causation, forecast-to-fact, stale evidence, shallow-source overexpansion, dangling IDs, and misleading improvement claims. Fix every blocking finding with a failing test first.
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 Run targeted tests, full Python pytest, web tests, TypeScript typecheck, lint, build, and `git diff --check`.
 

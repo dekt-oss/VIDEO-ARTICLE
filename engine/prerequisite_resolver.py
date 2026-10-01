@@ -8,6 +8,7 @@ or Evidence Pack inputs.
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import date
 import json
 from pathlib import Path
 from typing import Any
@@ -81,6 +82,12 @@ def validate_glossary(entries: Any) -> list[str]:
                 errors.append(f"{prefix}:source_{field}_missing")
         if _text(source.get("url")) and not _text(source.get("url")).startswith("https://"):
             errors.append(f"{prefix}:source_url_invalid")
+        checked_at = _text(source.get("checked_at"))
+        if checked_at:
+            try:
+                date.fromisoformat(checked_at)
+            except ValueError:
+                errors.append(f"{prefix}:source_checked_at_invalid")
     return sorted(set(errors))
 
 
