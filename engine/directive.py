@@ -1638,7 +1638,7 @@ def normalize_directive(
         "retention_plan": _normalize_retention_plan(header_in.get("retention_plan")),
     }
     # Source contract를 최종 산출물에도 남긴다. 운영 화면·회귀 감사가
-    # "왜 35초/7컷에서 막혔나"를 원장 재조회 없이 설명할 수 있어야 한다.
+    # "왜 shallow source가 35초에서 막혔나"를 원장 재조회 없이 설명할 수 있어야 한다.
     header["source_adequacy"] = source_adequacy.from_fact_sheet(fact_sheet) or {}
     # 커버리지·비용은 **컷에서** 계산한다(헤더가 써 보낸 값은 쓰지 않는다).
     header["evidence_coverage"] = content_mode.compute_evidence_coverage(
