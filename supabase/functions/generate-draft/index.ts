@@ -141,6 +141,12 @@ const MAX_TOKENS_POLISH = 4096; // = engine/script_polish.py 의 max_tokens
 const CONTENT_MODE_HARD_MAX_SEC = 80;
 const CONTENT_MODE_SOFT_MIN_SEC = 25;
 
+// Explanation Engine v2 Phase 1 — Python worker는 full-body 확보를 시도하지만 이 Edge fallback은
+// 초록만 받는다. 그러므로 자기 자신을 FULL_EXPLAINER로 가장하지 않고 abstract_only/BRIEF로
+// 명시한다. 정상 통합 작업화면은 version 선택 시 worker를 먼저 깨우므로 full-body 경로를 탄다.
+const SOURCE_ADEQUACY_CONTRACT_VERSION = "source-adequacy-v1";
+const EDGE_SOURCE_MAX_DURATION_SEC = 35;
+
 // ★ engine/config.py:EVIDENCE_RULES_SHARED 와 **자구까지 동일**해야 한다.
 //   tests/test_prompt_sync.py 가 첫 줄을 앵커로 감시한다.
 const EVIDENCE_RULES_SHARED = `- 모든 사실 나레이션은 근거 Claim(claim_ids)을 가져야 한다. 연결어·질문·CTA 만 예외다.
@@ -907,7 +913,10 @@ function normalizeScript(obj: any, factSheet?: any) {
   const flow = normalizeFlow(obj?.video_flow) as Record<string, any>;
   const mainClaims = (Array.isArray(factSheet?.claims) ? factSheet.claims : [])
     .filter((c: any) => c?.claim_kind === "main_result").length;
-  const plan = normalizeContentPlan(obj?.content_plan, known, Math.max(1, mainClaims));
+  const plan = applySourceAdequacyPlan(
+    normalizeContentPlan(obj?.content_plan, known, Math.max(1, mainClaims)),
+    factSheet,
+  );
   const spoken = scenes
     .filter((s) => s.evidence_delivery !== "visual")
     .reduce((acc, s) => acc + countSpokenNumbers(s.narration_ko), 0);
@@ -1153,6 +1162,10 @@ function normalizeSelfcheck(obj: any, factSheet?: any, contentPlan?: any, totalS
     if (uniqueRequired.length && !coverage.primary_claim_covered) block.push("primary_claim_not_covered");
     if (contentPlan.selected_mode === "series_split") block.push("series_split_required");
     if (typeof totalSec === "number" && totalSec > CONTENT_MODE_HARD_MAX_SEC) block.push("over_max_duration");
+    const sourceMax = Number(contentPlan.source_max_duration_sec ?? 0);
+    if (typeof totalSec === "number" && sourceMax > 0 && totalSec > sourceMax) {
+      block.push(`source_depth_duration_exceeded:${Math.round(totalSec)}>${sourceMax}`);
+    }
     if (typeof totalSec === "number" && totalSec < CONTENT_MODE_SOFT_MIN_SEC) {
       warnings.push("below_soft_min_duration");
     }
@@ -1180,6 +1193,56 @@ function factsheetUser(paper: any): string {
 }
 
 // 출처 메타(검증 가능 — LLM 아님). 나레이션 구체화·발행 캡션의 근거. authors=[{name,institution}].
+function attachEdgeSourceAdequacy(factSheet: any, paper: any) {
+  const chars = String(paper?.abstract ?? "").length;
+  factSheet.source_provenance = {
+    source_depth: "abstract_only",
+    provider: "edge_abstract",
+    char_count: chars,
+    doc_hash: "",
+    parse_error: "",
+  };
+  factSheet.source_adequacy = {
+    contract_version: SOURCE_ADEQUACY_CONTRACT_VERSION,
+    domain: "paper",
+    source_depth: "abstract_only",
+    source_chars: chars,
+    source_mode: "BRIEF_EXPLAINER",
+    max_duration_sec: EDGE_SOURCE_MAX_DURATION_SEC,
+    max_content_mode: "flash",
+    max_reasoning_units: 0,
+    max_reasoning_steps: 0,
+    warnings: ["edge_abstract_only"],
+  };
+}
+
+function sourceAdequacyGuidance(factSheet: any): string {
+  const p = factSheet?.source_adequacy;
+  if (!p) return "";
+  return "\n\n[Source Adequacy] 이 경로는 초록만 확보했다(abstract_only / BRIEF_EXPLAINER). " +
+    `최종 영상은 ${p.max_duration_sec}초 이내로 만들고 content_mode는 flash를 넘지 마라. ` +
+    "초록에 없는 기전·배경·예시를 일반상식으로 채워 길이를 늘리지 마라.";
+}
+
+function applySourceAdequacyPlan(plan: Record<string, any>, factSheet: any): Record<string, any> {
+  const p = factSheet?.source_adequacy;
+  if (!p) return plan;
+  const out = { ...plan };
+  const warnings = [...(out.mode_warnings ?? [])];
+  const current = String(out.selected_mode ?? "");
+  if (["standard", "deep", "extended"].includes(current)) {
+    out.selected_mode = "flash";
+    out.target_duration_min_sec = CONTENT_MODE_DURATION.flash[0];
+    out.target_duration_max_sec = CONTENT_MODE_DURATION.flash[1];
+    warnings.push(`source_mode_capped:${current}->flash`);
+  }
+  out.source_mode = p.source_mode;
+  out.source_depth = p.source_depth;
+  out.source_max_duration_sec = p.max_duration_sec;
+  out.mode_warnings = [...new Set(warnings)].sort();
+  return out;
+}
+
 function buildSource(paper: any) {
   const authors = Array.isArray(paper.authors) ? paper.authors : [];
   const names = authors.map((a: any) => a?.name).filter(Boolean).slice(0, 3);
@@ -1237,12 +1300,14 @@ async function generate(
     // ★ 출처 블록(검증 가능한 메타데이터 — LLM 아님)을 Fact Sheet에 부착.
     //   대본은 "Fact Sheet만" 입력이므로, 기관/저자를 구체적으로 쓰려면 여기에 담겨야 한다(환각 방지 유지).
     factSheet.source = buildSource(paper);
+    attachEdgeSourceAdequacy(factSheet, paper);
     const script = normalizeScript(
       await callJSON(
         "script",
         MODEL_SCRIPT,
         SCRIPT_SYSTEM,
         "Fact Sheet:\n" + JSON.stringify(factSheet, null, 2) +
+          sourceAdequacyGuidance(factSheet) +
           (instruction
             ? "\n\n★사용자 수정 요청(반드시 반영하라. 단 Fact Sheet 사실 범위 내에서만 — 없는 사실을 지어내지 말고" +
               " 표현·구성·난이도만 조정):\n" + instruction

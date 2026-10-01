@@ -3242,6 +3242,64 @@ PAPER_SOURCE_DEPTHS: tuple[str, ...] = ("full_body", "partial_body", "abstract_o
 PAPER_SOURCE_FULLBODY_MIN_CHARS: int = _get_int("PAPER_SOURCE_FULLBODY_MIN_CHARS", 8000)
 # 초록 수준으로 볼 하한. 이보다 짧으면 본문을 못 건진 것으로 본다.
 PAPER_SOURCE_MIN_BODY_CHARS: int = _get_int("PAPER_SOURCE_MIN_BODY_CHARS", 2000)
+
+# ─────────────────────────────────────────────────────────────
+# Explanation Engine v2 Phase 1 — Source Adequacy
+# source_depth 는 이미 source 모듈이 코드로 판정한다. 여기서는 그 깊이가 허용하는
+# 최종 영상/논증 규모만 정한다. full source 는 기존 동작을 최대한 보존하고,
+# partial/summary source 만 확장을 제한한다.
+# ─────────────────────────────────────────────────────────────
+SOURCE_ADEQUACY_CONTRACT_VERSION: str = "source-adequacy-v1"
+SOURCE_ADEQUACY_POLICIES: dict[str, dict[str, dict[str, object]]] = {
+    "paper": {
+        "full_body": {
+            "source_mode": "FULL_EXPLAINER", "max_duration_sec": 80,
+            "max_content_mode": "extended", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+        "partial_body": {
+            "source_mode": "SOURCE_EXPLAINER", "max_duration_sec": 50,
+            "max_content_mode": "standard", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+        "abstract_only": {
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35,
+            "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+        "parse_failed": {
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35,
+            "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+        "none": {
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35,
+            "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+        "__default__": {
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35,
+            "max_content_mode": "flash", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+    },
+    "report": {
+        "full_text": {
+            "source_mode": "FULL_EXPLAINER", "max_duration_sec": 80,
+            "max_content_mode": "", "max_reasoning_units": 5, "max_reasoning_steps": 5,
+        },
+        "partial_text": {
+            "source_mode": "BRIEF_EXPLAINER", "max_duration_sec": 35,
+            "max_content_mode": "", "max_reasoning_units": 1, "max_reasoning_steps": 3,
+        },
+        "summary_only": {
+            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30,
+            "max_content_mode": "", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+        "none": {
+            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30,
+            "max_content_mode": "", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+        "__default__": {
+            "source_mode": "SUMMARY_ONLY", "max_duration_sec": 30,
+            "max_content_mode": "", "max_reasoning_units": 0, "max_reasoning_steps": 0,
+        },
+    },
+}
 # 참고문헌 이후는 버린다. 인용 검증의 대조 대상이 아니고, 상한만 잡아먹는다.
 PAPER_SOURCE_DROP_REFERENCES: bool = _get_bool("PAPER_SOURCE_DROP_REFERENCES", True)
 # 확보처 엔드포인트.

@@ -18,7 +18,7 @@ import json
 import re
 from typing import Any
 
-from . import config, content_mode, factsheet, narrative
+from . import config, content_mode, factsheet, narrative, source_adequacy
 from .narrative import NARRATIVE_ARC
 from .llm import call_json, set_text_purpose
 
@@ -235,6 +235,9 @@ def script_user_prompt(fact_sheet: dict[str, Any], instruction: str = "") -> str
     base = "Fact Sheet:\n" + json.dumps(fact_sheet, ensure_ascii=False, indent=2)
     # ★ 코드가 단정하는 블록 — 모델의 짐작에 맡기지 않는다(지시서의 [기전 컷 수]와 같은 자세).
     base += mechanism_supply_block(fact_sheet)
+    # Source depth 와 최종 제작 상한을 모델도 같은 값으로 본다. 게이트만 알고 프롬프트가
+    # 모르면 매번 막힌 결과를 만든 뒤 재생성 비용을 쓴다.
+    base += source_adequacy.guidance(fact_sheet, "paper")
     if instruction.strip():
         # 사용자 수정 요청은 표현·구성·난이도만 조정 — Fact Sheet 사실 범위 내에서만(환각 방지 유지).
         base += (
@@ -406,6 +409,9 @@ def normalize_script(
         claim_ids=known,
         independent_main_claims=max(1, len(splits)),
     )
+    # Phase 1: source가 얕으면 deep/extended 를 코드가 flash/standard 로 낮춘다.
+    # LLM의 selected_mode 자기보고보다 source contract 가 우선한다.
+    plan = source_adequacy.apply_content_plan(plan, fact_sheet)
     # 실제로 읽는 숫자를 코드가 센다(모델 자기보고 없음). 상한 초과는 경고로만 남긴다.
     spoken = sum(count_spoken_numbers(s["narration_ko"]) for s in scenes
                  if s["evidence_delivery"] != "visual")

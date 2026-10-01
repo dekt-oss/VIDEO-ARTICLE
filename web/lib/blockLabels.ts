@@ -24,6 +24,7 @@ export const TIER_LABEL: Record<string, string> = {
 export const BLOCK_LABEL: Record<string, string> = {
   photo_hook_copied_example: "컷1 이 프롬프트의 예시 문장('피일까요?' 등)을 그대로 베낌 — 이 영상과 무관",
   over_max_duration: "80초 초과",
+  source_depth_duration_exceeded: "확보한 원문 깊이에 비해 영상이 너무 김",
   series_split_required: "독립 핵심 주장 2개 — 시리즈로 분할",
   video_budget_exceeded: "영상 초수 예산 초과",
   video_cost_exceeded: "영상 금액 예산 초과",
