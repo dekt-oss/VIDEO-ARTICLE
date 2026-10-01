@@ -1239,7 +1239,6 @@ function applySourceAdequacyPlan(plan: Record<string, any>, factSheet: any): Rec
   out.source_mode = p.source_mode;
   out.source_depth = p.source_depth;
   out.source_max_duration_sec = p.max_duration_sec;
-  out.source_max_cuts = p.max_cuts;
   out.mode_warnings = [...new Set(warnings)].sort();
   return out;
 }
