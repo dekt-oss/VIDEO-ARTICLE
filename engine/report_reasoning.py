@@ -27,7 +27,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from . import config, report_evidence
+from . import config, report_evidence, source_adequacy
 from .llm import call_json
 from .util import log
 
@@ -86,6 +86,7 @@ def reasoning_user_prompt(fact_sheet: dict[str, Any], packet: dict[str, Any] | N
     from . import report_source
 
     body = "Fact Sheet:\n" + json.dumps(fact_sheet, ensure_ascii=False, indent=2)
+    body += source_adequacy.guidance(fact_sheet, "report")
     block = report_source.fulltext_block(packet or {})
     if block:
         return f"{body}\n\n{block}"
@@ -114,6 +115,9 @@ def normalize_units(obj: dict[str, Any], fact_sheet: dict[str, Any] | None,
     """LLM 출력 → 논증 단위 목록. 코드가 id 를 부여하고 dangling 참조를 버린다."""
     known = _fact_ids(fact_sheet)
     chunks = (packet or {}).get("chunks") or []
+    max_units, max_steps = source_adequacy.reasoning_limits(fact_sheet)
+    if max_units <= 0 or max_steps <= 0:
+        return []
     raw = obj.get("reasoning_units")
     out: list[dict[str, Any]] = []
     for i, u in enumerate(raw if isinstance(raw, list) else []):
@@ -133,7 +137,7 @@ def normalize_units(obj: dict[str, Any], fact_sheet: dict[str, Any] | None,
             refs = report_evidence.normalize_source_refs(s.get("source_refs"), chunks)
             steps.append({"step": int(s.get("step") or (j + 1)), "text": text,
                           "fact_ids": ids, "source_refs": refs})
-            if len(steps) >= config.REASONING_MAX_STEPS:
+            if len(steps) >= max_steps:
                 break
         if not steps:
             continue                       # 단계 없는 단위는 제목뿐이다 — 논증이 아니다
@@ -148,7 +152,7 @@ def normalize_units(obj: dict[str, Any], fact_sheet: dict[str, Any] | None,
             "breaks_if": str(u.get("breaks_if") or "").strip(),
             "steps": steps,
         })
-        if len(out) >= config.REASONING_MAX_UNITS:
+        if len(out) >= max_units:
             break
     # 아무 단위도 핵심 주장을 안 든다면 첫 단위에 지운다 — 하류(대본·지시서)가 "무엇을 화면에
     # 반드시 옮겨야 하는지"를 잃지 않게. 모델의 자기보고를 코드가 보정하는 자리다.
@@ -367,6 +371,15 @@ def build(fact_sheet: dict[str, Any], packet: dict[str, Any] | None = None) -> d
     """
     if not config.REPORT_REASONING_ENABLED:
         return empty()
+    max_units, max_steps = source_adequacy.reasoning_limits(fact_sheet)
+    if max_units <= 0 or max_steps <= 0:
+        out = empty()
+        policy = source_adequacy.from_fact_sheet(fact_sheet, "report")
+        out["source_adequacy"] = policy or {}
+        out["audit"]["source_depth"] = str((policy or {}).get("source_depth") or "summary_only")
+        log.info("논증 단위 건너뜀 — source adequacy mode=%s",
+                 str((policy or {}).get("source_mode") or "unknown"))
+        return out
     if not _fact_ids(fact_sheet):
         log.info("논증 단위 건너뜀 — 원장(number_facts)이 비었다")
         return empty()
