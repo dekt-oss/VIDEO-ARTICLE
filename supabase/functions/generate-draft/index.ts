@@ -146,7 +146,6 @@ const CONTENT_MODE_SOFT_MIN_SEC = 25;
 // 명시한다. 정상 통합 작업화면은 version 선택 시 worker를 먼저 깨우므로 full-body 경로를 탄다.
 const SOURCE_ADEQUACY_CONTRACT_VERSION = "source-adequacy-v1";
 const EDGE_SOURCE_MAX_DURATION_SEC = 35;
-const EDGE_SOURCE_MAX_CUTS = 5;
 
 // ★ engine/config.py:EVIDENCE_RULES_SHARED 와 **자구까지 동일**해야 한다.
 //   tests/test_prompt_sync.py 가 첫 줄을 앵커로 감시한다.
@@ -1210,7 +1209,7 @@ function attachEdgeSourceAdequacy(factSheet: any, paper: any) {
     source_chars: chars,
     source_mode: "BRIEF_EXPLAINER",
     max_duration_sec: EDGE_SOURCE_MAX_DURATION_SEC,
-    max_cuts: EDGE_SOURCE_MAX_CUTS,
+    max_cuts: 0,
     max_content_mode: "flash",
     max_reasoning_units: 0,
     max_reasoning_steps: 0,
@@ -1222,7 +1221,7 @@ function sourceAdequacyGuidance(factSheet: any): string {
   const p = factSheet?.source_adequacy;
   if (!p) return "";
   return "\n\n[Source Adequacy] 이 경로는 초록만 확보했다(abstract_only / BRIEF_EXPLAINER). " +
-    `최종 영상은 ${p.max_duration_sec}초, ${p.max_cuts}컷 이내로 만들고 content_mode는 flash를 넘지 마라. ` +
+    `최종 영상은 ${p.max_duration_sec}초 이내로 만들고 content_mode는 flash를 넘지 마라. ` +
     "초록에 없는 기전·배경·예시를 일반상식으로 채워 길이를 늘리지 마라.";
 }
 
