@@ -83,7 +83,6 @@ worker dispatch가 불가능하거나 버전 없이 초안만 요청하면
 abstract_only
 BRIEF_EXPLAINER
 35초 이하
-5컷 이하
 ```
 
 로 명시하게 했다.
@@ -107,7 +106,7 @@ DB migration을 만들지 않고 기존 Fact Sheet JSON에 다음을 저장한�
     "source_chars": 0,
     "source_mode": "...",
     "max_duration_sec": 0,
-    "    "max_content_mode": "...",
+    "max_content_mode": "...",
     "max_reasoning_units": 0,
     "max_reasoning_steps": 0
   }
@@ -259,7 +258,7 @@ Phase 1에서는 이를 숨기지 않는다.
 3. report partial-text 1,072자 → 35초/1×3 reasoning
 4. report summary-only → reasoning LLM 생략
 5. NH형 24초/6컷 → 통과
-6. NH형 50초/12컷 → 길이+컷 하드 차단
+6. NH형 50초/12컷 → **길이** 하드 차단(12컷 자체는 허용 가능)
 7. full report → 기존 envelope 유지
 8. report directive prompt가 shallow source에서 60초가 아니라 35초를 사용
 9. Edge fallback이 abstract-only contract를 명시
