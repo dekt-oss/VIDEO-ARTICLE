@@ -170,10 +170,6 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
         # ★ 컷 수는 게이트와 같은 함수로 역산해 보여준다. Source가 얕으면 전역 TARGET_TOTAL_SEC로
         # 다시 부풀리지 않는다 — NH partial_text 초안 24초→지시서 50초 사고의 직접 원인.
         c_lo, c_hi = photo_contract.target_cut_range(target_sec)
-        source_max_cuts = int(policy.get("max_cuts") or 0)
-        if source_max_cuts:
-            c_hi = min(c_hi, source_max_cuts)
-            c_lo = min(c_lo, c_hi)
         guidance = (PHOTO_CONTRACT
                     + f"\n[컷 수] 이번 Source 기준 전체 약 {target_sec}초 이내 → 컷 **{c_lo}~{c_hi}개**. 검사: 컷 수 ≥ (전체 초수 ÷"
                     f" {config.PHOTO_CUT_SEC_MAX}), 미달이면 승인이 막힌다. 어느 컷도 {config.PHOTO_CUT_SEC_MAX}초를 넘기지 마라.\n")
