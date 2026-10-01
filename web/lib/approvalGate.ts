@@ -78,6 +78,31 @@ export function approvalBlockReasons(
   return [...out].sort();
 }
 
+type ReportApprovalHeader = Partial<DirectiveHeader> & {
+  block_reasons?: unknown;
+  explainer?: { gate?: { block_reasons?: unknown } };
+};
+
+/** Report 승인 시 컷 기반 계약과 엔진 전용 설명 게이트를 한 번에 재검증한다. */
+export function reportApprovalBlockReasons(
+  header: ReportApprovalHeader | null | undefined,
+  cuts: Cut[] | null | undefined,
+): string[] {
+  const h = header ?? {};
+  const recomputed = approvalBlockReasons(h, cuts);
+  const stored = Array.isArray(h.block_reasons) ? h.block_reasons : [];
+  const explainer = Array.isArray(h.explainer?.gate?.block_reasons)
+    ? h.explainer.gate.block_reasons
+    : [];
+
+  return [...new Set([
+    ...recomputed,
+    ...stored.filter((reason): reason is string =>
+      typeof reason === "string" && reason.startsWith("claim_id_invalid")),
+    ...explainer.filter((reason): reason is string => typeof reason === "string"),
+  ])].sort();
+}
+
 // engine/photo_contract.py 의 어휘와 같은 뜻을 담는다(대소문자·복수형·동의어).
 const FORBIDDEN_SCREEN =
   /(bar\s*charts?|pie\s*charts?|line\s*charts?|charts?|graphs?|plots?|dashboards?|infographics?|data\s+visuali[sz]ations?|axis|axes|x-axis|y-axis|legends?|gridlines?|tick\s*marks?|labell?ed|labels?|captions?|subtitles?|percentage\s*signs?|percent\s*signs?|scoreboards?|tickers?|spreadsheets?)/i;
