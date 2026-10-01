@@ -243,6 +243,13 @@ def block_reasons(plan: dict[str, Any] | None, total_sec: int | float | None) ->
     reasons: list[str] = []
     if total_sec is not None and total_sec > config.CONTENT_MODE_HARD_MAX_SEC:
         reasons.append("over_max_duration")
+    # Explanation Engine v2 Phase 1: source가 얕은데 mode 자체의 전역 80초 상한만 보면
+    # 35초짜리 BRIEF_EXPLAINER가 60초로 부풀어도 통과한다. scriptgen 이 plan에 박아 둔
+    # source ceiling을 같은 gate에서 강제한다.
+    if isinstance(plan, dict) and total_sec is not None:
+        src_max = plan.get("source_max_duration_sec")
+        if isinstance(src_max, (int, float)) and src_max > 0 and total_sec > src_max:
+            reasons.append(f"source_depth_duration_exceeded:{int(round(float(total_sec)))}>{int(src_max)}")
     return reasons
 
 
