@@ -113,6 +113,6 @@ Attack evidence-free knowledge, qualifier loss, association-to-causation, foreca
 
 Run targeted tests, full Python pytest, web tests, TypeScript typecheck, lint, build, and `git diff --check`.
 
-- [ ] **Step 4: Push and open a Draft PR**
+- [x] **Step 4: Push and open a Draft PR**
 
 Include current problem, contract, architecture, changed files, tests, Gold Set comparison, unverified items, rollback, and next phase. Do not merge.
