@@ -37,12 +37,8 @@ export function approvalBlockReasons(
   const source = h.source_adequacy;
   if (source?.contract_version === "source-adequacy-v1") {
     const maxSec = Number(source.max_duration_sec) || 0;
-    const maxCuts = Number(source.max_cuts) || 0;
     if (maxSec > 0 && total > maxSec) {
       out.add(`source_depth_duration_exceeded:${Math.round(total)}>${maxSec}`);
-    }
-    if (maxCuts > 0 && rows.length > maxCuts) {
-      out.add(`source_depth_cut_count_exceeded:${rows.length}>${maxCuts}`);
     }
   }
   // ★★ series_split 은 **차단하지 않는다**(2026-09-03). 명세가 "분할 권고까지만"이라고
