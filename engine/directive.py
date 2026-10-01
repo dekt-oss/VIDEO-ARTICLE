@@ -1323,7 +1323,7 @@ def directive_block_reasons(
     # 최종 directive의 실제 초수·컷 수를 다시 본다. 초안 24초가 지시서 50초로 부푼
     # NH 사례가 이 경계에서 잡힌다.
     out.extend(source_adequacy.output_block_reasons(
-        fact_sheet, header.get("total_estimated_sec"), len(cuts)))
+        fact_sheet, header.get("total_estimated_sec")))
     plan = header.get("cost_plan") or {}
     if plan.get("video_generated_sec", 0) > plan.get("max_video_generated_sec", 0):
         out.append("video_budget_exceeded")
