@@ -67,3 +67,21 @@ def test_markdown_report_is_reviewable_without_production_access():
         assert case_id in report
     assert "p0:scope_expansion_exclusivity" in report
     assert "p0:association_to_determination_hook" in report
+
+
+def test_gold_set_rejects_empty_finding_evidence():
+    import json
+    import tempfile
+
+    payload = json.loads(GOLD.read_text(encoding="utf-8"))
+    payload["cases"][0]["findings"][0]["evidence"] = []
+    with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8", delete=False) as fh:
+        json.dump(payload, fh, ensure_ascii=False)
+        path = fh.name
+    try:
+        import pytest
+        from engine.explanation_quality import GoldSetError
+        with pytest.raises(GoldSetError):
+            load_gold_set(path)
+    finally:
+        Path(path).unlink(missing_ok=True)
