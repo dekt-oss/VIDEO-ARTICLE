@@ -35,4 +35,4 @@ reports contract-level changes against the existing six Gold Set cases.
 
 - [x] Run adjacent and full verification.
 - [x] Perform adversarial Fable Review and fix blocking findings test-first.
-- [ ] Push and open a Draft PR; do not merge.
+- [x] Push and open a Draft PR; do not merge.
