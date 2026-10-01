@@ -89,6 +89,12 @@ claims:
     causal_strength:
     evidence_grade:
     verification_state:
+    verification_scope:
+      quote_presence:
+      numeric_value:
+      unit:
+      period:
+      semantic_entailment:
     source_refs:
     uncertainty:
     limitations:
@@ -188,6 +194,50 @@ period_match=false
 `period_match=false` 자체도 별도 validation 필드에 그대로 남긴다.
 
 즉 하나의 Boolean으로 모든 검증 의미를 뭉개지 않는다.
+
+---
+
+## 4-1. `SUPPORTED`는 문장 전체의 진실 판정이 아니다
+
+적대적 리뷰에서 중요한 의미론 위험을 확인했다.
+
+현재 논문 `paper_evidence`의 검증은 주로:
+
+> **source_quote 문자열이 실제 원문에 존재하는가**
+
+를 확인한다.
+
+따라서:
+
+```text
+verification_state = SUPPORTED
+```
+
+라고 해도 곧바로:
+
+> “claim_ko 전체가 그 인용으로 의미적으로 입증되었다”
+
+는 뜻은 아니다.
+
+예를 들어 원문에 “personality와 associated된 variants”라는 인용이 실제 존재하더라도,
+생성 문장 “성격을 결정하는 유전자”는 범위를 넘을 수 있다.
+
+그래서 모든 Evidence item에 `verification_scope`를 둔다.
+
+```yaml
+verification_scope:
+  quote_presence: true|false
+  numeric_value: true|false
+  unit: true|false
+  period: true|false
+  semantic_entailment: false
+```
+
+Phase 2는 semantic entailment를 새로 판정하지 않는다.
+현재 검증기가 실제로 확인한 범위만 표시한다.
+
+**Phase 3 Reasoning Adapter는 `verification_state=SUPPORTED`만 보고 사실 전체가 보증됐다고 간주하면 안 된다.**
+`verification_scope.semantic_entailment=false`이면 scope/causal/qualifier 보존을 별도로 다뤄야 한다.
 
 ---
 
@@ -378,8 +428,19 @@ Report Fact Sheet ─┘                                          │
 - [x] raw_ref 역추적
 - [x] 원본 불변성 테스트
 - [x] 잘못된 공통화 방지 테스트
-- [ ] 전체 Python CI
-- [ ] 기존 Phase 1 CI 선행 통과
+- [ ] 최신 Phase 1 기준 전체 Python CI
+- [x] 기존 Phase 1 CI 선행 통과 (#183)
 - [ ] Production 저장 샘플 projection 실측
 
 마지막 세 항목은 검증 후 완료 판정한다.
+
+
+## 13. Adversarial review
+
+2026-10-01 재검토에서 `verification_state=SUPPORTED`의 의미가 도메인마다 과대해석될 수 있는 문제를 확인했다.
+
+- Paper: 현재 검증은 source quote의 **존재**를 확인한다. claim 전체의 semantic entailment 판정이 아니다.
+- Report number: quote/value/unit/period가 서로 다른 검증 축이다.
+- 따라서 공통 Pack에 `verification_scope`를 추가해 실제 검증된 차원만 명시한다.
+- Phase 3는 `SUPPORTED` 한 값만으로 인과·범위·qualifier까지 보증됐다고 간주해서는 안 된다.
+- 이 수정은 기존 Fact Sheet/Production 생성 동작을 바꾸지 않는다.
