@@ -25,7 +25,7 @@ from typing import Any
 
 from . import (
     config, content_mode, cost, cut_skeleton, db, decide, directive_audit, evidence_overlay,
-    factsheet, paper_evidence, selfcheck, visual_router, visual_sequence,
+    factsheet, paper_evidence, selfcheck, source_adequacy, visual_router, visual_sequence,
     visual_sequence_contract)
 from . import generation_spec
 from . import sequence_tier
@@ -522,8 +522,9 @@ def directive_user_prompt(draft_row: dict[str, Any], version_type: str) -> str:
     #   모델은 원리 없는 도해를 만든다(그게 "의미 없는 화면"의 정체였다).
     if version_type == "photo" and not photo_contract.source_supplies_mechanism(fact_sheet):
         depth_block += NO_MECHANISM_PLAYBOOK
+    source_block = source_adequacy.guidance(fact_sheet)
     return (
-        f"{guidance}{_mode_guidance(plan, version_type, cut_count)}{depth_block}{skeleton}\n\n"
+        f"{guidance}{_mode_guidance(plan, version_type, cut_count)}{depth_block}{source_block}{skeleton}\n\n"
         f"대본(script_md):\n{script_md}\n\n"
         f"Fact Sheet:\n{json.dumps(fact_sheet, ensure_ascii=False, indent=2)}\n\n"
         f"기존 장면들(scenes — 나레이션 초안이다. 흐름·근거를 최대한 계승하되, 위 [연출·서사 규칙]에 맞게\n"
@@ -1318,6 +1319,11 @@ def directive_block_reasons(
     if content_plan:
         out.extend(content_mode.block_reasons(
             content_plan, header.get("total_estimated_sec")))
+    # Phase 1 Source Adequacy는 report에도 적용돼야 하므로 content_plan 유무와 무관하게
+    # 최종 directive의 실제 초수·컷 수를 다시 본다. 초안 24초가 지시서 50초로 부푼
+    # NH 사례가 이 경계에서 잡힌다.
+    out.extend(source_adequacy.output_block_reasons(
+        fact_sheet, header.get("total_estimated_sec"), len(cuts)))
     plan = header.get("cost_plan") or {}
     if plan.get("video_generated_sec", 0) > plan.get("max_video_generated_sec", 0):
         out.append("video_budget_exceeded")
@@ -1631,6 +1637,9 @@ def normalize_directive(
                                or header_in.get("duration_reason") or ""),
         "retention_plan": _normalize_retention_plan(header_in.get("retention_plan")),
     }
+    # Source contract를 최종 산출물에도 남긴다. 운영 화면·회귀 감사가
+    # "왜 35초/7컷에서 막혔나"를 원장 재조회 없이 설명할 수 있어야 한다.
+    header["source_adequacy"] = source_adequacy.from_fact_sheet(fact_sheet) or {}
     # 커버리지·비용은 **컷에서** 계산한다(헤더가 써 보낸 값은 쓰지 않는다).
     header["evidence_coverage"] = content_mode.compute_evidence_coverage(
         cuts,
