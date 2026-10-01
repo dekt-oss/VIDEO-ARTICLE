@@ -197,7 +197,7 @@ def test_pack_is_a_projection_and_does_not_mutate_source_of_truth():
 def test_every_projected_evidence_item_has_a_raw_reference():
     for fs, domain in ((paper_fact_sheet(), "paper"), (report_fact_sheet(), "report")):
         pack = evidence_pack.build(fs, domain)
-        for section in ("claims", "numbers", "risks", "limitations"):
+        for section in ("claims", "numbers", "risks", "limitations", "background_context"):
             for item in pack[section]:
                 assert item["evidence_id"]
                 assert item["raw_ref"]
@@ -206,7 +206,7 @@ def test_every_projected_evidence_item_has_a_raw_reference():
 def test_legacy_pack_does_not_invent_source_mode():
     legacy = {"what": ["요약"], "basis": [], "risks": [], "number_facts": []}
     pack = evidence_pack.build(legacy, "report")
-    assert pack["source"]["source_depth"] == "summary_only"
+    assert pack["source"]["source_depth"] == "none"
     assert pack["source"]["source_mode"] == ""
 
 
@@ -217,3 +217,11 @@ def test_unknown_domain_is_rejected():
         assert "unknown evidence-pack domain" in str(exc)
     else:
         raise AssertionError("unknown domain must be rejected")
+
+
+def test_background_context_is_traceable_but_not_promoted_to_verified_evidence():
+    paper = evidence_pack.build(paper_fact_sheet(), "paper")
+    context = paper["background_context"]
+    assert context
+    assert all(item["evidence_id"] and item["raw_ref"] for item in context)
+    assert all(item["verification_state"] == "NOT_CHECKED" for item in context)
