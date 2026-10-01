@@ -1,0 +1,74 @@
+[
+  {
+    "case_id": "heel-strike-2026-09",
+    "requested_concepts": [
+      {
+        "concept_id": "heel_strike_mechanics",
+        "reason": "보행 방식의 장점과 비용을 비교하기 전에 heel-strike가 무엇을 바꾸는지 설명해야 한다.",
+        "evidence_ids": ["paper:C01"],
+        "required": true
+      }
+    ]
+  },
+  {
+    "case_id": "deaf-retinotopic-remap-2026-09",
+    "requested_concepts": [
+      {
+        "concept_id": "retinotopic_representation",
+        "reason": "시야 자체의 확대와 시각계 내부 표상 재분배를 구분해야 한다.",
+        "evidence_ids": ["paper:C01"],
+        "required": true
+      }
+    ]
+  },
+  {
+    "case_id": "personality-gwas-2026-09",
+    "requested_concepts": [
+      {
+        "concept_id": "gwas_association",
+        "reason": "연관을 결정이나 인과로 오해하지 않으려면 GWAS의 측정 대상을 먼저 설명해야 한다.",
+        "evidence_ids": ["paper:C02"],
+        "required": true
+      },
+      {
+        "concept_id": "polygenic_trait",
+        "reason": "단일 유전자 결정론을 피하려면 여러 유전자가 함께 영향을 주는 형질임을 먼저 설명해야 한다.",
+        "evidence_ids": [],
+        "required": true
+      }
+    ]
+  },
+  {
+    "case_id": "samsung-memory-cycle-2026-09",
+    "requested_concepts": [
+      {
+        "concept_id": "memory_cycle",
+        "reason": "메모리 가격 전망이 이익과 밸류에이션으로 이어지는 전제를 이해해야 한다.",
+        "evidence_ids": ["report:num_memory_price"],
+        "required": true
+      }
+    ]
+  },
+  {
+    "case_id": "nh-ai-mid-cycle-2026-09",
+    "requested_concepts": [
+      {
+        "concept_id": "investment_mid_cycle",
+        "reason": "얕은 원문에서 Mid Cycle의 의미를 임의로 확장하지 않아야 한다.",
+        "evidence_ids": ["report:num_cycle"],
+        "required": true
+      }
+    ]
+  },
+  {
+    "case_id": "shipbuilding-rerating-2026-09",
+    "requested_concepts": [
+      {
+        "concept_id": "order_pipeline_opportunity",
+        "reason": "기회와 현재 확정된 설비 대체를 구분해야 한다.",
+        "evidence_ids": ["report:num_pipeline"],
+        "required": true
+      }
+    ]
+  }
+]

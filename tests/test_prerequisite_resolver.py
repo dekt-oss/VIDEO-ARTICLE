@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
 
 import pytest
 
-from engine import explanation_ir, prerequisite_resolver
+from engine import (
+    explanation_ir,
+    explanation_shadow_compare,
+    paper_reasoning_adapter,
+    prerequisite_resolver,
+    report_reasoning_adapter,
+)
 
 
 def _scope(*, semantic: bool) -> dict[str, bool]:
@@ -43,7 +51,7 @@ def _pack(*, semantic: bool = False, state: str = "SUPPORTED") -> dict:
             "uncertainty": None,
             "limitations": [],
             "attribution": "",
-            "domain_fields": {},
+            "domain_fields": {"prerequisite_concept_id": "gwas_association"},
         }],
         "numbers": [],
         "risks": [],
@@ -114,6 +122,21 @@ def test_quote_presence_without_semantic_entailment_falls_back_to_glossary():
     assert "source_semantic_entailment_unverified:gwas_association:paper:C01" in result["warnings"]
 
 
+def test_semantically_verified_but_different_concept_cannot_be_reused():
+    pack = _pack(semantic=True)
+    pack["claims"][0]["domain_fields"]["prerequisite_concept_id"] = "different_concept"
+    ir = _ir(pack)
+
+    result = prerequisite_resolver.resolve(
+        ir,
+        pack,
+        _request("gwas_association", evidence_ids=["paper:C01"]),
+    )
+
+    assert result["concepts"][0]["status"] == "RESOLVED_GLOSSARY"
+    assert "source_concept_mismatch:gwas_association:paper:C01" in result["warnings"]
+
+
 def test_unknown_required_concept_fails_closed_and_narrows_scope():
     pack = _pack()
     ir = _ir(pack)
@@ -151,6 +174,17 @@ def test_resolver_is_deterministic_and_does_not_mutate_inputs():
     assert (ir, pack, requests) == before
 
 
+def test_duplicate_requested_concept_is_ignored_with_warning():
+    pack = _pack()
+    ir = _ir(pack)
+    requests = _request("gwas_association") + _request("gwas_association")
+
+    result = prerequisite_resolver.resolve(ir, pack, requests)
+
+    assert [item["concept_id"] for item in result["concepts"]] == ["gwas_association"]
+    assert "requested_concept_duplicate:gwas_association" in result["warnings"]
+
+
 def test_invalid_glossary_provenance_is_rejected():
     pack = _pack()
     ir = _ir(pack)
@@ -174,3 +208,203 @@ def test_domain_mismatch_is_rejected():
 
     with pytest.raises(ValueError, match="explanation_ir_invalid"):
         prerequisite_resolver.resolve(ir, pack, _request("gwas_association"))
+
+
+def test_shadow_compare_marks_personality_prerequisite_as_contract_improvement():
+    pack = _pack()
+    ir = _ir(pack)
+    resolution = prerequisite_resolver.resolve(
+        ir,
+        pack,
+        _request("gwas_association") + _request("polygenic_trait"),
+    )
+    legacy = {
+        "case_id": "personality-gwas-2026-09",
+        "domain": "paper",
+        "findings": [{"code": "polygenic_prerequisite_missing", "severity": "p1"}],
+    }
+
+    comparison = explanation_shadow_compare.compare(legacy, ir, resolution)
+
+    assert comparison["axes"]["prerequisite_coverage"]["outcome"] == "improved"
+    assert comparison["axes"]["semantic_calibration"]["outcome"] == "improved"
+    assert comparison["axes"]["final_output_quality"]["outcome"] == "not_measured"
+    assert comparison["improvement_summary"] == {
+        "improved": 2,
+        "unchanged": 0,
+        "unresolved": 0,
+        "not_applicable": 2,
+        "not_measured": 1,
+    }
+
+
+def test_shadow_compare_reports_unresolved_without_fake_percentage():
+    pack = _pack()
+    ir = _ir(pack)
+    resolution = prerequisite_resolver.resolve(ir, pack, _request("heel_strike"))
+    legacy = {
+        "case_id": "heel-strike-2026-09",
+        "domain": "paper",
+        "findings": [{"code": "scope_expansion_exclusivity", "severity": "p0"}],
+    }
+
+    comparison = explanation_shadow_compare.compare(legacy, ir, resolution)
+
+    assert comparison["axes"]["prerequisite_coverage"]["outcome"] == "unresolved"
+    assert "improvement_percent" not in comparison
+    assert comparison["non_claims"] == [
+        "spoken_narration_not_generated",
+        "directive_not_generated",
+        "render_not_generated",
+        "retention_not_measured",
+    ]
+    assert comparison["axes"]["semantic_calibration"]["outcome"] == "unresolved"
+
+
+def test_shadow_compare_detects_repaired_evidence_trace_from_legacy_directive():
+    pack = _pack()
+    ir = _ir(pack)
+    resolution = prerequisite_resolver.resolve(ir, pack, [])
+    legacy = {
+        "case_id": "samsung-memory-cycle-2026-09",
+        "domain": "paper",
+        "findings": [{"code": "reasoning_link_lost_before_visual", "severity": "p0"}],
+    }
+
+    comparison = explanation_shadow_compare.compare(legacy, ir, resolution)
+
+    assert comparison["axes"]["evidence_traceability"]["outcome"] == "improved"
+    assert comparison["axes"]["evidence_traceability"]["current"] == "complete_ir_trace"
+
+
+def test_shadow_compare_detects_shallow_source_contract_safety():
+    pack = _pack()
+    pack["source"].update(
+        source_depth="partial_text", source_mode="BRIEF_EXPLAINER", source_chars=1072
+    )
+    ir = _ir(pack)
+    ir["domain"] = "report"
+    pack["domain"] = "report"
+    resolution = {
+        "contract_version": "prerequisite-resolution-v1",
+        "domain": "report",
+        "content_id": ir["content_id"],
+        "concepts": [],
+        "unresolved_concepts": [],
+        "scope_action": "KEEP",
+        "warnings": [],
+    }
+    legacy = {
+        "case_id": "nh-ai-mid-cycle-2026-09",
+        "domain": "report",
+        "findings": [{"code": "source_depth_overexpanded", "severity": "p0"}],
+    }
+
+    comparison = explanation_shadow_compare.compare(legacy, ir, resolution)
+
+    assert comparison["axes"]["source_depth_safety"]["outcome"] == "improved"
+    assert comparison["axes"]["source_depth_safety"]["current"] == "brief_ir_with_1_units"
+
+
+def _gold_pack(case: dict) -> dict:
+    domain = case["domain"]
+    pack = {
+        "contract_version": "evidence-pack-v1",
+        "domain": domain,
+        "content_id": case["case_id"],
+        "source": {
+            "source_depth": case["source_depth"],
+            "source_chars": case.get("source_chars", 12000),
+            "source_mode": case["source_mode"],
+            "provider": "",
+            "attribution": case.get("source_attribution", {}),
+        },
+        "claims": [],
+        "numbers": [],
+        "risks": [],
+        "limitations": [],
+        "background_context": [],
+    }
+    for item in case["evidence"]:
+        projected = deepcopy(item)
+        projected["verification_scope"] = {
+            "quote_presence": True,
+            "numeric_value": domain == "report",
+            "unit": domain == "report",
+            "period": domain == "report",
+            "semantic_entailment": False,
+        }
+        if domain == "paper":
+            projected.update(
+                domain_role="claim",
+                evidence_grade="B",
+                source_refs=[],
+                uncertainty=projected.get("uncertainty"),
+                limitations=projected.get("limitations", []),
+                attribution=projected.get("attribution", ""),
+                domain_fields={},
+            )
+            pack["claims"].append(projected)
+        else:
+            projected.update(
+                value=projected.get("value"),
+                unit=projected.get("unit", ""),
+                period=projected.get("period", ""),
+                metric=projected.get("metric", ""),
+                scope="company",
+                basis="broker_estimate",
+                attribution=projected.get("attribution", ""),
+                display=projected["text"],
+                comparator={},
+                interpretation=projected.get("interpretation", "neutral"),
+                validation={},
+                source_refs=[],
+            )
+            projected.pop("text")
+            pack["numbers"].append(projected)
+    return pack
+
+
+def test_six_gold_cases_compare_legacy_directives_without_claiming_final_quality():
+    fixtures = Path(__file__).parent / "fixtures"
+    ir_cases = json.loads((fixtures / "explanation_ir_gold_cases.json").read_text(encoding="utf-8"))
+    requests = json.loads(
+        (fixtures / "prerequisite_resolution_gold_cases.json").read_text(encoding="utf-8")
+    )
+    quality = json.loads(
+        (fixtures / "explanation_quality_gold_set.json").read_text(encoding="utf-8")
+    )
+    request_by_id = {case["case_id"]: case["requested_concepts"] for case in requests}
+    legacy_by_id = {case["case_id"]: case for case in quality["cases"]}
+    comparisons = {}
+
+    assert len(ir_cases) == len(requests) == 6
+    for case in ir_cases:
+        pack = _gold_pack(case)
+        if case["domain"] == "paper":
+            ir = paper_reasoning_adapter.build(pack)
+        else:
+            ir = report_reasoning_adapter.build(pack, case["financial_reasoning"])
+        resolution = prerequisite_resolver.resolve(ir, pack, request_by_id[case["case_id"]])
+        comparison = explanation_shadow_compare.compare(
+            legacy_by_id[case["case_id"]], ir, resolution
+        )
+        assert comparison["axes"]["final_output_quality"]["outcome"] == "not_measured"
+        assert "improvement_percent" not in comparison
+        comparisons[case["case_id"]] = comparison
+
+    assert comparisons["personality-gwas-2026-09"]["axes"][
+        "prerequisite_coverage"
+    ]["outcome"] == "improved"
+    assert comparisons["heel-strike-2026-09"]["axes"][
+        "prerequisite_coverage"
+    ]["outcome"] == "unresolved"
+    assert comparisons["samsung-memory-cycle-2026-09"]["axes"][
+        "evidence_traceability"
+    ]["outcome"] == "improved"
+    assert comparisons["nh-ai-mid-cycle-2026-09"]["axes"][
+        "source_depth_safety"
+    ]["outcome"] == "improved"
+    assert comparisons["shipbuilding-rerating-2026-09"]["axes"][
+        "evidence_traceability"
+    ]["outcome"] == "improved"

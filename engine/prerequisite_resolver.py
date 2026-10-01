@@ -112,6 +112,15 @@ def _source_resolution(
                 f"{_text(item.get('verification_state')) or 'UNKNOWN'}"
             )
             continue
+        domain_fields = item.get("domain_fields")
+        evidence_concept_id = (
+            _text(domain_fields.get("prerequisite_concept_id"))
+            if isinstance(domain_fields, dict)
+            else ""
+        )
+        if evidence_concept_id != concept_id:
+            warnings.append(f"source_concept_mismatch:{concept_id}:{evidence_id}")
+            continue
         scope = item.get("verification_scope")
         if not isinstance(scope, dict) or scope.get("semantic_entailment") is not True:
             warnings.append(f"source_semantic_entailment_unverified:{concept_id}:{evidence_id}")
@@ -144,6 +153,7 @@ def resolve(
     warnings: list[str] = []
     concepts: list[dict[str, Any]] = []
     required_unresolved: list[str] = []
+    seen_concepts: set[str] = set()
 
     for position, raw in enumerate(requested_concepts, 1):
         request = raw if isinstance(raw, dict) else {}
@@ -151,6 +161,10 @@ def resolve(
         if not concept_id:
             warnings.append(f"requested_concept_invalid:{position}")
             continue
+        if concept_id in seen_concepts:
+            warnings.append(f"requested_concept_duplicate:{concept_id}")
+            continue
+        seen_concepts.add(concept_id)
         required = request.get("required") is not False
         base = {
             "concept_id": concept_id,
