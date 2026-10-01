@@ -93,6 +93,24 @@ def _paper_verification(claim: dict[str, Any]) -> str:
     return "UNVERIFIABLE_AT_CURRENT_DEPTH"
 
 
+def _verification_scope(*, quote: bool = False, value: bool = False,
+                        unit: bool = False, period: bool = False,
+                        semantic_entailment: bool = False) -> dict[str, bool]:
+    """Expose exactly what a verification state proves.
+
+    IMPORTANT: paper_evidence verifies that a quoted span exists in the source;
+    it does not prove that the generated Korean claim is semantically entailed
+    by that span.  Phase 3 must not read SUPPORTED as a blanket truth label.
+    """
+    return {
+        "quote_presence": quote,
+        "numeric_value": value,
+        "unit": unit,
+        "period": period,
+        "semantic_entailment": semantic_entailment,
+    }
+
+
 def _paper_claims(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for index, raw in enumerate(fact_sheet.get("claims") or [], 1):
@@ -119,6 +137,12 @@ def _paper_claims(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
             "causal_strength": str(raw.get("causal_strength") or ""),
             "evidence_grade": str(raw.get("evidence_grade") or ""),
             "verification_state": _paper_verification(raw),
+            # paper_evidence only checks that source_quote exists in the source. It does NOT
+            # establish semantic entailment between claim_ko and that quote.
+            "verification_scope": _verification_scope(
+                quote=(validation.get("quote_verified") is True),
+                semantic_entailment=False,
+            ),
             "source_refs": source_refs,
             "uncertainty": raw.get("uncertainty"),
             "limitations": _list_text(raw.get("limitations")),
@@ -160,6 +184,7 @@ def _report_text_claims(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
                 "causal_strength": "",
                 "evidence_grade": "",
                 "verification_state": "NOT_CHECKED",
+                "verification_scope": _verification_scope(),
                 "source_refs": [],
                 "uncertainty": None,
                 "limitations": [],
@@ -177,6 +202,7 @@ def _report_text_claims(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
             "causal_strength": "",
             "evidence_grade": "",
             "verification_state": "NOT_CHECKED",
+            "verification_scope": _verification_scope(),
             "source_refs": [],
             "uncertainty": None,
             "limitations": [],
@@ -230,6 +256,13 @@ def _report_numbers(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
             "comparator": deepcopy(raw.get("comparator") or {}),
             "interpretation": str(raw.get("interpretation") or ""),
             "verification_state": _report_number_state(raw),
+            "verification_scope": _verification_scope(
+                quote=(validation.get("quote_supports_claim") is True),
+                value=(validation.get("number_match") is True),
+                unit=(validation.get("unit_match") is True),
+                period=(validation.get("period_match") is True),
+                semantic_entailment=False,
+            ),
             "validation": {
                 "number_match": validation.get("number_match"),
                 "unit_match": validation.get("unit_match"),
@@ -258,6 +291,7 @@ def _paper_numbers(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
             "comparator": {},
             "interpretation": "",
             "verification_state": "NOT_CHECKED",
+            "verification_scope": _verification_scope(),
             "validation": {},
             "source_refs": [],
         }
@@ -282,17 +316,20 @@ def build(fact_sheet: dict[str, Any] | None, domain: str,
                 "raw_ref": f"limitations[{i - 1}]",
                 "text": text,
                 "verification_state": "NOT_CHECKED",
+                "verification_scope": _verification_scope(),
             }
             for i, text in enumerate(_list_text(fs.get("limitations")), 1)
         ]
         context = [
             *({"evidence_id": f"paper:context:finding:{i:02d}",
                "role": "finding_summary", "raw_ref": f"what_found[{i - 1}]",
-               "text": text, "verification_state": "NOT_CHECKED"}
+               "text": text, "verification_state": "NOT_CHECKED",
+               "verification_scope": _verification_scope()}
               for i, text in enumerate(_list_text(fs.get("what_found")), 1)),
             *({"evidence_id": f"paper:context:method:{i:02d}",
                "role": "method_summary", "raw_ref": f"how[{i - 1}]",
-               "text": text, "verification_state": "NOT_CHECKED"}
+               "text": text, "verification_state": "NOT_CHECKED",
+               "verification_scope": _verification_scope()}
               for i, text in enumerate(_list_text(fs.get("how")), 1)),
         ]
     else:
@@ -306,6 +343,7 @@ def build(fact_sheet: dict[str, Any] | None, domain: str,
                 "raw_ref": f"risks[{i - 1}]",
                 "text": text,
                 "verification_state": "NOT_CHECKED",
+                "verification_scope": _verification_scope(),
                 "attribution": broker,
             }
             for i, text in enumerate(_list_text(fs.get("risks")), 1)
@@ -314,7 +352,8 @@ def build(fact_sheet: dict[str, Any] | None, domain: str,
         company = str(fs.get("company") or "").strip()
         context = ([{"evidence_id": "report:context:company",
                      "role": "company", "raw_ref": "company", "text": company,
-                     "verification_state": "NOT_CHECKED"}]
+                     "verification_state": "NOT_CHECKED",
+                     "verification_scope": _verification_scope()}]
                    if company else [])
 
     return {
@@ -360,4 +399,9 @@ def validate(pack: dict[str, Any]) -> list[str]:
             state = item.get("verification_state")
             if state not in VERIFICATION_STATES:
                 errors.append(f"verification_state_invalid:{eid or '?'}")
+            scope = item.get("verification_scope")
+            if not isinstance(scope, dict) or set(scope) != {
+                "quote_presence", "numeric_value", "unit", "period", "semantic_entailment"
+            } or not all(isinstance(v, bool) for v in scope.values()):
+                errors.append(f"verification_scope_invalid:{eid or '?'}")
     return sorted(set(errors))
