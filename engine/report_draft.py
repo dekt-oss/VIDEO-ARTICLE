@@ -23,7 +23,7 @@ from . import (
     report_scriptgen,
     report_selfcheck,
 )
-from . import config, script_polish, script_revision
+from . import config, script_polish, script_revision, source_adequacy
 from .util import log
 
 
@@ -77,6 +77,8 @@ def generate_report_draft(report: dict[str, Any], instruction: str = "") -> dict
     fact_sheet = report_factsheet.extract(report, packet_out=packet)
     # 출처 블록(검증 가능 메타 — LLM 아님)을 Fact Sheet에 부착(환각 방지 불변식 + 출처 귀속).
     fact_sheet["source"] = report_attribution.build_source(report)
+    # Explanation Engine v2 Phase 1: source_depth 를 실제 제작 상한으로 승격한다.
+    source_adequacy.attach(fact_sheet, "report")
     # ★ 논증 단위는 **대본보다 먼저** 만든다(설명엔진 v2 D2). 대본 뒤에 논리를 끼워 맞추면
     #   이미 쓴 문장을 정당화하는 사슬이 나온다 — 그건 논증이 아니라 사후 변명이다.
     #   실패해도 빈 블록으로 내려간다(품질 계층이지 필수 경로가 아니다).
