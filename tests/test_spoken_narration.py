@@ -587,3 +587,156 @@ def test_six_gold_cases_have_deterministic_phase6_status_and_zero_blocked_calls(
     for comparison in comparisons.values():
         assert comparison["axes"]["semantic_entailment"]["outcome"] == "not_measured"
         assert comparison["axes"]["final_directive_quality"]["outcome"] == "not_measured"
+
+
+def test_phase6_boundary_rejects_required_setup_deleted_from_canonical_plan():
+    pack, ir, resolution, plan = _paper_ready()
+    plan["beats"].pop(1)
+    for position, beat in enumerate(plan["beats"], 1):
+        beat["beat_id"] = f"NB{position:02d}"
+    calls = []
+
+    with pytest.raises(ValueError, match="plan_not_canonical"):
+        spoken_narration.generate(
+            plan, ir, resolution, pack, caller=lambda **kwargs: calls.append(kwargs)
+        )
+
+    assert calls == []
+
+
+def test_direct_normalization_of_blocked_plan_stays_blocked():
+    blocked = [row for row in _gold_artifacts() if row[-1]["planning_status"] != "READY"]
+
+    for _, pack, ir, resolution, plan in blocked:
+        result = spoken_narration.normalize_draft(
+            {"beats": []}, plan, ir, resolution, pack
+        )
+        assert result["generation_status"] == "BLOCKED_UPSTREAM"
+        assert result["narration_beats"] == []
+
+
+def test_validation_recomputes_guards_and_rejects_stale_qa_or_status():
+    pack, ir, resolution, plan = _paper_ready()
+    narration = spoken_narration.normalize_draft(
+        _safe_payload(plan), plan, ir, resolution, pack
+    )
+    narration["narration_beats"][-1]["sentences"] = ["999개 변이가 성격을 결정한다."]
+
+    errors = spoken_narration.validate(narration, plan, ir, resolution, pack)
+
+    assert "qa_errors_stale" in errors
+    assert "accepted_draft_has_guard_errors" in errors
+    with pytest.raises(ValueError, match="spoken_narration_invalid"):
+        spoken_narration_shadow_compare.compare(
+            {"case_id": "paper-1", "domain": "paper", "findings": []},
+            narration, plan, ir, resolution, pack,
+        )
+
+    clean = spoken_narration.normalize_draft(_safe_payload(plan), plan, ir, resolution, pack)
+    clean["generation_status"] = "BLOCKED_UPSTREAM"
+    assert "generation_status_upstream_mismatch" in spoken_narration.validate(
+        clean, plan, ir, resolution, pack
+    )
+    clean["generation_status"] = "DRAFT_ACCEPTED"
+    clean["narration_beats"].pop()
+    assert "accepted_beat_coverage_invalid" in spoken_narration.validate(
+        clean, plan, ir, resolution, pack
+    )
+
+
+def test_added_direct_cause_is_rejected_even_when_association_and_negation_remain():
+    pack, ir, resolution, plan = _paper_ready()
+    payload = _safe_payload(plan)
+    payload["beats"][-1]["sentences"][0] += " 원인이다."
+
+    result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
+
+    assert result["generation_status"] == "REJECTED_DRAFT"
+    assert any(error.startswith("causal_language_added:NB03")
+               for error in result["qa"]["errors"])
+
+    draft = spoken_narration.normalize_draft(_safe_payload(plan), plan, ir, resolution, pack)
+    polish_payload = {"beats": [{
+        "beat_id": beat["beat_id"], "sentences": deepcopy(beat["sentences"])
+    } for beat in draft["narration_beats"]]}
+    polish_payload["beats"][-1]["sentences"][0] += " 원인이다."
+    polished = spoken_narration.apply_polish(
+        draft, polish_payload, plan, ir, resolution, pack
+    )
+    assert polished["polish"]["applied"] == []
+    assert any("causal_language_added:NB03" in row["reason"]
+               for row in polished["polish"]["rejected"])
+    assert polished["narration_beats"][-1]["sentences"] == draft["narration_beats"][-1]["sentences"]
+
+
+def test_numeric_guard_preserves_sign_currency_and_all_whitespace():
+    pack, ir, resolution, plan = _report_ready()
+    negative = _safe_payload(plan)
+    negative["beats"][-1]["sentences"][0] = negative["beats"][-1]["sentences"][0].replace(
+        "1%", "-1%"
+    )
+    assert spoken_narration.normalize_draft(
+        negative, plan, ir, resolution, pack
+    )["generation_status"] == "REJECTED_DRAFT"
+
+    tabbed = _safe_payload(plan)
+    tabbed["beats"][-1]["sentences"][0] = tabbed["beats"][-1]["sentences"][0].replace(
+        "1%", "1\t%"
+    )
+    assert spoken_narration.normalize_draft(
+        tabbed, plan, ir, resolution, pack
+    )["generation_status"] == "DRAFT_ACCEPTED"
+
+    paper_pack, _, _, _ = _paper_ready()
+    paper_pack["claims"][0]["text"] = "비용 30원과 성격은 연관됐지만 원인이라고 입증하지 않았다."
+    paper_ir = paper_reasoning_adapter.build(
+        paper_pack,
+        core_question="비용과 성격은 연관됐는가?",
+        thesis="비용과 성격은 연관됐지만 원인이라고 입증하지 않았다.",
+    )
+    paper_resolution = prerequisite_resolver.resolve(paper_ir, paper_pack, [])
+    paper_plan = narrative_planner.build(paper_ir, paper_resolution, paper_pack)
+    currency = _safe_payload(paper_plan)
+    currency["beats"][-1]["sentences"][0] = currency["beats"][-1]["sentences"][0].replace(
+        "30원", "30달러"
+    )
+    result = spoken_narration.normalize_draft(
+        currency, paper_plan, paper_ir, paper_resolution, paper_pack
+    )
+    assert result["generation_status"] == "REJECTED_DRAFT"
+    assert any(error.startswith("numbers_changed:") for error in result["qa"]["errors"])
+
+
+def test_hook_rejects_factual_assertion_appended_to_approved_question():
+    pack, ir, resolution, plan = _paper_ready()
+    payload = _safe_payload(plan)
+    payload["beats"][0]["sentences"] = [
+        plan["core_question"] + " 변이는 성격을 결정한다."
+    ]
+
+    result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
+
+    assert result["generation_status"] == "REJECTED_DRAFT"
+    assert "hook_factual_assertion_added:NB01" in result["qa"]["errors"]
+
+
+def test_each_scope_qualifier_must_survive_when_another_hedge_remains():
+    pack, _, _, _ = _paper_ready()
+    pack["claims"][0]["text"] = "일부 환자에게서 평균 30% 개선과 성격이 연관됐다."
+    ir = paper_reasoning_adapter.build(
+        pack,
+        core_question="개선과 성격은 연관됐는가?",
+        thesis="일부 환자에게서 평균 30% 개선과 성격이 연관됐다.",
+    )
+    resolution = prerequisite_resolver.resolve(ir, pack, [])
+    plan = narrative_planner.build(ir, resolution, pack)
+    payload = _safe_payload(plan)
+    payload["beats"][-1]["sentences"][0] = payload["beats"][-1]["sentences"][0].replace(
+        "일부 ", ""
+    )
+
+    result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
+
+    assert result["generation_status"] == "REJECTED_DRAFT"
+    assert any(error.startswith("qualifier_dropped:") and error.endswith(":일부")
+               for error in result["qa"]["errors"])

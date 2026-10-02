@@ -54,13 +54,14 @@ guardrail·causal/uncertainty/attribution/transition 메타데이터만 들어�
 다음은 draft를 `REJECTED_DRAFT`로 만든다.
 
 - beat 누락·중복·순서 변경·unknown ID·빈 문장
-- 숫자 또는 붙은 단위의 변경·삭제·추가
+- 숫자의 부호 또는 붙은 단위·통화의 변경·삭제·추가(공백 종류 차이는 정규화)
 - `모든`, `유일`, `항상`, `절대`, `오직`, `최초`, `전부`, `완전히`, `반드시`의 신규 추가
 - association 표현을 determination/direct-cause 표현으로 강화
-- 범위 단서·불확실성·연관·부정 의미 갈래 제거/추가
+- 범위 단서 각각의 제거와 불확실성·연관·부정 의미 갈래 제거/추가
+- 연관·부정 문구를 남겨 둔 채 determination/direct-cause 표현을 추가하는 우회
 - `broker_projection`을 단정형으로 변경
 - Report beat의 증권사 귀속 제거
-- 승인된 핵심 질문이 아닌 사실 단정 hook
+- 승인된 핵심 질문 뒤에 근거 없는 사실 단정을 붙인 hook
 - factual beat의 reasoning/evidence/knowledge trace 소실
 
 다음은 경고이며 Phase 6에서 차단하거나 의미 정합성을 증명하지 않는다.
@@ -107,6 +108,11 @@ Polish는 accepted first draft만 받는 독립 단계다. 각 beat에서 기존
 - Production shallow-source 신규 1편의 source → draft → directive → approval 실사
 
 모든 자동 테스트는 고정 payload 또는 injected caller를 사용한다.
+
+Phase 6 경계는 상류 plan을 동일 IR/resolution에서 다시 만든 canonical plan과 대조한다. 따라서
+필수 SETUP beat를 삭제·재번호화한 plan도 모델 호출 전에 거부한다. Artifact validator는 저장된
+QA 결과를 신뢰하지 않고 현재 문장에서 guard·warning·metric을 다시 계산하며, READY plan과
+`BLOCKED_UPSTREAM` 같은 status 불일치도 거부한다.
 
 ## 비교 가능 시점
 

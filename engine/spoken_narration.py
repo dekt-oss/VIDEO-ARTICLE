@@ -22,8 +22,8 @@ MAX_TOKENS = 8192
 SPOKEN_SENTENCE_MAX_CHARS = 60
 
 _NUMBER = re.compile(
-    r"\d+(?:[.,]\d+)?\s*(?:%|퍼센트|배|년|개월|주|일|시간|분|초|명|마리|건|개|회|"
-    r"kg|km|mg|ml|mm|cm|g|m|L)?"
+    r"[+-]?\d+(?:[.,]\d+)?\s*(?:퍼센트|개월|시간|억원|만원|달러|USD|KRW|%|배|년|"
+    r"주|일|분|초|명|마리|건|개|회|원|kg|km|mg|ml|mm|cm|g|m|L)?"
 )
 _SCOPE_INTENSIFIERS = frozenset({
     "모든", "유일", "항상", "절대", "오직", "최초", "전부", "완전히", "반드시",
@@ -31,6 +31,7 @@ _SCOPE_INTENSIFIERS = frozenset({
 _DETERMINATION_TERMS = ("결정", "원인", "때문", "초래", "야기")
 _PROJECTION_TERMS = ("전망", "예상", "추정", "가능성", "시사", "본다", "봤다")
 _PROTECTED_MEANING_CLASSES = frozenset({"hedge", "uncertain", "assoc", "negation"})
+_SCOPE_QUALIFIERS = frozenset({"평균", "일부", "약", "가량", "정도", "경향", "특정", "대체로"})
 _ABBREVIATION = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9+.-]{1,}(?![A-Za-z])")
 _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시사한다", "할 수 있습니다")
 
@@ -55,7 +56,7 @@ def _strings(value: Any) -> list[str]:
 
 def _number_tokens(text: str) -> list[str]:
     return sorted(
-        match.group(0).replace(" ", "")
+        re.sub(r"\s+", "", match.group(0))
         for match in _NUMBER.finditer(text)
         if any(character.isdigit() for character in match.group(0))
     )
@@ -98,6 +99,9 @@ def _draft_guard_findings(
         if before_classes != after_classes:
             changed = ",".join(sorted(before_classes ^ after_classes))
             errors.append(f"protected_meaning_changed:{beat_id}:{changed}")
+        for qualifier in sorted(_SCOPE_QUALIFIERS):
+            if before.count(qualifier) > after.count(qualifier):
+                errors.append(f"qualifier_dropped:{beat_id}:{qualifier}")
         if (
             "broker_projection" in (source.get("causal_levels") or [])
             and any(term in before for term in _PROJECTION_TERMS)
@@ -110,6 +114,12 @@ def _draft_guard_findings(
             and any(term in after for term in _DETERMINATION_TERMS)
         ):
             errors.append(f"association_upgraded:{beat_id}")
+        added_causal = sorted(
+            term for term in _DETERMINATION_TERMS
+            if after.count(term) > before.count(term)
+        )
+        if added_causal and source.get("stage") != "HOOK":
+            errors.append(f"causal_language_added:{beat_id}:{added_causal[0]}")
 
         for attribution in source.get("attributions") or []:
             if attribution and attribution not in after:
@@ -122,6 +132,8 @@ def _draft_guard_findings(
                 errors.append(f"hook_not_grounded:{beat_id}")
             elif script_polish.stem_retention(plan["core_question"], after) < 0.6:
                 errors.append(f"hook_not_grounded:{beat_id}")
+            if "?" in after and after.rsplit("?", 1)[1].strip():
+                errors.append(f"hook_factual_assertion_added:{beat_id}")
 
         if source.get("stage") != "HOOK" and not any((
             beat.get("reasoning_ids"), beat.get("evidence_ids"), beat.get("knowledge_refs"),
@@ -157,7 +169,13 @@ def _draft_guard_findings(
 
 def _upstream_errors(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
                      pack: dict[str, Any]) -> list[str]:
-    return narrative_planner.validate(plan, ir, resolution, pack)
+    errors = narrative_planner.validate(plan, ir, resolution, pack)
+    if errors:
+        return errors
+    canonical = narrative_planner.build(ir, resolution, pack)
+    if plan != canonical:
+        errors.append("plan_not_canonical")
+    return errors
 
 
 def _require_valid_upstream(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
@@ -218,6 +236,12 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
                     resolution: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]:
     """Normalize model sentences while injecting immutable plan provenance."""
     _require_valid_upstream(plan, ir, resolution, pack)
+    if plan["planning_status"] != "READY":
+        return _empty_result(
+            plan,
+            "BLOCKED_UPSTREAM",
+            warnings=[f"upstream_{plan['planning_status'].lower()}"] + list(plan["warnings"]),
+        )
     rows = payload.get("beats") if isinstance(payload, dict) else None
     errors: list[str] = []
     if not isinstance(rows, list):
@@ -292,8 +316,12 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
         errors.append("domain_mismatch")
     if result.get("content_id") != plan.get("content_id"):
         errors.append("content_id_mismatch")
-    if result.get("generation_status") not in STATUSES:
+    status = result.get("generation_status")
+    if status not in STATUSES:
         errors.append("generation_status_invalid")
+    expected_blocked = plan.get("planning_status") != "READY"
+    if (status == "BLOCKED_UPSTREAM") != expected_blocked:
+        errors.append("generation_status_upstream_mismatch")
     if result.get("core_question") != plan.get("core_question"):
         errors.append("core_question_invalid")
     qa = result.get("qa")
@@ -302,10 +330,14 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
     beats = result.get("narration_beats")
     if not isinstance(beats, list):
         return sorted(set(errors + ["narration_beats_not_list"]))
-    if result.get("generation_status") == "BLOCKED_UPSTREAM":
+    if status == "BLOCKED_UPSTREAM":
         if beats:
             errors.append("blocked_narration_has_beats")
         return sorted(set(errors))
+    expected_ids = [beat["beat_id"] for beat in plan["beats"]]
+    actual_ids = [beat.get("beat_id") for beat in beats]
+    if status == "DRAFT_ACCEPTED" and actual_ids != expected_ids:
+        errors.append("accepted_beat_coverage_invalid")
     for position, row in enumerate(beats, 1):
         if position > len(plan["beats"]):
             errors.append("narration_beat_extra")
@@ -327,6 +359,22 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
             row.get("reasoning_ids"), row.get("evidence_ids"), row.get("knowledge_refs"),
         )):
             errors.append(f"factual_trace_missing:{source['beat_id']}")
+    guard_errors, guard_warnings, guard_metrics = _draft_guard_findings(beats, plan)
+    stored_errors = _strings(qa.get("errors")) if isinstance(qa, dict) else []
+    stored_warnings = _strings(qa.get("warnings")) if isinstance(qa, dict) else []
+    if not set(guard_errors).issubset(stored_errors):
+        errors.append("qa_errors_stale")
+    if stored_warnings != guard_warnings:
+        errors.append("qa_warnings_stale")
+    if isinstance(qa, dict) and qa.get("metrics") != guard_metrics:
+        errors.append("qa_metrics_stale")
+    if status == "DRAFT_ACCEPTED":
+        if guard_errors:
+            errors.append("accepted_draft_has_guard_errors")
+        if stored_errors:
+            errors.append("accepted_draft_has_qa_errors")
+    elif status == "REJECTED_DRAFT" and not stored_errors:
+        errors.append("rejected_draft_without_errors")
     return sorted(set(errors))
 
 
