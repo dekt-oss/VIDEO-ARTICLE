@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
 
 import pytest
 
@@ -10,7 +12,11 @@ from engine import (
     prerequisite_resolver,
     report_reasoning_adapter,
     spoken_narration,
+    spoken_narration_shadow_compare,
 )
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _scope() -> dict[str, bool]:
@@ -323,3 +329,261 @@ def test_spoken_structure_heuristics_warn_without_claiming_entailment():
     assert "academic_register:NB02" in result["qa"]["warnings"]
     assert "unexplained_abbreviation:NB02:GWAS" in result["qa"]["warnings"]
     assert result["qa"]["semantic_entailment"] == "NOT_CHECKED"
+
+
+def test_safe_polish_changes_expression_but_preserves_trace_and_input():
+    pack, ir, resolution, plan = _paper_ready()
+    draft = spoken_narration.normalize_draft(
+        _safe_payload(plan), plan, ir, resolution, pack
+    )
+    before = deepcopy(draft)
+    payload = {"beats": [{
+        "beat_id": beat["beat_id"],
+        "sentences": deepcopy(beat["sentences"]),
+    } for beat in draft["narration_beats"]]}
+    payload["beats"][1]["sentences"] = [
+        payload["beats"][1]["sentences"][0].replace("연구다.", "연구입니다.")
+    ]
+
+    polished = spoken_narration.apply_polish(
+        draft, payload, plan, ir, resolution, pack
+    )
+
+    assert polished["polish"]["applied"] == ["NB02"]
+    assert polished["polish"]["rejected"] == []
+    assert polished["narration_beats"][1]["sentences"] == payload["beats"][1]["sentences"]
+    assert polished["narration_beats"][1]["knowledge_refs"] == plan["beats"][1]["knowledge_refs"]
+    assert draft == before
+
+
+@pytest.mark.parametrize(
+    ("domain", "replacement", "expected_reason"),
+    [
+        ("paper", "1,260명 변이가 성격과 연관됐지만 결정한다고 입증하지 않았다.",
+         "polish_numbers_changed"),
+        ("paper", "1,260개 변이가 성격을 결정한다.",
+         "polish_meaning_changed"),
+        ("paper", "", "polish_empty"),
+        ("report", "2026년 가격이 1% 상승할 것으로 전망했다.",
+         "attribution_dropped"),
+    ],
+)
+def test_unsafe_polish_is_rejected_and_original_sentences_remain(
+    domain: str, replacement: str, expected_reason: str
+):
+    pack, ir, resolution, plan = _paper_ready() if domain == "paper" else _report_ready()
+    draft = spoken_narration.normalize_draft(
+        _safe_payload(plan), plan, ir, resolution, pack
+    )
+    target_index = len(draft["narration_beats"]) - 1
+    original = deepcopy(draft["narration_beats"][target_index]["sentences"])
+    payload = {"beats": [{
+        "beat_id": beat["beat_id"],
+        "sentences": deepcopy(beat["sentences"]),
+    } for beat in draft["narration_beats"]]}
+    payload["beats"][target_index]["sentences"] = [replacement] if replacement else []
+
+    polished = spoken_narration.apply_polish(
+        draft, payload, plan, ir, resolution, pack
+    )
+
+    assert polished["polish"]["applied"] == []
+    assert any(expected_reason in row["reason"] for row in polished["polish"]["rejected"])
+    assert polished["narration_beats"][target_index]["sentences"] == original
+
+
+def test_polish_requires_exact_beat_coverage():
+    pack, ir, resolution, plan = _paper_ready()
+    draft = spoken_narration.normalize_draft(
+        _safe_payload(plan), plan, ir, resolution, pack
+    )
+    payload = {"beats": [{
+        "beat_id": beat["beat_id"], "sentences": beat["sentences"]
+    } for beat in draft["narration_beats"][:-1]]}
+
+    polished = spoken_narration.apply_polish(
+        draft, payload, plan, ir, resolution, pack
+    )
+
+    assert polished["polish"]["applied"] == []
+    assert polished["polish"]["rejected"] == [{
+        "beat_id": "*", "reason": "polish_beat_coverage_invalid"
+    }]
+    assert polished["narration_beats"] == draft["narration_beats"]
+
+
+@pytest.mark.parametrize("status", ["REJECTED_DRAFT", "BLOCKED_UPSTREAM"])
+def test_polish_refuses_nonaccepted_drafts(status: str):
+    pack, ir, resolution, plan = _paper_ready()
+    draft = spoken_narration.normalize_draft(
+        _safe_payload(plan), plan, ir, resolution, pack
+    )
+    draft["generation_status"] = status
+
+    with pytest.raises(ValueError, match="narration_not_accepted"):
+        spoken_narration.apply_polish(draft, {"beats": []}, plan, ir, resolution, pack)
+
+
+def _gold_pack(case: dict) -> dict:
+    domain = case["domain"]
+    pack = {
+        "contract_version": "evidence-pack-v1",
+        "domain": domain,
+        "content_id": case["case_id"],
+        "source": {
+            "source_depth": case["source_depth"],
+            "source_chars": case.get("source_chars", 12000),
+            "source_mode": case["source_mode"],
+            "provider": "",
+            "attribution": case.get("source_attribution", {}),
+        },
+        "claims": [],
+        "numbers": [],
+        "risks": [],
+        "limitations": [],
+        "background_context": [],
+    }
+    for item in case["evidence"]:
+        projected = deepcopy(item)
+        projected["verification_scope"] = {
+            "quote_presence": True,
+            "numeric_value": domain == "report",
+            "unit": domain == "report",
+            "period": domain == "report",
+            "semantic_entailment": False,
+        }
+        if domain == "paper":
+            projected.update(
+                domain_role="claim",
+                evidence_grade="B",
+                source_refs=[],
+                uncertainty=projected.get("uncertainty"),
+                limitations=[],
+                attribution="",
+                domain_fields={},
+            )
+            pack["claims"].append(projected)
+        else:
+            projected.update(
+                scope="company",
+                basis="broker_estimate",
+                display=projected["text"],
+                comparator={},
+                interpretation=projected.get("interpretation", "neutral"),
+                validation={},
+                source_refs=[],
+            )
+            projected.pop("text")
+            pack["numbers"].append(projected)
+    return pack
+
+
+def _gold_artifacts() -> list[tuple[dict, dict, dict, dict, dict]]:
+    cases = json.loads(
+        (FIXTURES / "explanation_ir_gold_cases.json").read_text(encoding="utf-8")
+    )
+    requests = json.loads(
+        (FIXTURES / "prerequisite_resolution_gold_cases.json").read_text(encoding="utf-8")
+    )
+    quality = json.loads(
+        (FIXTURES / "explanation_quality_gold_set.json").read_text(encoding="utf-8")
+    )
+    request_by_id = {row["case_id"]: row["requested_concepts"] for row in requests}
+    legacy_by_id = {row["case_id"]: row for row in quality["cases"]}
+    artifacts = []
+    for case in cases:
+        pack = _gold_pack(case)
+        ir = (
+            paper_reasoning_adapter.build(pack)
+            if case["domain"] == "paper"
+            else report_reasoning_adapter.build(pack, case["financial_reasoning"])
+        )
+        resolution = prerequisite_resolver.resolve(
+            ir, pack, request_by_id[case["case_id"]]
+        )
+        plan = narrative_planner.build(ir, resolution, pack)
+        artifacts.append((legacy_by_id[case["case_id"]], pack, ir, resolution, plan))
+    return artifacts
+
+
+def test_shadow_comparison_reports_phase6_axes_without_final_quality_claims():
+    legacy, pack, ir, resolution, plan = next(
+        row for row in _gold_artifacts() if row[0]["case_id"] == "personality-gwas-2026-09"
+    )
+    narration = spoken_narration.normalize_draft(
+        _safe_payload(plan), plan, ir, resolution, pack
+    )
+
+    comparison = spoken_narration_shadow_compare.compare(
+        legacy, narration, plan, ir, resolution, pack
+    )
+
+    assert comparison["axes"]["plan_coverage"]["outcome"] == "passed"
+    assert comparison["axes"]["stable_trace"]["outcome"] == "passed"
+    assert comparison["axes"]["prerequisite_order"]["outcome"] == "passed"
+    assert comparison["axes"]["hook_grounding"]["outcome"] == "passed"
+    assert comparison["axes"]["qualifier_preservation"]["outcome"] == "passed"
+    assert comparison["axes"]["semantic_entailment"]["outcome"] == "not_measured"
+    assert comparison["axes"]["final_directive_quality"]["outcome"] == "not_measured"
+    assert "improvement_percent" not in comparison
+
+
+def test_shadow_comparison_rejects_legacy_identity_mismatch():
+    pack, ir, resolution, plan = _paper_ready()
+    narration = spoken_narration.normalize_draft(
+        _safe_payload(plan), plan, ir, resolution, pack
+    )
+
+    with pytest.raises(ValueError, match="legacy_case_invalid:domain_mismatch"):
+        spoken_narration_shadow_compare.compare(
+            {"case_id": "paper-1", "domain": "report", "findings": []},
+            narration, plan, ir, resolution, pack,
+        )
+    with pytest.raises(ValueError, match="legacy_case_invalid:content_id_mismatch"):
+        spoken_narration_shadow_compare.compare(
+            {"case_id": "wrong", "domain": "paper", "findings": []},
+            narration, plan, ir, resolution, pack,
+        )
+
+
+def test_six_gold_cases_have_deterministic_phase6_status_and_zero_blocked_calls():
+    statuses = {}
+    call_counts = {}
+    comparisons = {}
+    for legacy, pack, ir, resolution, plan in _gold_artifacts():
+        calls = []
+
+        def caller(**kwargs):
+            calls.append(kwargs)
+            return _safe_payload(plan)
+
+        narration = spoken_narration.generate(
+            plan, ir, resolution, pack, caller=caller
+        )
+        comparison = spoken_narration_shadow_compare.compare(
+            legacy, narration, plan, ir, resolution, pack
+        )
+        case_id = legacy["case_id"]
+        statuses[case_id] = narration["generation_status"]
+        call_counts[case_id] = len(calls)
+        comparisons[case_id] = comparison
+
+    assert statuses == {
+        "heel-strike-2026-09": "BLOCKED_UPSTREAM",
+        "deaf-retinotopic-remap-2026-09": "BLOCKED_UPSTREAM",
+        "personality-gwas-2026-09": "DRAFT_ACCEPTED",
+        "samsung-memory-cycle-2026-09": "BLOCKED_UPSTREAM",
+        "nh-ai-mid-cycle-2026-09": "BLOCKED_UPSTREAM",
+        "shipbuilding-rerating-2026-09": "BLOCKED_UPSTREAM",
+    }
+    assert call_counts == {
+        "heel-strike-2026-09": 0,
+        "deaf-retinotopic-remap-2026-09": 0,
+        "personality-gwas-2026-09": 1,
+        "samsung-memory-cycle-2026-09": 0,
+        "nh-ai-mid-cycle-2026-09": 0,
+        "shipbuilding-rerating-2026-09": 0,
+    }
+    for comparison in comparisons.values():
+        assert comparison["axes"]["semantic_entailment"]["outcome"] == "not_measured"
+        assert comparison["axes"]["final_directive_quality"]["outcome"] == "not_measured"

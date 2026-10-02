@@ -351,3 +351,71 @@ def generate(plan: dict[str, Any], ir: dict[str, Any], resolution: dict[str, Any
         max_tokens=MAX_TOKENS,
     )
     return normalize_draft(payload, plan, ir, resolution, pack)
+
+
+def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],
+                 ir: dict[str, Any], resolution: dict[str, Any],
+                 pack: dict[str, Any]) -> dict[str, Any]:
+    """Apply safe expression-only changes without mutating the accepted draft."""
+    if not isinstance(narration, dict) or narration.get("generation_status") != "DRAFT_ACCEPTED":
+        raise ValueError("narration_not_accepted")
+    contract_errors = validate(narration, plan, ir, resolution, pack)
+    if contract_errors:
+        raise ValueError("narration_invalid:" + ",".join(contract_errors))
+
+    result = deepcopy(narration)
+    rows = payload.get("beats") if isinstance(payload, dict) else None
+    expected_ids = [beat["beat_id"] for beat in result["narration_beats"]]
+    actual_ids = (
+        [_text(row.get("beat_id")) if isinstance(row, dict) else "" for row in rows]
+        if isinstance(rows, list) else []
+    )
+    if actual_ids != expected_ids:
+        result["polish"] = {
+            "applied": [],
+            "rejected": [{"beat_id": "*", "reason": "polish_beat_coverage_invalid"}],
+            "unchanged": [],
+        }
+        return result
+
+    applied: list[str] = []
+    rejected: list[dict[str, str]] = []
+    unchanged: list[str] = []
+    for position, row in enumerate(rows):
+        target = result["narration_beats"][position]
+        beat_id = target["beat_id"]
+        before = _joined_sentences(target)
+        sentences = _strings(row.get("sentences")) if isinstance(row, dict) else []
+        after = " ".join(sentences)
+        if after == before:
+            unchanged.append(beat_id)
+            continue
+
+        polish_reason = script_polish.rejection_reason(before, after)
+        candidate = deepcopy(result)
+        candidate["narration_beats"][position]["sentences"] = sentences
+        guard_errors, _, _ = _draft_guard_findings(candidate["narration_beats"], plan)
+        relevant_guards = [error for error in guard_errors if f":{beat_id}" in error]
+        attribution_error = next(
+            (error for error in relevant_guards if error.startswith("attribution_dropped:")), ""
+        )
+        reason = (
+            attribution_error
+            or polish_reason
+            or ("semantic_guard:" + relevant_guards[0] if relevant_guards else "")
+        )
+        if reason:
+            rejected.append({"beat_id": beat_id, "reason": reason})
+            continue
+        target["sentences"] = sentences
+        applied.append(beat_id)
+
+    _, warnings, metrics = _draft_guard_findings(result["narration_beats"], plan)
+    result["qa"]["warnings"] = warnings
+    result["qa"]["metrics"] = metrics
+    result["polish"] = {
+        "applied": applied,
+        "rejected": rejected,
+        "unchanged": unchanged,
+    }
+    return result
