@@ -41,41 +41,41 @@
 - Consumes: `narrative_planner.validate(plan, ir, resolution, pack) -> list[str]`, validated plan beat fields, `llm.call_json`, `llm.set_text_purpose`, `config.MODEL_SCRIPT`.
 - Produces: `prompt_payload(plan, ir, resolution, pack) -> dict`, `normalize_draft(payload, plan, ir, resolution, pack) -> dict`, `validate(result, plan, ir, resolution, pack) -> list[str]`, and `generate(plan, ir, resolution, pack, *, caller=None) -> dict`.
 
-- [ ] **Step 1: Write failing boundary and shape tests**
+- [x] **Step 1: Write failing boundary and shape tests**
 
   Add literal assertions proving: READY input produces `spoken-narration-v1`; blocked input returns `BLOCKED_UPSTREAM` with no caller invocation; malformed upstream contracts raise `ValueError`; unknown, missing, duplicated, reordered, or empty beat rows produce `REJECTED_DRAFT`; model-authored IDs/refs are ignored and output refs equal the plan exactly; inputs remain unchanged.
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+- [x] **Step 2: Run the focused tests and confirm RED**
 
   Run: `python -m pytest tests/test_spoken_narration.py -q`
 
   Expected: collection/import failure because `engine.spoken_narration` does not exist.
 
-- [ ] **Step 3: Implement the minimal boundary and normalized contract**
+- [x] **Step 3: Implement the minimal boundary and normalized contract**
 
   Implement constants `CONTRACT_VERSION = "spoken-narration-v1"` and statuses `DRAFT_ACCEPTED`, `REJECTED_DRAFT`, `BLOCKED_UPSTREAM`. The model payload shape is exactly `{"beats": [{"beat_id": "NB01", "sentences": ["..."]}]}`. `generate` revalidates upstream data, returns a blocked artifact before resolving/calling `caller`, otherwise calls the injected caller or `call_json` using `MODEL_SCRIPT`, a bounded token limit, and purpose `spoken_narration_shadow`. `normalize_draft` copies plan order and provenance into `SN01`, `SN02`, ... output beats.
 
-- [ ] **Step 4: Run the boundary tests and confirm GREEN**
+- [x] **Step 4: Run the boundary tests and confirm GREEN**
 
   Run: `python -m pytest tests/test_spoken_narration.py -q`
 
   Expected: all boundary/shape tests pass without network access.
 
-- [ ] **Step 5: Write failing semantic-drift tests**
+- [x] **Step 5: Write failing semantic-drift tests**
 
   Add table-driven literal cases for changed/dropped/invented numbers and units, new scope intensifiers, association upgraded to determination/direct cause, removed negation/uncertainty/qualifiers, dropped Report broker attribution, factual beats without trace, and a factual assertion replacing the approved rhetorical hook. Add warning-only cases for long sentences, repeated core question, dense numbers, unexplained abbreviations, and academic register.
 
-- [ ] **Step 6: Run the guard tests and confirm RED**
+- [x] **Step 6: Run the guard tests and confirm RED**
 
   Run each new named test directly with pytest `-q`.
 
   Expected: unsafe candidates are incorrectly accepted or warnings are missing before implementation.
 
-- [ ] **Step 7: Implement the minimal guards and metrics**
+- [x] **Step 7: Implement the minimal guards and metrics**
 
   Tokenize numbers with attached units as a multiset, compare protected meaning classes using `script_polish.meaning_classes`, add explicit scope and determination/direct-cause term checks, require Report attributions in the corresponding beat text, require a question-form HOOK grounded in `core_question`, and require trace on factual beats. Put blocking codes in `qa.errors`, heuristic codes in `qa.warnings`, counts in `qa.metrics`, and derive status solely from whether errors are empty. Keep `semantic_entailment` fixed at `NOT_CHECKED`.
 
-- [ ] **Step 8: Run Task 1 tests and commit**
+- [x] **Step 8: Run Task 1 tests and commit**
 
   Run: `python -m pytest tests/test_spoken_narration.py -q`
 
@@ -96,41 +96,41 @@
 - Consumes: Task 1 accepted narration artifacts and `script_polish.rejection_reason(before, after) -> str`.
 - Produces: `apply_polish(narration, payload, plan, ir, resolution, pack) -> dict` and `spoken_narration_shadow_compare.compare(legacy_case, narration, plan, ir, resolution, pack) -> dict`.
 
-- [ ] **Step 1: Write failing polish tests**
+- [x] **Step 1: Write failing polish tests**
 
   Prove an accepted polish can change expression while preserving exact output trace; a numeric, association/causal, qualifier, attribution, beat-coverage, or empty-text drift is rejected; rejected polish retains every original sentence; the input narration is not mutated; blocked/rejected drafts cannot be polished.
 
-- [ ] **Step 2: Run polish tests and confirm RED**
+- [x] **Step 2: Run polish tests and confirm RED**
 
   Run: `python -m pytest tests/test_spoken_narration.py -q -k polish`
 
   Expected: failure because `apply_polish` is absent.
 
-- [ ] **Step 3: Implement minimal independent polish application**
+- [x] **Step 3: Implement minimal independent polish application**
 
   Accept only exact beat coverage and sentence arrays. Join each beat before/after for `script_polish.rejection_reason`, then run the full Task 1 draft guards on the candidate. Apply a beat only when both checks pass; otherwise keep the original sentences and append `{beat_id, reason}` to `polish.rejected`. Return a deep-copied artifact and never change semantic-entailment status.
 
-- [ ] **Step 4: Run polish tests and confirm GREEN**
+- [x] **Step 4: Run polish tests and confirm GREEN**
 
   Run: `python -m pytest tests/test_spoken_narration.py -q -k polish`
 
   Expected: all polish tests pass.
 
-- [ ] **Step 5: Write failing comparison and Gold Set tests**
+- [x] **Step 5: Write failing comparison and Gold Set tests**
 
   For a literal Personality GWAS payload assert READY -> `DRAFT_ACCEPTED`, exact trace, prerequisite-before-terminology, question hook, association preservation, and `semantic_entailment=not_measured`. For Heel Strike, Retinotopic Remapping, Samsung, NH Mid Cycle, and Shipbuilding assert upstream `BLOCKED_UPSTREAM` with zero caller calls. Reject legacy domain/content mismatches and prohibit `improvement_percent` and final-output claims.
 
-- [ ] **Step 6: Run comparison tests and confirm RED**
+- [x] **Step 6: Run comparison tests and confirm RED**
 
   Run: `python -m pytest tests/test_spoken_narration.py -q -k 'shadow or gold'`
 
   Expected: failure because the comparator does not exist.
 
-- [ ] **Step 7: Implement the comparator**
+- [x] **Step 7: Implement the comparator**
 
   Validate all supplied contracts, then emit only the axes `plan_coverage`, `stable_trace`, `prerequisite_order`, `hook_grounding`, `qualifier_preservation`, `spoken_structure`, `semantic_entailment`, and `final_directive_quality`. The last two always report `not_measured`; blocked cases report fail-closed outcomes, not prose improvement.
 
-- [ ] **Step 8: Run Task 2 and adjacent tests, then commit**
+- [x] **Step 8: Run Task 2 and adjacent tests, then commit**
 
   Run: `python -m pytest tests/test_spoken_narration.py tests/test_narrative_planner.py tests/test_prerequisite_resolver.py tests/test_explanation_ir.py tests/test_evidence_pack.py -q`
 
@@ -150,21 +150,21 @@
 - Consumes: the final Task 1/2 contracts and observed verification output.
 - Produces: operator-facing Phase 6 boundary/rollback/limitations documentation and a stacked Draft PR.
 
-- [ ] **Step 1: Document the shipped shadow contract**
+- [x] **Step 1: Document the shipped shadow contract**
 
   Record current problem, inputs/outputs, status meanings, guards versus warnings, `NOT_CHECKED` semantic-entailment boundary, no-paid-call/no-persistence/no-Production-wiring rule, Gold Set statuses, rollback, and Phase 7/9/11 comparison milestones.
 
-- [ ] **Step 2: Run focused and full local verification**
+- [x] **Step 2: Run focused and full local verification**
 
   Run targeted Phase 6 tests, adjacent Explanation Engine tests, full `pytest`, Web `node --test lib/*.test.ts lib/work/*.test.ts`, `npx tsc --noEmit`, `npm run lint`, `npm run build`, and `git diff --check`.
 
   Expected: zero failures. Existing Node module-type warnings are recorded, not fixed in this phase.
 
-- [ ] **Step 3: Perform a separate Fable Review**
+- [x] **Step 3: Perform a separate Fable Review**
 
   Assume the implementation is wrong and inspect evidence-free reasoning, scope expansion, qualifier loss, association-to-causation, projection/current-fact drift, broker-attribution loss, stale/unsupported reuse, shallow-source overexpansion, ID/ref loss, malformed model payloads, mutation, and false quality claims. Rate each reproducible finding; fix Critical/High findings in one TDD pass and rerun the full suite.
 
-- [ ] **Step 4: Complete plan evidence and commit**
+- [x] **Step 4: Complete plan evidence and commit**
 
   Mark only evidenced checkboxes complete and commit documentation/plan results as `docs: complete Phase 6 spoken narration plan`.
 
