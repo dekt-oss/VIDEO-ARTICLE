@@ -8,6 +8,8 @@ the Production script/directive path imports this module.
 from __future__ import annotations
 
 from copy import deepcopy
+from collections import Counter
+import re
 from typing import Any
 
 from . import (
@@ -92,6 +94,33 @@ def _evidence_rows(pack: dict[str, Any], wanted: set[str]) -> list[dict[str, Any
     return rows
 
 
+def _evidence_sections(pack: dict[str, Any]) -> dict[str, str]:
+    return {
+        _text(item.get("evidence_id")): section
+        for section in _EVIDENCE_SECTIONS
+        for item in pack.get(section) or []
+        if isinstance(item, dict) and _text(item.get("evidence_id"))
+    }
+
+
+def _eligible_support(item: dict[str, Any], section: str) -> bool:
+    if item.get("verification_state") in {"UNSUPPORTED", "STALE"}:
+        return False
+    scope = item.get("verification_scope") or {}
+    has_source_span = any(
+        isinstance(ref, dict) and _text(ref.get("quote"))
+        for ref in item.get("source_refs") or []
+    )
+    if has_source_span or scope.get("semantic_entailment") is True:
+        return True
+    if section != "numbers" or scope.get("numeric_value") is not True:
+        return False
+    return (
+        (not _text(item.get("unit")) or scope.get("unit") is True)
+        and (not _text(item.get("period")) or scope.get("period") is True)
+    )
+
+
 def prompt_payload(
     narration: dict[str, Any],
     plan: dict[str, Any],
@@ -141,3 +170,316 @@ def prompt_payload(
         ],
         "evidence": _evidence_rows(pack, set(evidence_ids)),
     }
+
+
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _coverage_text(value: Any) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣]+", "", _text(value))
+
+
+def _empty_result(
+    narration: dict[str, Any],
+    status: str,
+    *,
+    errors: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "domain": narration.get("domain"),
+        "content_id": narration.get("content_id"),
+        "qa_status": status,
+        "critic": {
+            "independence": "separate_call",
+            "semantic_entailment": "NOT_CHECKED",
+        },
+        "clauses": [],
+        "qa": {
+            "errors": sorted(set(errors or [])),
+            "warnings": [],
+            "metrics": {"clause_count": 0, "sentence_count": 0, "verdict_counts": {}},
+        },
+    }
+
+
+def _metrics(clauses: list[dict[str, Any]], sentence_count: int) -> dict[str, Any]:
+    verdicts = Counter(row["verdict"] for row in clauses)
+    return {
+        "clause_count": len(clauses),
+        "sentence_count": sentence_count,
+        "verdict_counts": dict(sorted(verdicts.items())),
+    }
+
+
+def _semantic_findings(
+    clauses: list[dict[str, Any]],
+    beat_by_narration: dict[str, dict[str, Any]],
+    evidence_index: dict[str, dict[str, Any]],
+    evidence_sections: dict[str, str],
+) -> tuple[bool, list[str]]:
+    failed = False
+    errors: list[str] = []
+    for row in clauses:
+        clause_id = _text(row.get("clause_id")) or "?"
+        beat = beat_by_narration.get(_text(row.get("narration_id"))) or {}
+        kind = row.get("clause_kind")
+        verdict = row.get("verdict")
+        evidence_ids = _strings(row.get("evidence_ids"))
+        findings = _strings(row.get("finding_codes"))
+        if kind == "RHETORICAL":
+            valid = (
+                beat.get("stage") == "HOOK"
+                and verdict == "RHETORICAL"
+                and not evidence_ids
+                and not findings
+                and "?" in _text(row.get("clause_text"))
+            )
+            if not valid:
+                failed = True
+                errors.append(f"rhetorical_exemption_invalid:{clause_id}")
+            continue
+
+        if verdict != "ENTAILED" or findings:
+            failed = True
+        prerequisite_trace = (
+            beat.get("stage") == "SETUP"
+            and bool(beat.get("concept_ids"))
+            and bool(beat.get("knowledge_refs"))
+        )
+        if not evidence_ids and not prerequisite_trace:
+            failed = True
+            errors.append(f"factual_evidence_missing:{clause_id}")
+        for evidence_id in evidence_ids:
+            item = evidence_index.get(evidence_id)
+            if item is None:
+                continue
+            if not _eligible_support(item, evidence_sections.get(evidence_id, "")):
+                failed = True
+                errors.append(f"support_surface_ineligible:{clause_id}:{evidence_id}")
+    return failed, sorted(set(errors))
+
+
+def normalize_review(
+    payload: object,
+    narration: dict[str, Any],
+    plan: dict[str, Any],
+    ir: dict[str, Any],
+    resolution: dict[str, Any],
+    pack: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize critic judgments while injecting canonical identity and trace."""
+    _require_valid_upstream(narration, plan, ir, resolution, pack)
+    if narration.get("generation_status") != "DRAFT_ACCEPTED":
+        raise ValueError("spoken_narration_not_accepted")
+    rows = payload.get("clauses") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
+
+    beats = narration["narration_beats"]
+    beat_by_narration = {beat["narration_id"]: beat for beat in beats}
+    evidence_index = explanation_ir.build_index(pack)
+    evidence_sections = _evidence_sections(pack)
+    expected = [
+        (beat, sentence_index, sentence)
+        for beat in beats
+        for sentence_index, sentence in enumerate(beat["sentences"], 1)
+    ]
+    normalized: list[dict[str, Any]] = []
+    errors: list[str] = []
+    cursor = 0
+
+    for beat, sentence_index, sentence in expected:
+        key = (beat["narration_id"], sentence_index)
+        sentence_rows: list[dict[str, Any]] = []
+        while cursor < len(rows):
+            candidate = rows[cursor]
+            if not isinstance(candidate, dict):
+                errors.append(f"critic_clause_invalid:{cursor + 1}")
+                cursor += 1
+                continue
+            candidate_key = (candidate.get("narration_id"), candidate.get("sentence_index"))
+            if candidate_key != key:
+                break
+            sentence_rows.append(candidate)
+            cursor += 1
+        covered = "".join(_coverage_text(row.get("clause_text")) for row in sentence_rows)
+        if not sentence_rows or covered != _coverage_text(sentence):
+            errors.append(f"clause_coverage_invalid:{key[0]}:{sentence_index}")
+            continue
+
+        for row in sentence_rows:
+            clause_text = _text(row.get("clause_text"))
+            clause_kind = _text(row.get("clause_kind"))
+            verdict = _text(row.get("verdict"))
+            evidence_ids = _strings(row.get("evidence_ids"))
+            finding_codes = _strings(row.get("finding_codes"))
+            if clause_kind not in {"FACTUAL", "RHETORICAL"}:
+                errors.append(f"clause_kind_invalid:{key[0]}:{sentence_index}")
+            if verdict not in VERDICTS:
+                errors.append(f"verdict_invalid:{key[0]}:{sentence_index}")
+            invalid_findings = [code for code in finding_codes if code not in FINDING_CODES]
+            if invalid_findings:
+                errors.append(f"finding_code_invalid:{key[0]}:{invalid_findings[0]}")
+            unknown = [evidence_id for evidence_id in evidence_ids
+                       if evidence_id not in evidence_index]
+            if unknown:
+                errors.append(f"evidence_ref_unknown:{key[0]}:{unknown[0]}")
+            outside = [evidence_id for evidence_id in evidence_ids
+                       if evidence_id not in beat.get("evidence_ids", [])]
+            if outside:
+                errors.append(f"evidence_ref_outside_beat:{key[0]}:{outside[0]}")
+            if (
+                beat.get("stage") == "HOOK"
+                and clause_kind == "FACTUAL"
+                and not evidence_ids
+                and "unsupported_factual_hook" not in finding_codes
+            ):
+                finding_codes.append("unsupported_factual_hook")
+            raw_refs = list(dict.fromkeys(
+                _text(evidence_index[evidence_id].get("raw_ref"))
+                for evidence_id in evidence_ids if evidence_id in evidence_index
+                and _text(evidence_index[evidence_id].get("raw_ref"))
+            ))
+            normalized.append({
+                "clause_id": f"SC{len(normalized) + 1:02d}",
+                "narration_id": beat["narration_id"],
+                "beat_id": beat["beat_id"],
+                "stage": beat["stage"],
+                "sentence_index": sentence_index,
+                "clause_text": clause_text,
+                "clause_kind": clause_kind,
+                "verdict": verdict,
+                "evidence_ids": evidence_ids,
+                "reasoning_ids": deepcopy(beat["reasoning_ids"]),
+                "raw_refs": raw_refs,
+                "concept_ids": deepcopy(beat["concept_ids"]),
+                "knowledge_refs": deepcopy(beat["knowledge_refs"]),
+                "finding_codes": finding_codes,
+                "rationale": _text(row.get("rationale")),
+            })
+
+    if cursor != len(rows):
+        errors.append("critic_clause_extra_or_reordered")
+    if errors:
+        return _empty_result(narration, "CRITIC_ERROR", errors=errors)
+
+    rejected, semantic_errors = _semantic_findings(
+        normalized, beat_by_narration, evidence_index, evidence_sections
+    )
+    status = "REJECTED" if rejected else "PASSED"
+    sentence_count = len(expected)
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "domain": narration["domain"],
+        "content_id": narration["content_id"],
+        "qa_status": status,
+        "critic": {
+            "independence": "separate_call",
+            "semantic_entailment": "FAILED" if rejected else "PASSED",
+        },
+        "clauses": normalized,
+        "qa": {
+            "errors": semantic_errors,
+            "warnings": [],
+            "metrics": _metrics(normalized, sentence_count),
+        },
+    }
+
+
+def validate(
+    result: object,
+    narration: dict[str, Any],
+    plan: dict[str, Any],
+    ir: dict[str, Any],
+    resolution: dict[str, Any],
+    pack: dict[str, Any],
+) -> list[str]:
+    """Validate Phase 7 shape, coverage, and canonical trace."""
+    _require_valid_upstream(narration, plan, ir, resolution, pack)
+    if not isinstance(result, dict):
+        return ["fidelity_not_dict"]
+    errors: list[str] = []
+    if result.get("contract_version") != CONTRACT_VERSION:
+        errors.append("contract_version_invalid")
+    if result.get("domain") != narration.get("domain"):
+        errors.append("domain_mismatch")
+    if result.get("content_id") != narration.get("content_id"):
+        errors.append("content_id_mismatch")
+    if result.get("qa_status") not in QA_STATUSES:
+        errors.append("qa_status_invalid")
+    clauses = result.get("clauses")
+    if not isinstance(clauses, list):
+        return sorted(set(errors + ["clauses_not_list"]))
+    if result.get("qa_status") == "CRITIC_ERROR":
+        if clauses:
+            errors.append("critic_error_has_clauses")
+        return sorted(set(errors))
+    expected_ids = [f"SC{position:02d}" for position in range(1, len(clauses) + 1)]
+    if [row.get("clause_id") for row in clauses if isinstance(row, dict)] != expected_ids:
+        errors.append("clause_ids_invalid")
+    evidence_index = explanation_ir.build_index(pack)
+    evidence_sections = _evidence_sections(pack)
+    beat_index = {beat["narration_id"]: beat for beat in narration["narration_beats"]}
+    grouped: dict[tuple[str, int], list[str]] = {}
+    for row in clauses:
+        if not isinstance(row, dict):
+            errors.append("clause_invalid")
+            continue
+        narration_id = row.get("narration_id")
+        beat = beat_index.get(narration_id)
+        if beat is None:
+            errors.append(f"narration_ref_unknown:{narration_id}")
+            continue
+        for field in ("beat_id", "stage", "reasoning_ids", "concept_ids", "knowledge_refs"):
+            if row.get(field) != beat.get(field):
+                errors.append(f"{field}_invalid:{row.get('clause_id')}")
+        evidence_ids = _strings(row.get("evidence_ids"))
+        unknown = [evidence_id for evidence_id in evidence_ids
+                   if evidence_id not in evidence_index]
+        errors.extend(
+            f"evidence_ref_unknown:{row.get('clause_id')}:{evidence_id}"
+            for evidence_id in unknown
+        )
+        outside = [evidence_id for evidence_id in evidence_ids
+                   if evidence_id not in beat.get("evidence_ids", [])]
+        errors.extend(
+            f"evidence_ref_outside_beat:{row.get('clause_id')}:{evidence_id}"
+            for evidence_id in outside
+        )
+        expected_refs = list(dict.fromkeys(
+            _text(evidence_index[evidence_id].get("raw_ref"))
+            for evidence_id in evidence_ids if evidence_id in evidence_index
+            and _text(evidence_index[evidence_id].get("raw_ref"))
+        ))
+        if row.get("raw_refs") != expected_refs:
+            errors.append(f"raw_refs_invalid:{row.get('clause_id')}")
+        key = (narration_id, row.get("sentence_index"))
+        grouped.setdefault(key, []).append(_text(row.get("clause_text")))
+    for beat in narration["narration_beats"]:
+        for sentence_index, sentence in enumerate(beat["sentences"], 1):
+            covered = "".join(_coverage_text(text)
+                              for text in grouped.get((beat["narration_id"], sentence_index), []))
+            if covered != _coverage_text(sentence):
+                errors.append(f"clause_coverage_invalid:{beat['narration_id']}:{sentence_index}")
+    qa = result.get("qa") if isinstance(result.get("qa"), dict) else {}
+    expected_metrics = _metrics(clauses, sum(len(beat["sentences"])
+                                             for beat in narration["narration_beats"]))
+    if qa.get("metrics") != expected_metrics:
+        errors.append("qa_metrics_stale")
+    rejected, semantic_errors = _semantic_findings(
+        clauses, beat_index, evidence_index, evidence_sections
+    )
+    expected_status = "REJECTED" if rejected else "PASSED"
+    expected_entailment = "FAILED" if rejected else "PASSED"
+    if result.get("qa_status") != expected_status:
+        errors.append("qa_status_stale")
+    critic = result.get("critic") if isinstance(result.get("critic"), dict) else {}
+    if critic.get("independence") != "separate_call":
+        errors.append("critic_independence_invalid")
+    if critic.get("semantic_entailment") != expected_entailment:
+        errors.append("semantic_entailment_stale")
+    if sorted(_strings(qa.get("errors"))) != semantic_errors:
+        errors.append("qa_errors_stale")
+    return sorted(set(errors))

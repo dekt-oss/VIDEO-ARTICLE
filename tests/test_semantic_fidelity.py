@@ -156,6 +156,24 @@ def _report_artifacts() -> tuple[dict, dict, dict, dict, dict]:
     return pack, ir, resolution, plan, narration
 
 
+def _critic_payload(narration: dict) -> dict:
+    clauses = []
+    for beat in narration["narration_beats"]:
+        for sentence_index, sentence in enumerate(beat["sentences"], 1):
+            is_hook = beat["stage"] == "HOOK"
+            clauses.append({
+                "narration_id": beat["narration_id"],
+                "sentence_index": sentence_index,
+                "clause_text": sentence,
+                "clause_kind": "RHETORICAL" if is_hook else "FACTUAL",
+                "verdict": "RHETORICAL" if is_hook else "ENTAILED",
+                "evidence_ids": [] if is_hook else list(beat["evidence_ids"]),
+                "finding_codes": [],
+                "rationale": "핵심 질문" if is_hook else "인용 근거가 직접 뒷받침한다.",
+            })
+    return {"clauses": clauses}
+
+
 def test_prompt_boundary_rejects_tampered_upstream_contracts():
     pack, ir, resolution, plan, narration = _paper_artifacts()
     bad_narration = deepcopy(narration)
@@ -231,3 +249,238 @@ def test_prompt_inputs_are_immutable():
     semantic_fidelity.prompt_payload(narration, plan, ir, resolution, pack)
 
     assert (pack, ir, resolution, plan, narration) == before
+
+
+def test_normalize_review_assigns_canonical_shape_trace_and_metrics():
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    payload = _critic_payload(narration)
+    before = deepcopy((pack, ir, resolution, plan, narration, payload))
+
+    first = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+    second = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+
+    assert first == second
+    assert first["contract_version"] == "semantic-fidelity-v1"
+    assert first["qa_status"] == "PASSED"
+    assert first["critic"] == {
+        "independence": "separate_call",
+        "semantic_entailment": "PASSED",
+    }
+    assert [row["clause_id"] for row in first["clauses"]] == ["SC01", "SC02", "SC03"]
+    assert first["clauses"][0]["beat_id"] == "NB01"
+    assert first["clauses"][0]["reasoning_ids"] == []
+    assert first["clauses"][1]["concept_ids"] == ["gwas_association"]
+    assert first["clauses"][1]["knowledge_refs"]
+    assert first["clauses"][1]["raw_refs"] == []
+    assert first["clauses"][2]["raw_refs"] == ["claims:C01"]
+    assert first["clauses"][2]["reasoning_ids"] == ["XR01"]
+    assert first["qa"]["metrics"] == {
+        "clause_count": 3,
+        "sentence_count": 3,
+        "verdict_counts": {"ENTAILED": 2, "RHETORICAL": 1},
+    }
+    assert semantic_fidelity.validate(
+        first, narration, plan, ir, resolution, pack
+    ) == []
+    assert (pack, ir, resolution, plan, narration, payload) == before
+
+
+@pytest.mark.parametrize("mutation", ["omit", "reverse", "duplicate"])
+def test_clause_coverage_rejects_omitted_or_reordered_text(mutation: str):
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    payload = _critic_payload(narration)
+    source = narration["narration_beats"][-1]["sentences"][0]
+    assert source == "1,260개 변이가 성격과 연관됐지만 성격을 결정한다고 입증하지 않았다."
+    original = payload["clauses"][-1]
+    first = {**original, "clause_text": "1,260개 변이가 성격과 연관됐지만"}
+    second = {**original, "clause_text": "성격을 결정한다고 입증하지 않았다."}
+    replacement = {
+        "omit": [first],
+        "reverse": [second, first],
+        "duplicate": [first, second, second],
+    }[mutation]
+    payload["clauses"][-1:] = replacement
+
+    result = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+
+    assert result["qa_status"] == "CRITIC_ERROR"
+    assert result["critic"]["semantic_entailment"] == "NOT_CHECKED"
+    assert result["clauses"] == []
+    assert any(error.startswith("clause_coverage_invalid:SN03:1")
+               for error in result["qa"]["errors"])
+
+
+@pytest.mark.parametrize(("verdict", "finding"), [
+    ("CONTRADICTED", "contradiction"),
+    ("UNSUPPORTED", "unsupported_background"),
+    ("UNVERIFIABLE", "missing_qualifier"),
+])
+def test_negative_semantic_verdicts_reject_without_critic_error(
+    verdict: str, finding: str,
+):
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    payload = _critic_payload(narration)
+    payload["clauses"][-1]["verdict"] = verdict
+    payload["clauses"][-1]["finding_codes"] = [finding]
+
+    result = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+
+    assert result["qa_status"] == "REJECTED"
+    assert result["critic"]["semantic_entailment"] == "FAILED"
+    assert result["clauses"][-1]["verdict"] == verdict
+    assert finding in result["clauses"][-1]["finding_codes"]
+
+
+def test_entailed_clause_requires_eligible_beat_owned_support():
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    payload = _critic_payload(narration)
+
+    quote_only = deepcopy(pack)
+    quote_only["claims"][0]["source_refs"] = []
+    result = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, quote_only
+    )
+    assert result["qa_status"] == "REJECTED"
+    assert "support_surface_ineligible:SC03:paper:C01" in result["qa"]["errors"]
+
+    for state in ("UNSUPPORTED", "STALE"):
+        disallowed = deepcopy(pack)
+        disallowed["claims"][0]["verification_state"] = state
+        with pytest.raises(ValueError, match="explanation_ir_invalid:evidence_state_disallowed"):
+            semantic_fidelity.normalize_review(
+                payload, narration, plan, ir, resolution, disallowed
+            )
+
+    other_beat = deepcopy(pack)
+    other_beat["claims"].append({
+        **deepcopy(other_beat["claims"][0]),
+        "evidence_id": "paper:C99",
+        "raw_ref": "claims:C99",
+        "text": "다른 비트의 근거",
+    })
+    laundered = deepcopy(payload)
+    laundered["clauses"][-1]["evidence_ids"] = ["paper:C99"]
+    result = semantic_fidelity.normalize_review(
+        laundered, narration, plan, ir, resolution, other_beat
+    )
+    assert result["qa_status"] == "CRITIC_ERROR"
+    assert "evidence_ref_outside_beat:SN03:paper:C99" in result["qa"]["errors"]
+
+
+def test_verified_report_numeric_surface_can_support_entailed_clause():
+    pack, ir, resolution, plan, narration = _report_artifacts()
+
+    result = semantic_fidelity.normalize_review(
+        _critic_payload(narration), narration, plan, ir, resolution, pack
+    )
+
+    assert result["qa_status"] == "PASSED"
+    assert result["clauses"][-1]["evidence_ids"] == ["report:num_price"]
+
+
+def test_rhetorical_exemption_is_only_for_pure_grounded_hook_question():
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    safe = semantic_fidelity.normalize_review(
+        _critic_payload(narration), narration, plan, ir, resolution, pack
+    )
+    assert safe["qa_status"] == "PASSED"
+
+    non_hook = _critic_payload(narration)
+    non_hook["clauses"][-1].update(
+        clause_kind="RHETORICAL", verdict="RHETORICAL", evidence_ids=[]
+    )
+    result = semantic_fidelity.normalize_review(
+        non_hook, narration, plan, ir, resolution, pack
+    )
+    assert result["qa_status"] == "REJECTED"
+    assert "rhetorical_exemption_invalid:SC03" in result["qa"]["errors"]
+
+    cited_hook = _critic_payload(narration)
+    cited_hook["clauses"][0]["evidence_ids"] = ["paper:C01"]
+    result = semantic_fidelity.normalize_review(
+        cited_hook, narration, plan, ir, resolution, pack
+    )
+    assert result["qa_status"] == "CRITIC_ERROR"
+    assert "evidence_ref_outside_beat:SN01:paper:C01" in result["qa"]["errors"]
+
+    factual_hook = _critic_payload(narration)
+    factual_hook["clauses"][0].update(
+        clause_kind="FACTUAL", verdict="ENTAILED", evidence_ids=[]
+    )
+    result = semantic_fidelity.normalize_review(
+        factual_hook, narration, plan, ir, resolution, pack
+    )
+    assert result["qa_status"] == "REJECTED"
+    assert result["clauses"][0]["finding_codes"] == ["unsupported_factual_hook"]
+
+
+@pytest.mark.parametrize(("label", "finding", "domain"), [
+    ("heel_scope", "scope_expansion", "paper"),
+    ("retinotopic_transfer", "unsupported_background", "paper"),
+    ("personality_determination", "causal_upgrade", "paper"),
+    ("shipbuilding_replacement", "unsupported_background", "paper"),
+    ("broker_projection", "attribution_loss", "report"),
+])
+def test_semantic_scope_causal_and_attribution_failures_remain_distinct(
+    label: str, finding: str, domain: str,
+):
+    artifacts = _paper_artifacts() if domain == "paper" else _report_artifacts()
+    pack, ir, resolution, plan, narration = artifacts
+    payload = _critic_payload(narration)
+    payload["clauses"][-1]["verdict"] = "UNSUPPORTED"
+    payload["clauses"][-1]["finding_codes"] = [finding]
+    payload["clauses"][-1]["rationale"] = label
+
+    result = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+
+    assert result["qa_status"] == "REJECTED"
+    assert result["clauses"][-1]["finding_codes"] == [finding]
+    assert result["clauses"][-1]["rationale"] == label
+
+
+def test_validate_recomputes_status_metrics_and_trace():
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    passed = semantic_fidelity.normalize_review(
+        _critic_payload(narration), narration, plan, ir, resolution, pack
+    )
+    assert passed["qa_status"] == "PASSED"
+
+    verdict = deepcopy(passed)
+    verdict["clauses"][-1]["verdict"] = "UNSUPPORTED"
+    assert "qa_status_stale" in semantic_fidelity.validate(
+        verdict, narration, plan, ir, resolution, pack
+    )
+
+    evidence = deepcopy(passed)
+    evidence["clauses"][-1]["evidence_ids"] = ["paper:C99"]
+    assert "evidence_ref_unknown:SC03:paper:C99" in semantic_fidelity.validate(
+        evidence, narration, plan, ir, resolution, pack
+    )
+
+    status = deepcopy(passed)
+    status["qa_status"] = "REJECTED"
+    assert "qa_status_stale" in semantic_fidelity.validate(
+        status, narration, plan, ir, resolution, pack
+    )
+
+    summary = deepcopy(passed)
+    summary["critic"]["semantic_entailment"] = "FAILED"
+    assert "semantic_entailment_stale" in semantic_fidelity.validate(
+        summary, narration, plan, ir, resolution, pack
+    )
+
+    metrics = deepcopy(passed)
+    metrics["qa"]["metrics"]["clause_count"] = 999
+    assert "qa_metrics_stale" in semantic_fidelity.validate(
+        metrics, narration, plan, ir, resolution, pack
+    )
