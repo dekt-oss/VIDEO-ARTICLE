@@ -57,9 +57,11 @@ items, Production scripts, legacy directives, or permission to add IDs.
 `verification_state=SUPPORTED` is never treated as blanket truth. The prompt includes
 `verification_scope`, `source_refs`, causal strength, uncertainty, attribution, and raw references so
 the critic can distinguish quote presence from semantic entailment. Evidence with `UNSUPPORTED` or
-`STALE` state cannot support a passed factual clause. `NOT_CHECKED` and
-`UNVERIFIABLE_AT_CURRENT_DEPTH` may be inspected but cannot produce an entailed gate result without
-source material that directly supports the clause.
+`STALE` state cannot support a passed factual clause. A factual clause needs at least one eligible
+support surface: a direct source span, structured numeric fields whose relevant value/unit/period scope
+is verified, or an item whose prior `semantic_entailment` scope is true. `NOT_CHECKED`,
+`UNVERIFIABLE_AT_CURRENT_DEPTH`, and quote-presence-only items may be inspected but cannot produce an
+entailed gate result without a directly supporting surface.
 
 ## 4. Clause contract
 
@@ -134,7 +136,8 @@ A factual clause passes only when all of these are true:
 - at least one cited Evidence Pack item belongs to the narration beat's evidence trace
 - every cited Evidence Pack ID exists and is allowed for positive use
 - no finding code is present
-- reasoning IDs, evidence IDs, and raw refs match the canonical upstream artifacts
+- evidence IDs and provenance refs match the canonical upstream artifacts; reasoning IDs may be empty
+  only for a canonical prerequisite SETUP beat with concept and knowledge trace
 - Paper association-only, Report projection/opinion, uncertainty, qualifier, and attribution strength
   are not upgraded
 
@@ -271,7 +274,7 @@ flag, or Production consumer, so no data rollback is required.
 - Identical accepted inputs and critic payloads produce deterministic byte-equivalent artifacts.
 - Blocked or rejected upstream narration causes zero critic calls and retains its distinct state.
 - Every narration sentence is covered exactly once by ordered critic clauses.
-- Every factual clause has valid beat-owned evidence and reasoning trace.
+- Every factual clause has valid beat-owned evidence and canonical reasoning or prerequisite trace.
 - Unsupported/stale evidence cannot produce an entailed clause.
 - Rhetorical exemption is limited to pure grounded HOOK questions.
 - Scope expansion, causal upgrade, qualifier loss, contradiction, unsupported background, attribution
