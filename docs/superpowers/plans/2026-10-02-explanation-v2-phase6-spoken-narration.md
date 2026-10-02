@@ -171,4 +171,3 @@
 - [ ] **Step 5: Push and open a stacked Draft PR**
 
   Push `codex/explanation-v2-phase6-spoken-narration`, open a Draft PR with base `codex/explanation-v2-phase5-narrative-planner`, include problem/contract/architecture/files/tests/Gold Set/unverified/rollback/next phase, attach it to the current task, and wait for GitHub Actions/Vercel. Do not merge.
-
