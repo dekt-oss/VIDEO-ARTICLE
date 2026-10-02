@@ -451,6 +451,28 @@ def validate(
     clauses = result.get("clauses")
     if not isinstance(clauses, list):
         return sorted(set(errors + ["clauses_not_list"]))
+    narration_status = narration.get("generation_status")
+    upstream_status = {
+        "BLOCKED_UPSTREAM": "BLOCKED_UPSTREAM",
+        "REJECTED_DRAFT": "REJECTED_UPSTREAM",
+    }.get(narration_status)
+    if upstream_status:
+        if result.get("qa_status") != upstream_status:
+            errors.append("qa_status_upstream_mismatch")
+        if clauses:
+            errors.append("upstream_result_has_clauses")
+        critic = result.get("critic")
+        if not isinstance(critic, dict) or critic.get("semantic_entailment") != "NOT_CHECKED":
+            errors.append("semantic_entailment_stale")
+        expected_metrics = {
+            "clause_count": 0,
+            "sentence_count": 0,
+            "verdict_counts": {},
+        }
+        qa = result.get("qa") if isinstance(result.get("qa"), dict) else {}
+        if qa.get("metrics") != expected_metrics:
+            errors.append("qa_metrics_stale")
+        return sorted(set(errors))
     if result.get("qa_status") == "CRITIC_ERROR":
         if clauses:
             errors.append("critic_error_has_clauses")

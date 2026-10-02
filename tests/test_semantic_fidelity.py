@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,8 +13,12 @@ from engine import (
     prerequisite_resolver,
     report_reasoning_adapter,
     semantic_fidelity,
+    semantic_fidelity_shadow_compare,
     spoken_narration,
 )
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _scope(*, quote: bool = True, value: bool = False,
@@ -600,3 +605,228 @@ def test_malformed_critic_payload_returns_deterministic_error(payload):
     assert result["qa_status"] == "CRITIC_ERROR"
     assert result["clauses"] == []
     assert result["qa"]["errors"] == ["critic_clauses_not_list"]
+
+
+def _gold_pack(case: dict) -> dict:
+    domain = case["domain"]
+    pack = {
+        "contract_version": "evidence-pack-v1",
+        "domain": domain,
+        "content_id": case["case_id"],
+        "source": {
+            "source_depth": case["source_depth"],
+            "source_chars": case.get("source_chars", 12000),
+            "source_mode": case["source_mode"],
+            "provider": "",
+            "attribution": case.get("source_attribution", {}),
+        },
+        "claims": [],
+        "numbers": [],
+        "risks": [],
+        "limitations": [],
+        "background_context": [],
+    }
+    for item in case["evidence"]:
+        projected = deepcopy(item)
+        projected["verification_scope"] = {
+            "quote_presence": True,
+            "numeric_value": domain == "report",
+            "unit": domain == "report",
+            "period": domain == "report",
+            "semantic_entailment": False,
+        }
+        if domain == "paper":
+            projected.update(
+                domain_role="claim",
+                evidence_grade="B",
+                source_refs=[],
+                uncertainty=projected.get("uncertainty"),
+                limitations=[],
+                attribution="",
+                domain_fields={},
+            )
+            pack["claims"].append(projected)
+        else:
+            projected.update(
+                scope="company",
+                basis="broker_estimate",
+                display=projected["text"],
+                comparator={},
+                interpretation=projected.get("interpretation", "neutral"),
+                validation={},
+                source_refs=[],
+            )
+            projected.pop("text")
+            pack["numbers"].append(projected)
+    return pack
+
+
+def _gold_artifacts() -> list[tuple[dict, dict, dict, dict, dict]]:
+    cases = json.loads(
+        (FIXTURES / "explanation_ir_gold_cases.json").read_text(encoding="utf-8")
+    )
+    requests = json.loads(
+        (FIXTURES / "prerequisite_resolution_gold_cases.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    quality = json.loads(
+        (FIXTURES / "explanation_quality_gold_set.json").read_text(encoding="utf-8")
+    )
+    request_by_id = {row["case_id"]: row["requested_concepts"] for row in requests}
+    legacy_by_id = {row["case_id"]: row for row in quality["cases"]}
+    artifacts = []
+    for case in cases:
+        pack = _gold_pack(case)
+        ir = (
+            paper_reasoning_adapter.build(pack)
+            if case["domain"] == "paper"
+            else report_reasoning_adapter.build(pack, case["financial_reasoning"])
+        )
+        resolution = prerequisite_resolver.resolve(
+            ir, pack, request_by_id[case["case_id"]]
+        )
+        plan = narrative_planner.build(ir, resolution, pack)
+        artifacts.append((legacy_by_id[case["case_id"]], pack, ir, resolution, plan))
+    return artifacts
+
+
+def test_six_gold_cases_have_deterministic_phase7_status_and_call_accounting():
+    statuses = {}
+    critic_call_counts = {}
+    comparisons = {}
+    for legacy, pack, ir, resolution, plan in _gold_artifacts():
+        narration = spoken_narration.normalize_draft(
+            {
+                "beats": [
+                    {
+                        "beat_id": beat["beat_id"],
+                        "sentences": list(beat["content_points"]),
+                    }
+                    for beat in plan["beats"]
+                ]
+            },
+            plan,
+            ir,
+            resolution,
+            pack,
+        )
+        calls = []
+
+        def critic(**kwargs):
+            calls.append(kwargs)
+            return _critic_payload(narration)
+
+        fidelity = semantic_fidelity.review(
+            narration, plan, ir, resolution, pack, caller=critic
+        )
+        case_id = legacy["case_id"]
+        statuses[case_id] = fidelity["qa_status"]
+        critic_call_counts[case_id] = len(calls)
+        comparisons[case_id] = semantic_fidelity_shadow_compare.compare(
+            legacy, fidelity, narration, plan, ir, resolution, pack
+        )
+
+    assert statuses == {
+        "heel-strike-2026-09": "BLOCKED_UPSTREAM",
+        "deaf-retinotopic-remap-2026-09": "BLOCKED_UPSTREAM",
+        "personality-gwas-2026-09": "REJECTED",
+        "samsung-memory-cycle-2026-09": "BLOCKED_UPSTREAM",
+        "nh-ai-mid-cycle-2026-09": "BLOCKED_UPSTREAM",
+        "shipbuilding-rerating-2026-09": "BLOCKED_UPSTREAM",
+    }
+    assert critic_call_counts == {
+        "heel-strike-2026-09": 0,
+        "deaf-retinotopic-remap-2026-09": 0,
+        "personality-gwas-2026-09": 1,
+        "samsung-memory-cycle-2026-09": 0,
+        "nh-ai-mid-cycle-2026-09": 0,
+        "shipbuilding-rerating-2026-09": 0,
+    }
+    for comparison in comparisons.values():
+        assert comparison["axes"]["final_directive_quality"]["outcome"] == "not_measured"
+        assert "improvement_percent" not in comparison
+    assert comparisons["personality-gwas-2026-09"]["axes"][
+        "semantic_entailment"
+    ]["outcome"] == "failed"
+
+
+def test_phase7_shadow_comparison_validates_legacy_identity_and_findings():
+    legacy, pack, ir, resolution, plan = next(
+        row for row in _gold_artifacts()
+        if row[0]["case_id"] == "personality-gwas-2026-09"
+    )
+    narration = _safe_narration(plan, ir, resolution, pack)
+    fidelity = semantic_fidelity.normalize_review(
+        _critic_payload(narration), narration, plan, ir, resolution, pack
+    )
+
+    bad_domain = deepcopy(legacy)
+    bad_domain["domain"] = "report"
+    with pytest.raises(ValueError, match="legacy_case_invalid:domain_mismatch"):
+        semantic_fidelity_shadow_compare.compare(
+            bad_domain, fidelity, narration, plan, ir, resolution, pack
+        )
+    bad_findings = deepcopy(legacy)
+    bad_findings["findings"] = []
+    with pytest.raises(ValueError, match="legacy_case_invalid"):
+        semantic_fidelity_shadow_compare.compare(
+            bad_findings, fidelity, narration, plan, ir, resolution, pack
+        )
+
+
+@pytest.mark.parametrize(("finding", "failed_axis"), [
+    ("scope_expansion", "scope_calibration"),
+    ("causal_upgrade", "causal_calibration"),
+    ("missing_qualifier", "qualifier_preservation"),
+    ("attribution_loss", "attribution_preservation"),
+])
+def test_phase7_shadow_comparison_preserves_synthetic_failure_axes(
+    finding: str, failed_axis: str,
+):
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    payload = _critic_payload(narration)
+    payload["clauses"][-1].update(
+        verdict="UNSUPPORTED",
+        finding_codes=[finding],
+        rationale=f"synthetic:{finding}",
+    )
+    fidelity = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+    legacy = {
+        "case_id": pack["content_id"],
+        "domain": pack["domain"],
+        "title": "synthetic",
+        "source": {"depth": "full_body", "chars": 5000},
+        "output": {"duration_sec": 1, "cut_count": 1, "render_review": "not_audited"},
+        "ratings": {
+            "source_adequacy": "not_audited",
+            "fact_fidelity": "not_audited",
+            "reasoning_quality": "not_audited",
+            "explanation_quality": "not_audited",
+            "script_coherence": "not_audited",
+            "narration_naturalness": "not_audited",
+            "visual_explanatory_power": "not_audited",
+            "visual_narration_alignment": "not_audited",
+            "pacing": "not_audited",
+            "uncertainty_calibration": "not_audited",
+        },
+        "findings": [{
+            "code": finding,
+            "stage": "script",
+            "severity": "p0",
+            "observed": "synthetic failure",
+            "expected": "reject",
+            "evidence": ["fixed critic payload"],
+        }],
+    }
+
+    comparison = semantic_fidelity_shadow_compare.compare(
+        legacy, fidelity, narration, plan, ir, resolution, pack
+    )
+
+    assert comparison["qa_status"] == "REJECTED"
+    assert comparison["axes"][failed_axis]["outcome"] == "failed"
+    assert comparison["axes"]["final_directive_quality"]["outcome"] == "not_measured"
+    assert "improvement_percent" not in comparison
