@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 
 import pytest
 
 from engine import (
+    config,
     narrative_planner,
     paper_reasoning_adapter,
     prerequisite_resolver,
@@ -154,6 +156,26 @@ def _report_artifacts() -> tuple[dict, dict, dict, dict, dict]:
     narration = _safe_narration(plan, ir, resolution, pack)
     assert narration["generation_status"] == "DRAFT_ACCEPTED"
     return pack, ir, resolution, plan, narration
+
+
+def _blocked_paper_artifacts() -> tuple[dict, dict, dict, dict, dict]:
+    pack, ir, _, _, _ = _paper_artifacts()
+    resolution = prerequisite_resolver.resolve(
+        ir,
+        pack,
+        [{
+            "concept_id": "unknown_mechanism",
+            "reason": "원문에 없는 기전",
+            "evidence_ids": [],
+            "required": True,
+        }],
+    )
+    plan = narrative_planner.build(ir, resolution, pack)
+    blocked = spoken_narration.normalize_draft(
+        {"beats": []}, plan, ir, resolution, pack
+    )
+    assert blocked["generation_status"] == "BLOCKED_UPSTREAM"
+    return pack, ir, resolution, plan, blocked
 
 
 def _critic_payload(narration: dict) -> dict:
@@ -484,3 +506,97 @@ def test_validate_recomputes_status_metrics_and_trace():
     assert "qa_metrics_stale" in semantic_fidelity.validate(
         metrics, narration, plan, ir, resolution, pack
     )
+
+
+def test_upstream_nonaccepted_states_never_call_critic():
+    blocked_pack, blocked_ir, blocked_resolution, blocked_plan, blocked = (
+        _blocked_paper_artifacts()
+    )
+    calls = []
+    result = semantic_fidelity.review(
+        blocked, blocked_plan, blocked_ir, blocked_resolution, blocked_pack,
+        caller=lambda **kwargs: calls.append(kwargs),
+    )
+    assert result["qa_status"] == "BLOCKED_UPSTREAM"
+
+    pack, ir, resolution, plan, _ = _paper_artifacts()
+    rejected = spoken_narration.normalize_draft(
+        {"beats": [{"beat_id": beat["beat_id"], "sentences": []}
+                   for beat in plan["beats"]]},
+        plan, ir, resolution, pack,
+    )
+    assert rejected["generation_status"] == "REJECTED_DRAFT"
+    result = semantic_fidelity.review(
+        rejected, plan, ir, resolution, pack,
+        caller=lambda **kwargs: calls.append(kwargs),
+    )
+    assert result["qa_status"] == "REJECTED_UPSTREAM"
+    tampered = deepcopy(rejected)
+    tampered["narration_beats"][0]["reasoning_ids"] = ["XR999"]
+    with pytest.raises(ValueError, match="rejected_draft_not_canonical"):
+        semantic_fidelity.review(
+            tampered, plan, ir, resolution, pack,
+            caller=lambda **kwargs: calls.append(kwargs),
+        )
+    assert calls == []
+
+
+def test_independent_critic_invocation_uses_selfcheck_model_and_constrained_payload(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    captured = {}
+    purposes = []
+
+    def caller(**kwargs):
+        captured.update(kwargs)
+        return _critic_payload(narration)
+
+    monkeypatch.setattr(semantic_fidelity, "set_text_purpose", purposes.append)
+    result = semantic_fidelity.review(
+        narration, plan, ir, resolution, pack, caller=caller
+    )
+
+    assert result["qa_status"] == "PASSED"
+    assert purposes == ["semantic_fidelity_shadow"]
+    assert captured["model"] == config.MODEL_SELFCHECK
+    assert captured["max_tokens"] == config.LLM_SELFCHECK_MAX_TOKENS
+    assert json.loads(captured["user"]) == semantic_fidelity.prompt_payload(
+        narration, plan, ir, resolution, pack
+    )
+    assert "qa_status" not in json.loads(captured["user"])
+
+
+def test_critic_exception_returns_error_without_passed_clauses():
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+
+    def boom(**kwargs):
+        raise RuntimeError("critic unavailable")
+
+    result = semantic_fidelity.review(
+        narration, plan, ir, resolution, pack, caller=boom
+    )
+
+    assert result["qa_status"] == "CRITIC_ERROR"
+    assert result["critic"]["semantic_entailment"] == "NOT_CHECKED"
+    assert result["clauses"] == []
+    assert result["qa"]["errors"] == ["critic_call_failed:RuntimeError"]
+
+
+@pytest.mark.parametrize("payload", [
+    None,
+    [],
+    {},
+    {"clauses": None},
+    {"clauses": {}},
+])
+def test_malformed_critic_payload_returns_deterministic_error(payload):
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+
+    result = semantic_fidelity.review(
+        narration, plan, ir, resolution, pack, caller=lambda **kwargs: payload
+    )
+
+    assert result["qa_status"] == "CRITIC_ERROR"
+    assert result["clauses"] == []
+    assert result["qa"]["errors"] == ["critic_clauses_not_list"]

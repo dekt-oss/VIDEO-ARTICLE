@@ -9,16 +9,19 @@ from __future__ import annotations
 
 from copy import deepcopy
 from collections import Counter
+import json
 import re
-from typing import Any
+from typing import Any, Callable
 
 from . import (
+    config,
     evidence_pack,
     explanation_ir,
     narrative_planner,
     prerequisite_resolver,
     spoken_narration,
 )
+from .llm import call_json, set_text_purpose
 
 
 CONTRACT_VERSION = "semantic-fidelity-v1"
@@ -36,6 +39,19 @@ FINDING_CODES = frozenset({
 _EVIDENCE_SECTIONS = (
     "claims", "numbers", "risks", "limitations", "background_context",
 )
+
+SYSTEM_PROMPT = """너는 작성 모델과 분리된 의미 충실도 검증관이다.
+각 나레이션 문장을 빠짐없이 순서대로 의미 절로 나누고, 입력에 포함된 Evidence Pack 항목과
+Explanation IR만 사용해 절별 판정을 내려라. source quote의 존재는 claim 전체의 의미 보증이
+아니다. 범위 확대, 인과 강화, 수식어 누락, 모순, 근거 없는 배경, 귀속 손실을 각각 표시하라.
+HOOK도 사실 주장이면 근거가 필요하다. 순수한 핵심 질문만 RHETORICAL로 분류할 수 있다.
+절 텍스트는 원문 문장의 연속된 글자를 그대로 복사하며 어떤 내용도 생략하거나 추가하지 마라.
+evidence_id는 해당 beat에 제공된 값만 사용하라. reasoning/raw ref/aggregate status는 만들지 마라.
+JSON only: {"clauses":[{"narration_id":"SN01","sentence_index":1,
+"clause_text":"...","clause_kind":"FACTUAL|RHETORICAL",
+"verdict":"ENTAILED|CONTRADICTED|UNSUPPORTED|UNVERIFIABLE|RHETORICAL",
+"evidence_ids":[],"finding_codes":[],"rationale":"..."}]}
+"""
 
 
 def _strings(value: Any) -> list[str]:
@@ -67,6 +83,29 @@ def _require_valid_upstream(
         raise ValueError("narrative_plan_invalid:" + ",".join(plan_errors))
     if plan != narrative_planner.build(ir, resolution, pack):
         raise ValueError("narrative_plan_invalid:plan_not_canonical")
+    if isinstance(narration, dict) and narration.get("generation_status") == "REJECTED_DRAFT":
+        beats = narration.get("narration_beats")
+        if not isinstance(beats, list):
+            raise ValueError("spoken_narration_invalid:narration_beats_not_list")
+        canonical = spoken_narration.normalize_draft(
+            {
+                "beats": [
+                    {
+                        "beat_id": beat.get("beat_id"),
+                        "sentences": beat.get("sentences"),
+                    }
+                    for beat in beats
+                    if isinstance(beat, dict)
+                ]
+            },
+            plan,
+            ir,
+            resolution,
+            pack,
+        )
+        if narration != canonical:
+            raise ValueError("spoken_narration_invalid:rejected_draft_not_canonical")
+        return
     narration_errors = spoken_narration.validate(
         narration, plan, ir, resolution, pack
     )
@@ -483,3 +522,41 @@ def validate(
     if sorted(_strings(qa.get("errors"))) != semantic_errors:
         errors.append("qa_errors_stale")
     return sorted(set(errors))
+
+
+def review(
+    narration: dict[str, Any],
+    plan: dict[str, Any],
+    ir: dict[str, Any],
+    resolution: dict[str, Any],
+    pack: dict[str, Any],
+    *,
+    caller: Callable[..., dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Run one independent shadow critic call after validating all upstream data."""
+    _require_valid_upstream(narration, plan, ir, resolution, pack)
+    generation_status = narration.get("generation_status")
+    if generation_status == "BLOCKED_UPSTREAM":
+        return _empty_result(narration, "BLOCKED_UPSTREAM")
+    if generation_status == "REJECTED_DRAFT":
+        return _empty_result(narration, "REJECTED_UPSTREAM")
+    if generation_status != "DRAFT_ACCEPTED":
+        raise ValueError("spoken_narration_status_invalid")
+
+    visible = prompt_payload(narration, plan, ir, resolution, pack)
+    set_text_purpose("semantic_fidelity_shadow")
+    invoke = caller or call_json
+    try:
+        payload = invoke(
+            model=config.MODEL_SELFCHECK,
+            system=SYSTEM_PROMPT,
+            user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
+            max_tokens=config.LLM_SELFCHECK_MAX_TOKENS,
+        )
+    except Exception as exc:
+        return _empty_result(
+            narration,
+            "CRITIC_ERROR",
+            errors=[f"critic_call_failed:{type(exc).__name__}"],
+        )
+    return normalize_review(payload, narration, plan, ir, resolution, pack)
