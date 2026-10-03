@@ -36,6 +36,18 @@ def _ready_inputs():
     return visual_plan, narration, ir, pack
 
 
+def _report_ready_inputs():
+    pack, ir, resolution, plan, narration, fidelity = _report_artifacts()
+    content_plan = _content_plan(selected_mode="flash", target_duration_max_sec=35)
+    gate = content_complexity_gate.evaluate(
+        content_plan, narration, fidelity, plan, ir, resolution, pack
+    )
+    visual_plan = visual_planner.build(
+        content_plan, gate, narration, fidelity, plan, ir, resolution, pack
+    )
+    return visual_plan, narration, ir, pack
+
+
 def test_ready_visual_plan_projects_to_current_directive_shape_with_full_trace():
     projector = _module()
     visual_plan, narration, ir, pack = _ready_inputs()
@@ -57,6 +69,7 @@ def test_ready_visual_plan_projects_to_current_directive_shape_with_full_trace()
     )
     assert result["header"]["core_question"] == visual_plan["core_question"]
     assert result["visual_sequences"]
+    assert result["header"]["visual_sequences"] == result["visual_sequences"]
 
     mechanism = next(cut for cut in result["cuts"] if cut["visual_mode"] == "MECHANISM")
     assert mechanism["narration_ko"] == "압력이 높아지면 구조가 변한다."
@@ -75,6 +88,8 @@ def test_ready_visual_plan_projects_to_current_directive_shape_with_full_trace()
         "causal_levels": ["causal"],
         "uncertainties": [],
         "attributions": [],
+        "concept_ids": [],
+        "knowledge_refs": [],
     }
     assert result["qa"]["metrics"]["fully_traced_cut_count"] == len(result["cuts"])
     assert projector.validate(result, visual_plan, narration, ir, pack) == []
@@ -128,14 +143,7 @@ def test_blank_stage_entity_cannot_enter_a_production_sequence():
 
 def test_report_projection_preserves_broker_attribution_and_projection_boundary():
     projector = _module()
-    pack, ir, resolution, plan, narration, fidelity = _report_artifacts()
-    content_plan = _content_plan(selected_mode="flash", target_duration_max_sec=35)
-    gate = content_complexity_gate.evaluate(
-        content_plan, narration, fidelity, plan, ir, resolution, pack
-    )
-    visual_plan = visual_planner.build(
-        content_plan, gate, narration, fidelity, plan, ir, resolution, pack
-    )
+    visual_plan, narration, ir, pack = _report_ready_inputs()
 
     result = projector.build(visual_plan, narration, ir, pack)
 
@@ -144,6 +152,78 @@ def test_report_projection_preserves_broker_attribution_and_projection_boundary(
     assert linked["causal_levels"] == ["broker_projection"]
     assert linked["explanation_trace"]["attributions"] == ["테스트증권"]
     assert linked["explanation_trace"]["causal_levels"] == ["broker_projection"]
+
+
+def test_report_projection_rejects_causal_upgrade_or_attribution_drop():
+    projector = _module()
+    visual_plan, narration, ir, pack = _report_ready_inputs()
+    forged = deepcopy(visual_plan)
+    linked = next(beat for beat in forged["visual_beats"] if beat["reasoning_ids"])
+    linked["causal_levels"] = ["causal"]
+    linked["attributions"] = []
+    linked["shot_directive"]["causal_levels"] = ["causal"]
+    linked["shot_directive"]["attributions"] = []
+
+    with pytest.raises(ValueError, match="semantic_calibration_mismatch"):
+        projector.build(forged, narration, ir, pack)
+
+
+def test_every_narration_beat_must_be_consumed_exactly_once():
+    projector = _module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    forged = deepcopy(visual_plan)
+    removed = forged["visual_beats"].pop()
+    stage_id = removed["stage"]["stage_id"]
+    for sequence in forged["sequences"]:
+        sequence["stage_ids"] = [item for item in sequence["stage_ids"] if item != stage_id]
+    forged["sequences"] = [row for row in forged["sequences"] if row["stage_ids"]]
+
+    with pytest.raises(ValueError, match="narration_coverage_mismatch"):
+        projector.build(forged, narration, ir, pack)
+
+    duplicated = deepcopy(visual_plan)
+    duplicated["visual_beats"][1]["narration_id"] = duplicated["visual_beats"][0]["narration_id"]
+    duplicated["visual_beats"][1]["shot_directive"]["narration_refs"] = [
+        duplicated["visual_beats"][0]["narration_id"]
+    ]
+    with pytest.raises(ValueError, match="narration_coverage_mismatch"):
+        projector.build(duplicated, narration, ir, pack)
+
+
+def test_factual_beat_cannot_drop_all_provenance_or_forge_entity_reference():
+    projector = _module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    forged = deepcopy(visual_plan)
+    factual = next(beat for beat in forged["visual_beats"] if beat["reasoning_ids"])
+    for field in ("reasoning_ids", "evidence_ids", "raw_refs", "concept_ids", "knowledge_refs"):
+        factual[field] = []
+    factual["shot_directive"]["reasoning_ids"] = []
+    factual["shot_directive"]["data_refs"] = []
+    factual["shot_directive"]["source_refs"] = []
+    for mutation in factual["stage"]["mutations"]:
+        mutation["reasoning_ids"] = []
+        mutation["evidence_ids"] = []
+
+    with pytest.raises(ValueError, match="narration_provenance_mismatch"):
+        projector.build(forged, narration, ir, pack)
+
+    forged_entity = deepcopy(visual_plan)
+    forged_entity["visual_beats"][0]["stage"]["mutations"][0]["entity_ref"] = (
+        "reasoning:DOES_NOT_EXIST"
+    )
+    with pytest.raises(ValueError, match="mutation_entity_ref_mismatch"):
+        projector.build(forged_entity, narration, ir, pack)
+
+
+def test_source_depth_constraints_cannot_be_expanded_after_the_gate():
+    projector = _module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    forged = deepcopy(visual_plan)
+    forged["constraints"]["max_duration_sec"] = 999
+    forged["constraints"]["max_content_mode"] = "extended"
+
+    with pytest.raises(ValueError, match="source_constraints_mismatch"):
+        projector.build(forged, narration, ir, pack)
 
 
 def test_validator_rejects_trace_removed_after_projection():
@@ -186,7 +266,7 @@ def test_same_input_comparison_shows_actual_flat_and_traced_directive_shapes():
     legacy = _legacy_flat_directive(narration)
     projected = projector.build(visual_plan, narration, ir, pack)
 
-    result = comparator.compare(legacy, projected)
+    result = comparator.compare(legacy, projected, visual_plan, narration, ir, pack)
 
     assert result["contract_version"] == "explanation-directive-shadow-comparison-v1"
     assert result["comparison_basis"] == "deterministic_repository_fixture"
@@ -226,5 +306,28 @@ def test_comparison_rejects_different_content_or_domain():
     legacy["content_id"] = "different-content"
 
     with pytest.raises(ValueError, match="comparison_identity_mismatch"):
-        comparator.compare(legacy, projected)
+        comparator.compare(legacy, projected, visual_plan, narration, ir, pack)
 
+
+def test_comparison_rejects_different_narration_under_same_identity():
+    projector = _module()
+    comparator = _comparison_module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    legacy = _legacy_flat_directive(narration)
+    projected = projector.build(visual_plan, narration, ir, pack)
+    legacy["cuts"][0]["narration_ko"] = "같은 ID지만 전혀 다른 입력이다."
+
+    with pytest.raises(ValueError, match="comparison_input_mismatch"):
+        comparator.compare(legacy, projected, visual_plan, narration, ir, pack)
+
+
+def test_comparison_rejects_empty_or_noncanonical_projected_directive():
+    projector = _module()
+    comparator = _comparison_module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    legacy = _legacy_flat_directive(narration)
+    projected = projector.build(visual_plan, narration, ir, pack)
+    projected["cuts"] = []
+
+    with pytest.raises(ValueError, match="projected_directive_invalid"):
+        comparator.compare(legacy, projected, visual_plan, narration, ir, pack)

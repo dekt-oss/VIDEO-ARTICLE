@@ -21,14 +21,15 @@ Phase 9의 검증된 `visual-plan-v1`과 Explanation IR을 현재 Production 지
 
 - `projection_status`: `READY`
 - `domain`, `content_id`, `version_type`
-- `header`: core question, duration, source constraints, sequence summary, trace metrics
+- `header`: core question, duration, source constraints, sequence summary, trace metrics,
+  renderer canonical `visual_sequences`
 - `cuts`: 현재 Production 소비 필드와 `explanation_trace`
 - `visual_sequences`: 현재 `visual_sequence.py`가 이해하는 world/entity/stage/mutation shape
 - `qa`: 오류·경고·추적률
 
 각 컷의 `explanation_trace`는 다음을 모두 가진다.
 
-`visual_beat_id → narration_refs → reasoning_ids → evidence_ids/raw_refs → stage_id → mutation_ids → shot_id`
+`visual_beat_id → narration_refs → reasoning_ids → evidence_ids/raw_refs + concept_ids/knowledge_refs → stage_id → mutation_ids → shot_id`
 
 ## Projection Rules
 
@@ -39,21 +40,28 @@ Phase 9의 검증된 `visual-plan-v1`과 Explanation IR을 현재 Production 지
 5. prompt는 source-backed narration과 이미 검증된 stage operation만 서술하며 새 도메인 사실을 추가하지 않는다.
 6. `raw_ref`에서 기존 Fact Sheet key를 복원해 `source_facts`와 `claim_ids`에 싣는다.
 7. Phase 9 sequence/stage를 현재 visual sequence shape로 확장하되 개체는 기존 `entity_ref`에서만 만든다.
-8. 모든 ID와 attribution/causal level/uncertainty는 그대로 복사한다.
+8. 모든 ID와 attribution/causal level/uncertainty는 narration 원본과 대조한 뒤 그대로 복사한다.
+9. top-level `visual_sequences`는 Shadow projection 입력 사본이며 renderer 소비 정본은
+   Production과 같은 `header.visual_sequences`다.
 
 ## Validation
 
 - contract/status/content identity와 IR reasoning ID 검사
-- narration coverage 및 중복 ID 검사
+- narration coverage, 순서, 중복 소비 검사
+- narration의 provenance와 causal level/uncertainty/attribution의 정확한 보존 검사
+- Evidence Pack source depth에서 재계산한 constraints와 Visual Plan constraints 대조
 - 모든 sequence stage ID가 실제 Visual Beat stage에 존재하는지 검사
 - cut trace가 원본 beat/shot/mutation과 정확히 같은지 검사
-- 모든 READY cut이 reasoning/evidence/concept/knowledge 중 하나 이상으로 추적되는지 검사
+- 모든 factual READY cut이 reasoning/evidence/concept/knowledge 중 하나 이상으로 추적되는지 검사
+- mutation entity가 해당 narration의 canonical provenance entity인지 검사
 - canonical rebuild와 결과가 다르면 거절
 
 ## Same-input Comparison
 
 테스트의 canonical Paper/Report 입력으로 기존 평면형 명세와 Phase 10 명세를 함께 만든다.
-비교기는 trace, attribution, causal calibration, stage/shot 연결을 축별로 판정한다. 이 비교는
+비교기는 Visual Plan/narration/IR/Evidence Pack을 함께 받아 V2 canonical 객체와 양쪽의
+ordered narration/version을 재검증한 뒤 trace, attribution, causal calibration, stage/shot 연결을
+축별로 판정한다. 이 비교는
 실제 Production DB 재생성이 아니라 저장소 내 결정론적 검증 입력에 대한 비교이며 문서에 명시한다.
 
 ## Done Criteria
@@ -65,4 +73,3 @@ Phase 9의 검증된 `visual-plan-v1`과 Explanation IR을 현재 Production 지
 - 기존 Phase 2~9 회귀 통과
 - 전체 Python/Web/typecheck/lint/build 통과
 - 기존 Production path import/wiring 없음
-

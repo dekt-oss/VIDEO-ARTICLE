@@ -10,6 +10,8 @@ from copy import deepcopy
 import math
 from typing import Any
 
+from . import config
+
 
 CONTRACT_VERSION = "explanation-directive-shadow-v1"
 SUPPORTED_VERSIONS = frozenset({"comic", "image_sequence", "photo"})
@@ -68,6 +70,38 @@ def _narration_map(narration: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
+def _entity_ref(beat: dict[str, Any]) -> str:
+    if ids := _strings(beat.get("reasoning_ids")):
+        return f"reasoning:{ids[0]}"
+    if ids := _strings(beat.get("concept_ids")):
+        return f"concept:{ids[0]}"
+    if ids := _strings(beat.get("evidence_ids")):
+        return f"evidence:{ids[0]}"
+    return f"narration:{_text(beat.get('narration_id'))}"
+
+
+def _expected_constraints(pack: dict[str, Any], ir: dict[str, Any]) -> dict[str, Any]:
+    domain = _text(pack.get("domain"))
+    source = pack.get("source") if isinstance(pack.get("source"), dict) else {}
+    depth = _text(source.get("source_depth")) or "none"
+    policies = config.SOURCE_ADEQUACY_POLICIES.get(domain) or {}
+    policy = policies.get(depth) or policies.get("__default__") or {}
+    mechanism_roles = {"cause", "mechanism"} if domain == "paper" else {"cause", "bridge"}
+    mechanism_ids = [
+        _text(row.get("reasoning_id"))
+        for row in ir.get("reasoning_units") or []
+        if isinstance(row, dict) and _text(row.get("role")) in mechanism_roles
+    ]
+    return {
+        "source_depth": depth,
+        "source_mode": _text(policy.get("source_mode")),
+        "max_duration_sec": int(policy.get("max_duration_sec") or 0),
+        "max_content_mode": _text(policy.get("max_content_mode")),
+        "mechanism_visual_allowed": bool(mechanism_ids),
+        "mechanism_reasoning_ids": mechanism_ids,
+    }
+
+
 def _input_errors(
     visual_plan: Any,
     narration: Any,
@@ -92,11 +126,18 @@ def _input_errors(
         errors.append("projection_identity_mismatch")
     if (visual_plan.get("qa") or {}).get("errors"):
         errors.append("visual_plan_has_errors")
+    if _text(visual_plan.get("core_question")) != _text(narration.get("core_question")):
+        errors.append("core_question_mismatch")
+    if visual_plan.get("constraints") != _expected_constraints(pack, ir):
+        errors.append("source_constraints_mismatch")
 
     narration_rows = narration.get("narration_beats") or []
     narration_ids = [_text(row.get("narration_id")) for row in narration_rows if isinstance(row, dict)]
+    if not narration_ids or any(not narration_id for narration_id in narration_ids):
+        errors.append("narration_id_invalid")
     if len(narration_ids) != len(set(narration_ids)):
         errors.append("narration_id_duplicate")
+    narration_by_id = _narration_map(narration)
     known_narration = set(narration_ids)
     known_reasoning = {
         _text(row.get("reasoning_id"))
@@ -129,6 +170,7 @@ def _input_errors(
     seen_stages: set[str] = set()
     seen_shots: set[str] = set()
     seen_mutations: set[str] = set()
+    used_narration: list[str] = []
     for beat in beats:
         if not isinstance(beat, dict):
             errors.append("visual_beat_invalid")
@@ -153,13 +195,45 @@ def _input_errors(
             errors.append(f"shot_stage_mismatch:{shot_id}")
 
         narration_refs = _strings(shot.get("narration_refs"))
+        narration_id = _text(beat.get("narration_id"))
+        used_narration.append(narration_id)
         if len(narration_refs) != 1 or narration_refs[0] not in known_narration:
             errors.append(f"narration_ref_invalid:{visual_beat_id}")
-        elif narration_refs[0] != _text(beat.get("narration_id")):
+        elif narration_refs[0] != narration_id:
             errors.append(f"narration_ref_mismatch:{visual_beat_id}")
+        narration_row = narration_by_id.get(narration_id) or {}
         reasoning_ids = _strings(beat.get("reasoning_ids"))
         evidence_ids = _strings(beat.get("evidence_ids"))
         raw_refs = _strings(beat.get("raw_refs"))
+        concept_ids = _strings(beat.get("concept_ids"))
+        knowledge_refs = _strings(beat.get("knowledge_refs"))
+        provenance_fields = {
+            "reasoning_ids": reasoning_ids,
+            "evidence_ids": evidence_ids,
+            "raw_refs": raw_refs,
+            "concept_ids": concept_ids,
+            "knowledge_refs": knowledge_refs,
+        }
+        if any(
+            values != _strings(narration_row.get(field))
+            for field, values in provenance_fields.items()
+        ):
+            errors.append(f"narration_provenance_mismatch:{visual_beat_id}")
+        if _text(beat.get("beat_id")) != _text(narration_row.get("beat_id")):
+            errors.append(f"narration_beat_mismatch:{visual_beat_id}")
+        if _text(narration_row.get("stage")) != "HOOK" and not any(provenance_fields.values()):
+            errors.append(f"factual_trace_empty:{visual_beat_id}")
+        semantic_fields = ("causal_levels", "uncertainties", "attributions")
+        if any(
+            _strings(beat.get(field)) != _strings(narration_row.get(field))
+            for field in semantic_fields
+        ):
+            errors.append(f"semantic_calibration_mismatch:{visual_beat_id}")
+        if any(
+            _strings(shot.get(field)) != _strings(beat.get(field))
+            for field in semantic_fields
+        ):
+            errors.append(f"shot_semantic_calibration_mismatch:{shot_id}")
         for reasoning_id in reasoning_ids:
             if reasoning_id not in known_reasoning:
                 errors.append(f"unknown_reasoning_id:{reasoning_id}")
@@ -191,6 +265,8 @@ def _input_errors(
             seen_mutations.add(mutation_id)
             if not _text(mutation.get("entity_ref")):
                 errors.append(f"mutation_entity_ref_empty:{mutation_id or stage_id}")
+            elif _text(mutation.get("entity_ref")) != _entity_ref(narration_row):
+                errors.append(f"mutation_entity_ref_mismatch:{mutation_id or stage_id}")
             if _strings(mutation.get("reasoning_ids")) != reasoning_ids:
                 errors.append(f"mutation_reasoning_mismatch:{mutation_id}")
             if _strings(mutation.get("evidence_ids")) != evidence_ids:
@@ -198,8 +274,9 @@ def _input_errors(
 
     missing_stages = set(sequence_stages) - seen_stages
     errors.extend(f"sequence_stage_missing:{stage_id}" for stage_id in sorted(missing_stages))
+    if used_narration != narration_ids:
+        errors.append("narration_coverage_mismatch")
     return sorted(set(errors))
-
 
 def _prompt(narration_text: str, mode: str, action: str) -> str:
     return (
@@ -325,6 +402,8 @@ def build(
             "causal_levels": _strings(beat.get("causal_levels")),
             "uncertainties": _strings(beat.get("uncertainties")),
             "attributions": _strings(beat.get("attributions")),
+            "concept_ids": _strings(beat.get("concept_ids")),
+            "knowledge_refs": _strings(beat.get("knowledge_refs")),
         }
         cuts.append({
             "cut_no": cut_no,
@@ -389,6 +468,7 @@ def build(
                 "fully_traced_cut_count": fully_traced,
                 "sequence_count": len(visual_sequences),
             },
+            "visual_sequences": deepcopy(visual_sequences),
         },
         "cuts": cuts,
         "visual_sequences": visual_sequences,
@@ -434,4 +514,3 @@ def validate(
     if result != canonical:
         errors.append("directive_not_canonical")
     return sorted(set(errors))
-

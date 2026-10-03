@@ -12,10 +12,12 @@ Phase 9 `visual-plan-v1`을 현재 Production 지시서의 핵심 shape인
 VB02 → SN02 → XR01 → paper:C01 → claims:C01 → VS02 → VM02 → SHOT02
 ```
 
-## 동일 입력 전후 명세
+## 동일 입력 전후 핵심 명세
 
 아래 두 JSON은 저장소의 동일한 결정론적 Paper 검증 입력
-`paper-complexity-1`에서 생성했다. 라이브 Production DB 재생성 결과는 아니다.
+`paper-complexity-1`에서 생성한 비교 핵심 필드다. 읽기 편하도록 prompt와
+`visual_sequences`의 world/entity/stage 상세는 생략했으며, 테스트는 생략 없는 canonical
+객체 전체를 검증한다. 라이브 Production DB 재생성 결과는 아니다.
 
 ### 전 — 기존 평면형 지시서
 
@@ -75,7 +77,8 @@ VB02 → SN02 → XR01 → paper:C01 → claims:C01 → VS02 → VM02 → SHOT02
       "visual_beat_count": 2,
       "fully_traced_cut_count": 2,
       "sequence_count": 2
-    }
+    },
+    "visual_sequences": "아래 top-level visual_sequences와 동일한 consumer 정본"
   },
   "cuts": [
     {
@@ -102,7 +105,9 @@ VB02 → SN02 → XR01 → paper:C01 → claims:C01 → VS02 → VM02 → SHOT02
         "shot_id": "SHOT01",
         "causal_levels": [],
         "uncertainties": [],
-        "attributions": []
+        "attributions": [],
+        "concept_ids": [],
+        "knowledge_refs": []
       }
     },
     {
@@ -130,10 +135,13 @@ VB02 → SN02 → XR01 → paper:C01 → claims:C01 → VS02 → VM02 → SHOT02
         "shot_id": "SHOT02",
         "causal_levels": ["causal"],
         "uncertainties": [],
-        "attributions": []
+        "attributions": [],
+        "concept_ids": [],
+        "knowledge_refs": []
       }
     }
   ],
+  "visual_sequences": "2개 sequence의 world/entity/stage/mutation 상세 생략",
   "qa": {
     "errors": [],
     "metrics": {
@@ -183,6 +191,12 @@ VB02 → SN02 → XR01 → paper:C01 → claims:C01 → VS02 → VM02 → SHOT02
 - 존재하지 않는 reasoning/evidence/stage/shot ID 거절
 - `UNSUPPORTED`, `STALE`, `NOT_CHECKED` 근거의 renderable cut 승격 거절
 - Report의 broker attribution과 `broker_projection`을 컷과 trace에 모두 보존
+- Visual Plan의 의미 보정값을 원본 narration과 대조해 인과 강화·귀속 제거 거절
+- 모든 narration beat의 1:1 소비를 강제해 한정/반례 beat 삭제 거절
+- factual beat의 provenance 제거와 허위 entity ref 거절
+- Phase 1 source constraint와 IR mechanism 범위를 재계산해 shallow-source 확장 거절
+- 기존 renderer가 읽는 `header.visual_sequences`를 정본으로 제공
+- 비교기는 원본 narration과 canonical V2 전체를 다시 검증하며 ID만 같은 다른 입력을 거절
 - 저장 결과가 canonical rebuild와 다르면 `directive_not_canonical`
 
 ## 미적용·미검증
@@ -191,4 +205,3 @@ VB02 → SN02 → XR01 → paper:C01 → claims:C01 → VS02 → VM02 → SHOT02
 - 라이브 Supabase 원본 한 편 재생성은 미실행이다.
 - 이미지·영상 생성 및 렌더 품질은 미검증이다.
 - 따라서 이번 비교가 증명하는 것은 구조적 추적성과 의미 보존이며, 최종 화면 미학은 아니다.
-

@@ -38,31 +38,31 @@
 - Consumes: canonical `visual-plan-v1`, `spoken-narration-v1`, Explanation IR, Evidence Pack.
 - Produces: `build(visual_plan, narration, ir, pack, *, version_type="image_sequence") -> dict` and `validate(result, visual_plan, narration, ir, pack, *, version_type="image_sequence") -> list[str]`.
 
-- [ ] **Step 1: Write failing Paper READY and blocked tests**
+- [x] **Step 1: Write failing Paper READY and blocked tests**
 
 Assert exact contract/status, one cut per Visual Beat, complete trace chain, current Production shape, and rejection of `BLOCKED_GATE`.
 
-- [ ] **Step 2: Run targeted tests and verify RED**
+- [x] **Step 2: Run targeted tests and verify RED**
 
 Run: `pytest tests/test_explanation_directive.py -q`
 
 Expected: FAIL because `engine.explanation_directive` does not exist.
 
-- [ ] **Step 3: Implement the minimal projector**
+- [x] **Step 3: Implement the minimal projector**
 
 Implement closed mappings, narration lookup, duration calculation, cut projection, sequence projection, QA metrics, reference validation, and canonical validation.
 
-- [ ] **Step 4: Run targeted tests and verify GREEN**
+- [x] **Step 4: Run targeted tests and verify GREEN**
 
 Run: `pytest tests/test_explanation_directive.py -q`
 
 Expected: all Task 1 tests pass.
 
-- [ ] **Step 5: Add adversarial tests before fixes**
+- [x] **Step 5: Add adversarial tests before fixes**
 
 Add tests for forged READY, dangling narration/stage trace, empty trace, and Report attribution/causal calibration.
 
-- [ ] **Step 6: Run new tests and verify RED, then implement minimal fixes**
+- [x] **Step 6: Run new tests and verify RED, then implement minimal fixes**
 
 Run: `pytest tests/test_explanation_directive.py -q`
 
@@ -77,29 +77,30 @@ Expected before fixes: the new adversarial cases fail for the named reason. Expe
 
 **Interfaces:**
 - Consumes: a flat legacy-shaped directive summary and a Phase 10 result for the same content/domain.
-- Produces: `compare(legacy, projected) -> dict` with trace/calibration/directive-quality boundaries.
+- Produces: `compare(legacy, projected, visual_plan, narration, ir, pack) -> dict` with
+  verified same-input trace/calibration/directive-quality boundaries.
 
-- [ ] **Step 1: Write failing comparison tests**
+- [x] **Step 1: Write failing comparison tests**
 
 Assert identity mismatch rejection, exact before/after shape, full trace verdict, and `rendered_video_quality=not_measured`.
 
-- [ ] **Step 2: Run targeted comparison tests and verify RED**
+- [x] **Step 2: Run targeted comparison tests and verify RED**
 
 Run: `pytest tests/test_explanation_directive.py -q`
 
 Expected: FAIL because the comparison module does not exist.
 
-- [ ] **Step 3: Implement the minimal comparator and comparison builder fixture**
+- [x] **Step 3: Implement the minimal comparator and comparison builder fixture**
 
 Use only stored input values; do not infer visual quality. Record that the comparison input is deterministic repository fixture data, not a live Production replay.
 
-- [ ] **Step 4: Run targeted tests and verify GREEN**
+- [x] **Step 4: Run targeted tests and verify GREEN**
 
 Run: `pytest tests/test_explanation_directive.py -q`
 
 Expected: all Phase 10 tests pass.
 
-- [ ] **Step 5: Document exact JSON before/after and limitations**
+- [x] **Step 5: Document exact JSON before/after and limitations**
 
 Document the same-input Paper comparison, Report calibration preservation, Production non-wiring, and live/render verification boundary.
 
@@ -112,23 +113,22 @@ Document the same-input Paper comparison, Report calibration preservation, Produ
 - Consumes: complete Phase 10 diff.
 - Produces: verified branch and Draft stacked PR.
 
-- [ ] **Step 1: Run Phase 2~10 regressions**
+- [x] **Step 1: Run Phase 2~10 regressions**
 
 Run the Evidence Pack through Phase 10 focused test set.
 
-- [ ] **Step 2: Run full Python and web checks**
+- [x] **Step 2: Run full Python and web checks**
 
 Run full `pytest`, Node tests, TypeScript `--noEmit`, lint, and production build.
 
-- [ ] **Step 3: Run Fable Review**
+- [x] **Step 3: Run Fable Review**
 
 Attack missing trace, qualifier loss, association/causation upgrades, projection/current-fact upgrades, unsupported/stale reuse, and cross-content comparison.
 
-- [ ] **Step 4: Fix Critical/Important findings with RED→GREEN tests**
+- [x] **Step 4: Fix Critical/Important findings with RED→GREEN tests**
 
 Apply one bounded fix pass and rerun the relevant suite.
 
 - [ ] **Step 5: Commit, push, and open a Draft stacked PR**
 
 Base the PR on `codex/explanation-v2-phase9-visual-planner`; do not merge either PR.
-
