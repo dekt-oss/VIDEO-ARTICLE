@@ -16,6 +16,14 @@ def _module():
     return explanation_directive
 
 
+def _comparison_module():
+    try:
+        from engine import explanation_directive_shadow_compare
+    except ImportError as exc:  # RED: Phase 10 comparison does not exist yet.
+        pytest.fail(f"Phase 10 directive comparison missing: {exc}")
+    return explanation_directive_shadow_compare
+
+
 def _ready_inputs():
     pack, ir, resolution, plan, narration, fidelity = _artifacts()
     content_plan = _content_plan()
@@ -148,4 +156,75 @@ def test_validator_rejects_trace_removed_after_projection():
     assert projector.validate(forged, visual_plan, narration, ir, pack) == [
         "directive_not_canonical"
     ]
+
+
+def _legacy_flat_directive(narration):
+    cuts = []
+    for index, beat in enumerate(narration["narration_beats"], 1):
+        cuts.append({
+            "cut_no": index,
+            "narration_ko": " ".join(beat["sentences"]),
+            "estimated_sec": 3,
+            "visual_prompt": "related illustrative image",
+            "claim_ids": [],
+            "reasoning_id": "",
+            "source_facts": [],
+        })
+    return {
+        "domain": narration["domain"],
+        "content_id": narration["content_id"],
+        "version_type": "image_sequence",
+        "header": {"total_estimated_sec": sum(cut["estimated_sec"] for cut in cuts)},
+        "cuts": cuts,
+    }
+
+
+def test_same_input_comparison_shows_actual_flat_and_traced_directive_shapes():
+    projector = _module()
+    comparator = _comparison_module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    legacy = _legacy_flat_directive(narration)
+    projected = projector.build(visual_plan, narration, ir, pack)
+
+    result = comparator.compare(legacy, projected)
+
+    assert result["contract_version"] == "explanation-directive-shadow-comparison-v1"
+    assert result["comparison_basis"] == "deterministic_repository_fixture"
+    assert result["same_input_comparison"] is True
+    assert result["legacy_spec"] == {
+        "version_type": "image_sequence",
+        "cut_count": len(legacy["cuts"]),
+        "duration_sec": legacy["header"]["total_estimated_sec"],
+        "reasoning_linked_cut_count": 0,
+        "evidence_linked_cut_count": 0,
+        "fully_traced_cut_count": 0,
+    }
+    assert result["v2_spec"] == {
+        "contract_version": "explanation-directive-shadow-v1",
+        "version_type": "image_sequence",
+        "cut_count": len(projected["cuts"]),
+        "duration_sec": projected["header"]["total_estimated_sec"],
+        "reasoning_linked_cut_count": projected["qa"]["metrics"]["reasoning_linked_cut_count"],
+        "evidence_linked_cut_count": projected["qa"]["metrics"]["evidence_linked_cut_count"],
+        "fully_traced_cut_count": len(projected["cuts"]),
+    }
+    assert result["axes"] == {
+        "trace_chain": "COMPLETE_V2",
+        "semantic_calibration": "PRESERVED_V2",
+        "production_wiring": "SHADOW_ONLY",
+    }
+    assert result["final_directive_visual_quality"] == "not_measured"
+    assert result["rendered_video_quality"] == "not_measured"
+
+
+def test_comparison_rejects_different_content_or_domain():
+    projector = _module()
+    comparator = _comparison_module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    legacy = _legacy_flat_directive(narration)
+    projected = projector.build(visual_plan, narration, ir, pack)
+    legacy["content_id"] = "different-content"
+
+    with pytest.raises(ValueError, match="comparison_identity_mismatch"):
+        comparator.compare(legacy, projected)
 
