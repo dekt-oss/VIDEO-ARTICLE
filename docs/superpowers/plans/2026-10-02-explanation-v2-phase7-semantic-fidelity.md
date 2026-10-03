@@ -364,6 +364,6 @@
 
   Package the whole branch from Phase 6 head to current HEAD. The reviewer must attack critic omission, clause reordering, evidence laundering, quote-presence overclaim, cross-beat refs, rhetorical exemption abuse, stale aggregate reuse, caller exceptions, association-to-causation, projection-to-fact, attribution loss, and unsupported background. Re-grade findings by user effect. Fix Critical/Important findings in one TDD pass; defer Minor findings and report them.
 
-- [ ] **Step 8: Complete evidence, commit documentation, and open Draft PR**
+- [x] **Step 8: Complete evidence, commit documentation, and open Draft PR**
 
   Mark plan checkboxes only after fresh evidence, commit documentation/plan, push `codex/explanation-v2-phase7-semantic-fidelity`, and open a Draft PR with base `codex/explanation-v2-phase6-spoken-narration`. Include problem, contract, architecture, files, tests, Gold Set results, unverified items, rollback, and Phase 8 recommendation. Attach the PR, wait for GitHub Actions/Vercel, and do not merge.
