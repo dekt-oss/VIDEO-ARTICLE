@@ -538,7 +538,7 @@ def test_upstream_nonaccepted_states_never_call_critic():
     assert result["qa_status"] == "REJECTED_UPSTREAM"
     tampered = deepcopy(rejected)
     tampered["narration_beats"][0]["reasoning_ids"] = ["XR999"]
-    with pytest.raises(ValueError, match="rejected_draft_not_canonical"):
+    with pytest.raises(ValueError, match="spoken_narration_invalid"):
         semantic_fidelity.review(
             tampered, plan, ir, resolution, pack,
             caller=lambda **kwargs: calls.append(kwargs),
@@ -830,3 +830,167 @@ def test_phase7_shadow_comparison_preserves_synthetic_failure_axes(
     assert comparison["axes"][failed_axis]["outcome"] == "failed"
     assert comparison["axes"]["final_directive_quality"]["outcome"] == "not_measured"
     assert "improvement_percent" not in comparison
+
+
+@pytest.mark.parametrize("unsafe_hook", [
+    "변이는 성격을 결정한다. 변이는 성격을 결정하는가?",
+    "변이는 성격을 결정하는가? 변이는 성격을 결정한다. 그렇지?",
+])
+def test_rhetorical_hook_must_equal_the_approved_core_question(unsafe_hook: str):
+    pack, ir, resolution, plan, _ = _paper_artifacts()
+    payload = {
+        "beats": [{
+            "beat_id": beat["beat_id"],
+            "sentences": [unsafe_hook] if beat["stage"] == "HOOK"
+            else list(beat["content_points"]),
+        } for beat in plan["beats"]]
+    }
+    narration = spoken_narration.normalize_draft(
+        payload, plan, ir, resolution, pack
+    )
+    assert narration["generation_status"] == "DRAFT_ACCEPTED"
+
+    result = semantic_fidelity.normalize_review(
+        _critic_payload(narration), narration, plan, ir, resolution, pack
+    )
+
+    assert result["qa_status"] == "REJECTED"
+    assert "rhetorical_exemption_invalid:SC01" in result["qa"]["errors"]
+
+
+def test_validate_rejects_reindexed_extra_and_forged_stored_results():
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    passed = semantic_fidelity.normalize_review(
+        _critic_payload(narration), narration, plan, ir, resolution, pack
+    )
+
+    reordered = deepcopy(passed)
+    reordered["clauses"].reverse()
+    for position, clause in enumerate(reordered["clauses"], 1):
+        clause["clause_id"] = f"SC{position:02d}"
+    assert semantic_fidelity.validate(
+        reordered, narration, plan, ir, resolution, pack
+    )
+
+    extra = deepcopy(passed)
+    invented = deepcopy(extra["clauses"][-1])
+    invented.update(clause_id="SC04", sentence_index=999)
+    extra["clauses"].append(invented)
+    extra["qa"]["metrics"]["clause_count"] = 4
+    extra["qa"]["metrics"]["verdict_counts"]["ENTAILED"] = 3
+    assert semantic_fidelity.validate(
+        extra, narration, plan, ir, resolution, pack
+    )
+
+    invented_kind = deepcopy(passed)
+    invented_kind["clauses"][-1]["clause_kind"] = "INVENTED"
+    assert semantic_fidelity.validate(
+        invented_kind, narration, plan, ir, resolution, pack
+    )
+
+    warnings = deepcopy(passed)
+    warnings["qa"]["warnings"] = ["forged"]
+    assert semantic_fidelity.validate(
+        warnings, narration, plan, ir, resolution, pack
+    )
+
+    error = semantic_fidelity.review(
+        narration, plan, ir, resolution, pack,
+        caller=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("down")),
+    )
+    error["critic"] = {"independence": "writer", "semantic_entailment": "PASSED"}
+    error["qa"]["metrics"]["clause_count"] = 99
+    assert semantic_fidelity.validate(
+        error, narration, plan, ir, resolution, pack
+    )
+
+
+@pytest.mark.parametrize("mutate", ["finding_string", "evidence_member", "empty_rationale"])
+def test_malformed_critic_fields_fail_closed(mutate: str):
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    payload = _critic_payload(narration)
+    target = payload["clauses"][-1]
+    if mutate == "finding_string":
+        target["finding_codes"] = "contradiction"
+    elif mutate == "evidence_member":
+        target["evidence_ids"] = [42]
+    else:
+        target.update(
+            verdict="CONTRADICTED",
+            finding_codes=["contradiction"],
+            rationale="",
+        )
+
+    result = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+
+    assert result["qa_status"] == "CRITIC_ERROR"
+    assert result["clauses"] == []
+
+
+@pytest.mark.parametrize("payload", [
+    None,
+    {"beats": []},
+    {"beats": [{"beat_id": "NB99", "sentences": ["extra"]}]},
+])
+def test_canonical_phase6_rejections_return_rejected_upstream(payload):
+    pack, ir, resolution, plan, _ = _paper_artifacts()
+    rejected = spoken_narration.normalize_draft(
+        payload, plan, ir, resolution, pack
+    )
+    assert rejected["generation_status"] == "REJECTED_DRAFT"
+    calls = []
+
+    result = semantic_fidelity.review(
+        rejected, plan, ir, resolution, pack,
+        caller=lambda **kwargs: calls.append(kwargs),
+    )
+
+    assert result["qa_status"] == "REJECTED_UPSTREAM"
+    assert calls == []
+
+
+def test_clause_coverage_preserves_numeric_signs_and_units():
+    pack, ir, resolution, plan, narration = _report_artifacts()
+    payload = _critic_payload(narration)
+    row = payload["clauses"][-1]
+    assert "1%" in row["clause_text"]
+    row["clause_text"] = row["clause_text"].replace("1%", "-1%")
+
+    result = semantic_fidelity.normalize_review(
+        payload, narration, plan, ir, resolution, pack
+    )
+
+    assert result["qa_status"] == "CRITIC_ERROR"
+    assert any(error.startswith("clause_coverage_invalid:")
+               for error in result["qa"]["errors"])
+
+
+def test_shadow_comparison_includes_deterministic_hook_and_support_errors():
+    pack, ir, resolution, plan, narration = _paper_artifacts()
+    hook_payload = _critic_payload(narration)
+    hook_payload["clauses"][0].update(
+        clause_kind="RHETORICAL", verdict="ENTAILED"
+    )
+    fidelity = semantic_fidelity.normalize_review(
+        hook_payload, narration, plan, ir, resolution, pack
+    )
+    legacy = next(
+        row[0] for row in _gold_artifacts()
+        if row[0]["case_id"] == "personality-gwas-2026-09"
+    )
+    legacy = deepcopy(legacy)
+    legacy["case_id"] = pack["content_id"]
+
+    comparison = semantic_fidelity_shadow_compare.compare(
+        legacy, fidelity, narration, plan, ir, resolution, pack
+    )
+
+    assert comparison["axes"]["hook_grounding"]["outcome"] == "failed"
+    assert "rhetorical_exemption_invalid:SC01" in comparison["axes"][
+        "hook_grounding"
+    ]["evidence"]
+    assert comparison["axes"]["semantic_entailment"]["evidence"] != [
+        "all_factual_clauses_entailed"
+    ]

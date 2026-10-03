@@ -65,8 +65,9 @@ SETUP beat는 canonical prerequisite concept와 knowledge ref가 함께 있을 �
 
 ## clause coverage와 fail-closed 규칙
 
-critic이 반환한 ordered clause span을 공백·문장부호만 정규화한 뒤 원문 문장을 정확히 한 번
-완전히 덮는지 확인한다. 절 생략, 역순, 중복, 추가는 `CRITIC_ERROR`다. critic이 다른 beat의
+critic이 반환한 ordered clause span에서 공백만 정규화한 뒤 원문 문장을 정확히 한 번 완전히
+덮는지 확인한다. 문장부호·숫자 부호·소수점·단위는 의미를 바꿀 수 있어 정확히 보존한다. 절
+생략, 역순, 중복, 추가는 `CRITIC_ERROR`다. critic이 다른 beat의
 evidence를 인용하거나 unknown ID를 만들면 역시 `CRITIC_ERROR`다.
 
 다음 finding은 서로 구분해 보존한다.

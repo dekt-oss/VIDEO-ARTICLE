@@ -14,6 +14,12 @@ _AXIS_FINDINGS = {
     "attribution_preservation": frozenset({"attribution_loss"}),
     "hook_grounding": frozenset({"unsupported_factual_hook"}),
 }
+_AXIS_ERRORS = {
+    "hook_grounding": (
+        "rhetorical_exemption_invalid:",
+        "unsupported_factual_hook:",
+    ),
+}
 
 
 def _axis(outcome: str, evidence: list[str]) -> dict[str, Any]:
@@ -89,6 +95,12 @@ def compare(
             )
         }
     else:
+        deterministic_errors = list(fidelity.get("qa", {}).get("errors") or [])
+        semantic_failures = [
+            clause["clause_id"]
+            for clause in clauses
+            if clause.get("verdict") not in {"ENTAILED", "RHETORICAL"}
+        ] + deterministic_errors
         axes = {
             "clause_coverage": _axis(
                 "passed", [f"clauses:{len(clauses)}", "lossless_ordered_coverage"]
@@ -98,15 +110,14 @@ def compare(
             ),
             "semantic_entailment": _axis(
                 outcome,
-                [
-                    clause["clause_id"]
-                    for clause in clauses
-                    if clause.get("verdict") not in {"ENTAILED", "RHETORICAL"}
-                ] or ["all_factual_clauses_entailed"],
+                semantic_failures or ["all_factual_clauses_entailed"],
             ),
         }
         for axis, codes in _AXIS_FINDINGS.items():
-            failures = _clause_evidence(clauses, codes)
+            failures = _clause_evidence(clauses, codes) + [
+                error for error in deterministic_errors
+                if error.startswith(_AXIS_ERRORS.get(axis, ()))
+            ]
             axes[axis] = _axis("failed" if failures else "passed", failures or ["clear"])
 
     axes["final_directive_quality"] = _axis(

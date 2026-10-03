@@ -114,8 +114,8 @@ out-of-beat references are contract errors, not warnings.
 
 Clause-level review must not omit the unsafe half of a sentence. For every narration sentence, the
 critic returns ordered `clause_text` spans copied exactly from that sentence. Code normalizes only
-whitespace and punctuation and requires the ordered clause spans to cover the complete normalized
-sentence exactly once.
+whitespace and requires the ordered clause spans to cover the complete normalized sentence exactly
+once. Punctuation, numeric signs, decimal syntax, and units remain exact because they can change meaning.
 
 The following fail closed:
 

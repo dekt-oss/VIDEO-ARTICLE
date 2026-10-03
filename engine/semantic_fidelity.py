@@ -84,27 +84,15 @@ def _require_valid_upstream(
     if plan != narrative_planner.build(ir, resolution, pack):
         raise ValueError("narrative_plan_invalid:plan_not_canonical")
     if isinstance(narration, dict) and narration.get("generation_status") == "REJECTED_DRAFT":
-        beats = narration.get("narration_beats")
-        if not isinstance(beats, list):
-            raise ValueError("spoken_narration_invalid:narration_beats_not_list")
-        canonical = spoken_narration.normalize_draft(
-            {
-                "beats": [
-                    {
-                        "beat_id": beat.get("beat_id"),
-                        "sentences": beat.get("sentences"),
-                    }
-                    for beat in beats
-                    if isinstance(beat, dict)
-                ]
-            },
-            plan,
-            ir,
-            resolution,
-            pack,
+        narration_errors = spoken_narration.validate(
+            narration, plan, ir, resolution, pack
         )
-        if narration != canonical:
-            raise ValueError("spoken_narration_invalid:rejected_draft_not_canonical")
+        integrity_errors = [
+            error for error in narration_errors
+            if not error.startswith("sentences_empty:")
+        ]
+        if integrity_errors:
+            raise ValueError("spoken_narration_invalid:" + ",".join(integrity_errors))
         return
     narration_errors = spoken_narration.validate(
         narration, plan, ir, resolution, pack
@@ -216,7 +204,7 @@ def _text(value: Any) -> str:
 
 
 def _coverage_text(value: Any) -> str:
-    return re.sub(r"[^0-9A-Za-z가-힣]+", "", _text(value))
+    return re.sub(r"\s+", "", _text(value))
 
 
 def _empty_result(
@@ -257,6 +245,7 @@ def _semantic_findings(
     beat_by_narration: dict[str, dict[str, Any]],
     evidence_index: dict[str, dict[str, Any]],
     evidence_sections: dict[str, str],
+    core_question: str,
 ) -> tuple[bool, list[str]]:
     failed = False
     errors: list[str] = []
@@ -273,7 +262,7 @@ def _semantic_findings(
                 and verdict == "RHETORICAL"
                 and not evidence_ids
                 and not findings
-                and "?" in _text(row.get("clause_text"))
+                and _coverage_text(row.get("clause_text")) == _coverage_text(core_question)
             )
             if not valid:
                 failed = True
@@ -352,12 +341,27 @@ def normalize_review(
             clause_text = _text(row.get("clause_text"))
             clause_kind = _text(row.get("clause_kind"))
             verdict = _text(row.get("verdict"))
+            if not isinstance(row.get("evidence_ids"), list) or not all(
+                isinstance(value, str) and value.strip()
+                for value in row.get("evidence_ids") or []
+            ):
+                errors.append(f"evidence_ids_invalid:{key[0]}:{sentence_index}")
+            if not isinstance(row.get("finding_codes"), list) or not all(
+                isinstance(value, str) and value.strip()
+                for value in row.get("finding_codes") or []
+            ):
+                errors.append(f"finding_codes_invalid:{key[0]}:{sentence_index}")
             evidence_ids = _strings(row.get("evidence_ids"))
             finding_codes = _strings(row.get("finding_codes"))
             if clause_kind not in {"FACTUAL", "RHETORICAL"}:
                 errors.append(f"clause_kind_invalid:{key[0]}:{sentence_index}")
             if verdict not in VERDICTS:
                 errors.append(f"verdict_invalid:{key[0]}:{sentence_index}")
+            if (
+                verdict in {"CONTRADICTED", "UNSUPPORTED", "UNVERIFIABLE"}
+                and not _text(row.get("rationale"))
+            ):
+                errors.append(f"rationale_missing:{key[0]}:{sentence_index}")
             invalid_findings = [code for code in finding_codes if code not in FINDING_CODES]
             if invalid_findings:
                 errors.append(f"finding_code_invalid:{key[0]}:{invalid_findings[0]}")
@@ -405,7 +409,11 @@ def normalize_review(
         return _empty_result(narration, "CRITIC_ERROR", errors=errors)
 
     rejected, semantic_errors = _semantic_findings(
-        normalized, beat_by_narration, evidence_index, evidence_sections
+        normalized,
+        beat_by_narration,
+        evidence_index,
+        evidence_sections,
+        narration["core_question"],
     )
     status = "REJECTED" if rejected else "PASSED"
     sentence_count = len(expected)
@@ -472,10 +480,23 @@ def validate(
         qa = result.get("qa") if isinstance(result.get("qa"), dict) else {}
         if qa.get("metrics") != expected_metrics:
             errors.append("qa_metrics_stale")
+        if result != _empty_result(narration, upstream_status):
+            errors.append("upstream_result_not_canonical")
         return sorted(set(errors))
     if result.get("qa_status") == "CRITIC_ERROR":
         if clauses:
             errors.append("critic_error_has_clauses")
+        qa = result.get("qa") if isinstance(result.get("qa"), dict) else {}
+        stored_errors = qa.get("errors")
+        if not isinstance(stored_errors, list) or not stored_errors or not all(
+            isinstance(error, str) and error for error in stored_errors
+        ):
+            errors.append("critic_errors_invalid")
+            stored_errors = []
+        if result != _empty_result(
+            narration, "CRITIC_ERROR", errors=stored_errors
+        ):
+            errors.append("critic_error_not_canonical")
         return sorted(set(errors))
     expected_ids = [f"SC{position:02d}" for position in range(1, len(clauses) + 1)]
     if [row.get("clause_id") for row in clauses if isinstance(row, dict)] != expected_ids:
@@ -530,7 +551,11 @@ def validate(
     if qa.get("metrics") != expected_metrics:
         errors.append("qa_metrics_stale")
     rejected, semantic_errors = _semantic_findings(
-        clauses, beat_index, evidence_index, evidence_sections
+        clauses,
+        beat_index,
+        evidence_index,
+        evidence_sections,
+        narration["core_question"],
     )
     expected_status = "REJECTED" if rejected else "PASSED"
     expected_entailment = "FAILED" if rejected else "PASSED"
@@ -543,6 +568,30 @@ def validate(
         errors.append("semantic_entailment_stale")
     if sorted(_strings(qa.get("errors"))) != semantic_errors:
         errors.append("qa_errors_stale")
+    critic_payload = {
+        "clauses": [
+            {
+                field: row.get(field)
+                for field in (
+                    "narration_id",
+                    "sentence_index",
+                    "clause_text",
+                    "clause_kind",
+                    "verdict",
+                    "evidence_ids",
+                    "finding_codes",
+                    "rationale",
+                )
+            }
+            if isinstance(row, dict) else row
+            for row in clauses
+        ]
+    }
+    canonical = normalize_review(
+        critic_payload, narration, plan, ir, resolution, pack
+    )
+    if result != canonical:
+        errors.append("fidelity_not_canonical")
     return sorted(set(errors))
 
 
