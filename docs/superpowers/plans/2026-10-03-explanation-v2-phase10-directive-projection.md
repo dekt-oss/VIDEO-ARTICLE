@@ -35,8 +35,8 @@
 - Create: `engine/explanation_directive.py`
 
 **Interfaces:**
-- Consumes: canonical `visual-plan-v1`, `spoken-narration-v1`, Evidence Pack.
-- Produces: `build(visual_plan, narration, pack, *, version_type="image_sequence") -> dict` and `validate(result, visual_plan, narration, pack, *, version_type="image_sequence") -> list[str]`.
+- Consumes: canonical `visual-plan-v1`, `spoken-narration-v1`, Explanation IR, Evidence Pack.
+- Produces: `build(visual_plan, narration, ir, pack, *, version_type="image_sequence") -> dict` and `validate(result, visual_plan, narration, ir, pack, *, version_type="image_sequence") -> list[str]`.
 
 - [ ] **Step 1: Write failing Paper READY and blocked tests**
 

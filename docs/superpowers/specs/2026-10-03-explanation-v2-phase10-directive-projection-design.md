@@ -2,7 +2,7 @@
 
 ## Goal
 
-Phase 9의 검증된 `visual-plan-v1`을 현재 Production 지시서의 핵심 shape인
+Phase 9의 검증된 `visual-plan-v1`과 Explanation IR을 현재 Production 지시서의 핵심 shape인
 `version_type + header + cuts + visual_sequences`로 결정론적으로 투영한다. 같은 검증 입력으로
 기존 평면형 명세와 V2 추적형 명세를 생성해 사용자가 실제 JSON을 나란히 비교할 수 있게 한다.
 
@@ -43,7 +43,7 @@ Phase 9의 검증된 `visual-plan-v1`을 현재 Production 지시서의 핵심 s
 
 ## Validation
 
-- contract/status/content identity 검사
+- contract/status/content identity와 IR reasoning ID 검사
 - narration coverage 및 중복 ID 검사
 - 모든 sequence stage ID가 실제 Visual Beat stage에 존재하는지 검사
 - cut trace가 원본 beat/shot/mutation과 정확히 같은지 검사
