@@ -9,7 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from . import explanation_ir, prerequisite_resolver
+from . import explanation_ir, prerequisite_resolver, spoken_numbers
 
 
 CONTRACT_VERSION = "narrative-plan-v1"
@@ -130,6 +130,47 @@ def _beat(beat_id: str, stage: str, purpose: str, content_points: list[str], *,
     }
 
 
+def _beat_points(beat: dict[str, Any]) -> list[tuple[str, str]]:
+    """(근거 단위 ref, 그 단위의 문장) — 근거 비트는 reasoning_id, 선행개념 비트는 concept_id."""
+    if beat.get("stage") == "HOOK":
+        return []
+    refs = _strings(beat.get("reasoning_ids")) or _strings(beat.get("concept_ids"))
+    points = beat.get("content_points") if isinstance(beat.get("content_points"), list) else []
+    return [(ref, _text(text)) for ref, text in zip(refs, points)]
+
+
+def number_delivery(beats: list[dict[str, Any]], ir: dict[str, Any]) -> list[dict[str, Any]]:
+    """비트마다 말로 읽을 숫자와 화면 카드로 보낼 문장(`spoken_numbers` 모듈 규칙).
+
+    대본 재료(`content_points`)는 그대로 둔다(Phase 5 계약: IR 문장을 그대로 참조). 대신 어느
+    숫자를 말하고 어느 문장을 화면에 띄울지만 정한다 — Phase 6 이 이것대로 말하게 하고, Phase 10
+    이 화면 문장을 컷에 싣는다.
+    """
+    roles = {
+        _text(unit.get("reasoning_id")): _text(unit.get("role"))
+        for unit in ir.get("reasoning_units") or []
+    }
+    points = [
+        {"ref": ref, "text": text, "role": roles.get(ref, "")}
+        for beat in beats for ref, text in _beat_points(beat)
+    ]
+    decision = spoken_numbers.assign(points, thesis=_text(ir.get("thesis")))
+    delivered: list[dict[str, Any]] = []
+    for beat in beats:
+        spoken: list[str] = []
+        screen: list[dict[str, Any]] = []
+        for ref, text in _beat_points(beat):
+            row = decision.get(ref)
+            if not row:
+                continue
+            if row["spoken"]:
+                spoken.extend(row["numbers"])
+            else:
+                screen.append({"ref": ref, "text": text, "numbers": list(row["numbers"])})
+        delivered.append({"spoken_numbers": sorted(spoken), "screen_facts": screen})
+    return delivered
+
+
 def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
     unresolved_required = [
         concept for concept in resolution["concepts"]
@@ -192,6 +233,8 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
             f"NB{len(beats) + 1:02d}", stage, f"carry_{stage.lower()}_logic",
             [_text(unit.get("text")) for unit in units], units=units,
         ))
+    for beat, delivery in zip(beats, number_delivery(beats, ir)):
+        beat["number_delivery"] = delivery
 
     return {
         "contract_version": CONTRACT_VERSION,
@@ -336,6 +379,10 @@ def validate(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
     else:
         if seen_reasoning != expected_chain:
             errors.append("reasoning_chain_coverage_invalid")
+        valid_beats = [beat for beat in beats if isinstance(beat, dict)]
+        for beat, expected in zip(valid_beats, number_delivery(valid_beats, ir)):
+            if beat.get("number_delivery") != expected:
+                errors.append(f"number_delivery_invalid:{_text(beat.get('beat_id'))}")
         if plan.get("excluded_reasoning_ids") != []:
             errors.append("ready_excluded_reasoning_invalid")
         setup_positions = [i for i, beat in enumerate(beats) if beat.get("stage") == "SETUP"

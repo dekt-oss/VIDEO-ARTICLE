@@ -62,6 +62,10 @@ guardrail·causal/uncertainty/attribution/transition 메타데이터만 들어�
 - `broker_projection`을 단정형으로 변경
 - Report beat의 증권사 귀속 제거
 - 승인된 핵심 질문 뒤에 근거 없는 사실 단정을 붙인 hook
+- **숫자(2026-10-04 정정):** 종전 "숫자 변경·삭제 금지"를 Phase 5 `number_delivery` 기준으로 바꿨다.
+  말하기로 고른 값(`spoken_numbers`)은 그대로 있어야 하고(`numbers_changed`), 화면용 값을 말하면
+  `screen_number_spoken`, 시점 표현을 바꾸거나 빼면 `period_changed`. 화면용 값은 크기·방향을 말로 푼다
+  ("2.4배에서 8.6배" → "훨씬"). 모델 입력에 비트별 `spoken_numbers`·`screen_numbers` 가 실린다. 숫자 계약은 `engine/spoken_numbers.py` 한 자리다(2026-10-04, Phase 12 파일럿 후속).
 
 **도입 질문(HOOK) 계약 — 2026-10-04 정정.** 도입 질문은 승인된 핵심 질문과 **내용이 같아야** 하고 문장 끝
 어미만 말투로 바꿀 수 있다(`hook_matches_core_question`, 예: "…하는가?" → "…하는 걸까요?"). 종전의

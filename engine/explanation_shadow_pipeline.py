@@ -343,6 +343,12 @@ def _shadow_cut_lines(directive: dict[str, Any], visual_plan: Any) -> list[str]:
             f"  - evidence: {_join(trace.get('evidence_ids'))}",
             f"  - raw ref: {_join(trace.get('raw_refs'))}",
         ])
+        for fact in cut.get("screen_facts") or []:
+            fact = _dict(fact)
+            lines.append(
+                f"  - 화면 숫자 카드({fact.get('ref')}): {fact.get('text')}"
+                f" [{_join(fact.get('numbers'))}]"
+            )
         if trace.get("attributions") or trace.get("causal_levels"):
             lines.append(
                 f"  - 귀속·인과 수준: {_join(trace.get('attributions'))}"
@@ -362,6 +368,13 @@ def _narration_lines(narration: Any) -> list[str]:
         text = " ".join(str(item).strip() for item in sentence_rows if str(item).strip())
         if text:
             lines.append(f"- 비트 {beat.get('beat_id') or position}: {text}")
+            delivery = _dict(beat.get("number_delivery"))
+            screen = [_dict(fact).get("ref") for fact in delivery.get("screen_facts") or []]
+            if delivery.get("spoken_numbers") or screen:
+                lines.append(
+                    f"  - 말한 숫자: {_join(delivery.get('spoken_numbers'))}"
+                    f" · 화면으로 보낸 근거: {_join(screen)}"
+                )
     return lines
 
 

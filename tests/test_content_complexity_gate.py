@@ -30,7 +30,8 @@ def _scope() -> dict[str, bool]:
 def _artifacts(*, source_depth: str = "full_body", role: str = "mechanism",
                text: str = "압력이 높아지면 구조가 변한다.",
                content_id: str = "paper-complexity-1",
-               blocked: bool = False) -> tuple:
+               blocked: bool = False,
+               spoken_text: str | None = None) -> tuple:
     pack = {
         "contract_version": "evidence-pack-v1",
         "domain": "paper",
@@ -78,8 +79,11 @@ def _artifacts(*, source_depth: str = "full_body", role: str = "mechanism",
     plan = narrative_planner.build(ir, resolution, pack)
     narration = spoken_narration.normalize_draft(
         {"beats": []} if blocked else {
-            "beats": [{"beat_id": beat["beat_id"], "sentences": list(beat["content_points"])}
-                      for beat in plan["beats"]]
+            "beats": [{
+                "beat_id": beat["beat_id"],
+                "sentences": [spoken_text] if spoken_text and beat["stage"] != "HOOK"
+                else list(beat["content_points"]),
+            } for beat in plan["beats"]]
         },
         plan,
         ir,
@@ -376,26 +380,42 @@ def test_too_many_spoken_numbers_requires_regeneration_and_cannot_be_overridden(
             overrides={"too_many_spoken_numbers": {"approved": True, "reason": "무시"}},
         )
 
-    (
-        numbered_pack,
-        numbered_ir,
-        numbered_resolution,
-        numbered_plan,
-        numbered_narration,
-        numbered_fidelity,
-    ) = _artifacts(
-        text="압력은 1에서 2를 거쳐 3으로 변한다."
-    )
-    assert numbered_narration["qa"]["metrics"]["number_count"] > config.MAX_SPOKEN_NUMBERS
 
-    result = gate.evaluate(
-        _content_plan(), numbered_narration, numbered_fidelity,
-        numbered_plan, numbered_ir, numbered_resolution, numbered_pack,
+
+def test_number_heavy_unit_goes_to_screen_and_narration_stays_within_budget():
+    """Phase 12 파일럿 회귀: 숫자가 예산보다 많은 근거는 화면으로 가고 대본은 말로 푼다.
+
+    종전에는 Phase 5 가 숫자를 전부 대본 재료로 넘기고 Phase 6 이 숫자 삭제를 금지해서
+    Phase 8 의 REGENERATE_NARRATION 이 풀 수 없는 판정이었다(실측 16·15개 > 2).
+    """
+    gate = _gate_module()
+    text = "압력은 1에서 2를 거쳐 3으로 변한다."
+    pack, ir, resolution, plan, narration, fidelity = _artifacts(
+        text=text, spoken_text="압력은 여러 단계를 거쳐 변한다.",
     )
-    assert result["gate_status"] == "ACTION_REQUIRED"
-    assert [row["action"] for row in result["required_actions"]] == [
-        "REGENERATE_NARRATION"
-    ]
+    screen = [fact for beat in plan["beats"] for fact in beat["number_delivery"]["screen_facts"]]
+    assert screen == [{"ref": "XR01", "text": text, "numbers": ["1", "2", "3"]}]
+    assert narration["qa"]["metrics"]["number_count"] == 0
+
+    result = gate.evaluate(_content_plan(), narration, fidelity, plan, ir, resolution, pack)
+
+    assert result["gate_status"] == "READY"
+    assert result["required_actions"] == []
+
+
+def test_reading_screen_numbers_is_rejected_before_the_gate():
+    from engine import narrative_planner as planner
+
+    pack, ir, resolution, plan, _, _ = _artifacts(text="압력은 1에서 2를 거쳐 3으로 변한다.",
+                                                  spoken_text="압력은 여러 단계를 거쳐 변한다.")
+    verbatim = spoken_narration.normalize_draft(
+        {"beats": [{"beat_id": beat["beat_id"], "sentences": list(beat["content_points"])}
+                   for beat in plan["beats"]]},
+        plan, ir, resolution, pack,
+    )
+    assert planner.validate(plan, ir, resolution, pack) == []
+    assert verbatim["generation_status"] == "REJECTED_DRAFT"
+    assert any(error.startswith("screen_number_spoken:") for error in verbatim["qa"]["errors"])
 
 
 def test_shallow_source_forces_length_downgrade_and_missing_mechanism_is_forbidden():

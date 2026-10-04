@@ -460,6 +460,11 @@ def build(
         shot = beat["shot_directive"]
         narration_id = shot["narration_refs"][0]
         narration_text = " ".join(_strings(narration_by_id[narration_id].get("sentences")))
+        # 대본에서 말하지 않기로 한 숫자 문장(Phase 5 `number_delivery`)은 화면 카드로 싣는다 —
+        # 말로 풀었다고 정보가 사라지면 안 된다(Phase 12 파일럿 후속, spoken_numbers 모듈).
+        delivery = narration_by_id[narration_id].get("number_delivery")
+        screen_facts = deepcopy((delivery or {}).get("screen_facts") or []) if isinstance(
+            delivery, dict) else []
         raw_refs = _strings(beat.get("raw_refs"))
         reasoning_ids = _strings(beat.get("reasoning_ids"))
         evidence_ids = _strings(beat.get("evidence_ids"))
@@ -483,6 +488,7 @@ def build(
             "cut_no": cut_no,
             "scene_kind": "broll_stock",
             "narration_ko": narration_text,
+            "screen_facts": screen_facts,
             "narration_en": "",
             "estimated_sec": _duration(narration_text),
             "visual_type": "comic_panel" if version_type == "comic" else "image",
