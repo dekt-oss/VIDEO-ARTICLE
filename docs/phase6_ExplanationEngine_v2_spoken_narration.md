@@ -58,6 +58,11 @@ guardrail·causal/uncertainty/attribution/transition 메타데이터만 들어�
 - `모든`, `유일`, `항상`, `절대`, `오직`, `최초`, `전부`, `완전히`, `반드시`의 신규 추가
 - association 표현을 determination/direct-cause 표현으로 강화
 - 범위 단서 각각의 제거와 불확실성·연관·부정 의미 갈래 제거/추가
+  - **정정(2026-10-04, Phase 12 파일럿):** 불확실성(`uncertain`)·범위 단서(`hedge`)는 **제거만** 막는다 —
+    덧붙이면 주장이 약해질 뿐이다(실측: "제한했을 것이다" → "제한했을 것으로 보입니다" 가 거절됐다).
+    연관·부정은 종전대로 양방향 모두 막는다. 또 "약" 은 수 앞("약 30%")일 때만 범위 단서로 본다 —
+    화면용 숫자를 "약간 낮다"로 풀자 범위 단서가 생긴 것으로 잘못 잡혔다. 판정 함수
+    `script_polish.meaning_classes` 는 Production 다듬기도 쓰므로 바꾸지 않고 Phase 6 안에서만 가린다.
 - 연관·부정 문구를 남겨 둔 채 determination/direct-cause 표현을 추가하는 우회
 - `broker_projection`을 단정형으로 변경
 - Report beat의 증권사 귀속 제거
