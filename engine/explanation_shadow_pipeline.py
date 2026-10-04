@@ -393,6 +393,17 @@ def _finding_lines(result: dict[str, Any]) -> list[str]:
             f" — 모델 원문: {' '.join(str(x) for x in repair.get('model_sentences') or [])}"
         )
     plan = _dict(shadow.get("narrative_plan"))
+    revalidate: dict[str, int] = {}
+    for warning in _dict(shadow.get("ir")).get("warnings") or []:
+        parts = str(warning).split(":")
+        if parts[0] == "evidence_state_disallowed" and parts[-1] in {"STALE", "NOT_CHECKED"}:
+            revalidate[parts[-1]] = revalidate.get(parts[-1], 0) + 1
+    if revalidate:
+        counts = ", ".join(f"{state} {count}건" for state, count in sorted(revalidate.items()))
+        lines.append(
+            f"- 조치 필요: Fact Sheet 재검증({counts}) — 검증되지 않았거나 옛 규칙으로 검증된 근거는"
+            " V2 의 근거로 쓰지 않는다"
+        )
     if plan.get("warnings"):
         lines.append(f"- phase5 서사 계획 경고: {_join(plan.get('warnings'))}")
     for phase, key in (

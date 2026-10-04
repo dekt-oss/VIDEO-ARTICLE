@@ -40,7 +40,7 @@
 **결정 필요:** ① 원안대로 V2 대본 + 추적 ID 를 **기존 지시서 생성기**(`engine/directive.py`/`photo_prompt`)에
 입력으로 넣는다(추천 — 화풍·장면 계약을 다시 만들 필요가 없다), 또는 ② Phase 9/10 을 장면 설계까지 확장한다.
 
-### B. 검증 상태 처리가 거꾸로다 [안전]
+### B. 검증 상태 처리가 거꾸로다 [안전 → 수정됨, PR #105]
 
 `explanation_ir.DISALLOWED_POSITIVE_STATES = {UNSUPPORTED, STALE}`. `NOT_CHECKED` 는 경고만 붙고 근거로 쓰인다.
 

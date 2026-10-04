@@ -19,7 +19,13 @@ ROLES: tuple[str, ...] = (
     "result", "limitation", "risk", "payoff",
 )
 CONSTRAINT_ROLES = frozenset({"limitation", "risk"})
-DISALLOWED_POSITIVE_STATES = frozenset({"UNSUPPORTED", "STALE"})
+# 근거(인과·결과·기전)로 쓸 수 없는 상태. 한계·리스크 같은 제약 역할은 예외로 남긴다.
+# ★ NOT_CHECKED 추가(2026-10-05 설계 점검 B): 종전에는 "한 번도 검증 안 된 근거"가 경고만 붙고 통과했고
+#   "옛 규칙으로 검증된 근거(STALE)"는 막혔다 — 안전 쪽으로 거꾸로였다. 실데이터에서 retinotopic 논문의
+#   근거 6/6 이 NOT_CHECKED 로 V2 근거가 됐다(골드셋이 "청각→시각 전이 발명"을 지적한 그 논문).
+#   둘 다 Fact Sheet 를 다시 검증해야 쓸 수 있다.
+DISALLOWED_POSITIVE_STATES = frozenset({"UNSUPPORTED", "STALE", "NOT_CHECKED"})
+REVALIDATION_STATES = frozenset({"STALE", "NOT_CHECKED"})
 _EVIDENCE_SECTIONS = ("claims", "numbers", "risks", "limitations", "background_context")
 
 
@@ -92,8 +98,6 @@ def normalize(candidate: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]
                 continue
             if state in DISALLOWED_POSITIVE_STATES:
                 warnings.append(f"constraint_evidence_state:{evidence_id}:{state}")
-            elif state == "NOT_CHECKED":
-                warnings.append(f"evidence_not_checked:{evidence_id}")
             elif state == "UNVERIFIABLE_AT_CURRENT_DEPTH":
                 warnings.append(f"evidence_unverifiable:{evidence_id}")
 

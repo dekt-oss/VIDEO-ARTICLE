@@ -133,15 +133,22 @@ def test_normalize_does_not_mutate_candidate_or_pack_and_is_deterministic():
     assert pack == before_pack
 
 
-def test_unverified_and_non_entailing_evidence_are_explicit_warnings():
+def test_non_entailing_evidence_is_an_explicit_warning():
     """Catches quote presence being silently promoted to whole-claim truth."""
+    ir = explanation_ir.normalize(_candidate(), _pack())
+
+    assert "semantic_entailment_unverified:paper:C01" in ir["warnings"]
+
+
+def test_never_checked_evidence_cannot_carry_positive_reasoning():
+    """설계 점검 B(2026-10-05): NOT_CHECKED 는 STALE 처럼 근거로 못 쓴다."""
     pack = _pack()
     pack["claims"][0]["verification_state"] = "NOT_CHECKED"
 
     ir = explanation_ir.normalize(_candidate(), pack)
 
-    assert "evidence_not_checked:paper:C01" in ir["warnings"]
-    assert "semantic_entailment_unverified:paper:C01" in ir["warnings"]
+    assert "evidence_state_disallowed:paper:C01:NOT_CHECKED" in ir["warnings"]
+    assert all("paper:C01" not in unit["evidence_ids"] for unit in ir["reasoning_units"])
 
 
 def test_validate_rejects_empty_core_question_and_domain_mismatch():
