@@ -77,7 +77,8 @@ Report Fact Sheet ─→ Evidence Pack ─→ Report Reasoning Adapter ┘
 - prerequisite가 필요하면 Evidence Pack에 존재하는 항목만 사용한다.
 - `association_only`를 cause/mechanism/determination으로 올리지 않는다.
 - `semantic_entailment=false`인 claim은 인과 승격이 불가능하도록 보수적으로 표시한다.
-- `UNSUPPORTED`와 `STALE` evidence는 positive reasoning unit의 근거가 될 수 없다.
+- `UNSUPPORTED`·`STALE`·`NOT_CHECKED` evidence는 positive reasoning unit의 근거가 될 수 없다
+  (`NOT_CHECKED` 는 2026-10-05 설계 점검 B 로 추가 — 아래 §정정).
 
 이 Adapter는 새로운 과학 지식을 합성하지 않는다.
 
@@ -134,9 +135,14 @@ Phase 3에 추가하지 않는다.
 
 ### 5.2 Evidence 상태
 
-- `UNSUPPORTED`, `STALE`: positive reasoning 근거로 사용 금지
+- `UNSUPPORTED`, `STALE`, `NOT_CHECKED`: positive reasoning 근거로 사용 금지(제약 역할 limitation·risk 는 예외)
 - `SUPPORTED`: `verification_scope`가 확인한 항목만 신뢰
-- `UNVERIFIABLE_AT_CURRENT_DEPTH`, `NOT_CHECKED`: 사용 시 상태를 보존하고 warning 부여
+- `UNVERIFIABLE_AT_CURRENT_DEPTH`: 사용 시 상태를 보존하고 warning 부여
+
+**정정(2026-10-05, 설계 점검 B).** 종전에는 `NOT_CHECKED` 도 warning 만 붙이고 근거로 썼다. 그러면 "한 번도
+검증 안 된 근거"가 "옛 규칙으로 검증된 근거(`STALE`)"보다 통과가 쉽다 — 안전 쪽으로 거꾸로다. 실데이터에서
+retinotopic 논문(`6b2d092a`)의 근거 6/6 이 `NOT_CHECKED` 로 V2 근거가 됐다. 이제 둘 다 막고, 비교 자료에
+"Fact Sheet 재검증 필요(상태별 건수)"를 표시한다. 얕은 원문용 `UNVERIFIABLE_AT_CURRENT_DEPTH` 는 그대로다.
 - `semantic_entailment=false`: claim 전체의 의미가 입증됐다고 간주하지 않음
 
 limitation/risk unit은 부정적·제약 정보를 보존하는 용도이므로 해당 evidence의 의미를
