@@ -25,7 +25,12 @@
 
 ## 3. 남은 설계 문제 (심각도순)
 
-### A. 화면 단계가 원안과 다르다 — V2 지시서는 렌더에 못 쓴다 [구조]
+### A. 화면 단계가 원안과 다르다 — V2 지시서는 렌더에 못 쓴다 [구조 → ①로 결정·연결, PR #106]
+
+> 2026-10-05 운영자 결정: ①(기존 지시서 생성기 재사용). `engine/v2_directive_bridge.py` 가 V2 대본을 초안 모양으로
+> 바꿔 `directive.generate`/`report_directive.generate` 에 넣고(저장 없음), 생성기가 지운 추적 정보를 컷에 다시
+> 붙인다. 비용 0 스모크(실제 Samsung V2 대본 재생 + 실제 생성기 코드, 모델 응답만 대역): 장면이 프롬프트에 실림,
+> 컷 `reasoning_id` R01/R02 보존, 7/7 컷 추적, 원장 기록 0. 기존 간이 화면 계획은 "추적 골격"으로 이름만 바꿔 남겼다.
 
 원안 Phase 9 는 "새 Visual Beat Schema 를 만들지 않는다. 기존 Visual Sequence·Stage 를 정본으로 쓴다"이다.
 구현은 새 결정론적 시각 계획기(`engine/visual_planner.py`)를 만들었고, Phase 10 은 그 결과를 Production 지시서

@@ -130,6 +130,9 @@ def build(pack: dict[str, Any], financial_reasoning: dict[str, Any] | None,
                 "uncertainty": uncertainty,
                 "attribution": step_attribution,
                 "transition_relation": "supports" if step_position == 1 else "continues",
+                # 기존 지시서 생성기는 증권사 논리 번호(R01)만 컷의 reasoning_id 로 인정한다
+                # (`report_directive._filter_reasoning_ids`). V2 번호(XR01)와 함께 보관한다.
+                "source_reasoning_id": source_reasoning_id,
             })
 
     candidate = {
