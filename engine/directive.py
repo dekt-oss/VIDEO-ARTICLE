@@ -1893,16 +1893,17 @@ def normalize_directive(
             _release_restated_numbers(audit, header, cuts, fact_sheet)
             jev_calls.extend(_t[_n0:])
         header["directive_audit"] = audit
-    # ★ Jev 판정 원값을 지시서에 남긴다(2026-09-30 감사). 경고가 안 떠도 남긴다 — 문턱을
-    #   운영 데이터로 다시 재려면 안 걸린 쪽 분포가 필요하다. 꺼져 있으면 칸 자체가 없다.
-    if jev_calls:
-        header["jev_trace"] = decide.trace_summary(jev_calls)
         if audit["findings"]:
             header["mode_warnings"] = sorted(set([
                 *header["mode_warnings"],
                 *(f"audit_{f['code']}:{f['cut_no']}" for f in audit["findings"])]))
             log.info("근거 대조: 빨강 %d 노랑 %d",
                      audit["stats"]["red"], audit["stats"]["yellow"])
+    # ★ Jev 판정 원값을 지시서에 남긴다(2026-09-30 감사). 경고가 안 떠도 남긴다 — 문턱을
+    #   운영 데이터로 다시 재려면 안 걸린 쪽 분포가 필요하다. 꺼져 있으면 칸 자체가 없다.
+    #   근거 대조 블록과 서로 기대지 않는다(tests/test_directive_audit_jev_order.py).
+    if jev_calls:
+        header["jev_trace"] = decide.trace_summary(jev_calls)
     if config.DIRECTIVE_SELFCHECK_ENABLED and (fact_sheet or {}).get("claims"):
         try:
             # 컷을 selfcheck 가 아는 씬 모양으로 넘긴다 — 최종 나레이션 그대로 본다.
