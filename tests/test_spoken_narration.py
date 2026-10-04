@@ -286,16 +286,54 @@ def test_report_attribution_and_uncertainty_must_remain_spoken():
                for error in result["qa"]["errors"])
 
 
-def test_hook_must_remain_a_grounded_question():
+def test_non_question_hook_is_restored_to_the_approved_core_question():
     pack, ir, resolution, plan = _paper_ready()
     payload = _safe_payload(plan)
     payload["beats"][0]["sentences"] = ["변이는 성격을 결정한다."]
 
     result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
 
-    assert result["generation_status"] == "REJECTED_DRAFT"
-    assert "hook_not_question:NB01" in result["qa"]["errors"]
-    assert "hook_not_grounded:NB01" in result["qa"]["errors"]
+    assert result["generation_status"] == "DRAFT_ACCEPTED"
+    assert result["narration_beats"][0]["sentences"] == [plan["core_question"]]
+    assert result["repairs"] == [{
+        "beat_id": "NB01",
+        "repair": "hook_restored_to_core_question",
+        "model_sentences": ["변이는 성격을 결정한다."],
+    }]
+    assert spoken_narration.validate(result, plan, ir, resolution, pack) == []
+
+
+def test_hook_may_change_only_the_question_ending():
+    pack, ir, resolution, plan = _paper_ready()
+    core = plan["core_question"]
+    spoken = core.rstrip("?").removesuffix("는가") + "는 걸까요?"
+    assert spoken != core
+    payload = _safe_payload(plan)
+    payload["beats"][0]["sentences"] = [spoken]
+
+    result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
+
+    assert result["generation_status"] == "DRAFT_ACCEPTED"
+    assert result["narration_beats"][0]["sentences"] == [spoken]
+    assert result["repairs"] == []
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("이 연구는 무엇을 보여 주는가?", True),
+    ("이 연구는 무엇을 보여 주는 걸까요?", True),
+    ("이 연구는 무엇을 보여 주나요?", True),
+    ("이 연구는 무엇을 보여주는가 ?", True),
+    ("이 연구는 무엇을 증명하는 걸까요?", False),
+    ("인간만 발뒤꿈치로 걷는 이유를 이 연구는 무엇을 보여 주는가?", False),
+    ("이 연구는 무엇을 보여 주는가? 정답은 충격이다.", False),
+    ("이 연구는 무엇을 보여 주는가? 그렇지?", False),
+    ("이 연구는 무엇을 보여 주는가.", False),
+    ("", False),
+])
+def test_hook_matches_core_question_allows_only_ending_changes(text, expected):
+    assert spoken_narration.hook_matches_core_question(
+        text, "이 연구는 무엇을 보여 주는가?"
+    ) is expected
 
 
 def test_validation_rejects_factual_narration_with_no_trace():
@@ -316,7 +354,6 @@ def test_validation_rejects_factual_narration_with_no_trace():
 def test_spoken_structure_heuristics_warn_without_claiming_entailment():
     pack, ir, resolution, plan = _paper_ready()
     payload = _safe_payload(plan)
-    payload["beats"][0]["sentences"] = [plan["core_question"], plan["core_question"]]
     payload["beats"][1]["sentences"] = [
         plan["beats"][1]["content_points"][0] + " 본 연구에서 관찰되었다고 할 수 있습니다."
     ]
@@ -324,7 +361,11 @@ def test_spoken_structure_heuristics_warn_without_claiming_entailment():
     result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
 
     assert result["generation_status"] == "DRAFT_ACCEPTED"
-    assert "core_question_repeated" in result["qa"]["warnings"]
+    # 도입 질문은 정규화에서 한 문장으로 되돌려지므로, 반복 경고는 가드에 직접 확인한다.
+    doubled = [dict(beat) for beat in result["narration_beats"]]
+    doubled[0]["sentences"] = [plan["core_question"], plan["core_question"]]
+    _, guard_warnings, _ = spoken_narration._draft_guard_findings(doubled, plan)
+    assert "core_question_repeated" in guard_warnings
     assert "sentence_too_long:NB02" in result["qa"]["warnings"]
     assert "academic_register:NB02" in result["qa"]["warnings"]
     assert "unexplained_abbreviation:NB02:GWAS" in result["qa"]["warnings"]
@@ -707,17 +748,31 @@ def test_numeric_guard_preserves_sign_currency_and_all_whitespace():
     assert any(error.startswith("numbers_changed:") for error in result["qa"]["errors"])
 
 
-def test_hook_rejects_factual_assertion_appended_to_approved_question():
+def test_hook_factual_assertion_is_dropped_by_restore_and_rejected_in_polish():
     pack, ir, resolution, plan = _paper_ready()
     payload = _safe_payload(plan)
-    payload["beats"][0]["sentences"] = [
-        plan["core_question"] + " 변이는 성격을 결정한다."
-    ]
+    unsafe = plan["core_question"] + " 변이는 성격을 결정한다."
+    payload["beats"][0]["sentences"] = [unsafe]
 
     result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
 
-    assert result["generation_status"] == "REJECTED_DRAFT"
-    assert "hook_factual_assertion_added:NB01" in result["qa"]["errors"]
+    assert result["generation_status"] == "DRAFT_ACCEPTED"
+    assert result["narration_beats"][0]["sentences"] == [plan["core_question"]]
+    assert result["repairs"][0]["model_sentences"] == [unsafe]
+
+    # 다듬기(polish)는 되돌리지 않고 거절한다 — 같은 가드가 그 경로에서 살아 있다.
+    polish = {"beats": [{
+        "beat_id": beat["beat_id"], "sentences": list(beat["sentences"]),
+    } for beat in result["narration_beats"]]}
+    polish["beats"][0]["sentences"] = [unsafe]
+    polished = spoken_narration.apply_polish(result, polish, plan, ir, resolution, pack)
+    assert polished["narration_beats"][0]["sentences"] == [plan["core_question"]]
+    assert polished["polish"]["rejected"][0]["beat_id"] == "NB01"
+    guarded = [dict(beat) for beat in result["narration_beats"]]
+    guarded[0]["sentences"] = [unsafe]
+    guard_errors, _, _ = spoken_narration._draft_guard_findings(guarded, plan)
+    assert "hook_factual_assertion_added:NB01" in guard_errors
+    assert "hook_not_grounded:NB01" in guard_errors
 
 
 def test_each_scope_qualifier_must_survive_when_another_hedge_remains():

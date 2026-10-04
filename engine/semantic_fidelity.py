@@ -262,7 +262,9 @@ def _semantic_findings(
                 and verdict == "RHETORICAL"
                 and not evidence_ids
                 and not findings
-                and _coverage_text(row.get("clause_text")) == _coverage_text(core_question)
+                and spoken_narration.hook_matches_core_question(
+                    row.get("clause_text"), core_question
+                )
             )
             if not valid:
                 failed = True

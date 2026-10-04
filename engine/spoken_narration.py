@@ -39,6 +39,8 @@ SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성�
 입력의 비트 순서와 의미를 그대로 유지해 말하기 쉬운 문장으로 바꿔라.
 숫자, 단위, 범위, 부정, 불확실성, 연관성, 출처 귀속을 바꾸거나 빼지 마라.
 새 사실, 비유, 인과, 근거, ID를 추가하지 마라.
+stage 가 HOOK 인 비트는 core_question 을 한 문장 그대로 쓴다. 바꿔도 되는 것은 문장 끝 어미뿐이다
+(예: "…하는가?" → "…하는 걸까요?"). 낱말을 바꾸거나 다른 문장을 덧붙이면 코드가 core_question 으로 되돌린다.
 각 beat_id를 한 번씩 같은 순서로 반환하라.
 JSON only: {"beats":[{"beat_id":"NB01","sentences":["..."]}]}
 """
@@ -60,6 +62,46 @@ def _number_tokens(text: str) -> list[str]:
         for match in _NUMBER.finditer(text)
         if any(character.isdigit() for character in match.group(0))
     )
+
+
+# 도입 질문에서 말투로 바꿔도 되는 문장 끝 어미(긴 것부터 떼어 낸다). 어간·낱말은 못 바꾼다.
+_QUESTION_ENDINGS = tuple(sorted({
+    "는걸까요", "은걸까요", "인걸까요", "는건가요", "은건가요", "인건가요",
+    "는가요", "은가요", "인가요", "는지요", "을까요", "일까요",
+    "는가", "은가", "인가", "나요", "까요", "가요", "는지", "을까", "일까",
+}, key=len, reverse=True))
+
+
+def _question_core(text: Any) -> str:
+    body = re.sub(r"\s+", "", _text(text)).rstrip("?？.!…")
+    for ending in _QUESTION_ENDINGS:
+        if body.endswith(ending) and len(body) > len(ending):
+            return body[: -len(ending)]
+    return body
+
+
+def hook_matches_core_question(text: Any, core_question: Any) -> bool:
+    """도입 질문이 승인된 핵심 질문과 같은가 — 문장 끝 어미만 다를 수 있다.
+
+    Phase 6(대본)과 Phase 7(수사적 예외)이 **같은 판정**을 쓴다. 종전에는 Phase 6 이 어간 60% 만
+    남으면 통과시키고 Phase 7 은 글자 그대로를 요구해서, 실제 모델이 "…보여 주는가?" 를 "…보여
+    주는 걸까요?" 로 다듬기만 해도 Phase 7 에서 막혔다(Phase 12 파일럿 2/2건, 2026-10-04).
+    근거 없이 허용되는 수사 절은 핵심 질문 그 자체뿐이다(작업지시서 §9.3, Phase 7 문서) —
+    낱말을 바꾸거나 문장을 덧붙이면 사실 주장이 섞일 수 있으므로 같다고 보지 않는다.
+    """
+    sentence = _text(text)
+    if not sentence or not _text(core_question):
+        return False
+    if sentence.count("?") + sentence.count("？") != 1 or not sentence.endswith(("?", "？")):
+        return False
+    return _question_core(sentence) == _question_core(core_question)
+
+
+def _restore_hook(sentences: list[str], core_question: str) -> tuple[list[str], bool]:
+    """도입 질문이 핵심 질문과 다르면 승인된 핵심 질문으로 되돌린다(대본 전체를 버리지 않는다)."""
+    if len(sentences) == 1 and hook_matches_core_question(sentences[0], core_question):
+        return sentences, False
+    return [core_question], True
 
 
 def _joined_sentences(beat: dict[str, Any]) -> str:
@@ -130,7 +172,7 @@ def _draft_guard_findings(
             if "?" not in after:
                 errors.append(f"hook_not_question:{beat_id}")
                 errors.append(f"hook_not_grounded:{beat_id}")
-            elif script_polish.stem_retention(plan["core_question"], after) < 0.6:
+            elif not hook_matches_core_question(after, plan["core_question"]):
                 errors.append(f"hook_not_grounded:{beat_id}")
             if "?" in after and after.rsplit("?", 1)[1].strip():
                 errors.append(f"hook_factual_assertion_added:{beat_id}")
@@ -254,6 +296,7 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
         errors.append("draft_beat_coverage_invalid")
 
     normalized: list[dict[str, Any]] = []
+    repairs: list[dict[str, Any]] = []
     for position, beat in enumerate(plan["beats"], 1):
         row = rows[position - 1] if position <= len(rows) else None
         if not isinstance(row, dict) or _text(row.get("beat_id")) != beat["beat_id"]:
@@ -261,6 +304,15 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
         sentences = _strings(row.get("sentences"))
         if not sentences:
             errors.append(f"draft_sentences_empty:{beat['beat_id']}")
+        elif beat["stage"] == "HOOK":
+            restored, changed = _restore_hook(sentences, plan["core_question"])
+            if changed:
+                repairs.append({
+                    "beat_id": beat["beat_id"],
+                    "repair": "hook_restored_to_core_question",
+                    "model_sentences": sentences,
+                })
+                sentences = restored
         normalized.append({
             "narration_id": f"SN{position:02d}",
             "beat_id": beat["beat_id"],
@@ -292,6 +344,7 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
             "metrics": metrics,
         },
         "polish": {},
+        "repairs": repairs,
     }
     validation_errors = validate(result, plan, ir, resolution, pack)
     contract_errors = [error for error in validation_errors if error not in errors]

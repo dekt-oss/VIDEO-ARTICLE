@@ -62,6 +62,14 @@ guardrail·causal/uncertainty/attribution/transition 메타데이터만 들어�
 - `broker_projection`을 단정형으로 변경
 - Report beat의 증권사 귀속 제거
 - 승인된 핵심 질문 뒤에 근거 없는 사실 단정을 붙인 hook
+
+**도입 질문(HOOK) 계약 — 2026-10-04 정정.** 도입 질문은 승인된 핵심 질문과 **내용이 같아야** 하고 문장 끝
+어미만 말투로 바꿀 수 있다(`hook_matches_core_question`, 예: "…하는가?" → "…하는 걸까요?"). 종전의
+"어간 60% 유지" 기준은 Phase 7 의 "글자 그대로" 기준과 달라서, 실제 모델이 어미만 다듬어도 Phase 7 에서
+막혔다(Phase 12 파일럿 2/2건). 이제 두 단계가 같은 함수를 쓴다. 모델 출력이 이 계약을 어기면 대본 전체를
+버리지 않고 **도입 질문만 승인된 핵심 질문으로 되돌린다** — 기록은 결과의 `repairs` 에 모델 원문과 함께
+남는다(`qa.warnings` 와 분리: `validate()` 가 경고를 저장 문장에서 다시 계산하기 때문). 다듬기(polish)
+경로는 되돌리지 않고 종전대로 거절한다. 모델 지시문(`SYSTEM_PROMPT`)에도 같은 규칙을 적었다.
 - factual beat의 reasoning/evidence/knowledge trace 소실
 
 다음은 경고이며 Phase 6에서 차단하거나 의미 정합성을 증명하지 않는다.

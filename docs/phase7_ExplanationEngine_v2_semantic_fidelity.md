@@ -82,6 +82,8 @@ evidence를 인용하거나 unknown ID를 만들면 역시 `CRITIC_ERROR`다.
 
 수사적 예외는 HOOK의 순수한 핵심 질문에만 적용된다. 사실 주장이 섞였거나 evidence를 인용한
 수사 절, HOOK 밖의 수사 절은 통과하지 않는다.
+"순수한 핵심 질문"의 판정은 Phase 6 과 같은 `spoken_narration.hook_matches_core_question` 이다 — 내용은
+글자 그대로, 문장 끝 어미만 말투 변형 허용(2026-10-04 정정, 이전에는 공백만 무시한 완전 일치였다).
 
 ## Gold Set shadow 결과
 

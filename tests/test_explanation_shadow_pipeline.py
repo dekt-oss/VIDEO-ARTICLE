@@ -485,3 +485,20 @@ def test_override_cannot_lift_a_length_overrun():
     actions = [a["action"] for a in result["shadow"]["gate"]["required_actions"]]
     assert actions == ["DOWNGRADE_LENGTH"]
     assert result["shadow"]["directive"] is None
+
+
+def test_markdown_discloses_hook_restoration():
+    def rewriting_caller(**kwargs):
+        payload = json.loads(kwargs["user"])
+        return {"beats": [{
+            "beat_id": beat["beat_id"],
+            "sentences": ["발뒤꿈치 보행은 위험하다?"] if beat["stage"] == "HOOK"
+            else list(beat["content_points"]),
+        } for beat in payload["beats"]]}
+
+    result = _run(narration_caller=rewriting_caller)
+
+    assert result["shadow"]["narration"]["repairs"][0]["repair"] == "hook_restored_to_core_question"
+    markdown = explanation_shadow_pipeline.render_markdown(result)
+    assert "phase6 코드 교정(NB01): hook_restored_to_core_question" in markdown
+    assert "모델 원문: 발뒤꿈치 보행은 위험하다?" in markdown

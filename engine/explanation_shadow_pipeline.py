@@ -373,6 +373,12 @@ def _finding_lines(result: dict[str, Any]) -> list[str]:
         lines.append(
             f"- ❌ 실행 오류({error.get('phase')}): {error.get('type')}: {error.get('message')}"
         )
+    for repair in _dict(shadow.get("narration")).get("repairs") or []:
+        repair = _dict(repair)
+        lines.append(
+            f"- phase6 코드 교정({repair.get('beat_id')}): {repair.get('repair')}"
+            f" — 모델 원문: {' '.join(str(x) for x in repair.get('model_sentences') or [])}"
+        )
     plan = _dict(shadow.get("narrative_plan"))
     if plan.get("warnings"):
         lines.append(f"- phase5 서사 계획 경고: {_join(plan.get('warnings'))}")
