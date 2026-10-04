@@ -675,3 +675,34 @@ def test_shadow_comparison_rejects_malformed_gate_shape():
         shadow.compare(
             {"case_id": "case-a", "domain": "paper", "findings": []}, malformed
         )
+
+
+def _blank_source_mode(*artifacts):
+    copies = [deepcopy(item) for item in artifacts]
+    for item in copies:
+        item["source"]["source_mode"] = ""
+    return copies
+
+
+def test_legacy_unknown_source_mode_is_accepted_only_at_depth_none():
+    gate = _gate_module()
+    pack, ir, resolution, plan, narration, fidelity = _artifacts(source_depth="none")
+    legacy_pack, legacy_ir, legacy_plan = _blank_source_mode(pack, ir, plan)
+
+    result = gate.evaluate(
+        _content_plan(selected_mode="flash", target_duration_max_sec=35),
+        narration, fidelity, legacy_plan, legacy_ir, resolution, legacy_pack,
+    )
+
+    assert result["constraints"]["source_mode"] == "BRIEF_EXPLAINER"
+
+
+def test_blank_source_mode_with_a_deeper_depth_is_still_rejected():
+    gate = _gate_module()
+    pack, ir, resolution, plan, narration, fidelity = _artifacts(source_depth="full_body")
+    blank_pack, blank_ir, blank_plan = _blank_source_mode(pack, ir, plan)
+
+    with pytest.raises(ValueError, match="source_policy_mode_mismatch"):
+        gate.evaluate(
+            _content_plan(), narration, fidelity, blank_plan, blank_ir, resolution, blank_pack,
+        )

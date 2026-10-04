@@ -64,6 +64,12 @@ Gate는 저장된 `gate_status`, 행동 목록, 제약, override 결과를 신�
 `gate_not_canonical`로 거절한다. Evidence Pack과 IR의 `source_mode`를 함께 위조해도
 Source Adequacy 정책표와 다르면 거절한다.
 
+예외 하나(2026-10-04, Phase 11 리뷰 후속): 출처 메타가 없는 레거시 Fact Sheet 는 Phase 2 가
+모드를 추정하지 않고 `source_mode=""` 로 둔다(Phase 2 §8). 이때 깊이는 `none` 이므로 정책도 가장
+보수적인 `none` 행이 적용된다 — 이 조합만 불일치로 보지 않는다. 다른 깊이에서 빈 모드는 계속
+거절한다. 이 소스 검사는 `source_errors(pack, ir)` 로 분리돼 있어 Shadow 실행이 유료 모델 호출
+전에 먼저 돌린다.
+
 ## Gold Set Shadow 결과
 
 Phase 7에서 안전하게 차단·거절된 여섯 사례는 Phase 8에서도 전부
