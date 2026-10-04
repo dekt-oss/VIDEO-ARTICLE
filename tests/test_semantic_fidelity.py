@@ -836,7 +836,8 @@ def test_phase7_shadow_comparison_preserves_synthetic_failure_axes(
     "변이는 성격을 결정한다. 변이는 성격을 결정하는가?",
     "변이는 성격을 결정하는가? 변이는 성격을 결정한다. 그렇지?",
 ])
-def test_rhetorical_hook_must_equal_the_approved_core_question(unsafe_hook: str):
+def test_unsafe_hook_never_reaches_the_critic_as_a_rhetorical_clause(unsafe_hook: str):
+    """Phase 6 가 승인된 핵심 질문으로 되돌리므로 사실 주장이 섞인 질문은 Phase 7 에 못 온다."""
     pack, ir, resolution, plan, _ = _paper_artifacts()
     payload = {
         "beats": [{
@@ -848,14 +849,36 @@ def test_rhetorical_hook_must_equal_the_approved_core_question(unsafe_hook: str)
     narration = spoken_narration.normalize_draft(
         payload, plan, ir, resolution, pack
     )
-    assert narration["generation_status"] == "DRAFT_ACCEPTED"
+    assert narration["narration_beats"][0]["sentences"] == [plan["core_question"]]
+    assert narration["repairs"][0]["model_sentences"] == [unsafe_hook]
+    assert not spoken_narration.hook_matches_core_question(unsafe_hook, plan["core_question"])
+
+    result = semantic_fidelity.normalize_review(
+        _critic_payload(narration), narration, plan, ir, resolution, pack
+    )
+    assert "rhetorical_exemption_invalid:SC01" not in result["qa"]["errors"]
+
+
+def test_spoken_question_ending_keeps_the_rhetorical_exemption():
+    """Phase 12 파일럿(2026-10-04) 회귀: "…는가?" → "…는 걸까요?" 만으로 막히던 것."""
+    pack, ir, resolution, plan, _ = _paper_artifacts()
+    spoken = plan["core_question"].rstrip("?").removesuffix("는가") + "는 걸까요?"
+    payload = {
+        "beats": [{
+            "beat_id": beat["beat_id"],
+            "sentences": [spoken] if beat["stage"] == "HOOK"
+            else list(beat["content_points"]),
+        } for beat in plan["beats"]]
+    }
+    narration = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
+    assert narration["narration_beats"][0]["sentences"] == [spoken]
 
     result = semantic_fidelity.normalize_review(
         _critic_payload(narration), narration, plan, ir, resolution, pack
     )
 
-    assert result["qa_status"] == "REJECTED"
-    assert "rhetorical_exemption_invalid:SC01" in result["qa"]["errors"]
+    assert "rhetorical_exemption_invalid:SC01" not in result["qa"]["errors"]
+    assert result["qa_status"] == "PASSED"
 
 
 def test_validate_rejects_reindexed_extra_and_forged_stored_results():
