@@ -54,6 +54,8 @@ Phase 9의 검증된 `visual-plan-v1`과 Explanation IR을 현재 Production 지
 - cut trace가 원본 beat/shot/mutation과 정확히 같은지 검사
 - 모든 factual READY cut이 reasoning/evidence/concept/knowledge 중 하나 이상으로 추적되는지 검사
 - mutation entity가 해당 narration의 canonical provenance entity인지 검사
+- narration stage와 mechanism constraint로 visual mode, stage/mutation operation, shot action,
+  camera operation을 재계산해 자유문장 또는 금지된 mechanism 삽입을 거절
 - canonical rebuild와 결과가 다르면 거절
 
 ## Same-input Comparison

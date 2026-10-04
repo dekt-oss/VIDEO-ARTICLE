@@ -30,6 +30,43 @@ _TRANSITION = {
     "GRAPHIC_MATCH": "crossfade",
     "PULL_OUT": "crossfade",
 }
+_VISUAL_MODE_BY_STAGE = {
+    "HOOK": "QUESTION",
+    "SETUP": "PREREQUISITE",
+    "CONFLICT": "PHENOMENON",
+    "EXPLANATION": "SCHEMATIC",
+    "EVIDENCE": "DATA",
+    "PAYOFF": "RESULT",
+    "BOUNDARY": "BOUNDARY",
+}
+_OPERATION_BY_MODE = {
+    "QUESTION": "REVEAL",
+    "PREREQUISITE": "REVEAL",
+    "PHENOMENON": "ISOLATE",
+    "SCHEMATIC": "FLOW",
+    "MECHANISM": "FLOW",
+    "DATA": "ACCUMULATE",
+    "RESULT": "REVEAL",
+    "BOUNDARY": "ISOLATE",
+}
+_MUTATION_BY_MODE = {
+    "QUESTION": "APPEAR",
+    "PREREQUISITE": "APPEAR",
+    "PHENOMENON": "HIGHLIGHT",
+    "SCHEMATIC": "HIGHLIGHT",
+    "MECHANISM": "TRANSFORM",
+    "DATA": "GROW",
+    "RESULT": "HIGHLIGHT",
+    "BOUNDARY": "DIM",
+}
+_CAMERA_BY_TRANSITION = {
+    "PUSH_IN": "DOLLY_IN",
+    "PULL_OUT": "DOLLY_OUT",
+    "OBJECT_FOLLOW": "FOLLOW_OBJECT",
+    "CUTAWAY": "HOLD",
+    "GRAPHIC_MATCH": "HOLD",
+    "HARD_CUT": "HOLD",
+}
 
 
 def _text(value: Any) -> str:
@@ -171,6 +208,7 @@ def _input_errors(
     seen_shots: set[str] = set()
     seen_mutations: set[str] = set()
     used_narration: list[str] = []
+    previous_transition = "HARD_CUT"
     for beat in beats:
         if not isinstance(beat, dict):
             errors.append("visual_beat_invalid")
@@ -223,6 +261,40 @@ def _input_errors(
             errors.append(f"narration_beat_mismatch:{visual_beat_id}")
         if _text(narration_row.get("stage")) != "HOOK" and not any(provenance_fields.values()):
             errors.append(f"factual_trace_empty:{visual_beat_id}")
+        stage_name = _text(narration_row.get("stage"))
+        expected_mode = _VISUAL_MODE_BY_STAGE.get(stage_name, "")
+        mechanism_ids = set(_strings((visual_plan.get("constraints") or {}).get(
+            "mechanism_reasoning_ids"
+        )))
+        if (
+            stage_name == "EXPLANATION"
+            and (visual_plan.get("constraints") or {}).get("mechanism_visual_allowed") is True
+            and any(reasoning_id in mechanism_ids for reasoning_id in reasoning_ids)
+        ):
+            expected_mode = "MECHANISM"
+        visual_mode = _text(beat.get("visual_mode"))
+        if visual_mode != expected_mode:
+            errors.append(f"visual_mode_mismatch:{visual_beat_id}")
+        if _text(beat.get("representation_mode")) != "SCHEMATIC_PRINCIPLE":
+            errors.append(f"representation_mode_mismatch:{visual_beat_id}")
+        expected_operation = _OPERATION_BY_MODE.get(expected_mode, "")
+        if _text(stage.get("operation")) != expected_operation:
+            errors.append(f"stage_operation_mismatch:{stage_id}")
+        if _text(shot.get("action")) != expected_operation:
+            errors.append(f"shot_action_mismatch:{shot_id}")
+        transition_in = _text(shot.get("transition_in"))
+        transition_out = _text(shot.get("transition_out"))
+        if transition_in != previous_transition:
+            errors.append(f"shot_transition_in_mismatch:{shot_id}")
+        expected_camera = _CAMERA_BY_TRANSITION.get(transition_out)
+        if expected_camera is None:
+            errors.append(f"shot_transition_out_invalid:{shot_id}")
+        elif (
+            _text(stage.get("camera_operation")) != expected_camera
+            or _text(shot.get("camera_operation")) != expected_camera
+        ):
+            errors.append(f"camera_operation_mismatch:{shot_id}")
+        previous_transition = transition_out
         semantic_fields = ("causal_levels", "uncertainties", "attributions")
         if any(
             _strings(beat.get(field)) != _strings(narration_row.get(field))
@@ -267,6 +339,8 @@ def _input_errors(
                 errors.append(f"mutation_entity_ref_empty:{mutation_id or stage_id}")
             elif _text(mutation.get("entity_ref")) != _entity_ref(narration_row):
                 errors.append(f"mutation_entity_ref_mismatch:{mutation_id or stage_id}")
+            if _text(mutation.get("operation")) != _MUTATION_BY_MODE.get(expected_mode, ""):
+                errors.append(f"mutation_operation_mismatch:{mutation_id or stage_id}")
             if _strings(mutation.get("reasoning_ids")) != reasoning_ids:
                 errors.append(f"mutation_reasoning_mismatch:{mutation_id}")
             if _strings(mutation.get("evidence_ids")) != evidence_ids:

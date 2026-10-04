@@ -226,6 +226,31 @@ def test_source_depth_constraints_cannot_be_expanded_after_the_gate():
         projector.build(forged, narration, ir, pack)
 
 
+def test_mechanism_visual_cannot_bypass_reasoning_constraint():
+    projector = _module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    forged_ir = deepcopy(ir)
+    forged_ir["reasoning_units"][0]["role"] = "result"
+    forged_plan = deepcopy(visual_plan)
+    forged_plan["constraints"]["mechanism_visual_allowed"] = False
+    forged_plan["constraints"]["mechanism_reasoning_ids"] = []
+
+    with pytest.raises(ValueError, match="visual_mode_mismatch"):
+        projector.build(forged_plan, narration, forged_ir, pack)
+
+
+def test_shot_action_cannot_inject_a_new_causal_claim():
+    projector = _module()
+    visual_plan, narration, ir, pack = _ready_inputs()
+    forged = deepcopy(visual_plan)
+    forged["visual_beats"][1]["shot_directive"]["action"] = (
+        "A destroys B through an established causal pathway"
+    )
+
+    with pytest.raises(ValueError, match="shot_action_mismatch"):
+        projector.build(forged, narration, ir, pack)
+
+
 def test_validator_rejects_trace_removed_after_projection():
     projector = _module()
     visual_plan, narration, ir, pack = _ready_inputs()

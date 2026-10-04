@@ -195,6 +195,8 @@ VB02 → SN02 → XR01 → paper:C01 → claims:C01 → VS02 → VM02 → SHOT02
 - 모든 narration beat의 1:1 소비를 강제해 한정/반례 beat 삭제 거절
 - factual beat의 provenance 제거와 허위 entity ref 거절
 - Phase 1 source constraint와 IR mechanism 범위를 재계산해 shallow-source 확장 거절
+- narration stage와 mechanism 허용 범위에서 visual mode·stage/mutation operation·shot action을
+  재계산해 금지된 기전 화면과 prompt 인과 문장 삽입 거절
 - 기존 renderer가 읽는 `header.visual_sequences`를 정본으로 제공
 - 비교기는 원본 narration과 canonical V2 전체를 다시 검증하며 ID만 같은 다른 입력을 거절
 - 저장 결과가 canonical rebuild와 다르면 `directive_not_canonical`
