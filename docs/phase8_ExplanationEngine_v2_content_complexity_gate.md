@@ -55,6 +55,10 @@ override 이벤트만 읽어야 한다.
 |---|---|
 | `selected_mode=series_split` | `SPLIT_SERIES`; `approved=true`와 비어 있지 않은 사유가 있는 override만 해제 |
 | 전체 발화 숫자 `MAX_SPOKEN_NUMBERS` 초과 | `REGENERATE_NARRATION`; override 불가 |
+
+> 2026-10-04: Phase 5 가 말할 숫자를 예산 안에서 고르고 Phase 6 이 그 밖의 숫자를 말하면 거절하므로,
+> 정상 흐름에서는 이 판정에 도달하지 않는다(이중 안전장치로 남김). 세는 방법은 `spoken_numbers.value_tokens`
+> — 시점 표현·이름 속 숫자는 세지 않는다.
 | Source mode 또는 목표 길이가 Source Adequacy 상한 초과 | `DOWNGRADE_LENGTH` |
 | 의미 QA 미통과 | `BLOCKED_UPSTREAM`; 복잡도 행동과 Visual 제약 소비 금지 |
 | mechanism reasoning ID 없음 | `mechanism_visual_allowed=false` |

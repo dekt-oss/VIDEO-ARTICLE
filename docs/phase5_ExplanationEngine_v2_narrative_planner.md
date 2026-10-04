@@ -35,6 +35,20 @@ Prerequisite Resolver → prerequisite resolution┘
 `HOOK|SETUP|CONFLICT|EXPLANATION|EVIDENCE|PAYOFF|BOUNDARY`만 허용한다.
 같은 stage의 연속 IR unit은 한 beat로 묶을 수 있지만 원래 chain 순서는 바꾸지 않는다.
 
+## 말로 읽을 숫자 배정 (2026-10-04)
+
+각 beat 에 `number_delivery = {spoken_numbers, screen_facts}` 를 둔다. 대본 재료(`content_points`)는
+그대로 두고(위 계약), **어느 숫자를 말하고 어느 문장을 화면 카드로 보낼지만** 정한다.
+
+- 예산: 영상 전체 `MAX_SPOKEN_NUMBERS`(2). 시점 표현(2026년·3분기·3Q26E)과 이름 속 숫자(HBM4·A100)는 세지 않는다.
+- 우선순위: ① thesis 와 같은 문장 ② `result`·`payoff` 역할 ③ 나머지 — 각각 이야기 순서. 한 단위의 숫자는
+  전부 말하거나 전부 화면으로(범위를 반쪽만 읽지 않는다).
+- 고르지 못한 단위는 `screen_facts`(원문 문장 + 숫자)로 가고 Phase 10 컷에 실린다.
+- `validate()` 가 같은 규칙으로 다시 계산해 다르면 `number_delivery_invalid`.
+
+배경: 종전에는 숫자를 전부 대본 재료로 넘겨 Phase 6(숫자 변경 금지)과 Phase 8(2개 상한)이 동시에 만족될 수
+없었다(파일럿 16·15개). 숫자 계약은 `engine/spoken_numbers.py` 한 자리다(2026-10-04, Phase 12 파일럿 후속).
+
 ## 기존 4막과 관계
 
 기존 `engine/narrative.py`의 4막은 대본 형식으로 유지한다. 새 planner는 그보다 앞에서

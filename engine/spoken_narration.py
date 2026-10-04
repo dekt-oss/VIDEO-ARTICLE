@@ -12,7 +12,7 @@ import json
 import re
 from typing import Any, Callable
 
-from . import config, narrative_planner, script_polish
+from . import config, narrative_planner, script_polish, spoken_numbers
 from .llm import call_json, set_text_purpose
 
 
@@ -21,10 +21,6 @@ STATUSES = frozenset({"DRAFT_ACCEPTED", "REJECTED_DRAFT", "BLOCKED_UPSTREAM"})
 MAX_TOKENS = 8192
 SPOKEN_SENTENCE_MAX_CHARS = 60
 
-_NUMBER = re.compile(
-    r"[+-]?\d+(?:[.,]\d+)?\s*(?:퍼센트|개월|시간|억원|만원|달러|USD|KRW|%|배|년|"
-    r"주|일|분|초|명|마리|건|개|회|원|kg|km|mg|ml|mm|cm|g|m|L)?"
-)
 _SCOPE_INTENSIFIERS = frozenset({
     "모든", "유일", "항상", "절대", "오직", "최초", "전부", "완전히", "반드시",
 })
@@ -37,7 +33,10 @@ _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시�
 
 SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다.
 입력의 비트 순서와 의미를 그대로 유지해 말하기 쉬운 문장으로 바꿔라.
-숫자, 단위, 범위, 부정, 불확실성, 연관성, 출처 귀속을 바꾸거나 빼지 마라.
+부정, 불확실성, 연관성, 범위 단서(평균·일부·약 등), 출처 귀속을 바꾸거나 빼지 마라.
+숫자: 각 비트의 spoken_numbers 에 있는 수만 값·단위 그대로 말한다. screen_numbers 의 수는 말하지 말고
+크기와 방향을 말로 풀어라(예: "2.4배에서 8.6배 더 넓다" → "훨씬 넓다") — 그 수는 화면 카드로 나간다.
+연도·분기 같은 시점 표현은 그대로 둔다. 입력에 없는 숫자를 만들지 마라.
 새 사실, 비유, 인과, 근거, ID를 추가하지 마라.
 stage 가 HOOK 인 비트는 core_question 을 한 문장 그대로 쓴다. 바꿔도 되는 것은 문장 끝 어미뿐이다
 (예: "…하는가?" → "…하는 걸까요?"). 낱말을 바꾸거나 다른 문장을 덧붙이면 코드가 core_question 으로 되돌린다.
@@ -54,14 +53,6 @@ def _strings(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item.strip() for item in value if isinstance(item, str) and item.strip()]
-
-
-def _number_tokens(text: str) -> list[str]:
-    return sorted(
-        re.sub(r"\s+", "", match.group(0))
-        for match in _NUMBER.finditer(text)
-        if any(character.isdigit() for character in match.group(0))
-    )
 
 
 # 도입 질문에서 말투로 바꿔도 되는 문장 끝 어미(긴 것부터 떼어 낸다). 어간·낱말은 못 바꾼다.
@@ -124,11 +115,27 @@ def _draft_guard_findings(
             continue
         before = " ".join(_strings(source.get("content_points")))
         after = _joined_sentences(beat)
-        before_numbers = _number_tokens(before)
-        after_numbers = _number_tokens(after)
+        # 숫자 계약(spoken_numbers 모듈): 말하기로 고른 값만 그대로, 화면용 값은 말하지 않고,
+        # 시점 표현은 그대로. 입력에 없는 값은 어느 쪽이든 numbers_changed.
+        delivery = source.get("number_delivery") if isinstance(
+            source.get("number_delivery"), dict) else {}
+        expected_spoken = sorted(_strings(delivery.get("spoken_numbers")))
+        screen_numbers = sorted(
+            number for fact in delivery.get("screen_facts") or [] if isinstance(fact, dict)
+            for number in _strings(fact.get("numbers"))
+        )
+        after_numbers = spoken_numbers.value_tokens(after)
         total_numbers += len(after_numbers)
-        if before_numbers != after_numbers:
-            errors.append(f"numbers_changed:{beat_id}")
+        if after_numbers != expected_spoken:
+            extra = spoken_numbers.multiset_minus(after_numbers, expected_spoken)
+            missing = spoken_numbers.multiset_minus(expected_spoken, after_numbers)
+            spoken_screen = [n for n in extra if n in screen_numbers]
+            if spoken_screen:
+                errors.append(f"screen_number_spoken:{beat_id}:{spoken_screen[0]}")
+            if missing or len(spoken_screen) != len(extra):
+                errors.append(f"numbers_changed:{beat_id}")
+        if spoken_numbers.period_tokens(before) != spoken_numbers.period_tokens(after):
+            errors.append(f"period_changed:{beat_id}")
 
         added_scope = sorted(
             term for term in _SCOPE_INTENSIFIERS if term in after and term not in before
@@ -240,6 +247,11 @@ def prompt_payload(plan: dict[str, Any], ir: dict[str, Any],
             "stage": beat["stage"],
             "purpose": beat["purpose"],
             "content_points": deepcopy(beat["content_points"]),
+            "spoken_numbers": deepcopy(beat["number_delivery"]["spoken_numbers"]),
+            "screen_numbers": sorted(
+                number for fact in beat["number_delivery"]["screen_facts"]
+                for number in fact["numbers"]
+            ),
             "causal_levels": deepcopy(beat["causal_levels"]),
             "uncertainties": deepcopy(beat["uncertainties"]),
             "attributions": deepcopy(beat["attributions"]),
@@ -326,6 +338,7 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
             "causal_levels": deepcopy(beat["causal_levels"]),
             "uncertainties": deepcopy(beat["uncertainties"]),
             "attributions": deepcopy(beat["attributions"]),
+            "number_delivery": deepcopy(beat["number_delivery"]),
         })
 
     guard_errors, guard_warnings, metrics = _draft_guard_findings(normalized, plan)
@@ -403,6 +416,7 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
         for field in (
             "stage", "reasoning_ids", "evidence_ids", "raw_refs", "concept_ids",
             "knowledge_refs", "causal_levels", "uncertainties", "attributions",
+            "number_delivery",
         ):
             if row.get(field) != source.get(field):
                 errors.append(f"{field}_invalid:{source['beat_id']}")
