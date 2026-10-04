@@ -129,6 +129,6 @@ Attack missing trace, qualifier loss, association/causation upgrades, projection
 
 Apply one bounded fix pass and rerun the relevant suite.
 
-- [ ] **Step 5: Commit, push, and open a Draft stacked PR**
+- [x] **Step 5: Commit, push, and open a Draft stacked PR**
 
 Base the PR on `codex/explanation-v2-phase9-visual-planner`; do not merge either PR.
