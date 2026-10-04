@@ -198,3 +198,62 @@ def shortfall(skeleton: list[dict[str, Any]], cuts: list[dict[str, Any]]) -> str
     need = max(1, int(len(skeleton) * config.CUT_SKELETON_TOLERANCE))
     got = len(cuts)
     return f"photo_skeleton_shortfall:{got}<{need}(골격 {len(skeleton)}칸)" if got < need else ""
+
+
+# ─────────────────────────────────────────────────────────────
+# 대사 고정 (2026-10-05, Explanation Engine v2 설계 점검 A — 운영자 결정 ①)
+# ─────────────────────────────────────────────────────────────
+# ★ 왜: 원 작업지시서는 "독립 검증자가 **최종 대본**을 원문과 대조한다"(§9.4)와 "대본은 검증된 논리
+#   밖의 새 이야기를 만들지 못한다"(Phase 6)를 요구한다. V2 대본은 그 검증을 통과했는데, 리포트
+#   지시서 생성기가 대본을 "초안"으로 보고 다시 썼다(실측 Samsung: 14컷 중 V2 문장 0개, 말하는 숫자
+#   2→5개, 없던 주주환원 문장 추가). 위 `skeleton_block` 은 컷 **개수·순서**만 고정하고 "문장을 다듬는
+#   것은 허용"한다 — 그래서 대사까지 글자 그대로 고정하는 장치를 따로 둔다.
+# ★ 초안에 `NARRATION_LOCK_KEY` 가 참일 때만 작동한다. 그 값은 V2 브리지(`v2_directive_bridge`)만
+#   넣는다 — Production 초안에는 없으므로 Production 지시서 동작은 바뀌지 않는다.
+NARRATION_LOCK_KEY = "narration_lock"
+_LOCK_IGNORED = re.compile(r"[\s.,!?·\"'“”‘’…~]+")
+
+
+def lock_block(skeleton: list[dict[str, Any]]) -> str:
+    """대사 고정 지시문. 칸마다 말할 문장을 글자 그대로 준다."""
+    if not skeleton:
+        return ""
+    lines = [f"  {c['cut_no']:>2}. ({c['estimated_sec']}초) {c['sentence']}" for c in skeleton]
+    return (
+        f"\n\n[대사 고정 — 검증을 마친 대본이다] 총 {len(skeleton)}컷. 각 칸의 narration_ko 는 아래 문장을\n"
+        "**글자 그대로** 쓴다. 다듬지도, 합치지도, 나누지도, 새 문장을 더하지도 마라 — 이 문장들은 원문 근거와\n"
+        "대조를 이미 마쳤고, 바뀌면 검증받지 않은 대본이 된다. Fact Sheet 나 논증 단위에 다른 내용이 있어도\n"
+        "대사에 넣지 마라. 네가 정하는 것은 **각 칸을 무엇으로 보여줄 것인가**뿐이다.\n"
+        + "\n".join(lines)
+    )
+
+
+def _same_words(a: Any, b: Any) -> bool:
+    return _LOCK_IGNORED.sub("", str(a or "")) == _LOCK_IGNORED.sub("", str(b or ""))
+
+
+def lock_narration(cuts: list[dict[str, Any]], skeleton: list[dict[str, Any]]) -> dict[str, Any]:
+    """모델이 낸 컷의 대사를 골격 문장으로 되돌린다. 컷 수가 다르면 되돌리지 않고 불일치로 보고한다.
+
+    ★ 화면은 모델이 칸마다 받은 문장을 보고 만들었으므로, 칸 수가 같으면 대사만 되돌려도 화면과
+      대사가 같은 칸을 가리킨다. 칸 수가 다르면 어느 화면이 어느 문장인지 알 수 없다 — 승인 차단.
+    """
+    rows = [cut for cut in cuts if isinstance(cut, dict)]
+    if len(rows) != len(skeleton):
+        return {"status": "CUT_COUNT_MISMATCH", "expected_cuts": len(skeleton),
+                "actual_cuts": len(rows), "restored": []}
+    restored = []
+    for cut, bone in zip(rows, skeleton):
+        # 낱말이 바뀐 것만 '되돌림'으로 기록하고, 문장부호까지 검증된 원문으로 늘 맞춘다.
+        if not _same_words(cut.get("narration_ko"), bone["sentence"]):
+            restored.append({"cut_no": bone["cut_no"], "model_text": str(cut.get("narration_ko") or "")})
+        cut["narration_ko"] = bone["sentence"]
+    return {"status": "LOCKED", "expected_cuts": len(skeleton), "actual_cuts": len(rows),
+            "restored": restored}
+
+
+def lock_reason(report: dict[str, Any]) -> str:
+    """대사 고정 승인 차단 사유(없으면 빈 문자열)."""
+    if report.get("status") == "CUT_COUNT_MISMATCH":
+        return f"narration_lock_cut_count:{report['actual_cuts']}!={report['expected_cuts']}"
+    return ""

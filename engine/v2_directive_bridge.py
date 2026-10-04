@@ -27,7 +27,7 @@ import math
 import re
 from typing import Any, Callable
 
-from . import config
+from . import config, cut_skeleton
 from .llm import set_text_purpose
 
 CONTRACT_VERSION = "v2-directive-bridge-v1"
@@ -111,6 +111,7 @@ def paper_draft(shadow: dict[str, Any], legacy_draft: dict[str, Any]) -> dict[st
         "paper_id": _text(legacy_draft.get("paper_id")) or _text(shadow_content_id(shadow)),
         "fact_sheet": deepcopy(legacy_draft.get("fact_sheet") or {}),
         "script_md": script,
+        cut_skeleton.NARRATION_LOCK_KEY: True,
         "video_prompts": scenes,
         "video_flow": {"content_plan": _content_plan(beats, claim_ids, script)},
     }
@@ -150,6 +151,7 @@ def report_draft(shadow: dict[str, Any], legacy_draft: dict[str, Any],
         "report_id": _text(legacy_draft.get("report_id")) or shadow_content_id(shadow),
         "fact_sheet": deepcopy(legacy_draft.get("fact_sheet") or {}),
         "script_md": script,
+        cut_skeleton.NARRATION_LOCK_KEY: True,
         "scenes": scenes,
         "financial_reasoning": deepcopy(financial_reasoning or {}),
     }
@@ -217,6 +219,7 @@ def generate(domain: str, shadow: dict[str, Any], legacy_draft: dict[str, Any], 
         "input_draft": draft,
         "directive": directive,
         "trace": trace,
+        "narration_lock": header.get("narration_lock"),
         "approval_blocked": bool(header.get("approval_blocked")),
         "block_reasons": list(header.get("block_reasons") or []),
     }

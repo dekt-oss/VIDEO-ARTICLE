@@ -184,3 +184,92 @@ def test_generator_cost_is_labelled_as_the_bridge():
         "report", result["shadow"], {}, financial_reasoning={},
         generator=lambda draft: labels.append(llm._TEXT_PURPOSE.get("value")) or {"header": {}, "cuts": []})
     assert labels == ["v2_directive_bridge"]
+
+
+# ─── 대사 고정(운영자 결정 ①, 2026-10-05) ────────────────────────────
+
+from engine import cut_skeleton, decide, report_directive  # noqa: E402
+
+
+def test_lock_restores_rewritten_narration_when_cut_count_matches():
+    bones = cut_skeleton.build("첫 문장입니다. 둘째 문장입니다.")
+    cuts = [{"narration_ko": "모델이 바꾼 첫 문장"}, {"narration_ko": "둘째 문장입니다"}]
+
+    report = cut_skeleton.lock_narration(cuts, bones)
+
+    assert report["status"] == "LOCKED"
+    assert [c["narration_ko"] for c in cuts] == ["첫 문장입니다.", "둘째 문장입니다."]
+    assert report["restored"] == [{"cut_no": 1, "model_text": "모델이 바꾼 첫 문장"}]
+    assert cut_skeleton.lock_reason(report) == ""
+
+
+def test_lock_blocks_when_cut_count_differs():
+    bones = cut_skeleton.build("첫 문장입니다. 둘째 문장입니다.")
+    cuts = [{"narration_ko": "하나로 합친 문장"}]
+
+    report = cut_skeleton.lock_narration(cuts, bones)
+
+    assert report["status"] == "CUT_COUNT_MISMATCH"
+    assert cuts[0]["narration_ko"] == "하나로 합친 문장"          # 어느 칸인지 모르면 손대지 않는다
+    assert cut_skeleton.lock_reason(report) == "narration_lock_cut_count:1!=2"
+
+
+def _report_draft(lock: bool) -> dict:
+    result = _ready("report")
+    draft = v2_directive_bridge.report_draft(result["shadow"], {"report_id": "r"},
+                                             number_fixtures._number_heavy_report()[1])
+    if not lock:
+        draft.pop(cut_skeleton.NARRATION_LOCK_KEY)
+    return draft
+
+
+def test_production_prompt_is_unchanged_without_the_lock_marker():
+    plain = report_directive.report_directive_user_prompt(_report_draft(lock=False), "photo")
+    locked = report_directive.report_directive_user_prompt(_report_draft(lock=True), "photo")
+
+    assert "[대사 고정" not in plain
+    assert report_directive.LOCKED_SCENES_NOTE not in plain
+    assert "[대사 고정" in locked
+    assert locked.replace(locked[locked.index("\n\n[대사 고정"):locked.index("대본(script_md)")], "") \
+        .count("대본(script_md)") == plain.count("대본(script_md)")
+
+
+def _stub_report_llm(monkeypatch, *, drop_one: bool = False):
+    def fake_call_json(**kwargs):
+        bones = cut_skeleton.build(kwargs["user"].split("대본(script_md):\n", 1)[1].split("\n\nFact Sheet", 1)[0])
+        rows = bones[:-1] if drop_one else bones
+        return {"header": {}, "cuts": [
+            {"cut_no": b["cut_no"], "narration_ko": "모델이 새로 쓴 문장 " + str(b["cut_no"]),
+             "visual_prompt": "fab", "staging_ko": "장면", "visual_role": "REALITY"} for b in rows]}
+
+    monkeypatch.setattr(report_directive, "call_json", fake_call_json)
+    monkeypatch.setattr(decide, "enabled", lambda: False)
+
+
+def test_real_report_generator_keeps_v2_narration_word_for_word(monkeypatch):
+    _stub_report_llm(monkeypatch)
+    result = _ready("report")
+    draft_script = v2_directive_bridge.report_draft(
+        result["shadow"], {}, number_fixtures._number_heavy_report()[1])["script_md"]
+
+    generated = v2_directive_bridge.generate(
+        "report", result["shadow"], {"report_id": "r"},
+        financial_reasoning=number_fixtures._number_heavy_report()[1])
+
+    narrations = [cut["narration_ko"] for cut in generated["directive"]["cuts"]]
+    assert narrations == [b["sentence"] for b in cut_skeleton.build(draft_script)]
+    assert generated["narration_lock"]["status"] == "LOCKED"
+    assert len(generated["narration_lock"]["restored"]) == len(narrations)
+    assert generated["trace"]["untraced_cuts"] == 0
+
+
+def test_real_report_generator_blocks_when_cuts_are_merged(monkeypatch):
+    _stub_report_llm(monkeypatch, drop_one=True)
+    result = _ready("report")
+
+    generated = v2_directive_bridge.generate(
+        "report", result["shadow"], {"report_id": "r"},
+        financial_reasoning=number_fixtures._number_heavy_report()[1])
+
+    assert generated["approval_blocked"] is True
+    assert any(r.startswith("narration_lock_cut_count:") for r in generated["block_reasons"])
