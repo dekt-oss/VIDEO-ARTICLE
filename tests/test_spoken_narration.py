@@ -795,3 +795,55 @@ def test_each_scope_qualifier_must_survive_when_another_hedge_remains():
     assert result["generation_status"] == "REJECTED_DRAFT"
     assert any(error.startswith("qualifier_dropped:") and error.endswith(":일부")
                for error in result["qa"]["errors"])
+
+
+# ─── V2 의미 검사 보정(2026-10-04, 파일럿 논문 NB05·NB06) ─────────────────────
+
+@pytest.mark.parametrize("replacement", [
+    # "약간"(조금)은 범위 단서 "약"(대략)이 아니다 — 파일럿 NB06 오탐.
+    "1,260개 변이가 성격과 약간 연관됐지만 성격을 결정한다고 입증하지 않았다.",
+    # 불확실성을 덧붙이면 주장이 약해질 뿐이다 — 파일럿 NB05("것이다" → "것으로 보입니다").
+    "1,260개 변이가 성격과 연관됐을 가능성이 있지만 성격을 결정한다고 입증하지 않았다.",
+    # 수 앞의 "약" 을 덧붙이는 것도 약해지는 방향이다.
+    "약 1,260개 변이가 성격과 연관됐지만 성격을 결정한다고 입증하지 않았다.",
+])
+def test_weakening_or_degree_words_are_not_meaning_changes(replacement: str):
+    pack, ir, resolution, plan = _paper_ready()
+    payload = _safe_payload(plan)
+    payload["beats"][-1]["sentences"] = [replacement]
+
+    result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
+
+    assert result["generation_status"] == "DRAFT_ACCEPTED", result["qa"]["errors"]
+
+
+def test_adding_association_or_negation_is_still_a_meaning_change():
+    pack, ir, resolution, plan = _report_ready()
+    payload = _safe_payload(plan)
+    original = payload["beats"][-1]["sentences"][0]
+    payload["beats"][-1]["sentences"] = [original + " 이는 수요와 관련이 없지 않다."]
+
+    result = spoken_narration.normalize_draft(payload, plan, ir, resolution, pack)
+
+    assert result["generation_status"] == "REJECTED_DRAFT"
+    changed = [e for e in result["qa"]["errors"] if e.startswith("protected_meaning_changed:")]
+    assert changed and ("assoc" in changed[0] or "negation" in changed[0])
+
+
+def test_dropping_an_approximation_before_a_number_is_still_rejected():
+    _, _, _, plan = _paper_ready()
+    before = "약 30% 의 참가자에서 성격과 연관됐지만 성격을 결정한다고 입증하지 않았다."
+    narration = [{
+        "beat_id": "NB99", "stage": "EVIDENCE", "sentences": ["30% 의 참가자에서 성격과 연관됐지만 성격을 결정한다고 입증하지 않았다."],
+        "reasoning_ids": ["XR01"], "evidence_ids": ["paper:C01"], "knowledge_refs": [],
+    }]
+    fake_plan = {"core_question": plan["core_question"], "beats": [{
+        "beat_id": "NB99", "stage": "EVIDENCE", "content_points": [before],
+        "causal_levels": [], "attributions": [],
+        "number_delivery": {"spoken_numbers": ["30%"], "screen_facts": []},
+    }]}
+
+    errors, _, _ = spoken_narration._draft_guard_findings(narration, fake_plan)
+
+    assert "qualifier_dropped:NB99:약" in errors
+    assert any(e.startswith("protected_meaning_changed:NB99:") and "hedge" in e for e in errors)

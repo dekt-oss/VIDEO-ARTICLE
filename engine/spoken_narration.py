@@ -28,6 +28,12 @@ _DETERMINATION_TERMS = ("결정", "원인", "때문", "초래", "야기")
 _PROJECTION_TERMS = ("전망", "예상", "추정", "가능성", "시사", "본다", "봤다")
 _PROTECTED_MEANING_CLASSES = frozenset({"hedge", "uncertain", "assoc", "negation"})
 _SCOPE_QUALIFIERS = frozenset({"평균", "일부", "약", "가량", "정도", "경향", "특정", "대체로"})
+# "약" 은 수 앞("약 30%")일 때만 '대략'이라는 범위 단서다. "약간·약물·요약" 의 약은 아니다 — 파일럿에서
+# 화면용 숫자를 "약간 낮다"로 풀자 범위 단서가 새로 생긴 것으로 잘못 잡혔다(2026-10-04).
+# `script_polish.meaning_classes` 는 Production 다듬기도 쓰므로 고치지 않고 여기서만 가린다.
+_NON_HEDGE_YAK = re.compile(r"약(?!\s*[\d.])")
+# 덧붙이면 주장이 약해질 뿐인 갈래 — **빼는 것만** 막는다. 연관·부정은 양방향 모두 막는다.
+_WEAKENING_CLASSES = frozenset({"hedge", "uncertain"})
 _ABBREVIATION = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9+.-]{1,}(?![A-Za-z])")
 _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시사한다", "할 수 있습니다")
 
@@ -143,13 +149,20 @@ def _draft_guard_findings(
         if added_scope:
             errors.append(f"scope_intensifier_added:{beat_id}:{added_scope[0]}")
 
-        before_classes = script_polish.meaning_classes(before) & _PROTECTED_MEANING_CLASSES
-        after_classes = script_polish.meaning_classes(after) & _PROTECTED_MEANING_CLASSES
-        if before_classes != after_classes:
-            changed = ",".join(sorted(before_classes ^ after_classes))
+        before_meaning = _NON_HEDGE_YAK.sub("□", before)
+        after_meaning = _NON_HEDGE_YAK.sub("□", after)
+        before_classes = (
+            script_polish.meaning_classes(before_meaning) & _PROTECTED_MEANING_CLASSES
+        )
+        after_classes = script_polish.meaning_classes(after_meaning) & _PROTECTED_MEANING_CLASSES
+        changed_classes = (before_classes - after_classes) | (
+            (after_classes - before_classes) - _WEAKENING_CLASSES
+        )
+        if changed_classes:
+            changed = ",".join(sorted(changed_classes))
             errors.append(f"protected_meaning_changed:{beat_id}:{changed}")
         for qualifier in sorted(_SCOPE_QUALIFIERS):
-            if before.count(qualifier) > after.count(qualifier):
+            if before_meaning.count(qualifier) > after_meaning.count(qualifier):
                 errors.append(f"qualifier_dropped:{beat_id}:{qualifier}")
         if (
             "broker_projection" in (source.get("causal_levels") or [])
