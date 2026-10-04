@@ -173,3 +173,14 @@ def test_cli_rejects_with_directive_without_with_model(tmp_path):
     with pytest.raises(SystemExit):
         compare_explanation_v2.main(["report", "11111111-2222-3333-4444-555555555555",
                                      "--with-directive", "--output-dir", str(tmp_path)])
+
+
+def test_generator_cost_is_labelled_as_the_bridge():
+    from engine import llm
+
+    result = _ready("report")
+    labels = []
+    v2_directive_bridge.generate(
+        "report", result["shadow"], {}, financial_reasoning={},
+        generator=lambda draft: labels.append(llm._TEXT_PURPOSE.get("value")) or {"header": {}, "cuts": []})
+    assert labels == ["v2_directive_bridge"]

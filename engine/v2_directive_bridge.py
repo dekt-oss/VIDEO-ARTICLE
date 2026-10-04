@@ -28,6 +28,7 @@ import re
 from typing import Any, Callable
 
 from . import config
+from .llm import set_text_purpose
 
 CONTRACT_VERSION = "v2-directive-bridge-v1"
 _PUNCT = re.compile(r"[\s.,!?·'\"“”‘’()\[\]…~\-]+")
@@ -203,6 +204,9 @@ def generate(domain: str, shadow: dict[str, Any], legacy_draft: dict[str, Any], 
     """V2 대본 → 기존 생성기 지시서(+ 추적). DB 에 저장하지 않는다."""
     draft = (paper_draft(shadow, legacy_draft) if domain == "paper"
              else report_draft(shadow, legacy_draft, financial_reasoning))
+    # 비용 장부 용도 라벨. 리포트 생성기는 스스로 라벨을 붙이지 않아(`report_directive`), 앞 단계의
+    # "semantic_fidelity_shadow" 가 그대로 찍혔다(2026-10-05 실측: 지시서 2회 $0.29 가 '검증'으로 기록).
+    set_text_purpose("v2_directive_bridge")
     produced = (generator or _default_generator(domain, report))(draft)
     if domain == "report" and report and isinstance(produced.get("header"), dict):
         produced["header"].setdefault("broker", report.get("broker"))
