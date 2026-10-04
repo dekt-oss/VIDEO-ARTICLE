@@ -147,6 +147,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="비교할 Production 지시서 id(이 콘텐츠의 것만 허용)")
     parser.add_argument("--concepts-file", default=None,
                         help="Phase 4 선행 개념 명시 요청 JSON 목록")
+    parser.add_argument("--override-series-split", default="", metavar="REASON",
+                        help="Phase 8 series_split 명시적 override 사유(비우면 override 없음)")
     parser.add_argument("--output-dir", default="artifacts/explanation-v2-phase11")
     args = parser.parse_args(argv)
 
@@ -162,6 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             financial_reasoning=draft.get("financial_reasoning"),
             production_content_plan=(draft.get("video_flow") or {}).get("content_plan"),
             requested_concepts=requested_concepts,
+            series_split_override_reason=args.override_series_split,
             legacy_draft=draft,
             legacy_directive=directive,
             allow_model_calls=args.with_model,

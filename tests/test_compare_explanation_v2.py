@@ -124,6 +124,7 @@ def _fake_run(**kwargs):
         "run_status": "BLOCKED", "error": None, "run": {}, "legacy": {"cuts": []},
         "phase_status": {}, "shadow": {}, "non_claims": [],
         "seen_plan": kwargs["production_content_plan"],
+        "seen_override": kwargs["series_split_override_reason"],
     }
 
 
@@ -195,3 +196,15 @@ def test_cli_end_to_end_dry_run_writes_dossier_without_model_calls(monkeypatch, 
     assert printed["database_writes"] == {"generation_attempts": 0}
     markdown = Path(printed["markdown"]).read_text(encoding="utf-8")
     assert "운영 대본" in markdown and "동일 Fact Sheet revision: 미검증" in markdown
+
+
+def test_cli_passes_series_split_override_reason(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(compare_explanation_v2.db, "insert_generation_attempt", lambda row: None)
+    _patch_load(monkeypatch, {"fact_sheet": {}})
+    monkeypatch.setattr(compare_explanation_v2.explanation_shadow_pipeline, "run", _fake_run)
+
+    compare_explanation_v2.main(["paper", PAPER_ID, "--override-series-split", "비교용",
+                                 "--output-dir", str(tmp_path)])
+
+    saved = json.loads(Path(json.loads(capsys.readouterr().out)["json"]).read_text(encoding="utf-8"))
+    assert saved["seen_override"] == "비교용"

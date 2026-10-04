@@ -314,7 +314,8 @@ def test_narration_caller_exception_is_recorded_not_raised():
 def test_empty_or_missing_source_never_raises_and_never_emits_directive(sheet, allow):
     result = _run(fact_sheet=sheet, allow_model_calls=allow)
 
-    assert result["run_status"] in {"BLOCKED", "ERROR"}
+    assert result["run_status"] == "BLOCKED"
+    assert result["error"] is None
     assert result["shadow"]["directive"] is None
     assert result["phase_status"]["phase10"] != "READY"
     explanation_shadow_pipeline.render_markdown(result)
@@ -401,3 +402,86 @@ def test_markdown_section_order_is_stable():
              "## V2 Shadow 대본", "## V2 Shadow 지시서", "## 차단·경고", "## 단계 판정"]
     positions = [markdown.index(heading) for heading in order]
     assert positions == sorted(positions)
+
+
+def test_legacy_fact_sheet_without_provenance_runs_to_a_verdict():
+    """retinotopic 실데이터 형태: claims 는 있는데 source_provenance 가 없다."""
+    sheet = _paper_fact_sheet()
+    del sheet["source_provenance"]
+
+    result = _run(fact_sheet=sheet)
+
+    assert result["error"] is None
+    assert result["run_status"] in {"READY", "BLOCKED"}
+    assert result["shadow"]["evidence_pack"]["source"]["source_mode"] == ""
+    assert result["shadow"]["gate"]["constraints"]["source_mode"] == "BRIEF_EXPLAINER"
+
+
+def test_preflight_refuses_inconsistent_source_before_any_model_call(monkeypatch):
+    from engine import evidence_pack
+
+    original = evidence_pack.build
+
+    def forged(*args, **kwargs):
+        pack = original(*args, **kwargs)
+        pack["source"]["source_mode"] = "FULL_EXPLAINER"
+        pack["source"]["source_depth"] = "abstract_only"
+        return pack
+
+    monkeypatch.setattr(evidence_pack, "build", forged)
+    calls = []
+
+    def counting(**kwargs):
+        calls.append(kwargs)
+        return _narration_caller(**kwargs)
+
+    result = _run(narration_caller=counting, critic_caller=counting)
+
+    assert calls == []
+    assert result["run_status"] == "ERROR"
+    assert result["error"]["phase"] == "phase6_preflight"
+    assert "preflight_failed_before_model_call" in result["error"]["message"]
+    assert result["phase_status"]["phase6"] == "ERROR"
+    assert result["shadow"]["directive"] is None
+
+
+SERIES_SPLIT_PLAN = {"selected_mode": "series_split", "target_duration_max_sec": 50}
+
+
+def test_series_split_without_override_blocks_the_directive():
+    result = _run(production_content_plan=SERIES_SPLIT_PLAN)
+
+    assert result["phase_status"]["phase8"] == "ACTION_REQUIRED"
+    assert "SPLIT_SERIES" in [a["action"] for a in result["shadow"]["gate"]["required_actions"]]
+    assert result["shadow"]["directive"] is None
+    assert result["run"]["series_split_override_reason"] == ""
+
+
+def test_blank_override_reason_is_not_an_override():
+    result = _run(production_content_plan=SERIES_SPLIT_PLAN, series_split_override_reason="   ")
+
+    assert result["phase_status"]["phase8"] == "ACTION_REQUIRED"
+    assert result["shadow"]["directive"] is None
+
+
+def test_explicit_series_split_override_is_applied_and_recorded():
+    reason = "비교용: 첫 편만 V2 로 만들어 본다"
+    result = _run(production_content_plan=SERIES_SPLIT_PLAN, series_split_override_reason=reason)
+
+    assert result["phase_status"]["phase8"] == "READY"
+    assert result["shadow"]["gate"]["applied_overrides"] == [
+        {"signal": "series_split", "reason": reason}
+    ]
+    assert result["run_status"] == "READY"
+    markdown = explanation_shadow_pipeline.render_markdown(result)
+    assert f"series_split override: {reason}" in markdown
+    assert f"phase8 적용된 override: series_split — {reason}" in markdown
+
+
+def test_override_cannot_lift_a_length_overrun():
+    plan = {"selected_mode": "series_split", "target_duration_max_sec": 90}
+    result = _run(production_content_plan=plan, series_split_override_reason="비교용")
+
+    actions = [a["action"] for a in result["shadow"]["gate"]["required_actions"]]
+    assert actions == ["DOWNGRADE_LENGTH"]
+    assert result["shadow"]["directive"] is None

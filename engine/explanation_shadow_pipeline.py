@@ -145,6 +145,7 @@ def run(
     financial_reasoning: dict[str, Any] | None = None,
     production_content_plan: dict[str, Any] | None = None,
     requested_concepts: list[dict[str, Any]] | None = None,
+    series_split_override_reason: str = "",
     allow_model_calls: bool = False,
     narration_caller: Callable[..., dict[str, Any]] | None = None,
     critic_caller: Callable[..., dict[str, Any]] | None = None,
@@ -153,6 +154,11 @@ def run(
 
     Stage failures are recorded as ``run_status=ERROR`` instead of raised, so a paid
     model call or a malformed stored source still leaves an inspectable dossier.
+    Inputs that would certainly fail the Phase 8 source check are refused *before* any
+    model call (``phase6_preflight``).
+
+    ``series_split_override_reason`` is the Phase 8 explicit override (작업지시서 §10
+    "한 편 발행 금지 또는 명시적 override"). Empty means no override.
     """
     if domain not in {"paper", "report"}:
         raise ValueError(f"domain_invalid:{domain}")
@@ -169,6 +175,12 @@ def run(
     )
     if requested_concepts is None:
         result["non_claims"].append("prerequisite_explanation_not_evaluated")
+    override_reason = str(series_split_override_reason or "").strip()
+    overrides = (
+        {"series_split": {"approved": True, "reason": override_reason}}
+        if override_reason else None
+    )
+    result["run"]["series_split_override_reason"] = override_reason
     shadow = result["shadow"]
     phases = result["phase_status"]
     phase = "phase2"
@@ -203,6 +215,12 @@ def run(
             result["run_status"] = "MODEL_CALL_REQUIRED"
             return result
 
+        if allow_model_calls:
+            phase = "phase6_preflight"
+            preflight = content_complexity_gate.source_errors(pack, ir)
+            if preflight:
+                raise ValueError("preflight_failed_before_model_call:" + ",".join(preflight))
+
         phase = "phase6"
         narration = spoken_narration.generate(
             plan, ir, resolution, pack,
@@ -226,14 +244,16 @@ def run(
         if plan_source != "production_draft":
             result["non_claims"].append("complexity_source_limit_not_evaluated")
         gate = content_complexity_gate.evaluate(
-            content_plan, narration, fidelity, plan, ir, resolution, pack
+            content_plan, narration, fidelity, plan, ir, resolution, pack,
+            overrides=overrides,
         )
         shadow["gate"] = gate
         phases["phase8"] = gate.get("gate_status")
 
         phase = "phase9"
         visual_plan = visual_planner.build(
-            content_plan, gate, narration, fidelity, plan, ir, resolution, pack
+            content_plan, gate, narration, fidelity, plan, ir, resolution, pack,
+            overrides=overrides,
         )
         shadow["visual_plan"] = visual_plan
         phases["phase9"] = visual_plan.get("planner_status")
@@ -246,7 +266,7 @@ def run(
         phases["phase10"] = "READY" if directive else "BLOCKED"
     except Exception as exc:  # noqa: BLE001 — 실패를 성공처럼 숨기지 않고 결과에 남긴다
         shadow["directive"] = None
-        phases[phase] = "ERROR"
+        phases["phase6" if phase == "phase6_preflight" else phase] = "ERROR"
         result["error"] = {
             "phase": phase,
             "type": type(exc).__name__,
@@ -371,6 +391,9 @@ def _finding_lines(result: dict[str, Any]) -> list[str]:
     for action in _dict(shadow.get("gate")).get("required_actions") or []:
         action = _dict(action)
         lines.append(f"- phase8 필요 조치: {action.get('action')} — {action.get('reason')}")
+    for applied in _dict(shadow.get("gate")).get("applied_overrides") or []:
+        applied = _dict(applied)
+        lines.append(f"- phase8 적용된 override: {applied.get('signal')} — {applied.get('reason')}")
     resolution = _dict(shadow.get("resolution"))
     if resolution.get("unresolved_concepts"):
         lines.append(f"- phase4 미해결 선행 개념: {_join(resolution.get('unresolved_concepts'))}")
@@ -403,6 +426,7 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- run status: {run_status}",
         f"- phase8 계획 출처: {run_meta.get('content_plan_source') or '-'}",
         f"- 선행 개념 요청: {requests.get('source') or '-'} ({requests.get('count', 0)}건)",
+        f"- series_split override: {run_meta.get('series_split_override_reason') or '없음'}",
     ]
     if side_effects:
         lines.append(f"- DB 기록: {json.dumps(side_effects, ensure_ascii=False)}")

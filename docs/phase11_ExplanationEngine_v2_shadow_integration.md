@@ -31,7 +31,12 @@ python scripts/compare_explanation_v2.py report <report_uuid>
 python scripts/compare_explanation_v2.py paper <paper_uuid> --with-model
 # 선택: 비교할 Production 지시서 지정, Phase 4 선행 개념 명시 요청
 python scripts/compare_explanation_v2.py paper <paper_uuid> --directive-id <directive_uuid> --concepts-file concepts.json
+# 선택: Production 계획이 series_split 일 때 Phase 8 명시적 override(사유 필수, 결과에 기록)
+python scripts/compare_explanation_v2.py paper <paper_uuid> --with-model --override-series-split "비교용: 첫 편만"
 ```
+
+`<paper_uuid>` 는 자리 표시다. PowerShell 에서 `<` 를 그대로 치면 실행 전에 파서 오류가 난다 —
+실제 UUID 로 바꿔 넣는다.
 
 `--with-model`은 해당 Fact Sheet의 trace-limited prompt를 저장소에 설정된 대본/검증 모델로
 전송한다. 결과는 기본적으로 `artifacts/explanation-v2-phase11/`에만 저장되며 이 디렉터리는
@@ -104,9 +109,33 @@ plan, directive를 모두 보존한다. 따라서 `reasoning_id → evidence_id 
 | P3 | 비교한 Production 지시서가 무엇인지 안 보임, V2 추적 ID 가 JSON 에만 | 지시서 식별 정보·선택 기준 표시, `--directive-id`(같은 콘텐츠 것만) 추가, V2 컷 추적 필드 표시 |
 | P3 | CLI 가 content ID 를 검사하기 전에 DB 를 조회, 파일명에 원값 사용 | UUID 형식 검사를 DB 접근 **전**에 하고 정규형만 사용 |
 
-범위 밖으로 남긴 것: Phase 2 에서 `quote_verified=false` 인 claim 이 `SUPPORTED` 로 남는 동작(의도
-여부 미확인), 빈 Fact Sheet 에서 Phase 2 의 `source_mode` 와 Phase 8 정책이 어긋나는 원인 자체(이번에는
-`ERROR` 로 기록만 한다).
+### 2차 후속(같은 PR, 운영자 결정 2026-10-04)
+
+| 결함 | 조치 |
+|---|---|
+| 출처 메타가 없는 레거시 Fact Sheet(실데이터: retinotopic `6b2d092a…`)가 유료 대본·검증 호출 **뒤** Phase 8 에서 `source_policy_mode_mismatch` 로 죽음 | Phase 2 는 원안(§8 "레거시는 모드를 추정하지 않는다")대로 `""` 를 유지한다. Phase 8 이 "모름 + 깊이 none" 만 가장 보수적인 `none` 정책으로 받아들인다 — 위조로 얻을 것이 없는 유일한 경우다. 다른 깊이에서 빈 모드는 계속 거절 |
+| 같은 종류의 불일치를 돈을 쓰고 나서야 발견 | `content_complexity_gate.source_errors()` 로 소스 검사를 분리하고, Shadow 실행은 모델 호출 **전**에 같은 검사를 돌린다(`phase6_preflight`). 걸리면 호출 0회로 `ERROR` |
+| Production 계획이 `series_split` 이면 V2 지시서가 항상 막힘(논문 후보 3건 전부) | 작업지시서 §10 이 허용하는 "명시적 override" 를 `--override-series-split "사유"` 로 추가. 기본 꺼짐, 빈 사유는 override 아님, 적용 사실은 결과·Markdown 에 남는다. **길이 초과(`DOWNGRADE_LENGTH`)는 override 로 못 푼다** |
+
+남은 것(의도 확인 필요, 이번에 손대지 않음): Phase 2 에서 `quote_verified=false` 인 claim 이 `SUPPORTED`
+로 남는 동작, 원안 Phase 4 의 "시청자가 모를 개념을 엔진이 찾는" 자동 탐지(현재는 명시 요청만 해결).
+
+## 원 작업지시서와의 단계 번호 대응
+
+`docs/작업지시서_ExplanationEngine_v2.md` 와 구현 문서의 번호는 Phase 10 부터 다르다. 구현은 Phase 9
+문서(§"Phase 10은 … 기존 Production directive schema로 투영")에서 순서를 바꿨다.
+
+| 원 작업지시서 | 구현 |
+|---|---|
+| Phase 9 Existing Visual Planner 재배선 | Phase 9 Visual Planner (전환 관계 `transition_relation` 포함 — 원안 Phase 10 일부) |
+| Phase 10 Transition Edge Planner | Phase 9 에 흡수 + Phase 10 Directive Projection(원안에 없는 단계) |
+| Phase 11 Visual Explainer Renderer | **미착수** |
+| Phase 12 Domain Visual Semantics | **미착수** |
+| Phase 13 QA 통합 | 미착수 |
+| Phase 14 Analytics / A-B (실험 A: 기존 대본 vs V2 대본) | 이 문서의 Phase 11 Shadow 비교 도구 + 인수인계의 "Phase 12 실측 비교"가 **렌더 없는 실험 A** 에 해당 |
+
+따라서 원안의 Renderer(Moving Information) 단계는 아직 시작되지 않았다. "Phase 12" 라는 이름이
+문서마다 다른 것을 가리킬 수 있으니 원안 번호를 함께 적는다.
 
 ## Rollback
 

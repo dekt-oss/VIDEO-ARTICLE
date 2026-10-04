@@ -39,6 +39,32 @@ def _source_policy(pack: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(table.get(depth) or table["__default__"])
 
 
+def source_errors(pack: dict[str, Any], ir: dict[str, Any]) -> list[str]:
+    """Source 깊이·모드가 Pack·IR·정책표에서 일치하는지. 대본 없이 검사할 수 있다.
+
+    Phase 11 Shadow 실행은 이 검사를 **유료 모델 호출 전에** 먼저 돌린다 — 여기서 걸릴
+    입력이면 대본·검증 호출에 돈을 쓴 뒤에 게이트에서 죽기 때문이다.
+    """
+    errors: list[str] = []
+    source = pack.get("source") if isinstance(pack.get("source"), dict) else {}
+    ir_source = ir.get("source") if isinstance(ir.get("source"), dict) else {}
+    for field in ("source_depth", "source_mode"):
+        if _text(ir_source.get(field)) != _text(source.get(field)):
+            errors.append(f"source_{field}_mismatch")
+    policy_mode = _text(_source_policy(pack).get("source_mode"))
+    pack_mode = _text(source.get("source_mode"))
+    # 레거시 Fact Sheet(출처 메타 없음)는 Phase 2 가 모드를 추정하지 않고 "" 로 둔다(Phase 2 §8).
+    # 그 경우 깊이는 "none" 이고 위 정책도 가장 보수적인 "none" 행이다 — 위조로 얻을 것이 없다.
+    # 이걸 불일치로 보면 레거시 콘텐츠가 유료 대본 호출 뒤 여기서 예외로 죽는다(Phase 11 리뷰).
+    legacy_unknown = not pack_mode and (_text(source.get("source_depth")) or "none") == "none"
+    if pack_mode != policy_mode and not legacy_unknown:
+        errors.append(
+            f"source_policy_mode_mismatch:{_text(source.get('source_mode')) or '?'}"
+            f"!={policy_mode or '?'}"
+        )
+    return errors
+
+
 def _upstream_errors(
     narration: dict[str, Any],
     fidelity: dict[str, Any],
@@ -61,17 +87,7 @@ def _upstream_errors(
             fidelity, narration, plan, ir, resolution, pack
         )
     )
-    source = pack.get("source") if isinstance(pack.get("source"), dict) else {}
-    ir_source = ir.get("source") if isinstance(ir.get("source"), dict) else {}
-    for field in ("source_depth", "source_mode"):
-        if _text(ir_source.get(field)) != _text(source.get(field)):
-            errors.append(f"source_{field}_mismatch")
-    policy_mode = _text(_source_policy(pack).get("source_mode"))
-    if _text(source.get("source_mode")) != policy_mode:
-        errors.append(
-            f"source_policy_mode_mismatch:{_text(source.get('source_mode')) or '?'}"
-            f"!={policy_mode or '?'}"
-        )
+    errors.extend(source_errors(pack, ir))
     return sorted(set(errors))
 
 
