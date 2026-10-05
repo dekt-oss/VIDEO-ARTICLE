@@ -479,13 +479,25 @@ def test_explicit_series_split_override_is_applied_and_recorded():
     assert f"phase8 적용된 override: series_split — {reason}" in markdown
 
 
-def test_override_cannot_lift_a_length_overrun():
-    plan = {"selected_mode": "series_split", "target_duration_max_sec": 90}
-    result = _run(production_content_plan=plan, series_split_override_reason="비교용")
+def test_override_cannot_lift_a_shallow_source_length_overrun():
+    """원문이 일부뿐인 논문(partial_body, 50초)은 길이 상한이 남는다 — 분할 해제로 못 푼다."""
+    sheet = _paper_fact_sheet()
+    sheet["source_provenance"] = {"source_depth": "partial_body", "char_count": 4000}
+    plan = {"selected_mode": "standard", "target_duration_max_sec": 90}
+    result = _run(fact_sheet=sheet, production_content_plan=plan,
+                  series_split_override_reason="비교용")
 
     actions = [a["action"] for a in result["shadow"]["gate"]["required_actions"]]
     assert actions == ["DOWNGRADE_LENGTH"]
     assert result["shadow"]["directive"] is None
+
+
+def test_full_source_has_no_length_cap():
+    """2026-10-05 운영자 지시 "80초 상한은 없애" — 원문이 충분하면 90초 계획도 막지 않는다."""
+    plan = {"selected_mode": "series_split", "target_duration_max_sec": 90}
+    result = _run(production_content_plan=plan, series_split_override_reason="비교용")
+
+    assert result["shadow"]["gate"]["required_actions"] == []
 
 
 def test_markdown_discloses_hook_restoration():

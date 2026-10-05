@@ -545,7 +545,11 @@ CONTENT_MODE_DURATION: dict[str, tuple[int, int]] = {
     "deep": (51, 65),       # 조절효과·메커니즘이 결론에 중요
     "extended": (66, 80),   # 예외 모드 — 압축하면 사실 왜곡이 나는 경우만
 }
-CONTENT_MODE_HARD_MAX_SEC: int = 80   # 초과 → 승인 차단(시리즈 분할)
+# ★ 0 = 상한 없음(2026-10-05 운영자 지시 "80초 상한은 없애"). 종전 80 — 초과하면 승인 차단이었다.
+#   web/lib/approvalGate.ts 의 같은 상수와 짝이다. 되살리려면 양쪽에 같은 값을 넣는다.
+CONTENT_MODE_HARD_MAX_SEC: int = _get_int("CONTENT_MODE_HARD_MAX_SEC", 0)
+# 상한 없음(0)을 "숫자가 꼭 필요한 자리"(예: 계획의 목표 길이)에 쓸 때의 값.
+UNCAPPED_DURATION_SEC: int = 600
 CONTENT_MODE_SOFT_MIN_SEC: int = 25   # 미만 → 경고만(RENDER_QA_MIN_SEC=20 은 그대로)
 CONTENT_MODE_CUT_RANGE: dict[str, tuple[int, int]] = {
     "flash": (4, 5), "standard": (5, 7), "deep": (6, 8), "extended": (7, 9),
@@ -3253,7 +3257,8 @@ SOURCE_ADEQUACY_CONTRACT_VERSION: str = "source-adequacy-v1"
 SOURCE_ADEQUACY_POLICIES: dict[str, dict[str, dict[str, object]]] = {
     "paper": {
         "full_body": {
-            "source_mode": "FULL_EXPLAINER", "max_duration_sec": 80,
+            # 0 = 상한 없음(2026-10-05 운영자 지시 — 원문이 충분하면 길이로 막지 않는다).
+            "source_mode": "FULL_EXPLAINER", "max_duration_sec": 0,
             "max_content_mode": "extended", "max_reasoning_units": 0, "max_reasoning_steps": 0,
         },
         "partial_body": {
@@ -3279,7 +3284,8 @@ SOURCE_ADEQUACY_POLICIES: dict[str, dict[str, dict[str, object]]] = {
     },
     "report": {
         "full_text": {
-            "source_mode": "FULL_EXPLAINER", "max_duration_sec": 80,
+            # 0 = 상한 없음(2026-10-05 운영자 지시 — 원문이 충분하면 길이로 막지 않는다).
+            "source_mode": "FULL_EXPLAINER", "max_duration_sec": 0,
             "max_content_mode": "", "max_reasoning_units": 5, "max_reasoning_steps": 5,
         },
         "partial_text": {

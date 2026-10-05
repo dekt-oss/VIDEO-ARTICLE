@@ -190,7 +190,8 @@ def _build(
 
     max_mode = constraints["max_content_mode"]
     duration = float(content_plan["target_duration_max_sec"])
-    source_exceeded = duration > constraints["max_duration_sec"]
+    max_duration = constraints["max_duration_sec"]
+    source_exceeded = bool(max_duration) and duration > max_duration   # 0 = 상한 없음
     if mode in _MODE_RANK and max_mode in _MODE_RANK:
         source_exceeded = source_exceeded or _MODE_RANK[mode] > _MODE_RANK[max_mode]
     if source_exceeded:
