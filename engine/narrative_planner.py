@@ -9,7 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from . import explanation_ir, prerequisite_resolver, spoken_numbers
+from . import config, explanation_ir, prerequisite_resolver, spoken_numbers
 
 
 CONTRACT_VERSION = "narrative-plan-v1"
@@ -171,6 +171,57 @@ def number_delivery(beats: list[dict[str, Any]], ir: dict[str, Any]) -> list[dic
     return delivered
 
 
+_CONSTRAINT_ROLES = frozenset({"risk", "limitation"})
+_CONCLUSION_ROLES = frozenset({"payoff", "result"})
+
+
+def select_for_length(ir: dict[str, Any], budget: int | None = None) -> tuple[list[str], list[str]]:
+    """한 편에 담을 근거 단위를 고른다(설계 점검 D). 반환: (담을 reasoning_id, 뺄 reasoning_id) — 이야기 순서.
+
+    우선순위(같은 등급 안에서는 이야기 순서):
+      0) 핵심 흐름 — 리포트는 첫 단위와 같은 증권사 논리(R01…)의 단계들, 논문은 제약 아닌 앞쪽 3단위
+      1) 결론 — payoff(목표가·밸류에이션) / result
+      2) 리스크·한계 하나
+      3) 나머지
+    분량(`V2_NARRATION_TARGET_CHARS`)을 넘기는 단위는 건너뛰고 다음 단위를 본다. 첫 단위는 분량과 무관하게
+    담는다(빈 대본 방지). 결정론적이며 모델 판단이 없다.
+    """
+    units = [u for u in ir.get("reasoning_units") or [] if isinstance(u, dict)]
+    if not units:
+        return [], []
+    limit = config.V2_NARRATION_TARGET_CHARS if budget is None else budget
+    first_chain = _text(units[0].get("source_reasoning_id"))
+    first_constraint = next((u for u in units if u.get("role") in _CONSTRAINT_ROLES), {})
+    # 리스크는 같은 논리의 단계를 묶어서 담는다 — "피크아웃 우려"만 담고 "그러나 매수 기회"를 빼면
+    # 우려만 남고 결론이 없다(Samsung 실측).
+    constraint_chain = _text(first_constraint.get("source_reasoning_id"))
+
+    def tier(position: int, unit: dict[str, Any]) -> int:
+        role = unit.get("role")
+        if role in _CONSTRAINT_ROLES:
+            same = (_text(unit.get("source_reasoning_id")) == constraint_chain if constraint_chain
+                    else unit is first_constraint)
+            return 2 if same else 3
+        if first_chain and _text(unit.get("source_reasoning_id")) == first_chain:
+            return 0
+        if not first_chain and position < 3:
+            return 0
+        return 1 if role in _CONCLUSION_ROLES else 3
+
+    ranked = sorted(enumerate(units), key=lambda item: (tier(*item), item[0]))
+    kept: set[str] = set()
+    used = 0
+    for position, unit in ranked:
+        size = len(_text(unit.get("text")))
+        # 리스크 논리(등급 2)는 분량을 넘어도 끝까지 담는다 — 반론("그러나 매수 기회")이 잘리면 표현이 깨진다.
+        if kept and used + size > limit and tier(position, unit) != 2:
+            continue
+        kept.add(_text(unit.get("reasoning_id")))
+        used += size
+    chain = [_text(u.get("reasoning_id")) for u in units]
+    return [rid for rid in chain if rid in kept], [rid for rid in chain if rid not in kept]
+
+
 def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
     unresolved_required = [
         concept for concept in resolution["concepts"]
@@ -221,8 +272,13 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
             [_text(concept.get("simple_explanation")) for concept in resolved], concepts=resolved,
         ))
 
+    kept_ids, excluded_ids = select_for_length(ir)
+    if excluded_ids:
+        warnings.extend(f"length_budget_excluded:{rid}" for rid in excluded_ids)
     grouped: list[tuple[str, list[dict[str, Any]]]] = []
     for unit in ir.get("reasoning_units") or []:
+        if unit.get("reasoning_id") not in kept_ids:
+            continue
         stage = _STAGE_BY_ROLE[unit["role"]]
         if grouped and grouped[-1][0] == stage:
             grouped[-1][1].append(unit)
@@ -244,7 +300,7 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
         "core_question": ir.get("core_question"),
         "thesis": ir.get("thesis"),
         "beats": beats,
-        "excluded_reasoning_ids": [],
+        "excluded_reasoning_ids": excluded_ids,
         "warnings": sorted(set(warnings)),
         "source": deepcopy(ir.get("source") or {}),
     }
@@ -377,13 +433,14 @@ def validate(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
         if plan.get("excluded_reasoning_ids") != expected_chain:
             errors.append("blocked_excluded_reasoning_invalid")
     else:
-        if seen_reasoning != expected_chain:
+        kept_ids, excluded_ids = select_for_length(ir)
+        if seen_reasoning != kept_ids:
             errors.append("reasoning_chain_coverage_invalid")
         valid_beats = [beat for beat in beats if isinstance(beat, dict)]
         for beat, expected in zip(valid_beats, number_delivery(valid_beats, ir)):
             if beat.get("number_delivery") != expected:
                 errors.append(f"number_delivery_invalid:{_text(beat.get('beat_id'))}")
-        if plan.get("excluded_reasoning_ids") != []:
+        if plan.get("excluded_reasoning_ids") != excluded_ids:
             errors.append("ready_excluded_reasoning_invalid")
         setup_positions = [i for i, beat in enumerate(beats) if beat.get("stage") == "SETUP"
                            and beat.get("concept_ids")]

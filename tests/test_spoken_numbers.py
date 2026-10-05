@@ -25,6 +25,8 @@ import test_explanation_shadow_pipeline as fixtures
     ("A100 GPU 8개", ["8개"], []),
     ("COVID-19 이후 5G 가입자 30%", ["30%"], []),
     ("GPT-4o 와 4K 영상", [], []),
+    ("조선 3사의 합산 이익", [], []),                 # 이름 속 숫자(2026-10-05 Shipbuilding 실측)
+    ("4행정 중속 엔진 수요", [], []),
 ])
 def test_values_and_periods_are_counted_separately(text, values, periods):
     assert spoken_numbers.value_tokens(text) == values
@@ -209,3 +211,23 @@ def test_tampered_number_delivery_is_rejected_by_the_planner():
     errors = narrative_planner.validate(plan, shadow["ir"], shadow["resolution"],
                                         shadow["evidence_pack"])
     assert "number_delivery_invalid:NB02" in errors
+
+
+def test_approximate_screen_number_can_drop_its_approximation_word():
+    """'약 2배' 를 화면으로 보내면 '약' 도 말에서 빠진다 — 범위 단서를 뺀 것으로 보지 않는다."""
+    from engine import spoken_narration
+
+    before = "이익이 과거 고점의 약 2배에 달할 것으로 테스트증권은 전망했다."
+    narration = [{"beat_id": "NB02", "stage": "EVIDENCE",
+                  "sentences": ["이익이 과거 고점을 크게 웃돌 것으로 테스트증권은 전망했다."],
+                  "reasoning_ids": ["XR01"], "evidence_ids": ["e"], "knowledge_refs": []}]
+    plan = {"core_question": "왜?", "beats": [{
+        "beat_id": "NB02", "stage": "EVIDENCE", "content_points": [before],
+        "causal_levels": [], "attributions": ["테스트증권"],
+        "number_delivery": {"spoken_numbers": [],
+                            "screen_facts": [{"ref": "XR01", "text": before, "numbers": ["2배"]}]},
+    }]}
+
+    errors, _, _ = spoken_narration._draft_guard_findings(narration, plan)
+
+    assert not any(e.startswith(("qualifier_dropped", "protected_meaning_changed")) for e in errors), errors

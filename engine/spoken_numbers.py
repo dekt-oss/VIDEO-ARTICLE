@@ -48,12 +48,32 @@ def period_tokens(text: Any) -> list[str]:
     return sorted(_norm(m.group(0)) for m in _PERIOD.finditer(str(text or "")))
 
 
+def _is_name_number(text: str, match: re.Match[str]) -> bool:
+    """단위 없이 한글이 바로 붙은 숫자는 이름의 일부다("조선 3사", "4행정 엔진") — 값이 아니다.
+
+    ★ 실측(Shipbuilding, 2026-10-05): "3사"·"4행정" 이 값으로 잡혀 말할 숫자/화면 숫자에 들어갔고,
+      모델이 "조선 3사"라고만 말해도 거절됐다. 명·마리·배·원처럼 `_VALUE` 단위가 붙은 수는 그대로 센다.
+    """
+    token = match.group(0)
+    if not token or not token[-1].isdigit():
+        return False                                  # 단위가 붙었다 — 값이다
+    following = text[match.end():match.end() + 3]
+    if not following or not ("가" <= following[0] <= "힣"):
+        return False
+    # 조사가 붙은 수는 값이다("1에서 2를 거쳐 3으로", "수치는 3이다").
+    return not following.startswith(_PARTICLES)
+
+
+_PARTICLES = ("에서", "으로", "부터", "까지", "보다", "이다", "입니", "이며", "이고",
+              "이", "가", "을", "를", "은", "는", "과", "와", "로", "에", "의", "도", "만")
+
+
 def value_tokens(text: Any) -> list[str]:
-    """소리 내 읽는 값 목록(정렬, 중복 유지). 시점 표현을 먼저 지우고 센다."""
+    """소리 내 읽는 값 목록(정렬, 중복 유지). 시점 표현·이름 속 숫자를 먼저 지우고 센다."""
     masked = _IDENTIFIER.sub(" ", _PERIOD.sub(" ", str(text or "")))
     return sorted(
         _norm(m.group(0)) for m in _VALUE.finditer(masked)
-        if any(ch.isdigit() for ch in m.group(0))
+        if any(ch.isdigit() for ch in m.group(0)) and not _is_name_number(masked, m)
     )
 
 

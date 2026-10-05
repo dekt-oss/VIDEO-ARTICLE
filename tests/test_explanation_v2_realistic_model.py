@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 import pytest
 
-from engine import evidence_pack, explanation_shadow_pipeline
+from engine import evidence_pack, explanation_shadow_pipeline, spoken_numbers
 
 import test_content_complexity_gate as gate_fixtures
 import test_explanation_shadow_pipeline as fixtures
@@ -43,8 +43,18 @@ def _spoken_hook(question: str) -> str:
 
 
 def _speak(text: str, beat: dict[str, Any]) -> str:
+    # 시점 표현("2023년 4월")은 건드리지 않는다 — 실제 모델도 화면 숫자를 지우며 날짜를 바꾸지 않는다.
+    pieces = spoken_numbers._PERIOD.split(text)
+    periods = spoken_numbers._PERIOD.findall(text)
     for index, token in enumerate(beat.get("screen_numbers") or []):
-        text = text.replace(token, "약간" if index == 0 else "", 1)
+        # 숫자 자리에서만 바꾼다 — "2" 를 지우려다 "2028년" 의 2 를 지우면 안 된다.
+        pattern = rf"(?:약\s*)?(?<![\d.]){re.escape(token)}(?!\d)(?!\.\d)(?:\s*(?:가량|정도))?"
+        for at, piece in enumerate(pieces):
+            replaced = re.sub(pattern, "약간" if index == 0 else "", piece, count=1)
+            if replaced != piece:
+                pieces[at] = replaced
+                break
+    text = "".join(piece + (periods[at] if at < len(periods) else "") for at, piece in enumerate(pieces))
     text = re.sub(r"\s{2,}", " ", text).replace(" ,", ",").strip()
     text = text.replace("것이다.", "것으로 보입니다.")
     for plain, polite in _POLITE:

@@ -336,3 +336,36 @@ def test_six_gold_cases_are_deterministic_and_unresolved_cases_fail_closed():
     assert comparisons["shipbuilding-rerating-2026-09"]["axes"][
         "semantic_calibration"
     ]["outcome"] == "unresolved"
+
+
+
+# ─── 설계 점검 D(2026-10-05): 한 편에 담을 근거 고르기 ─────────────────────────
+
+def _unit(rid, role, chain, size):
+    return {"reasoning_id": rid, "role": role, "source_reasoning_id": chain, "text": "가" * size}
+
+
+def test_selection_keeps_main_chain_then_conclusion_then_whole_risk_chain():
+    from engine import narrative_planner
+
+    ir = {"reasoning_units": [
+        _unit("XR01", "cause", "R01", 150), _unit("XR02", "cause", "R01", 150),
+        _unit("XR03", "payoff", "R02", 100),
+        _unit("XR04", "cause", "R03", 150),            # 다른 논리 — 분량이 넘으면 빠진다
+        _unit("XR05", "risk", "R04", 80), _unit("XR06", "risk", "R04", 80),
+    ]}
+
+    kept, excluded = narrative_planner.select_for_length(ir, budget=450)
+
+    assert kept == ["XR01", "XR02", "XR03", "XR05", "XR06"]   # 리스크 반론까지 묶어서
+    assert excluded == ["XR04"]
+
+
+def test_selection_always_keeps_the_first_unit_and_preserves_story_order():
+    from engine import narrative_planner
+
+    ir = {"reasoning_units": [_unit("XR01", "cause", "", 900), _unit("XR02", "result", "", 50)]}
+
+    kept, excluded = narrative_planner.select_for_length(ir, budget=100)
+
+    assert kept == ["XR01"] and excluded == ["XR02"]

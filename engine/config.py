@@ -550,6 +550,10 @@ CONTENT_MODE_DURATION: dict[str, tuple[int, int]] = {
 CONTENT_MODE_HARD_MAX_SEC: int = _get_int("CONTENT_MODE_HARD_MAX_SEC", 0)
 # 상한 없음(0)을 "숫자가 꼭 필요한 자리"(예: 계획의 목표 길이)에 쓸 때의 값.
 UNCAPPED_DURATION_SEC: int = 600
+# Explanation Engine v2 Phase 5 — 한 편에 담을 대본 재료 분량(글자). 설계 점검 D(2026-10-05, 운영자 "추천대로").
+# 근거 인정 범위를 넓히자(설계 점검 E) 재료가 Samsung 890자·Shipbuilding 898자로 늘었다. 기존 Production 대본
+# 실측(Samsung 518자, 지시서 42초)에 맞춘 목표치다. 넘치는 근거 단위는 버리지 않고 "빠진 내용"으로 남긴다.
+V2_NARRATION_TARGET_CHARS: int = _get_int("V2_NARRATION_TARGET_CHARS", 520)
 CONTENT_MODE_SOFT_MIN_SEC: int = 25   # 미만 → 경고만(RENDER_QA_MIN_SEC=20 은 그대로)
 CONTENT_MODE_CUT_RANGE: dict[str, tuple[int, int]] = {
     "flash": (4, 5), "standard": (5, 7), "deep": (6, 8), "extended": (7, 9),
