@@ -46,10 +46,23 @@ _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시�
 _NON_ASSOC_GWANRYEON = re.compile(r"관련(?!\s*(?:이|성|되|된|돼|해|하|있|없|지|을|은|도))")
 
 
+# 부정의 활용형("아닙니다·아닌·아님")과 "~기 어렵다"(= ~할 수 없다). 종전 목록(않·못·없·아니)은 "아닙"을 못 보고,
+# "배제할 수 없다" → "배제하기는 어려워요"를 부정이 빠진 것으로 봤다(2026-10-06 실측 두 건, 뜻은 같았다).
+_NEGATION_FORMS = re.compile(r"아닙|아닌|아님|아니")
+# "~하기 어렵다 / 이르다 / 힘들다" 는 한계를 말하는 다른 표현이다. 혼자서는 부정으로 세지 않고, 반대쪽에 진짜 부정
+# ("~할 수 없다")이 있을 때만 그 부정과 같은 것으로 본다 — "배제할 수 없다" ↔ "배제하기는 어려워요",
+# "일반화하기 어렵다" ↔ "적용하기는 이릅니다"(2026-10-06 실측, 뜻은 같았다).
+_DIFFICULTY = re.compile(r"기(?:는|가|도|엔|에는)?\s*(?:어렵|어려|이르|이릅|힘들|힘드|힘든)|아직(?:은)?\s*이르")
+#: 범위 강화어의 같은 뜻 묶음 — 근거가 "전체"라고 했으면 대본의 "전부·모든·모두"는 강화가 아니다.
+_SCOPE_SYNONYMS = ({"모든", "전부", "모두", "전체"},)
+
+
 def _meaning_classes(text: str) -> set[str]:
     text = _NON_ASSOC_GWANRYEON.sub("□", text)
     classes = script_polish.meaning_classes(text) & _PROTECTED_MEANING_CLASSES
-    return classes | {"negation"} if _SINO_NEGATION.search(text) else classes
+    if _SINO_NEGATION.search(text) or _NEGATION_FORMS.search(text):
+        classes = classes | {"negation"}
+    return classes
 
 
 SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다. 논문·리포트를 **읽어 주는 사람**이다 —
@@ -128,13 +141,16 @@ def _joined_sentences(beat: dict[str, Any]) -> str:
 
 
 def _draft_guard_findings(
-    narration_beats: list[dict[str, Any]], plan: dict[str, Any]
+    narration_beats: list[dict[str, Any]], plan: dict[str, Any],
+    pack: dict[str, Any] | None = None,
 ) -> tuple[list[str], list[str], dict[str, Any]]:
     errors: list[str] = []
     warnings: list[str] = []
     plan_by_id = {beat["beat_id"]: beat for beat in plan["beats"]}
     question_count = 0
     total_numbers = 0
+    attributions: dict[str, str] = {}
+    evidence_index = narrative_planner.explanation_ir.build_index(pack) if isinstance(pack, dict) else {}
 
     for beat in narration_beats:
         beat_id = _text(beat.get("beat_id"))
@@ -165,8 +181,15 @@ def _draft_guard_findings(
         if spoken_numbers.period_tokens(before) != spoken_numbers.period_tokens(after):
             errors.append(f"period_changed:{beat_id}")
 
+        # ★ 범위 강화어("모든·전부")는 **원문 근거**에 있으면 허용한다(작업지시서 §9.2 "근거가 명시적으로 있어야").
+        #   생각 단계 경로에서 계획 문장은 모델이 쓴 답이라 원문이 아니다 — 근거 문장까지 본다(2026-10-06 실측:
+        #   "차세대 위성 전부에" 는 근거에 있었는데 계획 문장에 없어 막혔다).
+        grounds = before + " " + " ".join(
+            _text(evidence_index.get(eid, {}).get("text") or evidence_index.get(eid, {}).get("display"))
+            for eid in _strings(source.get("evidence_ids")))
         added_scope = sorted(
-            term for term in _SCOPE_INTENSIFIERS if term in after and term not in before
+            term for term in _SCOPE_INTENSIFIERS if term in after and term not in grounds
+            and not any(term in group and any(other in grounds for other in group) for group in _SCOPE_SYNONYMS)
         )
         if added_scope:
             errors.append(f"scope_intensifier_added:{beat_id}:{added_scope[0]}")
@@ -183,6 +206,12 @@ def _draft_guard_findings(
         after_meaning = _NON_HEDGE_YAK.sub("□", after)
         before_classes = _meaning_classes(before_meaning)
         after_classes = _meaning_classes(after_meaning)
+        # 부정 쪽 뜻(진짜 부정 또는 "~기 어렵다·이르다")이 양쪽에 같이 있는지로 본다 — 표현이 달라도 같은 뜻이면 통과,
+        # 한쪽에만 생기거나 사라지면("효과가 있다" → "효과를 보기는 어렵다") 뜻이 바뀐 것이다.
+        negative_before = "negation" in before_classes or bool(_DIFFICULTY.search(before_meaning))
+        negative_after = "negation" in after_classes or bool(_DIFFICULTY.search(after_meaning))
+        before_classes = (before_classes - {"negation"}) | ({"negation"} if negative_before else set())
+        after_classes = (after_classes - {"negation"}) | ({"negation"} if negative_after else set())
         changed_classes = (before_classes - after_classes) | (
             (after_classes - before_classes) - _WEAKENING_CLASSES
         )
@@ -212,8 +241,8 @@ def _draft_guard_findings(
             errors.append(f"causal_language_added:{beat_id}:{added_causal[0]}")
 
         for attribution in source.get("attributions") or []:
-            if attribution and attribution not in after:
-                errors.append(f"attribution_dropped:{beat_id}:{attribution}")
+            if attribution:
+                attributions.setdefault(attribution, beat_id)
 
         if source.get("stage") == "HOOK":
             question_count += after.count(plan["core_question"])
@@ -241,6 +270,11 @@ def _draft_guard_findings(
             warnings.append(f"unexplained_abbreviation:{beat_id}:{abbreviation}")
 
     full_text = " ".join(_joined_sentences(beat) for beat in narration_beats)
+    # ★ 출처 귀속은 **대본 전체에서 한 번 이상**이면 된다(작업지시서 §8·운영 4막 규칙 "출처는 한두 번").
+    #   종전에는 비트마다 증권사 이름을 요구해 "유진투자증권에 따르면"이 매 문장 반복될 수밖에 없었다(2026-10-06 실측).
+    for attribution, first_beat in attributions.items():
+        if attribution not in full_text:
+            errors.append(f"attribution_dropped:{first_beat}:{attribution}")
     question_count = max(question_count, full_text.count(plan["core_question"]))
     if question_count > 1:
         warnings.append("core_question_repeated")
@@ -382,7 +416,7 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
             "number_delivery": deepcopy(beat["number_delivery"]),
         })
 
-    guard_errors, guard_warnings, metrics = _draft_guard_findings(normalized, plan)
+    guard_errors, guard_warnings, metrics = _draft_guard_findings(normalized, plan, pack)
     errors.extend(guard_errors)
     result = {
         "contract_version": CONTRACT_VERSION,
@@ -467,7 +501,7 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
             row.get("reasoning_ids"), row.get("evidence_ids"), row.get("knowledge_refs"),
         )):
             errors.append(f"factual_trace_missing:{source['beat_id']}")
-    guard_errors, guard_warnings, guard_metrics = _draft_guard_findings(beats, plan)
+    guard_errors, guard_warnings, guard_metrics = _draft_guard_findings(beats, plan, pack)
     stored_errors = _strings(qa.get("errors")) if isinstance(qa, dict) else []
     stored_warnings = _strings(qa.get("warnings")) if isinstance(qa, dict) else []
     if not set(guard_errors).issubset(stored_errors):
@@ -583,7 +617,7 @@ def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],
         polish_reason = script_polish.rejection_reason(before, after)
         candidate = deepcopy(result)
         candidate["narration_beats"][position]["sentences"] = sentences
-        guard_errors, _, _ = _draft_guard_findings(candidate["narration_beats"], plan)
+        guard_errors, _, _ = _draft_guard_findings(candidate["narration_beats"], plan, pack)
         relevant_guards = [error for error in guard_errors if f":{beat_id}" in error]
         attribution_error = next(
             (error for error in relevant_guards if error.startswith("attribution_dropped:")), ""
@@ -599,7 +633,7 @@ def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],
         target["sentences"] = sentences
         applied.append(beat_id)
 
-    _, warnings, metrics = _draft_guard_findings(result["narration_beats"], plan)
+    _, warnings, metrics = _draft_guard_findings(result["narration_beats"], plan, pack)
     result["qa"]["warnings"] = warnings
     result["qa"]["metrics"] = metrics
     result["polish"] = {

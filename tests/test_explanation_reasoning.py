@@ -60,7 +60,7 @@ def test_evidence_link_errors():
     errors = er.validate(bad, PACK)["errors"]
     assert "no_evidence:S1" in errors
     assert "unknown_evidence:S2:paper:C99" in errors
-    assert "number_not_in_cited_evidence:S3:40%" in errors
+    assert "number_not_in_cited_evidence:S3:40" in errors
 
 
 def test_step_count_follows_source_depth():

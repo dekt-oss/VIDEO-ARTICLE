@@ -107,3 +107,39 @@ def test_gwanryeon_as_a_claim_is_still_association():
     for text in ("수면 시간은 기억력과 관련이 있다.", "두 변수는 관련된다.", "관련성이 보고됐다.",
                  "운동과 관련해 차이가 컸다.", "우울증과 연관된다."):
         assert "assoc" in spoken_narration._meaning_classes(text), text
+
+
+# ── 2026-10-06 실측 대본으로 잡은 오탐 · 그리고 진짜 뒤집힘은 여전히 잡는다 ─────────────
+def _guard(before: str, after: str, evidence: str = "") -> list[str]:
+    plan = {"core_question": "질문?", "beats": [{
+        "beat_id": "NB02", "stage": "EVIDENCE", "content_points": [before], "causal_levels": [],
+        "evidence_ids": ["paper:C01"] if evidence else [],
+        "number_delivery": {"spoken_numbers": spoken_narration.spoken_numbers.value_tokens(before),
+                            "screen_facts": []}}]}
+    pack = {"claims": [{"evidence_id": "paper:C01", "text": evidence}]} if evidence else None
+    return spoken_narration._draft_guard_findings(
+        [{"beat_id": "NB02", "sentences": [after]}], plan, pack)[0]
+
+
+def test_same_meaning_negation_rewordings_pass():
+    for before, after in (("직접 증명하지는 않았다.", "직접 증명한 것은 아닙니다."),
+                          ("기여를 완전히 배제할 수 없다.", "기여를 완전히 배제하기는 어려워요."),
+                          ("생체에 바로 일반화하기 어렵다.", "몸속에 그대로 적용하기는 이릅니다."),
+                          ("아직은 이르다.", "실제 치유로 보기는 어렵습니다.")):
+        assert not [e for e in _guard(before, after) if "negation" in e], (before, after)
+
+
+def test_real_meaning_flips_are_still_caught():
+    assert "protected_meaning_changed:NB02:negation" in _guard("효과가 있다.", "효과를 보기는 어렵다.")
+    assert "protected_meaning_changed:NB02:negation" in _guard("허가가 불필요하다.", "허가가 필요하다.")
+
+
+def test_spoken_hertz_matches_written_hz():
+    assert not [e for e in _guard("델타파(1~4 Hz)가 커진다.", "1~4헤르츠 뇌파가 커져요.") if "numbers" in e]
+
+
+def test_scope_word_backed_by_evidence_synonym_passes():
+    errs = _guard("광링크 탑재를 의무화했다.", "차세대 위성 전부에 광링크를 싣게 했습니다.",
+                  evidence="트랜치 위성 전체에 광링크 탑재를 의무화했다.")
+    assert not [e for e in errs if e.startswith("scope_intensifier_added")]
+    assert "scope_intensifier_added:NB02:전부" in _guard("광링크를 실었다.", "위성 전부에 실었다.")

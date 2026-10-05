@@ -34,13 +34,19 @@ _PERIOD = re.compile(
 _IDENTIFIER = re.compile(r"[A-Za-z]+-?\d+[A-Za-z0-9]*|\d+[A-Z](?![A-Za-z])")
 # 값으로 읽히는 수. 단위는 붙여서 하나로 센다(`spoken_narration` 의 종전 정의와 같다).
 _VALUE = re.compile(
-    r"[+-]?\d+(?:[.,]\d+)*\s*(?:퍼센트|개월|시간|억원|만원|조원|달러|USD|KRW|%p|%|배|년|"
-    r"주|일|분|초|명|마리|건|개|회|원|kg|km|mg|ml|mm|cm|g|m|L)?"
+    r"[+-]?\d+(?:[.,]\d+)*\s*(?:퍼센트|헤르츠|밀리미터|센티미터|개월|시간|억원|만원|조원|달러|USD|KRW|%p|%|"
+    r"GHz|MHz|kHz|Hz|배|년|주|일|분|초|명|마리|건|개|회|원|kg|km|mg|ml|mm|cm|g|m|L)?"
 )
+#: 같은 단위의 한글·기호 표기 — 말로 읽으면 "헤르츠", 원문은 "Hz" 다(2026-10-06 신피질 실측: "1~4헤르츠" 가
+#  이름 속 숫자로 빠져 숫자가 바뀐 것으로 거절됐다).
+_UNIT_ALIAS = (("헤르츠", "Hz"), ("퍼센트", "%"), ("밀리미터", "mm"), ("센티미터", "cm"))
 
 
 def _norm(token: str) -> str:
-    return re.sub(r"\s+", "", token)
+    token = re.sub(r"\s+", "", token)
+    for spoken, symbol in _UNIT_ALIAS:
+        token = token.replace(spoken, symbol)
+    return token
 
 
 def period_tokens(text: Any) -> list[str]:

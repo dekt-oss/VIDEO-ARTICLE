@@ -162,8 +162,16 @@ def prompt_payload(pack: dict[str, Any], *, title: str = "",
     }
 
 
+_DIGITS = __import__("re").compile(r"\d+(?:\.\d+)?")
+
+
+def _values(tokens: list[str]) -> list[str]:
+    """숫자 값만(단위·쉼표 제외) — "26.8" 과 "26.8%" 는 같은 값이다(원문 "평균 26.8 ± 7.4%")."""
+    return [m.group(0) for token in tokens for m in _DIGITS.finditer(token.replace(",", ""))]
+
+
 def _numbers_in(texts: list[str]) -> list[str]:
-    return [n for text in texts for n in spoken_numbers.value_tokens(text)]
+    return _values([n for text in texts for n in spoken_numbers.value_tokens(text)])
 
 
 def validate(result: dict[str, Any], pack: dict[str, Any],
@@ -199,7 +207,7 @@ def validate(result: dict[str, Any], pack: dict[str, Any],
         if label != "limitation" and not label.startswith("limitation") and cited and not any(
                 index[i]["state"] == "SUPPORTED" for i in ids if i in index):
             errors.append(f"no_supported_evidence:{label}")
-        extra = spoken_numbers.multiset_minus(spoken_numbers.value_tokens(text), _numbers_in(cited))
+        extra = spoken_numbers.multiset_minus(_values(spoken_numbers.value_tokens(text)), _numbers_in(cited))
         if extra:
             errors.append(f"number_not_in_cited_evidence:{label}:{extra[0]}")
         if label.startswith("limitation") and cited and all(
