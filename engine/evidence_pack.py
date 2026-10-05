@@ -274,6 +274,57 @@ def _report_numbers(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _report_step_claims(financial_reasoning: Any, broker: str) -> list[dict[str, Any]]:
+    """증권사 논리 단계 중 **원문 인용이 코드로 확인된** 단계를 근거로 싣는다(설계 점검 E, 2026-10-05).
+
+    ★ 왜: 리포트 논리 단계 13개 중 7개에 숫자 근거 번호(fact_ids)가 없다 — "HBM 이 범용 D램 생산능력을
+      잠식한다", "피크아웃 우려" 처럼 숫자가 없는 설명·리스크 단계라서다(Samsung 실측). V2 는 숫자 근거
+      번호만 인정해 이 단계들을 통째로 버렸고, 대본이 짧아지고 리스크가 빠졌다. 그런데 이 단계들에는
+      원문 인용이 붙어 있고 Production 이 **원문 전문과 대조해** `verified` 를 찍어 둔다
+      (`report_reasoning.audit` → `report_evidence.quote_found_in_source`). Production 스스로도 "fact_ids
+      또는 source_refs 가 있으면 근거 있는 단계"로 센다(`steps_grounded`).
+    ★ 확인된 것은 **인용이 원문에 있다**는 것뿐이다 — 단계 문장이 그 인용과 같은 뜻인지는 아니다.
+      그래서 `quote_presence` 만 참이고 `semantic_entailment` 는 거짓이다(Phase 7 독립 검증이 본다).
+      인용이 하나도 확인되지 않은 단계는 싣지 않는다 — 위 what/basis 를 SUPPORTED 로 올리지 않는 것과
+      같은 자세다.
+    """
+    units = (financial_reasoning or {}).get("units") if isinstance(financial_reasoning, dict) else None
+    out: list[dict[str, Any]] = []
+    for unit in units if isinstance(units, list) else []:
+        if not isinstance(unit, dict):
+            continue
+        rid = str(unit.get("reasoning_id") or "").strip()
+        for position, step in enumerate(unit.get("steps") or [], 1):
+            if not isinstance(step, dict) or not str(step.get("text") or "").strip() or not rid:
+                continue
+            refs = [
+                {"quote": str(ref.get("quote") or ""), "chunk_id": str(ref.get("chunk_id") or ""),
+                 "source_section": "", "source_page": None, "table_or_figure": None}
+                for ref in step.get("source_refs") or []
+                if isinstance(ref, dict) and ref.get("verified") is True and str(ref.get("quote") or "")
+            ]
+            if not refs:
+                continue
+            step_no = step.get("step") if step.get("step") is not None else position
+            out.append({
+                "evidence_id": f"report:step:{rid}#{step_no}",
+                "raw_ref": f"financial_reasoning:{rid}#{step_no}",
+                "text": str(step.get("text") or "").strip(),
+                "claim_type": "reasoning_step",
+                "domain_role": "reasoning_step",
+                "causal_strength": "",
+                "evidence_grade": "",
+                "verification_state": "SUPPORTED",
+                "verification_scope": _verification_scope(quote=True),
+                "source_refs": refs,
+                "uncertainty": None,
+                "limitations": [],
+                "attribution": str(unit.get("attributed_to") or "").strip() or broker,
+                "domain_fields": {"reasoning_id": rid, "step": step_no},
+            })
+    return out
+
+
 def _paper_numbers(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
     """Paper legacy number strings are kept as text; do not invent numeric parsing."""
     return [
@@ -300,7 +351,8 @@ def _paper_numbers(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def build(fact_sheet: dict[str, Any] | None, domain: str,
-          *, content_id: str = "") -> dict[str, Any]:
+          *, content_id: str = "",
+          financial_reasoning: dict[str, Any] | None = None) -> dict[str, Any]:
     """Project an existing Fact Sheet into the common read-only Evidence Pack."""
     fs = fact_sheet if isinstance(fact_sheet, dict) else {}
     if domain not in ("paper", "report"):
@@ -337,6 +389,7 @@ def build(fact_sheet: dict[str, Any] | None, domain: str,
         numbers = _report_numbers(fs)
         source = fs.get("source") if isinstance(fs.get("source"), dict) else {}
         broker = str(source.get("broker") or "")
+        claims = claims + _report_step_claims(financial_reasoning, broker)
         risks = [
             {
                 "evidence_id": f"report:risk:{i:02d}",

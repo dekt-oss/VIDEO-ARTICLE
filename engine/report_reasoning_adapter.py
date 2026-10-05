@@ -94,7 +94,14 @@ def build(pack: dict[str, Any], financial_reasoning: dict[str, Any] | None,
                 _text(fact_id) for fact_id in (fact_ids if isinstance(fact_ids, list) else [])
                 if _text(fact_id)
             ]
-            if not fact_ids:
+            # 숫자 근거 번호가 없으면 **원문 인용이 확인된 단계 자체**를 근거로 쓴다(evidence_pack
+            # `_report_step_claims`). 둘 다 없을 때만 근거 없는 단계다.
+            step_evidence = f"report:step:{source_reasoning_id}#{step_no}"
+            evidence_ids = (
+                [f"report:{fact_id}" for fact_id in fact_ids] if fact_ids
+                else ([step_evidence] if step_evidence in evidence_index else [])
+            )
+            if not evidence_ids:
                 warnings.append(
                     f"report_step_without_evidence_id:{source_reasoning_id}#{step_no}")
             step_attribution = attribution
@@ -125,7 +132,7 @@ def build(pack: dict[str, Any], financial_reasoning: dict[str, Any] | None,
             units.append({
                 "role": role,
                 "text": _text(step.get("text")),
-                "evidence_ids": [f"report:{fact_id}" for fact_id in fact_ids],
+                "evidence_ids": evidence_ids,
                 "causal_level": "broker_projection",
                 "uncertainty": uncertainty,
                 "attribution": step_attribution,
