@@ -214,18 +214,113 @@ NARRATION_LOCK_KEY = "narration_lock"
 _LOCK_IGNORED = re.compile(r"[\s.,!?·\"'“”‘’…~]+")
 
 
-def lock_block(skeleton: list[dict[str, Any]]) -> str:
-    """대사 고정 지시문. 칸마다 말할 문장을 글자 그대로 준다."""
+def lock_min_cuts(skeleton: list[dict[str, Any]]) -> int:
+    """실사형 게이트(`photo_contract.target_cut_range`)와 같은 식의 최소 컷 수 — **목표치**다.
+
+    ★ 게이트는 모델이 적은 컷 길이 합으로 세고, 골격은 `SPEECH_CHARS_PER_SEC`(5.5자/초)로 잰다.
+      골격 쪽이 길게 나와(Samsung V2 355자 → 65초 → 13컷) 목표가 게이트보다 높다. 그래서 이 값은
+      "의미 경계가 허락하는 만큼 나눈다"의 상한으로만 쓴다 — 바닥값 `PHOTO_MIN_CUTS` 는 반드시 채우려 한다.
+    """
+    total = sum(int(c.get("estimated_sec") or 0) for c in skeleton)
+    return max(config.PHOTO_MIN_CUTS, round(total / config.PHOTO_CUT_SEC_MAX))
+
+
+def lock_skeleton(script_md: str, *, version_type: str = "photo") -> list[dict[str, Any]]:
+    """대사 고정용 골격 — 실사형 최소 컷 수에 모자라면 긴 문장을 **의미 경계에서** 더 나눈다.
+
+    ★ 왜(2026-10-05 실측): V2 대본은 숫자를 화면으로 보내 짧다(Samsung 355자, 기존 518자). 문장 경계로
+      나누면 7칸인데 실사형 바닥값은 8컷이다(`PHOTO_MIN_CUTS`, "이보다 적으면 슬라이드쇼"). 대사가
+      고정이라 모델이 칸을 늘릴 수 없어 `photo_cut_count_low:7<8` 로 막혔다. 같은 "컷 수"를 골격과
+      게이트가 다르게 셌던 것이다.
+    ★ 대사는 한 글자도 바뀌지 않는다 — 칸만 나뉜다. 나누는 규칙은 `_split_long` 그대로(연결 어미
+      경계, 말이 맺히지 않은 조각은 다시 붙임). 자를 의미 경계가 없으면 억지로 자르지 않는다 — 그때는
+      게이트가 그대로 막는다(슬라이드쇼를 숨기지 않는다).
+    """
+    bones = build(script_md, version_type=version_type)
+    if version_type != "photo" or not bones:
+        return bones
+    need = lock_min_cuts(bones)
+    units = [b["sentence"] for b in bones]
+    while len(units) < need:
+        for index in sorted(range(len(units)), key=lambda i: -estimate_sec(units[i])):
+            parts = _split_long(units[index], max(1.0, estimate_sec(units[index]) / 2))
+            if len(parts) < 2:
+                parts = _split_at_connective_comma(units[index])
+            if len(parts) >= 2:
+                units[index:index + 1] = parts
+                break
+        else:
+            break                                   # 더 나눌 의미 경계가 없다
+    return [
+        {"cut_no": i, "sentence": u,
+         "estimated_sec": max(config.CUT_MIN_SEC, round(estimate_sec(u)))}
+        for i, u in enumerate(units, 1)
+    ]
+
+
+# 쉼표 앞이 이 글자로 끝나면 연결 어미다("힘입어," "늘어나고," "오르면,") — 그 쉼표는 절 경계다.
+# 숫자·명사 나열 쉼표("18.0%, 16.0%" "DRAM, NAND")는 앞 글자가 숫자·기호·명사라 걸리지 않는다.
+_CONNECTIVE_TAIL = frozenset("어아여고며서면데만게지니")
+
+
+def _split_at_connective_comma(sentence: str) -> list[str]:
+    """`_CLAUSE_SPLIT` 에 없는 연결 어미 쉼표("…힘입어, …")에서 한 번 나눈다. 가운데에 가까운 곳."""
+    candidates = [
+        i for i, ch in enumerate(sentence)
+        if ch == "," and i > 0 and sentence[i - 1] in _CONNECTIVE_TAIL
+        and len(sentence[:i + 1].strip()) >= config.CUT_SKELETON_MIN_CHARS
+        and len(sentence[i + 1:].strip()) >= config.CUT_SKELETON_MIN_CHARS
+    ]
+    if not candidates:
+        return [sentence]
+    cut = min(candidates, key=lambda i: abs(i - len(sentence) / 2))
+    return [sentence[:cut + 1].strip(), sentence[cut + 1:].strip()]
+
+
+# 원리 도해 제안은 칸의 문장이 **과정(원인 → 결과)** 을 말할 때만 붙인다. 단락 전체에 붙이면
+# "가격이 크게 상승할 것" 같은 숫자 문장도 도해 후보가 되고, 리포트 게이트는 숫자 단계를 도해로
+# 그리면 승인을 막는다(`photo_mechanism_on_number`). 실측 Samsung 단락에서 이 표현들이 과정 칸을 갈랐다.
+_CAUSAL_MARKERS = ("힘입어", "견인", "때문", "따라", "인해", "이어져", "이어지", "늘리", "줄이", "바꾸",
+                   "하면서", "으로써", "통해")
+
+
+def _hint_for(sentence: str, hints: list[dict[str, Any]] | None) -> str:
+    key = _LOCK_IGNORED.sub("", sentence)
+    for row in hints or []:
+        if key and key in _LOCK_IGNORED.sub("", str(row.get("text") or "")):
+            hint = str(row.get("hint") or "")
+            if hint == "MECHANISM" and not any(marker in sentence for marker in _CAUSAL_MARKERS):
+                return ""
+            return hint
+    return ""
+
+
+def lock_block(skeleton: list[dict[str, Any]],
+               hints: list[dict[str, Any]] | None = None) -> str:
+    """대사 고정 지시문. 칸마다 말할 문장을 글자 그대로 주고, 있으면 화면 제안을 붙인다."""
     if not skeleton:
         return ""
-    lines = [f"  {c['cut_no']:>2}. ({c['estimated_sec']}초) {c['sentence']}" for c in skeleton]
+    lines = []
+    for c in skeleton:
+        hint = _hint_for(c["sentence"], hints)
+        suffix = f"   ← 화면 제안: {hint}" if hint else ""
+        lines.append(f"  {c['cut_no']:>2}. ({c['estimated_sec']}초) {c['sentence']}{suffix}")
     return (
         f"\n\n[대사 고정 — 검증을 마친 대본이다] 총 {len(skeleton)}컷. 각 칸의 narration_ko 는 아래 문장을\n"
         "**글자 그대로** 쓴다. 다듬지도, 합치지도, 나누지도, 새 문장을 더하지도 마라 — 이 문장들은 원문 근거와\n"
         "대조를 이미 마쳤고, 바뀌면 검증받지 않은 대본이 된다. Fact Sheet 나 논증 단위에 다른 내용이 있어도\n"
         "대사에 넣지 마라. 네가 정하는 것은 **각 칸을 무엇으로 보여줄 것인가**뿐이다.\n"
+        "'화면 제안: MECHANISM' 이 붙은 칸은 그 문장이 과정(원인 → 결과)을 말한다 — 원리 도해(MECHANISM)\n"
+        "컷으로 만드는 것을 먼저 검토하라. 숫자·리스크 문장은 도해로 그리지 마라.\n"
         + "\n".join(lines)
     )
+
+
+def lock_hints(draft_row: dict[str, Any]) -> list[dict[str, Any]]:
+    """초안의 대사 고정 값에 실린 화면 제안(V2 브리지가 넣는다). 없으면 빈 목록."""
+    value = draft_row.get(NARRATION_LOCK_KEY)
+    rows = value.get("visual_hints") if isinstance(value, dict) else None
+    return [row for row in rows or [] if isinstance(row, dict)]
 
 
 def _same_words(a: Any, b: Any) -> bool:

@@ -53,6 +53,27 @@ def _beats(shadow: dict[str, Any]) -> list[dict[str, Any]]:
     return [beat for beat in narration.get("narration_beats") or [] if isinstance(beat, dict)]
 
 
+def _lock_value(shadow: dict[str, Any], beats: list[dict[str, Any]],
+                paragraphs: list[str]) -> dict[str, Any]:
+    """대사 고정 표시 + 화면 제안. V2 간이 화면 계획이 단락마다 정한 시각 모드에서 MECHANISM 만 넘긴다.
+
+    ★ 실측(Samsung, 대사 고정 1차): 실사형 게이트가 원리 도해 컷을 요구하는데 모델이 7컷을 전부
+      실사로 만들었다(`photo_mechanism_missing`). V2 는 "가격 상승 → 실적 개선" 단락이 과정이라는 것을
+      이미 알고 있었다 — 그 정보를 생성기에 안 넘긴 것이 빈자리였다.
+    """
+    modes = {
+        _text(row.get("beat_id")): _text(row.get("visual_mode"))
+        for row in (shadow.get("visual_plan") or {}).get("visual_beats") or []
+        if isinstance(row, dict)
+    }
+    hints = [
+        {"text": text, "hint": "MECHANISM"}
+        for beat, text in zip(beats, paragraphs)
+        if modes.get(_text(beat.get("beat_id"))) == "MECHANISM" and text
+    ]
+    return {"visual_hints": hints}
+
+
 def _beat_text(beat: dict[str, Any]) -> str:
     return " ".join(_strings(beat.get("sentences")))
 
@@ -111,7 +132,7 @@ def paper_draft(shadow: dict[str, Any], legacy_draft: dict[str, Any]) -> dict[st
         "paper_id": _text(legacy_draft.get("paper_id")) or _text(shadow_content_id(shadow)),
         "fact_sheet": deepcopy(legacy_draft.get("fact_sheet") or {}),
         "script_md": script,
-        cut_skeleton.NARRATION_LOCK_KEY: True,
+        cut_skeleton.NARRATION_LOCK_KEY: _lock_value(shadow, beats, paragraphs),
         "video_prompts": scenes,
         "video_flow": {"content_plan": _content_plan(beats, claim_ids, script)},
     }
@@ -151,7 +172,7 @@ def report_draft(shadow: dict[str, Any], legacy_draft: dict[str, Any],
         "report_id": _text(legacy_draft.get("report_id")) or shadow_content_id(shadow),
         "fact_sheet": deepcopy(legacy_draft.get("fact_sheet") or {}),
         "script_md": script,
-        cut_skeleton.NARRATION_LOCK_KEY: True,
+        cut_skeleton.NARRATION_LOCK_KEY: _lock_value(shadow, beats, paragraphs),
         "scenes": scenes,
         "financial_reasoning": deepcopy(financial_reasoning or {}),
     }

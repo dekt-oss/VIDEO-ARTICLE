@@ -185,7 +185,9 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
     guidance += source_adequacy.guidance(fact_sheet, "report")
     # V2 검증 대본이면 대사까지 고정한다(초안에 표시가 있을 때만 — Production 초안에는 없다).
     if version_type == "photo" and draft_row.get(cut_skeleton.NARRATION_LOCK_KEY):
-        guidance += cut_skeleton.lock_block(cut_skeleton.build(script_md, version_type=version_type))
+        guidance += cut_skeleton.lock_block(
+            cut_skeleton.lock_skeleton(script_md, version_type=version_type),
+            cut_skeleton.lock_hints(draft_row))
         guidance += LOCKED_SCENES_NOTE
     # ★ 논증 단위(설명엔진 v2 §7)를 지시서 단계에도 싣는다. 대본에만 주고 여기서 빼면
     #   컷이 어느 논증을 옮기는지 알 수 없어 reasoning_id 가 빈 채로 나온다 — 그러면 승인
@@ -292,7 +294,7 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     if version_type == "photo" and draft_row.get(cut_skeleton.NARRATION_LOCK_KEY):
         locked = cut_skeleton.lock_narration(
             obj.get("cuts") or [],
-            cut_skeleton.build(draft_row.get("script_md") or "", version_type=version_type))
+            cut_skeleton.lock_skeleton(draft_row.get("script_md") or "", version_type=version_type))
     # ★★ Equity Visual Planner (v3 Phase 5) — 논증을 **공용 시각 시퀀스로 컴파일**해서
     #   정규화 **앞에** 꽂는다. 정규화는 시퀀스가 있으면 라우팅·resolved_visual_plan·
     #   stage_mutations·공용 게이트를 이미 전부 돌리므로, 여기 한 줄로 금융 라인이 그

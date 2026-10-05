@@ -273,3 +273,54 @@ def test_real_report_generator_blocks_when_cuts_are_merged(monkeypatch):
 
     assert generated["approval_blocked"] is True
     assert any(r.startswith("narration_lock_cut_count:") for r in generated["block_reasons"])
+
+
+# ─── 컷 수 바닥값·원리 도해 제안(2026-10-05 후속) ─────────────────────────────
+
+SAMSUNG_LIKE = (
+    "왜 이 증권사는 이런 전망을 하는 걸까요?\n\n"
+    "유안타증권은 메모리 가격이 크게 상승할 것으로 추정했습니다. "
+    "이러한 메모리 가격 상승과 HBM4 판매 본격화에 힘입어, DS부문의 예상 영업이익이 대폭 늘어날 것으로 예상했습니다. "
+    "DS부문의 실적 개선이 전사 실적을 견인하면서 전사 영업이익도 높아질 것으로 전망했습니다.\n\n"
+    "그 결과 유안타증권은 목표주가를 630,000원으로 상향 조정했습니다."
+)
+
+
+def test_lock_skeleton_splits_at_connective_comma_without_changing_words():
+    plain = cut_skeleton.build(SAMSUNG_LIKE)
+    locked = cut_skeleton.lock_skeleton(SAMSUNG_LIKE)
+
+    assert len(locked) > len(plain)
+    assert cut_skeleton._same_words(" ".join(b["sentence"] for b in plain),
+                                    " ".join(b["sentence"] for b in locked))
+    assert any(b["sentence"].endswith("힘입어,") for b in locked)
+
+
+def test_number_list_commas_are_never_split():
+    text = "DRAM 가격은 18.0%, NAND 가격은 16.0% 오를 것으로 추정했습니다."
+    assert cut_skeleton._split_at_connective_comma(text) == [text]
+
+
+def test_lock_skeleton_is_unchanged_when_the_floor_is_already_met():
+    many = " ".join(f"문장 {i}번은 짧게 끝납니다." for i in range(1, 12))
+    assert [b["sentence"] for b in cut_skeleton.lock_skeleton(many)] == \
+        [b["sentence"] for b in cut_skeleton.build(many)]
+
+
+def test_mechanism_hint_only_on_causal_slots():
+    hints = [{"text": SAMSUNG_LIKE.split("\n\n")[1], "hint": "MECHANISM"}]
+    block = cut_skeleton.lock_block(cut_skeleton.lock_skeleton(SAMSUNG_LIKE), hints)
+    hinted = [line for line in block.splitlines() if "← 화면 제안: MECHANISM" in line]
+
+    assert hinted and all(("힘입어" in line) or ("견인" in line) for line in hinted)
+    assert not any("크게 상승할 것으로 추정" in line for line in hinted)   # 숫자 문장은 도해 후보가 아니다
+
+
+def test_bridge_passes_v2_mechanism_modes_as_hints():
+    result = _ready("report")
+    draft = v2_directive_bridge.report_draft(result["shadow"], {}, number_fixtures._number_heavy_report()[1])
+
+    value = draft[cut_skeleton.NARRATION_LOCK_KEY]
+    assert isinstance(value, dict) and value                       # 참 값이어야 고정이 켜진다
+    modes = {row["beat_id"]: row["visual_mode"] for row in result["shadow"]["visual_plan"]["visual_beats"]}
+    assert len(value["visual_hints"]) == sum(1 for mode in modes.values() if mode == "MECHANISM")
