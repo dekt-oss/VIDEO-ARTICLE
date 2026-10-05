@@ -283,6 +283,25 @@ def compute_lineage(sequences: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sequences
 
 
+def relabel_single_stage_mechanism(sequences: list[dict[str, Any]]) -> list[str]:
+    """stage 가 하나뿐인 MECHANISM_SEQUENCE 를 REALITY_ANCHOR 로 바꿔 단다 → 바꾼 시퀀스 id.
+
+    ★ 2026-10-05 실측(V2 삼성 리포트, 운영자 "막힘 자동 교정"): 모델이 컷 두 개짜리 stage 하나를
+      MECHANISM_SEQUENCE 라고 적어 `vseq_too_few_stages` 로 막혔고, 재생성하자 다른 컷이 새로 걸렸다.
+      stage 가 하나면 전·후가 없으니 "진행"이 아니다 — 이름표가 틀린 것이지 화면이 틀린 것이 아니다.
+      라우팅·렌더는 이 이름표를 읽지 않으므로(`visual_router` 는 컷의 beat·stage 소속으로 정한다) 그림은
+      그대로이고 계약 검사만 맞는 이름표로 본다. 끄기: config.VSEQ_SINGLE_STAGE_RELABEL.
+    """
+    if not config.VSEQ_SINGLE_STAGE_RELABEL:
+        return []
+    fixed: list[str] = []
+    for seq in sequences:
+        if seq.get("sequence_role") == "MECHANISM_SEQUENCE" and len(seq.get("stages") or []) < 2:
+            seq["sequence_role"] = "REALITY_ANCHOR"
+            fixed.append(str(seq.get("sequence_id") or "?"))
+    return fixed
+
+
 def repair_lineage_appears(sequences: list[dict[str, Any]]) -> list[str]:
     """앞 stage 에 없던 **선언된 개체**를 state_before 에 적었으면 APPEAR 변이로 옮긴다 → 고친 자리.
 

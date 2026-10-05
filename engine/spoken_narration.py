@@ -32,10 +32,25 @@ _SCOPE_QUALIFIERS = frozenset({"평균", "일부", "약", "가량", "정도", "�
 # 화면용 숫자를 "약간 낮다"로 풀자 범위 단서가 새로 생긴 것으로 잘못 잡혔다(2026-10-04).
 # `script_polish.meaning_classes` 는 Production 다듬기도 쓰므로 고치지 않고 여기서만 가린다.
 _NON_HEDGE_YAK = re.compile(r"약(?!\s*[\d.])")
+# 한자어 부정("불필요·불가능·무관…")도 부정이다. 원문 "허가도 불필요"를 모델이 "허가도 필요 없어"로 풀자 "없"만
+# 부정으로 세져 뜻이 바뀐 것으로 거절됐다(2026-10-05 위성 레이저 광통신 실측). 양쪽 모두 이 낱말을 부정으로 센다.
+_SINO_NEGATION = re.compile(r"불(?:필요|가능|가|충분|충족|명확|분명|일치)|무(?:관|의미|효)|미(?:달|흡|확인|정)")
 # 덧붙이면 주장이 약해질 뿐인 갈래 — **빼는 것만** 막는다. 연관·부정은 양방향 모두 막는다.
 _WEAKENING_CLASSES = frozenset({"hedge", "uncertain"})
 _ABBREVIATION = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9+.-]{1,}(?![A-Za-z])")
 _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시사한다", "할 수 있습니다")
+
+# "관련"이 **연관 주장**일 때만 연관이다("~와 관련이 있다", "관련된", "관련성"). "관련 기업·관련 자료"처럼
+# 명사 앞 수식어는 "해당"이라는 뜻이라 연관 주장이 아니다 — 후원사 이름을 "관련 기업"으로 줄이자 연관이 새로
+# 생긴 것으로 거절됐다(2026-10-05 조화 음파 논문 실측). Production 다듬기(script_polish)는 그대로 둔다.
+_NON_ASSOC_GWANRYEON = re.compile(r"관련(?!\s*(?:이|성|되|된|돼|해|하|있|없|지|을|은|도))")
+
+
+def _meaning_classes(text: str) -> set[str]:
+    text = _NON_ASSOC_GWANRYEON.sub("□", text)
+    classes = script_polish.meaning_classes(text) & _PROTECTED_MEANING_CLASSES
+    return classes | {"negation"} if _SINO_NEGATION.search(text) else classes
+
 
 SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다.
 입력의 비트 순서와 의미를 그대로 유지해 말하기 쉬운 문장으로 바꿔라.
@@ -154,14 +169,13 @@ def _draft_guard_findings(
         before_meaning = before
         for number in screen_numbers:
             escaped = re.escape(number)
-            before_meaning = re.sub(rf"약\s*{escaped}", number, before_meaning)
+            # "평균 26.8" 도 같다(2026-10-05 조화 음파 논문 실측 — 숫자와 함께 '평균'이 빠져 거절됐다).
+            before_meaning = re.sub(rf"(?:약|평균)\s*{escaped}", number, before_meaning)
             before_meaning = re.sub(rf"{escaped}\s*(?:가량|정도)", number, before_meaning)
         before_meaning = _NON_HEDGE_YAK.sub("□", before_meaning)
         after_meaning = _NON_HEDGE_YAK.sub("□", after)
-        before_classes = (
-            script_polish.meaning_classes(before_meaning) & _PROTECTED_MEANING_CLASSES
-        )
-        after_classes = script_polish.meaning_classes(after_meaning) & _PROTECTED_MEANING_CLASSES
+        before_classes = _meaning_classes(before_meaning)
+        after_classes = _meaning_classes(after_meaning)
         changed_classes = (before_classes - after_classes) | (
             (after_classes - before_classes) - _WEAKENING_CLASSES
         )

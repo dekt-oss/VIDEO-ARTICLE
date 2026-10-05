@@ -1425,6 +1425,12 @@ DEGRADED_CONTINUITY_REASONS: tuple[str, ...] = (
 # ★ 차단이 아니라 경고인 이유: 짧은 영상은 세계가 여럿일 수 있고, 몇이 적정인지는 아직
 #   실측이 없다. Phase 4 골든 비교 뒤에 숫자를 다시 잡는다.
 VSEQ_WORLD_RESET_WARN: float = _get_float("VSEQ_WORLD_RESET_WARN", 0.6)
+# ★ 막힘 자동 교정(2026-10-05 운영자 "막힘 자동 교정만 작업해"). 모양이 정해진 실수는 막지 않고 코드가 고친 뒤
+#   경고로 남긴다(repair_lineage_appears 와 같은 자세). 끄면 종전처럼 승인 차단.
+#   stage 하나뿐인 MECHANISM_SEQUENCE → REALITY_ANCHOR 이름표(vseq_too_few_stages 대신 vseq_single_stage_relabeled).
+VSEQ_SINGLE_STAGE_RELABEL: bool = _get_bool("VSEQ_SINGLE_STAGE_RELABEL", True)
+#   리포트: 숫자·리스크 단계를 옮기는 도해 컷 → 실사 컷(photo_mechanism_on_number/risk 대신 photo_mechanism_demoted).
+REPORT_MECHANISM_MISUSE_REPAIR: bool = _get_bool("REPORT_MECHANISM_MISUSE_REPAIR", True)
 
 SPEC_TOKEN_PATTERN: str = (
     r"\b\d+\s*(?:°|deg\b|degrees?\b|mm\b|fps\b|k\b|K\b)"

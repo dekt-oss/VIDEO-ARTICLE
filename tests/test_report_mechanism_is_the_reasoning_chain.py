@@ -136,8 +136,40 @@ def test_the_codes_are_registered_and_have_prescriptions():
         assert "REALITY" in pc.feedback_prompt([f"{code}:3"]), code
 
 
+def _misuse_setup(monkeypatch):
+    base = _with_sequences(_raw("좋은 훅"))
+    for c in base["cuts"]:
+        c["reasoning_id"], c["reasoning_step"] = "", 0
+    bad = copy.deepcopy(base)
+    mech = [c for c in bad["cuts"] if str(c.get("visual_role") or "").upper() == "MECHANISM"]
+    mech[0]["reasoning_id"], mech[0]["reasoning_step"] = "R01", 3      # 13.7조 단계를 도해로
+    calls = []
+
+    def fake(**kw):
+        calls.append(kw["user"])
+        return copy.deepcopy(bad if len(calls) == 1 else base)
+
+    monkeypatch.setattr(rd, "call_json", fake)
+    row = {"script_md": "문장.", "fact_sheet": {"source_depth": "full_text"}, "scenes": [],
+           "financial_reasoning": _reasoning()}
+    return calls, row, mech[0]["cut_no"]
+
+
+def test_the_report_path_demotes_the_cut_instead_of_blocking(monkeypatch):
+    """2026-10-05 막힘 자동 교정: 재생성 없이 그 컷을 실사로 내리고 경고만 남긴다."""
+    calls, row, cut_no = _misuse_setup(monkeypatch)
+    out = rd.generate(row, "photo")
+    # (이 fixture 는 다른 품질 경고로 한 번 더 묻는다 — 고친 컷 때문에 묻지는 않는다)
+    assert not any("숫자·전망치 단계" in user for user in calls[1:]), "고친 실수를 모델에게 되묻지 않는다"
+    cut = next(c for c in out["cuts"] if c["cut_no"] == cut_no)
+    assert cut["visual_role"] == "REALITY"
+    assert f"photo_mechanism_demoted:{cut_no}" in out["header"]["mode_warnings"]
+    assert not any(r.startswith("photo_mechanism_on_number") for r in out["header"].get("block_reasons") or [])
+
+
 def test_the_report_path_blocks_and_feeds_back_then_retries(monkeypatch):
-    """검사·고지·되먹임 셋이 한 배선에 있다(gate-prompt-feedback parity)."""
+    """교정을 끄면 종전대로: 검사·고지·되먹임 셋이 한 배선에 있다(gate-prompt-feedback parity)."""
+    monkeypatch.setattr(rd.config, "REPORT_MECHANISM_MISUSE_REPAIR", False)
     base = _with_sequences(_raw("좋은 훅"))
     for c in base["cuts"]:
         c["reasoning_id"], c["reasoning_step"] = "", 0
