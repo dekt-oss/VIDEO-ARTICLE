@@ -208,3 +208,25 @@ def test_cli_passes_series_split_override_reason(monkeypatch, tmp_path, capsys):
 
     saved = json.loads(Path(json.loads(capsys.readouterr().out)["json"]).read_text(encoding="utf-8"))
     assert saved["seen_override"] == "비교용"
+
+
+def test_cli_reads_render_qa_from_the_render_job_for_phase13(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(compare_explanation_v2.db, "insert_generation_attempt", lambda row: None)
+    _patch_load(monkeypatch, {"fact_sheet": {}})
+    monkeypatch.setattr(compare_explanation_v2.explanation_shadow_pipeline, "run", _fake_run)
+    seen = []
+
+    def get_job(job_id):
+        seen.append(job_id)
+        return {"id": job_id, "qa": {"hard_fail": ["오디오 트랙 없음"], "warnings": []}}
+
+    monkeypatch.setattr(compare_explanation_v2.db, "get_render_job", get_job)
+    job_id = "99999999-8888-7777-6666-555555555555"
+    compare_explanation_v2.main(["paper", PAPER_ID, "--render-job-id", job_id,
+                                 "--output-dir", str(tmp_path)])
+
+    out = json.loads(capsys.readouterr().out)
+    saved = json.loads(Path(out["json"]).read_text(encoding="utf-8"))
+    render = next(s for s in saved["publish_gate"]["stages"] if s["stage"] == "render")
+    assert seen == [job_id]
+    assert render["status"] == "FAIL" and render["fails"] == ["오디오 트랙 없음"]

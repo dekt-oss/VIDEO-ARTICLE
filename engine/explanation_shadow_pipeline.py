@@ -17,6 +17,7 @@ from . import (
     narrative_planner,
     paper_reasoning_adapter,
     prerequisite_resolver,
+    publish_gate_v2,
     report_reasoning_adapter,
     semantic_fidelity,
     spoken_narration,
@@ -137,7 +138,14 @@ def _empty_result(
     }
 
 
-def run(
+def run(**kwargs: Any) -> dict[str, Any]:
+    """`_run` + Phase 13 최종 발행 관문 성적표(`publish_gate`). 렌더 QA 는 렌더 뒤에 CLI 가 다시 붙인다."""
+    result = _run(**kwargs)
+    result["publish_gate"] = publish_gate_v2.evaluate(result)
+    return result
+
+
+def _run(
     *,
     domain: str,
     content_id: str,
@@ -532,6 +540,10 @@ def render_markdown(result: dict[str, Any]) -> str:
     ]
     if side_effects:
         lines.append(f"- DB 기록: {json.dumps(side_effects, ensure_ascii=False)}")
+    gate = result.get("publish_gate")
+    if isinstance(gate, dict):
+        lines.extend(["", "## 최종 발행 관문 (Phase 13 — 원문 → 논리 → 대본 → 화면 → 렌더)", "",
+                      *publish_gate_v2.markdown_lines(gate), ""])
     lines.extend([
         "- 렌더 영상 품질: 미검증", "- 시청자 이해도: 미검증", "",
         "## 기존 Production 대본", "",
