@@ -438,6 +438,15 @@ export interface WarningSummary {
   hidden: number;
 }
 
+/** V2 설명 엔진 지시서 표시 — 초안 표의 Production 대본과 컷 나레이션이 다르다는 것을 화면에 알린다. */
+export interface ExplanationV2Info {
+  bridge?: string;
+  run_at?: string;
+  narration_model?: string;
+  publish_gate_verdict?: string;
+  script?: string;
+}
+
 export interface DirectiveHeader {
   version_type: VersionType;
   aspect_ratio: string; // "9:16" | "16:9"
@@ -472,6 +481,8 @@ export interface DirectiveHeader {
   mode_warnings?: string[];
   /** 위 3개 + 나머지 접힘. 없으면(옛 지시서) 화면이 mode_warnings 를 그대로 보여준다. */
   warning_summary?: WarningSummary;
+  /** V2 설명 엔진이 만든 지시서 표시(engine/v2_directive_bridge.py). 있으면 컷 나레이션은 V2 대본이다. */
+  explanation_v2?: ExplanationV2Info;
   /** 이 지시서를 만든 엔진 버전(engine/config.DIRECTIVE_ENGINE_VERSION). 없으면 2026-09-29 이전. */
   engine_version?: string;
   /** 만든 워커의 커밋(GitHub Actions 의 GITHUB_SHA 앞 7자). 로컬 실행이면 빈값. */

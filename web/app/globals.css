@@ -109,6 +109,9 @@ textarea.script { width: 100%; min-height: 240px; background: var(--card); color
   border-radius: 8px; padding: 10px 12px; font-size: 14px; }
 .banner-warn { background: rgba(255,176,32,0.12); border: 1px solid var(--warn); color: var(--warn);
   border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+/* V2 설명 엔진 지시서 안내(정보) — 경고·차단과 구분되는 파랑 */
+.banner-info { background: rgba(80,150,255,0.12); border: 1px solid #5096ff; color: #8fbcff;
+  border-radius: 8px; padding: 10px 12px; font-size: 14px; }
 /* 컴플라이언스 차단 배너(발행 차단) — danger 강조 */
 .banner-block { background: rgba(255,92,92,0.12); border: 1px solid var(--danger); color: var(--danger);
   border-radius: 8px; padding: 10px 12px; font-size: 14px; font-weight: 600; }

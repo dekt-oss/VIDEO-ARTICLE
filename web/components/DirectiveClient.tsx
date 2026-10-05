@@ -11,6 +11,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import UnsavedGuard from "@/components/UnsavedGuard";
 import SaveStatus, { type SaveState } from "@/components/SaveStatus";
 import WarningSummaryView from "@/components/WarningSummaryView";
+import ExplanationV2Banner from "@/components/ExplanationV2Banner";
 import { useGeneration, genPhaseLabel } from "@/lib/useGeneration";
 import { apiErrorText } from "@/lib/apiError";
 import { effectLabel, transitionLabel } from "@/lib/effectLabels";
@@ -448,6 +449,7 @@ export default function DirectiveClient({
           )}
           {/* ★ 경고는 위 3개만 크게, 나머지는 접는다(2026-09-28). 라벨은 warningLabel — 종전에는
               `photo_world_churn:3.38/분` 이 그대로 나갔다. 요약이 없는 옛 지시서는 한 줄로 전부. */}
+          <ExplanationV2Banner info={h.explanation_v2} />
           <WarningSummaryView summary={h.warning_summary} all={h.mode_warnings} />
         </div>
       )}
