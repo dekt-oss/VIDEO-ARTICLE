@@ -183,6 +183,12 @@ MODEL_SCORING: str = os.getenv("MODEL_SCORING", "gemini-2.5-flash")       # 5축
 #   채점은 하루 수백 편이라 5배가 곧바로 돈이고, 자기검증은 판정(문장 생성 아님)이라 싼 모델로 충분하다.
 MODEL_FACTSHEET: str = os.getenv("MODEL_FACTSHEET", "gemini-3.8-flash")    # Fact Sheet 추출
 MODEL_SELFCHECK: str = os.getenv("MODEL_SELFCHECK", "gemini-2.5-flash")    # 자기검증
+# ★ Explanation Engine v2 Phase 3 "생각하는 단계"(작업지시서 §5, §17 "Explanation Reasoning → quality-tier model").
+#   2026-10-05 전체 재검토: 종전 Phase 3 은 Fact Sheet 주장에 이름표만 붙였다(생각이 없었다). 콘텐츠마다 한 번
+#   모델이 질문·관심 이유·반전·이야기 틀·단계별 질문과 답을 짠다. 기본은 deepseek-v4-pro — 운영자가 2026-09-19 지시서용으로
+#   승인한 품질 모델이다. Anthropic 은 ANTHROPIC_DISABLED(운영자 결정)로 막혀 있어 쓰지 않는다. Gold Set 비교 뒤
+#   다른 후보와 A/B 한다(§17 "현재 기본 모델을 즉시 교체하지 말고 비교한다").
+MODEL_EXPLANATION_REASONING: str = os.getenv("MODEL_EXPLANATION_REASONING", "deepseek-v4-pro")
 # ★ 기본을 flash 로 내렸다(2026-08-29). pro/opus 는 flash 의 25~30배이고, 어제 실측에서
 #   대본 합성이 그날 텍스트 비용의 큰 몫을 먹었다(논문 16편 × 3안 = 48벌).
 #   품질이 필요한 편은 MODEL_SCRIPT 를 **명시로** 올려 쓴다 — 비싼 것이 기본값이면
