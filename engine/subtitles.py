@@ -146,6 +146,15 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
         f"Style: ScreenFact,{font_name},{config.OVERLAY_SCREEN_FACT_FONT_SIZE},{config.OVERLAY_KEYWORD_COLOR_ASS},"
         f"{config.OVERLAY_KEYWORD_BOX_ASS},&H00000000,1,0,3,8,0,2,{config.OVERLAY_SIDE_MARGIN_PX},"
         f"{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_MARGIN_V}\n"
+        # ★ S5(2026-10-05): 전망·추정·가설 숫자 카드 — 같은 자리·크기, **상자 없이** 흰 글자 + 검은 외곽선
+        #   (BorderStyle=1). ASS 는 점선 테두리를 못 그려서 "상자 있음 = 실적·관측 / 상자 없음 + 강조색
+        #   이름표 = 전망·추정"으로 구분한다. 외곽선을 강조색으로 했더니 같은 색 이름표가 뭉개져 안 읽혔다(실측).
+        f"Style: ScreenFactEstimate,{font_name},{config.OVERLAY_SCREEN_FACT_FONT_SIZE},{config.OVERLAY_KEYWORD_COLOR_ASS},"
+        f"&H00000000,&H64000000,1,0,1,4,0,2,{config.OVERLAY_SIDE_MARGIN_PX},"
+        f"{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_MARGIN_V}\n"
+        # ★ S4(2026-10-05): 장면 동작 층(드러내기 막·흐름 화살표). 도형이 \pos 로 자리를 직접 정한다.
+        f"Style: StageMotion,{font_name},20,{config.OVERLAY_ANNOTATION_COLOR_ASS},"
+        f"&H00000000,&H64000000,0,0,1,0,0,7,0,0,0\n"
     ) if ov else ""
     header = (
         "[Script Info]\n"
@@ -196,6 +205,15 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
             lines.append(
                 f"Dialogue: 0,{ass_timestamp(f_start)},{ass_timestamp(f_end)},Footer,,0,0,0,,{footer}"
             )
+    # ★ S4 장면 동작 층(드러내기 막 등)은 **자막보다 아래**(Layer 0, 자막보다 먼저)에 깐다 —
+    #   막이 걷히는 0.9초 동안 나레이션 자막이 어두워지면 안 된다.
+    for start, end, text, style in ov:
+        if style != "StageMotion" or end <= start:
+            continue
+        lines.append(
+            f"Dialogue: 0,{ass_timestamp(start)},{ass_timestamp(end)},{style},,0,0,0,,{str(text).strip()}"
+        )
+    ov = [c for c in ov if c[3] != "StageMotion"]
     for start, end, text in cues:
         text = (text or "").strip().replace("\n", "\\N")
         if not text or end <= start:

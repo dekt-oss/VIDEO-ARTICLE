@@ -5,7 +5,7 @@
 여기선 (1) 규칙이 코드로 강제되는가, (2) 기존 출력이 바이트 단위로 불변인가를 본다.
 """
 
-from engine import config, subtitles
+from engine import config, overlay_motion, subtitles
 from engine.evidence_overlay import (
     build_overlay_cues,
     normalize_overlay_plan,
@@ -78,14 +78,14 @@ def test_legacy_text_overlay_effect_is_resurrected():
     cuts = [{"effects": ["ken_burns_zoom_in", "text_overlay:2016-2022년 1,240개 기업"]}]
     cues = build_overlay_cues(cuts, starts=[0.0], durations=[6.0])
     assert len(cues) == 1
-    assert cues[0][2] == "2016-2022년 1,240개 기업"
+    assert overlay_motion.strip_entrance(cues[0][2]) == "2016-2022년 1,240개 기업"
 
 
 def test_overlay_plan_wins_over_legacy_effect():
     cuts = [{"overlay_plan": [_ov(text="구조화 카드")],
              "effects": ["text_overlay:레거시"]}]
     cues = build_overlay_cues(cuts, starts=[0.0], durations=[6.0])
-    assert [c[2] for c in cues] == ["구조화 카드"]
+    assert [overlay_motion.strip_entrance(c[2]) for c in cues] == ["구조화 카드"]
 
 
 def test_number_punch_uses_its_own_style():

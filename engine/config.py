@@ -1531,6 +1531,64 @@ OVERLAY_SCREEN_FACT_FONT_SIZE: int = _get_int("OVERLAY_SCREEN_FACT_FONT_SIZE", 6
 OVERLAY_SCREEN_FACT_DELAY_SEC: float = 0.4
 OVERLAY_FADE_IN_MS: int = 250
 OVERLAY_FADE_OUT_MS: int = 150
+# ★ 다음 단계 S2~S5(2026-10-05, 원 작업지시서 Phase 11 Visual Explainer Renderer · Phase 12 Domain Visual
+#   Semantics). 전부 자막 레이어(ASS) 태그와 ffmpeg 필터라 추가 비용 0, 언어별로 나간다. 정본: engine/overlay_motion.py.
+#   S2 화면 글자 등장 움직임(페이드·튀어나오기·화살표 그려지기·전후 캡션 차례로).
+OVERLAY_MOTION_ENABLED: bool = _get_bool("OVERLAY_MOTION_ENABLED", True)
+OVERLAY_POP_MS: int = 220                 # 카드가 85% 크기에서 100% 로 커지는 시간
+OVERLAY_POP_START_PCT: int = 85
+OVERLAY_POINTER_DRAW_MS: int = 350        # 화살표가 꼬리에서 촉까지 그려지는 시간
+OVERLAY_LABEL_STAGGER_SEC: float = 0.6    # 전후 캡션: 위(전) 다음 아래(후)가 이만큼 늦게 뜬다
+#   S3 숫자 카운트업 — 화면 숫자 카드의 숫자가 0 에서 올라간다(설명판형 board_motion.count_up 재사용).
+OVERLAY_COUNT_UP_ENABLED: bool = _get_bool("OVERLAY_COUNT_UP_ENABLED", True)
+OVERLAY_COUNT_UP_SEC: float = 0.8
+OVERLAY_COUNT_UP_FPS: int = 15            # 자막 이벤트 하나가 한 프레임 — 15 면 0.8초에 12장
+#   S4 장면 동작 → 스틸 컷의 실제 움직임. 순환 켄번스 대신 stage 의 동작이 카메라를 고른다.
+STAGE_MOTION_ENABLED: bool = _get_bool("STAGE_MOTION_ENABLED", True)
+STAGE_OPERATION_EFFECT: dict[str, str] = {
+    # 밀어 들어가기 — 안으로 들어가 보는 동작
+    "ZOOM_INTO": "ken_burns_zoom_in", "ISOLATE": "ken_burns_zoom_in", "TRANSFORM": "ken_burns_zoom_in",
+    "MERGE": "ken_burns_zoom_in", "ASSEMBLE": "ken_burns_zoom_in",
+    # 빠져나오기 — 전체가 커지거나 흩어지는 동작
+    "ACCUMULATE": "ken_burns_zoom_out", "EXPLODE": "ken_burns_zoom_out", "SPLIT": "ken_burns_zoom_out",
+    # 따라가기 — 무언가가 옮겨 가는 동작(왼쪽 → 오른쪽, 아래 흐름 화살표와 같은 방향)
+    "FLOW": "pan_right", "TRANSFER": "pan_right",
+}
+STAGE_CAMERA_EFFECT: dict[str, str] = {
+    "DOLLY_IN": "ken_burns_zoom_in", "SECTION_DIVE": "ken_burns_zoom_in",
+    "DOLLY_OUT": "ken_burns_zoom_out", "TOP_DOWN": "ken_burns_zoom_out",
+    "TRACK": "pan_right", "FOLLOW_OBJECT": "pan_right",
+}
+#   흐름(FLOW·TRANSFER)은 화살표가 왼쪽에서 오른쪽으로 그려지고, 드러내기(REVEAL·CUTAWAY)는 어두운 막이 걷힌다.
+#   ★ 흐름 화살표는 **기본 꺼짐** — 2026-09-19 운영자 지시("화살표는 그냥 없어도 되는거야",
+#     OVERLAY_POINTER_ENABLED 주석)를 따른다. 흐름은 기본으로 카메라가 따라가는 움직임(pan)으로만 보인다.
+STAGE_FLOW_ARROW_ENABLED: bool = _get_bool("STAGE_FLOW_ARROW_ENABLED", False)
+STAGE_REVEAL_WIPE_ENABLED: bool = _get_bool("STAGE_REVEAL_WIPE_ENABLED", True)
+STAGE_FLOW_ARROW_OPERATIONS: tuple[str, ...] = ("FLOW", "TRANSFER")
+STAGE_REVEAL_WIPE_OPERATIONS: tuple[str, ...] = ("REVEAL", "CUTAWAY")
+STAGE_FLOW_ARROW_DRAW_SEC: float = 1.2
+STAGE_FLOW_ARROW_Y_FRAC: float = 0.78     # 콘텐츠 밴드 안 세로 위치(아래쪽 — 주인공을 가리지 않게)
+STAGE_FLOW_ARROW_THICK_PX: int = 14
+STAGE_REVEAL_WIPE_SEC: float = 0.9
+STAGE_REVEAL_WIPE_ALPHA: str = "&H30&"    # 막의 투명도(00 불투명 ~ FF 투명)
+#   S5 실적/전망 구분(금융) · 관측/모델/가설 구분(과학). 실적·관측은 표시 없이 꽉 찬 상자,
+#   나머지는 이름표 + 속이 빈 테두리 상자(ASS 는 점선 테두리를 못 그린다 — 대신 채움을 뺀다).
+SCREEN_FACT_KIND_BADGE: dict[str, str] = {
+    "forecast": "전망", "guidance": "회사 가이던스", "scenario": "시나리오",
+    "modelled": "모델 추정", "hypothesis": "가설",
+}
+SCREEN_FACT_KIND_TERMS: dict[str, tuple[str, ...]] = {
+    # 순서가 곧 우선순위다 — "가이던스 전망"은 가이던스다.
+    "guidance": ("가이던스", "guidance"),
+    "scenario": ("시나리오", "scenario", "강세 시", "약세 시"),
+    "forecast": ("전망", "예상", "추정치", "목표주가", "컨센서스", "forecast", "outlook", "projected"),
+    "modelled": ("시뮬레이션", "모델링", "모델로", "모형", "예측", "추산", "simulation", "modelled", "predicted"),
+    "hypothesis": ("가설", "가능성", "시사", "추측", "hypothes", "suggest"),
+}
+SCREEN_FACT_KINDS_BY_DOMAIN: dict[str, tuple[str, ...]] = {
+    "report": ("guidance", "scenario", "forecast"),
+    "paper": ("modelled", "hypothesis"),
+}
 OVERLAY_PRIORITIES: tuple[str, ...] = ("primary", "supporting")
 DEFAULT_OVERLAY_PRIORITY: str = "supporting"
 OVERLAY_MIN_SEC: float = 2.0          # §11-4 2초 미만으로 지나가는 복잡한 카드 금지
