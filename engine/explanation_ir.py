@@ -125,6 +125,8 @@ def normalize(candidate: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]
             "attribution": _text(raw.get("attribution")),
             "transition_relation": _text(raw.get("transition_relation")),
         })
+        if _text(raw.get("source_reasoning_id")):
+            units[-1]["source_reasoning_id"] = _text(raw.get("source_reasoning_id"))
 
     return {
         "contract_version": CONTRACT_VERSION,

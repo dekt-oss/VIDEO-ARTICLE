@@ -65,7 +65,12 @@ Markdown은 다음 순서로 보여 준다.
 3. 현재 Production 지시서 — 지시서 id·version_type·status·생성 시각·선택 기준, 컷마다
    대사·연출(`staging_ko`)·시각 프롬프트·근거 참조
 4. 생성된 V2 Shadow 대본 — 제목에 phase6 판정. 엔진이 거절한 대본이면 "거절한 대본" 경고를 단다
-5. V2 Shadow 지시서 — 컷마다 대사·시각 모드·시각 상태·상태 변화·전환 관계·reasoning·evidence·raw ref
+5. V2 추적 골격(간이 화면 계획 — 렌더용 아님) — 컷마다 대사·시각 모드·시각 상태·상태 변화·전환 관계·reasoning·evidence·raw ref
+5-1. V2 지시서(기존 생성기로 만든 것, `--with-directive`) — 기존 Production 지시서와 **같은 생성기**
+   (`directive.generate` / `report_directive.generate`)에 V2 대본을 넣어 만든 지시서. 승인 가능 여부·막힌 이유,
+   컷마다 대사·연출·시각 프롬프트, 그리고 생성기가 지운 V2 추적 정보를 다시 붙인 출처(`v2_trace`).
+   DB 지시서 표에 저장하지 않는다. 설계 근거: `docs/설계점검_ExplanationEngine_v2_2026-10-05.md` §3-A,
+   구현 `engine/v2_directive_bridge.py`.
 6. 차단·경고 — 실행 오류, phase5~10 의 qa 오류·경고 원문 코드, phase8 필요 조치, 미해결 선행 개념,
    한계(`non_claims`)
 7. Phase 2~10 단계별 상태

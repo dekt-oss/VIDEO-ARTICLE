@@ -143,6 +143,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("domain", choices=("paper", "report"))
     parser.add_argument("content_id")
     parser.add_argument("--with-model", action="store_true")
+    parser.add_argument("--with-directive", action="store_true",
+                        help="V2 대본이 통과하면 기존 지시서 생성기로 지시서까지 만든다(추가 비용, DB 저장 없음)")
     parser.add_argument("--directive-id", default=None,
                         help="비교할 Production 지시서 id(이 콘텐츠의 것만 허용)")
     parser.add_argument("--concepts-file", default=None,
@@ -152,10 +154,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output-dir", default="artifacts/explanation-v2-phase11")
     args = parser.parse_args(argv)
 
+    if args.with_directive and not args.with_model:
+        parser.error("--with-directive 는 --with-model 과 함께만 쓸 수 있습니다")
     content_id = canonical_content_id(args.content_id)
     directive_id = canonical_content_id(args.directive_id) if args.directive_id else None
     requested_concepts = _load_concepts(args.concepts_file)
     draft, directive, selection = _load(args.domain, content_id, directive_id)
+    report_row = (report_db.get_report(content_id)
+                  if args.domain == "report" and args.with_directive else None)
     with count_ledger_writes() as writes:
         result = explanation_shadow_pipeline.run(
             domain=args.domain,
@@ -168,6 +174,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             legacy_draft=draft,
             legacy_directive=directive,
             allow_model_calls=args.with_model,
+            with_directive=args.with_directive,
+            report=report_row,
         )
     result["legacy_selection"] = selection
     result["side_effects"] = {

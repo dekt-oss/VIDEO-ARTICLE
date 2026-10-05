@@ -399,7 +399,8 @@ def test_markdown_shows_shadow_trace_and_legacy_directive_identity():
 def test_markdown_section_order_is_stable():
     markdown = explanation_shadow_pipeline.render_markdown(_run())
     order = ["## 콘텐츠 정보", "## 기존 Production 대본", "## 기존 Production 지시서",
-             "## V2 Shadow 대본", "## V2 Shadow 지시서", "## 차단·경고", "## 단계 판정"]
+             "## V2 Shadow 대본", "## V2 추적 골격", "## V2 지시서 (기존 생성기로 만든 것)",
+             "## 차단·경고", "## 단계 판정"]
     positions = [markdown.index(heading) for heading in order]
     assert positions == sorted(positions)
 

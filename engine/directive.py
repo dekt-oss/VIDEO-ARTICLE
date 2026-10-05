@@ -514,6 +514,11 @@ def directive_user_prompt(draft_row: dict[str, Any], version_type: str) -> str:
         bones = cut_skeleton.build(script_md, version_type=version_type)
         cut_count = len(bones)
         skeleton = cut_skeleton.skeleton_block(bones)
+        # V2 검증 대본이면 대사까지 고정한다(초안에 표시가 있을 때만 — Production 초안에는 없다).
+        if draft_row.get(cut_skeleton.NARRATION_LOCK_KEY):
+            bones = cut_skeleton.lock_skeleton(script_md, version_type=version_type)
+            cut_count = len(bones)
+            skeleton = cut_skeleton.lock_block(bones, cut_skeleton.lock_hints(draft_row))
     # ★ 표현 수준 제약은 **시퀀스를 쓰는 버전에만** 붙인다 — 시퀀스가 없으면
     #   representation_mode 자체가 없고, 없는 필드를 두고 설교하면 프롬프트만 희석된다.
     depth_block = source_depth_guidance(fact_sheet) if version_type == "photo" else ""
@@ -2252,6 +2257,8 @@ def _generate_with_retry(draft_row: dict[str, Any], version_type: str) -> dict[s
     #   (실측: 11칸을 줬는데 7컷). 지시는 검사되지 않으면 지켜지지 않는다.
     skeleton = (cut_skeleton.build(draft_row.get("script_md") or "", version_type=version_type)
                 if (config.CUT_SKELETON_ENABLED and version_type == "photo") else [])
+    if skeleton and draft_row.get(cut_skeleton.NARRATION_LOCK_KEY):
+        skeleton = cut_skeleton.lock_skeleton(draft_row.get("script_md") or "", version_type=version_type)
     # ★★ 근거 원장을 **지금 계약으로 다시 찍는다**(코덱스 리뷰 §4). LLM 호출 0건·무료다.
     #    이걸 안 하면 초안 때 박힌 낡은 판정이 정상 컷을 계속 차단한다(골든B 실측 4컷).
     fact_sheet = refresh_claim_evidence(draft_row)
@@ -2271,6 +2278,10 @@ def _generate_with_retry(draft_row: dict[str, Any], version_type: str) -> dict[s
             #   죽고 사는 것은 상한이 잘못 놓였다는 뜻이다. 근거는 config 주석.
             max_tokens=config.LLM_DIRECTIVE_MAX_TOKENS,
         )
+        # V2 검증 대본: 모델이 바꾼 대사를 골격 문장으로 되돌린다 — 화면 검사가 고정 대사로 돌게
+        # 정규화 **앞**에서 한다(cut_skeleton 대사 고정 주석).
+        locked = (cut_skeleton.lock_narration(obj.get("cuts") or [], skeleton)
+                  if draft_row.get(cut_skeleton.NARRATION_LOCK_KEY) else None)
         d = normalize_directive(
             obj, version_type,
             fact_sheet=fact_sheet,
@@ -2283,6 +2294,12 @@ def _generate_with_retry(draft_row: dict[str, Any], version_type: str) -> dict[s
             gate["block_reasons"] = sorted({*gate.get("block_reasons", []), short})
             d["header"]["block_reasons"] = sorted({*d["header"]["block_reasons"], short})
             d["header"]["approval_blocked"] = True
+        if locked is not None:
+            d["header"]["narration_lock"] = locked
+            reason = cut_skeleton.lock_reason(locked)
+            if reason:
+                d["header"]["block_reasons"] = sorted({*d["header"]["block_reasons"], reason})
+                d["header"]["approval_blocked"] = True
         return d
 
     directive = _once()

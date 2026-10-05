@@ -19,6 +19,7 @@ from . import (
     report_reasoning_adapter,
     semantic_fidelity,
     spoken_narration,
+    v2_directive_bridge,
     visual_planner,
 )
 
@@ -125,6 +126,7 @@ def _empty_result(
             "gate": None,
             "visual_plan": None,
             "directive": None,
+            "generated": None,
         },
         "error": None,
         "non_claims": [
@@ -149,6 +151,9 @@ def run(
     allow_model_calls: bool = False,
     narration_caller: Callable[..., dict[str, Any]] | None = None,
     critic_caller: Callable[..., dict[str, Any]] | None = None,
+    with_directive: bool = False,
+    directive_generator: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build shadow artifacts without any database write or render side effect.
 
@@ -275,7 +280,37 @@ def run(
         result["run_status"] = "ERROR"
         return result
     result["run_status"] = "READY" if shadow["directive"] else "BLOCKED"
+    if with_directive and allow_model_calls:
+        _bridge(result, legacy_draft, financial_reasoning, report, directive_generator)
     return result
+
+
+def _bridge(result: dict[str, Any], legacy_draft: Any, financial_reasoning: Any,
+            report: Any, generator: Any) -> None:
+    """V2 대본 → 기존 지시서 생성기(설계 점검 A). V2 대본이 모든 게이트를 통과했을 때만 부른다.
+
+    실패해도 V2 대본 판정(run_status)은 그대로 두고 이 단계의 상태만 남긴다.
+    """
+    shadow = result["shadow"]
+    if result["run_status"] != "READY":
+        result["phase_status"]["production_generator"] = "NOT_RUN"
+        return
+    try:
+        shadow["generated"] = v2_directive_bridge.generate(
+            result["domain"], shadow, legacy_draft if isinstance(legacy_draft, dict) else {},
+            financial_reasoning=financial_reasoning,
+            report=report if isinstance(report, dict) else None,
+            generator=generator,
+        )
+    except Exception as exc:  # noqa: BLE001 — 실패를 성공처럼 숨기지 않는다
+        shadow["generated"] = None
+        shadow["generated_error"] = {"type": type(exc).__name__, "message": str(exc)[:500]}
+        result["phase_status"]["production_generator"] = "ERROR"
+        return
+    generated = shadow["generated"]
+    result["phase_status"]["production_generator"] = (
+        "APPROVAL_BLOCKED" if generated["approval_blocked"] else "READY"
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -355,6 +390,40 @@ def _shadow_cut_lines(directive: dict[str, Any], visual_plan: Any) -> list[str]:
                 f" / {_join(trace.get('causal_levels'))}"
             )
     return lines or ["- (지시서 컷 없음)"]
+
+
+def _generated_lines(result: dict[str, Any]) -> list[str]:
+    shadow = result["shadow"]
+    status = result["phase_status"].get("production_generator")
+    generated = shadow.get("generated")
+    if not isinstance(generated, dict):
+        error = _dict(shadow.get("generated_error"))
+        if error:
+            return [f"- ❌ 생성 실패: {error.get('type')}: {error.get('message')}"]
+        if status == "NOT_RUN":
+            return ["- 만들지 않음: V2 대본이 아직 모든 검사를 통과하지 못했습니다."]
+        return ["- 만들지 않음: `--with-directive` 로 실행하면 만듭니다(추가 비용)."]
+    directive = _dict(generated.get("directive"))
+    trace = _dict(generated.get("trace"))
+    header = _dict(directive.get("header"))
+    lines = [
+        "> 기존 Production 지시서와 **같은 생성기**로 만들었다 — 차이는 대본에서만 난다.",
+        "",
+        f"- 승인 가능 여부: {'막힘' if generated.get('approval_blocked') else '통과'}"
+        f" · 막힌 이유: {_join(generated.get('block_reasons'))}",
+        f"- 컷 {trace.get('cuts', 0)}개 · V2 대본과 연결된 컷 {trace.get('traced_cuts', 0)}개",
+        f"- 예상 길이: {header.get('total_estimated_sec') or '-'}초",
+    ]
+    for line in _legacy_cut_lines(directive.get("cuts")):
+        lines.append(line)
+    for cut in directive.get("cuts") or []:
+        v2 = _dict(_dict(cut).get("v2_trace"))
+        if v2.get("matched"):
+            lines.append(
+                f"  - (컷 {_dict(cut).get('cut_no')} 출처) V2 {v2.get('beat_id')}"
+                f" · evidence {_join(v2.get('evidence_ids'))} · raw ref {_join(v2.get('raw_refs'))}"
+            )
+    return lines
 
 
 def _narration_lines(narration: Any) -> list[str]:
@@ -486,7 +555,7 @@ def render_markdown(result: dict[str, Any]) -> str:
     else:
         lines.append("- 생성된 V2 대본 없음")
 
-    lines.extend(["", "## V2 Shadow 지시서", ""])
+    lines.extend(["", "## V2 추적 골격 (간이 화면 계획 — 렌더용 아님)", ""])
     directive = shadow.get("directive")
     if isinstance(directive, dict):
         lines.extend(_shadow_cut_lines(directive, shadow.get("visual_plan")))
@@ -496,6 +565,9 @@ def render_markdown(result: dict[str, Any]) -> str:
         lines.append("- 새 지시서 미발행: 실행 오류로 중단했습니다.")
     else:
         lines.append("- 새 지시서 미발행: 안전 게이트가 차단했습니다.")
+
+    lines.extend(["", "## V2 지시서 (기존 생성기로 만든 것)", ""])
+    lines.extend(_generated_lines(result))
 
     lines.extend(["", "## 차단·경고", "", *_finding_lines(result)])
     lines.extend(["", "## 단계 판정", ""])

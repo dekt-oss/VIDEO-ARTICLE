@@ -18,6 +18,7 @@ import sys
 from typing import Any
 
 from . import config, report_db
+from . import cut_skeleton
 from . import equity_visual
 from . import equity_contract
 from . import grounding
@@ -154,6 +155,12 @@ def scene_block(scenes: list[dict[str, Any]], fresh: bool) -> str:
             "정본이니 그것만 보고 컷을 나눠라. 옛 문장을 상상해 되살리지 마라.")
 
 
+LOCKED_SCENES_NOTE = (
+    "\n아래 '기존 장면들'의 \"다듬어라\"는 이번에는 **화면에만** 적용된다. "
+    "대사는 위 고정 문장 그대로.\n"
+)
+
+
 def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -> str:
     """지시서 생성 입력: 버전 지시 + 대본 + Fact Sheet + 기존 장면들(report_drafts.scenes)."""
     fact_sheet = draft_row.get("fact_sheet") or {}
@@ -176,6 +183,12 @@ def report_directive_user_prompt(draft_row: dict[str, Any], version_type: str) -
     else:
         guidance = dv.VERSION_GUIDANCE.get(version_type, dv.VERSION_GUIDANCE[config.DEFAULT_VERSION])
     guidance += source_adequacy.guidance(fact_sheet, "report")
+    # V2 검증 대본이면 대사까지 고정한다(초안에 표시가 있을 때만 — Production 초안에는 없다).
+    if version_type == "photo" and draft_row.get(cut_skeleton.NARRATION_LOCK_KEY):
+        guidance += cut_skeleton.lock_block(
+            cut_skeleton.lock_skeleton(script_md, version_type=version_type),
+            cut_skeleton.lock_hints(draft_row))
+        guidance += LOCKED_SCENES_NOTE
     # ★ 논증 단위(설명엔진 v2 §7)를 지시서 단계에도 싣는다. 대본에만 주고 여기서 빼면
     #   컷이 어느 논증을 옮기는지 알 수 없어 reasoning_id 가 빈 채로 나온다 — 그러면 승인
     #   화면이 "설명이 빠진 논증"을 짚지 못한다.
@@ -276,6 +289,12 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
         #     논문 지시서에서 28,403~30,928 토큰을 썼다(상한의 거의 2배).
         max_tokens=config.LLM_DIRECTIVE_MAX_TOKENS,
     )
+    # V2 검증 대본: 모델이 바꾼 대사를 골격 문장으로 되돌린다(정규화 앞 — 화면 검사가 고정 대사로 돈다).
+    locked = None
+    if version_type == "photo" and draft_row.get(cut_skeleton.NARRATION_LOCK_KEY):
+        locked = cut_skeleton.lock_narration(
+            obj.get("cuts") or [],
+            cut_skeleton.lock_skeleton(draft_row.get("script_md") or "", version_type=version_type))
     # ★★ Equity Visual Planner (v3 Phase 5) — 논증을 **공용 시각 시퀀스로 컴파일**해서
     #   정규화 **앞에** 꽂는다. 정규화는 시퀀스가 있으면 라우팅·resolved_visual_plan·
     #   stage_mutations·공용 게이트를 이미 전부 돌리므로, 여기 한 줄로 금융 라인이 그
@@ -365,6 +384,12 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
         d["header"]["approval_blocked"] = True
         log.warning("EQ-V 계약 위반(승인 차단): %s", ", ".join(blocks))
     # ★ 정규화 뒤에 경고가 더 붙었으므로 요약을 다시 계산한다(멱등).
+    if locked is not None:
+        d["header"]["narration_lock"] = locked
+        reason = cut_skeleton.lock_reason(locked)
+        if reason:
+            d["header"]["block_reasons"] = sorted({*d["header"].get("block_reasons", []), reason})
+            d["header"]["approval_blocked"] = True
     warning_triage.attach(d["header"])
     return _filter_reasoning_ids(d, draft_row)
 
