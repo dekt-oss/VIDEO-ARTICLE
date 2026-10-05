@@ -324,3 +324,55 @@ def test_bridge_passes_v2_mechanism_modes_as_hints():
     assert isinstance(value, dict) and value                       # 참 값이어야 고정이 켜진다
     modes = {row["beat_id"]: row["visual_mode"] for row in result["shadow"]["visual_plan"]["visual_beats"]}
     assert len(value["visual_hints"]) == sum(1 for mode in modes.values() if mode == "MECHANISM")
+
+
+# ─── 화면 숫자 카드(다음 단계 S1, 2026-10-05) ──────────────────────────────
+
+from engine import config as cfg, evidence_overlay, subtitles  # noqa: E402
+
+
+@pytest.mark.parametrize("text, card", [
+    ("테스트증권은 2026년 3분기 DRAM 가격이 18.0%, NAND 가격이 16.0% 오를 것으로 전망했다.",
+     "DRAM 가격 18.0% · NAND 가격 16.0%"),
+    ("SK증권은 조선 3사의 합산 영업이익이 2028년 13.7조원으로 과거 고점의 약 2배에 달할 것으로 전망한다.",
+     "합산 영업이익 13.7조원 · 고점 약 2배"),
+    ("인간은 발 앞부분이 먼저 닿을 때 대사 에너지를 26%에서 41% 더 많이 소비한다.", "대사 에너지 26%~41%"),
+])
+def test_screen_card_text_labels_numbers_and_merges_ranges(text, card):
+    assert v2_directive_bridge.screen_card_text(text) == card
+
+
+def test_screen_number_card_is_attached_to_the_cut_that_says_it():
+    result = _ready("report")
+
+    generated = v2_directive_bridge.generate(
+        "report", result["shadow"], {"report_id": "r"},
+        financial_reasoning=number_fixtures._number_heavy_report()[1],
+        generator=_echo_generator([]))
+
+    cards = [(cut["cut_no"], item["text"]) for cut in generated["directive"]["cuts"]
+             for item in cut.get("overlay_plan") or [] if item.get("type") == "screen_fact"]
+    assert cards and cards[0][1] == "DRAM 가격 18.0% · NAND 가격 16.0%"
+    assert generated["trace"]["screen_cards"] == 1
+
+
+def test_screen_fact_renders_as_a_fading_card_even_with_evidence_cards_off():
+    cut = {"cut_no": 1, "overlay_plan": [{"type": "screen_fact", "text": "DRAM 18.0%"}]}
+
+    cues = evidence_overlay.build_overlay_cues(
+        [cut], [10.0], [5.0], only_types=set(cfg.OVERLAY_ANNOTATION_TYPES))
+
+    assert len(cues) == 1
+    start, end, text, style = cues[0]
+    assert style == "ScreenFact"
+    assert start == pytest.approx(10.0 + cfg.OVERLAY_SCREEN_FACT_DELAY_SEC)   # 살짝 늦게 떠오른다
+    assert end == 15.0
+    assert text.startswith(r"{\fad(") and text.endswith("DRAM 18.0%")
+    assert "Style: ScreenFact," in subtitles.build_ass([], overlays=cues)
+
+
+def test_production_prompts_do_not_offer_screen_fact():
+    assert "screen_fact" not in cfg.OVERLAY_TEXT_TYPES
+    from engine import directive, photo_prompt
+    assert "screen_fact" not in directive._OVERLAY_TYPES_HELP
+    assert "screen_fact" not in photo_prompt._OVERLAY_TYPES

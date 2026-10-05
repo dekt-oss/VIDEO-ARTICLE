@@ -68,13 +68,27 @@ _PARTICLES = ("에서", "으로", "부터", "까지", "보다", "이다", "입�
               "이", "가", "을", "를", "은", "는", "과", "와", "로", "에", "의", "도", "만")
 
 
+def _blank(match: re.Match[str]) -> str:
+    return " " * len(match.group(0))          # 길이를 지켜 원문 위치가 어긋나지 않게 가린다
+
+
+def mask_non_values(text: Any) -> str:
+    """시점 표현·이름 속 숫자를 같은 길이의 공백으로 가린 글. 위치는 원문과 같다."""
+    return _IDENTIFIER.sub(_blank, _PERIOD.sub(_blank, str(text or "")))
+
+
+def value_spans(text: Any) -> list[tuple[int, int, str]]:
+    """값의 (시작, 끝, 정규화 토큰) — 원문 순서. 화면 숫자 카드가 숫자 앞 낱말을 이름표로 쓴다."""
+    masked = mask_non_values(text)
+    return [
+        (m.start(), m.end(), _norm(m.group(0))) for m in _VALUE.finditer(masked)
+        if any(ch.isdigit() for ch in m.group(0)) and not _is_name_number(masked, m)
+    ]
+
+
 def value_tokens(text: Any) -> list[str]:
     """소리 내 읽는 값 목록(정렬, 중복 유지). 시점 표현·이름 속 숫자를 먼저 지우고 센다."""
-    masked = _IDENTIFIER.sub(" ", _PERIOD.sub(" ", str(text or "")))
-    return sorted(
-        _norm(m.group(0)) for m in _VALUE.finditer(masked)
-        if any(ch.isdigit() for ch in m.group(0)) and not _is_name_number(masked, m)
-    )
+    return sorted(token for _, _, token in value_spans(text))
 
 
 def _sub(left: list[str], right: list[str]) -> list[str]:

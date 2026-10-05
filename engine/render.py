@@ -1585,6 +1585,8 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         #   지시서에 남아 있어도 화면에는 안 나간다 — 옛 지시서를 다시 렌더할 때도 같다.
         if not config.OVERLAY_POINTER_ENABLED:
             drop_types.add("pointer")
+        if not config.SCREEN_FACT_CARDS_ENABLED:
+            drop_types.add("screen_fact")
         drop_types = drop_types or None
         overlay_out.extend(evidence_overlay.build_overlay_cues(
             cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types,

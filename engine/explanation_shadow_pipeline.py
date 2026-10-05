@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
+import math
 import json
 from typing import Any, Callable
 
@@ -70,25 +71,23 @@ def _production_plan(raw: Any) -> dict[str, Any] | None:
     }
 
 
-def _content_plan(pack: dict[str, Any], production: Any) -> tuple[dict[str, Any], str]:
-    """Phase 8 입력 계획과 그 출처.
+def _content_plan(narration: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Phase 8 입력 계획 — **V2 가 실제로 쓴 대본 길이**로 만든다(2026-10-05, 설계 점검 D 후속).
 
-    소스 정책 상한으로 만든 계획은 게이트가 같은 상한과 비교하므로 길이 초과를 절대
-    잡지 못한다 — 그래서 출처를 함께 돌려주고, 그 경우를 결과에 "미평가"로 남긴다.
+    ★ 종전에는 Production 이 저장한 계획을 넣었다. V2 가 한 편 분량을 스스로 고르게 된 뒤에도 논문
+      파일럿 3건이 Production 계획의 `series_split`(두 편 분할) 때문에 Phase 8 에서 막혔다 — V2 대본은
+      이미 한 편 분량인데 남의 계획으로 판정한 것이다. 길이는 말하기 속도(`STORY_SPEAK_CHARS_PER_SEC`)로
+      추정하고, 모드는 그 길이가 들어가는 첫 모드다. 원문이 얕은 콘텐츠의 짧은 상한은 게이트가 그대로 본다.
     """
-    stored = _production_plan(production)
-    if stored is not None:
-        return stored, "production_draft"
-    domain = pack["domain"]
-    depth = str((pack.get("source") or {}).get("source_depth") or "none")
-    policies = config.SOURCE_ADEQUACY_POLICIES[domain]
-    policy = policies.get(depth) or policies["__default__"]
-    return {
-        "selected_mode": str(policy.get("max_content_mode") or "flash"),
-        "target_duration_max_sec": int(policy.get("max_duration_sec") or 0)
-        or config.UNCAPPED_DURATION_SEC,
-        "series_split_reason": "",
-    }, "source_policy_ceiling"
+    text = " ".join(
+        sentence for beat in narration.get("narration_beats") or [] if isinstance(beat, dict)
+        for sentence in beat.get("sentences") or [] if isinstance(sentence, str)
+    )
+    seconds = max(1, math.ceil(len("".join(text.split())) / config.STORY_SPEAK_CHARS_PER_SEC))
+    mode = next((name for name, (_, upper) in config.CONTENT_MODE_DURATION.items()
+                 if seconds <= upper), "extended")
+    return {"selected_mode": mode, "target_duration_max_sec": seconds,
+            "series_split_reason": ""}, "v2_narration"
 
 
 def _empty_result(
@@ -247,11 +246,11 @@ def run(
         phases["phase7"] = fidelity.get("qa_status")
 
         phase = "phase8"
-        content_plan, plan_source = _content_plan(pack, production_content_plan)
+        content_plan, plan_source = _content_plan(narration)
         shadow["content_plan"] = content_plan
         result["run"]["content_plan_source"] = plan_source
-        if plan_source != "production_draft":
-            result["non_claims"].append("complexity_source_limit_not_evaluated")
+        # Production 계획은 비교용 기록으로만 남긴다(판정에는 쓰지 않는다).
+        result["run"]["production_content_plan"] = _production_plan(production_content_plan)
         gate = content_complexity_gate.evaluate(
             content_plan, narration, fidelity, plan, ir, resolution, pack,
             overrides=overrides,
