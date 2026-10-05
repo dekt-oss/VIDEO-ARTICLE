@@ -159,6 +159,10 @@ def number_delivery(beats: list[dict[str, Any]], ir: dict[str, Any]) -> list[dic
     for beat in beats:
         spoken: list[str] = []
         screen: list[dict[str, Any]] = []
+        if beat.get("stage") == "HOOK":
+            # 첫 질문에 든 숫자("1% 미만")는 질문의 일부로 말한다 — 생각 단계가 질문에 숫자를 넣을 수 있다
+            # (2026-10-06 실측: 질문 속 숫자가 "말할 숫자"에 없어 numbers_changed 로 거절됐다).
+            spoken.extend(spoken_numbers.value_tokens(" ".join(_strings(beat.get("content_points")))))
         for ref, text in _beat_points(beat):
             row = decision.get(ref)
             if not row:
@@ -301,6 +305,7 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
         "domain": ir.get("domain"),
         "content_id": ir.get("content_id"),
         "planning_status": "READY",
+        "origin": ir.get("origin", "adapter"),
         "core_question": ir.get("core_question"),
         "thesis": ir.get("thesis"),
         "beats": beats,

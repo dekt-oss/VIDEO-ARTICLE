@@ -60,6 +60,9 @@ def _causal_count(text: str, term: str) -> int:
     """인과어 개수 — "이야기"의 "야기", 조심 표현 속 "원인"은 세지 않는다(실측 오탐 두 건)."""
     return _strip_hedges(text.replace("이야기", "□"))[0].count(term)
 # 덧붙이면 주장이 약해질 뿐인 갈래 — **빼는 것만** 막는다. 연관·부정은 양방향 모두 막는다.
+#: 생각 단계 경로에서 검증관에게 넘기는(경고로 내리는) 낱말 세기 검사.
+_CRITIC_JUDGED = frozenset({"protected_meaning_changed", "qualifier_dropped", "scope_intensifier_added",
+                            "causal_language_added", "association_upgraded"})
 _WEAKENING_CLASSES = frozenset({"hedge", "uncertain", "assoc"})   # assoc 를 **덧붙이는** 것도 주장을 약하게 할 뿐이다
 _ABBREVIATION = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9+.-]{1,}(?![A-Za-z])")
 _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시사한다", "할 수 있습니다")
@@ -304,6 +307,14 @@ def _draft_guard_findings(
     question_count = max(question_count, full_text.count(plan["core_question"]))
     if question_count > 1:
         warnings.append("core_question_repeated")
+    # ★ 생각 단계 경로에서는 낱말 세기 뜻 검사를 **경고**로 내린다(2026-10-06). 그 검사는 문장이 거의 안 바뀌는
+    #   운영 다듬기용이라, 모델이 쉬운 말로 다시 쓰면 문장마다 다른 낱말에서 걸렸다(실측 세 차례, 매번 새 오탐).
+    #   뜻이 보존됐는지는 작업지시서 §9.1·9.4 대로 **독립 검증관이 절 단위로** 판정한다(바로 다음 단계).
+    #   숫자·시점·출처·근거 연결은 낱말이 아니라 구조라 그대로 오류다.
+    if plan.get("origin") == "model_reasoning":
+        soft = [e for e in errors if e.split(":", 1)[0] in _CRITIC_JUDGED]
+        errors = [e for e in errors if e not in soft]
+        warnings.extend(f"critic_judges:{e}" for e in soft)
     return (
         sorted(set(errors)),
         sorted(set(warnings)),
@@ -673,7 +684,9 @@ def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],
         polish_reason = script_polish.rejection_reason(before, after)
         candidate = deepcopy(result)
         candidate["narration_beats"][position]["sentences"] = sentences
-        guard_errors, _, _ = _draft_guard_findings(candidate["narration_beats"], plan, pack)
+        guard_errors, guard_warnings, _ = _draft_guard_findings(candidate["narration_beats"], plan, pack)
+        # 다듬기는 **말투만** 바꾸는 단계다 — 생각 단계 경로에서 경고로 내린 뜻 낱말 검사도 다듬기에서는 거절 사유다.
+        guard_errors = guard_errors + [w.split(":", 1)[1] for w in guard_warnings if w.startswith("critic_judges:")]
         relevant_guards = [error for error in guard_errors if f":{beat_id}" in error]
         attribution_error = next(
             (error for error in relevant_guards if error.startswith("attribution_dropped:")), ""

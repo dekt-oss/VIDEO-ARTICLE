@@ -164,14 +164,14 @@ def test_rejected_script_is_rewritten_once_with_plain_feedback(v2_on):
         payload = json.loads(kw["user"])
         calls.append(payload.get("fix_these_from_previous_attempt"))
         out = base._narration_caller(**kw)
-        if len(calls) == 1:                                     # 첫 시도: 재료에 없는 인과를 덧붙인다
-            out["beats"][1]["sentences"] = [out["beats"][1]["sentences"][0] + " 이것이 원인입니다."]
+        if len(calls) == 1:                                     # 첫 시도: 재료에 없는 숫자를 지어낸다
+            out["beats"][1]["sentences"] = [out["beats"][1]["sentences"][0] + " 30% 바뀝니다."]
         return out
 
     result = base._run(reasoning_caller=_reasoning, narration_caller=narration)
 
     assert len(calls) == 2 and calls[0] is None
-    assert any("인과" in line for line in calls[1]), calls[1]
+    assert any("숫자" in line for line in calls[1]), calls[1]
     assert result["shadow"]["narration_first_attempt"]["generation_status"] == "REJECTED_DRAFT"
     assert result["phase_status"]["phase6"] == "DRAFT_ACCEPTED"
 
@@ -190,3 +190,15 @@ def test_critic_format_mistake_is_retried_once(v2_on):
     assert len(calls) == 2
     assert result["shadow"]["fidelity_first_attempt"]["qa_status"] == "CRITIC_ERROR"
     assert result["phase_status"]["phase7"] == "PASSED"
+
+
+def test_keyword_meaning_checks_are_handed_to_the_critic_on_the_reasoning_path(v2_on):
+    def narration(**kw):
+        out = base._narration_caller(**kw)
+        out["beats"][1]["sentences"] = [out["beats"][1]["sentences"][0] + " 이것이 원인입니다."]
+        return out
+
+    result = base._run(reasoning_caller=_reasoning, narration_caller=narration)
+    qa = result["shadow"]["narration"]["qa"]
+    assert result["phase_status"]["phase6"] == "DRAFT_ACCEPTED"
+    assert any(w.startswith("critic_judges:causal_language_added") for w in qa["warnings"])

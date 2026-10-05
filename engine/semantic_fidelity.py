@@ -303,7 +303,11 @@ def _semantic_findings(
             item = evidence_index.get(evidence_id)
             if item is None:
                 continue
-            if not _eligible_support(item, evidence_sections.get(evidence_id, "")):
+            # 한계·리스크 비트의 문장은 주장을 약하게 할 뿐이다 — 인용이 없는 리스크·한계 근거도 받친다
+            # (설명 설계 IR 이 제약 역할에 같은 예외를 둔다. 2026-10-06 실측: "레이저는 날씨에 민감" 이 막혔다).
+            boundary_ok = (beat.get("stage") == "BOUNDARY"
+                           and evidence_sections.get(evidence_id, "") in {"risks", "limitations"})
+            if not boundary_ok and not _eligible_support(item, evidence_sections.get(evidence_id, "")):
                 failed = True
                 errors.append(f"support_surface_ineligible:{clause_id}:{evidence_id}")
     return failed, sorted(set(errors))
