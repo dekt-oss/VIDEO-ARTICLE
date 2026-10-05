@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from engine import db, explanation_shadow_pipeline, publish_gate_v2, report_db
+from engine import db, explanation_shadow_pipeline, publish_gate_v2, report_db, v2_directive_bridge
 
 _DIRECTIVE_TABLES = {
     "paper": ("directives", "paper_id"),
@@ -149,6 +149,14 @@ def _render_qa(domain: str, path: str | None, job_id: str | None) -> dict[str, A
     return job.get("qa") if isinstance(job.get("qa"), dict) else None
 
 
+def _save_directive(result: dict[str, Any]) -> dict[str, Any]:
+    """V2 지시서 저장(운영자가 --save-directive 를 줄 때만). 거절은 실패가 아니라 사유로 남긴다."""
+    refusal = v2_directive_bridge.save_refusal(result)
+    if refusal:
+        return {"id": None, "refused": refusal}
+    return {"id": v2_directive_bridge.save(result), "refused": ""}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="정확한 콘텐츠 ID 한 건을 읽어 V2 Shadow 비교 자료를 로컬에 저장합니다."
@@ -164,6 +172,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="Phase 4 선행 개념 명시 요청 JSON 목록")
     parser.add_argument("--override-series-split", default="", metavar="REASON",
                         help="Phase 8 series_split 명시적 override 사유(비우면 override 없음)")
+    parser.add_argument("--save-directive", action="store_true",
+                        help="V2 지시서를 지시서 표에 draft 로 저장한다(대시보드에서 승인·렌더). 승인이 막힌 지시서는 저장하지 않는다")
     parser.add_argument("--render-qa", default=None, metavar="JSON",
                         help="최종 렌더의 렌더 QA 결과 JSON — Phase 13 관문의 렌더 단계를 판정한다")
     parser.add_argument("--render-job-id", default=None,
@@ -173,6 +183,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.with_directive and not args.with_model:
         parser.error("--with-directive 는 --with-model 과 함께만 쓸 수 있습니다")
+    if args.save_directive and not args.with_directive:
+        parser.error("--save-directive 는 --with-model --with-directive 와 함께만 쓸 수 있습니다")
     content_id = canonical_content_id(args.content_id)
     directive_id = canonical_content_id(args.directive_id) if args.directive_id else None
     requested_concepts = _load_concepts(args.concepts_file)
@@ -198,8 +210,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     render_qa = _render_qa(args.domain, args.render_qa, args.render_job_id)
     if render_qa is not None or "publish_gate" not in result:
         result["publish_gate"] = publish_gate_v2.evaluate(result, render_qa)
+    saved = _save_directive(result) if args.save_directive else {}
+    result["saved_directive"] = saved
     result["side_effects"] = {
-        "database_writes": dict(writes),
+        "database_writes": {**dict(writes), "directive_inserts": 1 if saved.get("id") else 0},
         "approvals": 0,
         "queue_inserts": 0,
         "render_calls": 0,
@@ -212,6 +226,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(json.dumps({
         "run_status": result["run_status"],
         "publish_gate": result["publish_gate"]["verdict"],
+        "saved_directive": result.get("saved_directive") or None,
         "error": result.get("error"),
         "json": str(json_path),
         "markdown": str(md_path),

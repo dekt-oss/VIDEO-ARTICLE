@@ -377,3 +377,58 @@ def test_production_prompts_do_not_offer_screen_fact():
     from engine import directive, photo_prompt
     assert "screen_fact" not in directive._OVERLAY_TYPES_HELP
     assert "screen_fact" not in photo_prompt._OVERLAY_TYPES
+
+
+bridge = v2_directive_bridge
+
+
+# ── 저장(2026-10-05 운영자 "가로 진행" — V2 영상을 대시보드에서 렌더하려면 지시서 표에 있어야 한다) ──
+def _ready_result(domain="report", blocked=False):
+    return {
+        "domain": domain, "content_id": "11b193be-4199-4e6d-8ce4-9413be5a5289", "run_status": "READY",
+        "run": {"run_at": "2026-10-05T10:00:00+00:00", "fact_sheet_snapshot_sha256": "abc",
+                "narration_model": "m"},
+        "publish_gate": {"verdict": "INCOMPLETE"},
+        "shadow": {"generated": {
+            "approval_blocked": blocked, "block_reasons": ["narration_lock_cut_count"] if blocked else [],
+            "directive": {"version_type": "photo", "header": {"title": "t"},
+                          "cuts": [{"cut_no": 1, "narration_ko": "가"}]}}},
+    }
+
+
+def test_saved_row_matches_the_worker_shape_and_marks_v2():
+    row = bridge.saved_row(_ready_result())
+    assert set(row) == {"report_id", "version_type", "header", "cuts", "status"}
+    assert row["status"] == "draft" and row["version_type"] == "photo"
+    assert row["header"]["explanation_v2"]["publish_gate_verdict"] == "INCOMPLETE"
+    assert row["header"]["explanation_v2"]["script"] == "v2_narration"
+    assert "paper_id" in bridge.saved_row(_ready_result("paper"))
+
+
+def test_saving_does_not_change_the_dossier():
+    result = _ready_result()
+    bridge.saved_row(result)
+    assert "explanation_v2" not in result["shadow"]["generated"]["directive"]["header"]
+
+
+def test_blocked_or_unfinished_directives_are_never_saved(monkeypatch):
+    from engine import report_db
+    monkeypatch.setattr(report_db, "insert_report_directive",
+                        lambda row: (_ for _ in ()).throw(AssertionError("insert")))
+    assert bridge.save_refusal(_ready_result(blocked=True)).startswith("approval_blocked:")
+    assert bridge.save_refusal({**_ready_result(), "run_status": "BLOCKED"}) == "v2_not_ready:BLOCKED"
+    no_directive = _ready_result()
+    no_directive["shadow"]["generated"] = None
+    assert bridge.save_refusal(no_directive).startswith("no_generated_directive")
+    with pytest.raises(ValueError, match="approval_blocked"):
+        bridge.save(_ready_result(blocked=True))
+
+
+def test_save_goes_to_the_right_table(monkeypatch):
+    from engine import db, report_db
+    calls = []
+    monkeypatch.setattr(report_db, "insert_report_directive", lambda row: calls.append(("report", row)) or "r-id")
+    monkeypatch.setattr(db, "insert_directive", lambda row: calls.append(("paper", row)) or "p-id")
+    assert bridge.save(_ready_result("report")) == "r-id"
+    assert bridge.save(_ready_result("paper")) == "p-id"
+    assert [kind for kind, _ in calls] == ["report", "paper"]

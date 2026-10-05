@@ -144,9 +144,9 @@ def test_cli_reports_real_ledger_writes_and_passes_stored_content_plan(monkeypat
     printed = json.loads(capsys.readouterr().out)
     assert code == 0
     assert len(rows) == 1
-    assert printed["database_writes"] == {"generation_attempts": 1}
+    assert printed["database_writes"] == {"generation_attempts": 1, "directive_inserts": 0}
     saved = json.loads(Path(printed["json"]).read_text(encoding="utf-8"))
-    assert saved["side_effects"]["database_writes"] == {"generation_attempts": 1}
+    assert saved["side_effects"]["database_writes"] == {"generation_attempts": 1, "directive_inserts": 0}
     assert saved["seen_plan"] == {"selected_mode": "flash"}
     # 계수 래퍼는 실행 뒤 원래 함수로 돌아간다.
     assert compare_explanation_v2.db.insert_generation_attempt == rows.append
@@ -161,7 +161,7 @@ def test_failed_ledger_insert_is_not_counted(monkeypatch, tmp_path, capsys):
 
     compare_explanation_v2.main(["paper", PAPER_ID, "--output-dir", str(tmp_path)])
 
-    assert json.loads(capsys.readouterr().out)["database_writes"] == {"generation_attempts": 0}
+    assert json.loads(capsys.readouterr().out)["database_writes"] == {"generation_attempts": 0, "directive_inserts": 0}
 
 
 def test_reruns_never_overwrite_earlier_dossiers(monkeypatch, tmp_path, capsys):
@@ -193,7 +193,7 @@ def test_cli_end_to_end_dry_run_writes_dossier_without_model_calls(monkeypatch, 
     printed = json.loads(capsys.readouterr().out)
     assert code == 0
     assert printed["run_status"] == "MODEL_CALL_REQUIRED"
-    assert printed["database_writes"] == {"generation_attempts": 0}
+    assert printed["database_writes"] == {"generation_attempts": 0, "directive_inserts": 0}
     markdown = Path(printed["markdown"]).read_text(encoding="utf-8")
     assert "운영 대본" in markdown and "동일 Fact Sheet revision: 미검증" in markdown
 
@@ -230,3 +230,50 @@ def test_cli_reads_render_qa_from_the_render_job_for_phase13(monkeypatch, tmp_pa
     render = next(s for s in saved["publish_gate"]["stages"] if s["stage"] == "render")
     assert seen == [job_id]
     assert render["status"] == "FAIL" and render["fails"] == ["오디오 트랙 없음"]
+
+
+def _ready_fake_run(**kwargs):
+    import test_v2_directive_bridge as bridge_tests
+    result = bridge_tests._ready_result(kwargs["domain"])
+    result.update(content_id=kwargs["content_id"], error=None, legacy={"cuts": []},
+                  phase_status={}, non_claims=[])
+    result.pop("publish_gate")              # CLI 가 진짜 성적표를 매기게 한다
+    return result
+
+
+def test_save_directive_needs_with_directive(monkeypatch):
+    import pytest
+    with pytest.raises(SystemExit):
+        compare_explanation_v2.main(["paper", PAPER_ID, "--with-model", "--save-directive"])
+
+
+def test_save_directive_inserts_once_and_records_it(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(compare_explanation_v2.db, "insert_generation_attempt", lambda row: None)
+    _patch_load(monkeypatch, {"fact_sheet": {}})
+    monkeypatch.setattr(compare_explanation_v2.explanation_shadow_pipeline, "run", _ready_fake_run)
+    rows = []
+    monkeypatch.setattr(compare_explanation_v2.db, "insert_directive", lambda row: rows.append(row) or "new-id")
+
+    compare_explanation_v2.main(["paper", PAPER_ID, "--with-model", "--with-directive", "--save-directive",
+                                 "--output-dir", str(tmp_path)])
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["saved_directive"] == {"id": "new-id", "refused": ""}
+    assert out["database_writes"]["directive_inserts"] == 1
+    assert len(rows) == 1 and rows[0]["paper_id"] == PAPER_ID and rows[0]["status"] == "draft"
+    assert rows[0]["header"]["explanation_v2"]["publish_gate_verdict"], "저장 당시 성적표 판정이 함께 남는다"
+
+
+def test_blocked_v2_directive_is_refused_not_saved(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(compare_explanation_v2.db, "insert_generation_attempt", lambda row: None)
+    _patch_load(monkeypatch, {"fact_sheet": {}})
+    monkeypatch.setattr(compare_explanation_v2.explanation_shadow_pipeline, "run", _fake_run)   # BLOCKED
+    monkeypatch.setattr(compare_explanation_v2.db, "insert_directive",
+                        lambda row: (_ for _ in ()).throw(AssertionError("insert")))
+
+    compare_explanation_v2.main(["paper", PAPER_ID, "--with-model", "--with-directive", "--save-directive",
+                                 "--output-dir", str(tmp_path)])
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["saved_directive"]["id"] is None and out["saved_directive"]["refused"] == "v2_not_ready:BLOCKED"
+    assert out["database_writes"]["directive_inserts"] == 0
