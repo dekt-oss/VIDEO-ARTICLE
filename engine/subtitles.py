@@ -142,6 +142,10 @@ def build_ass(cues: list[Cue], *, header_title: str = "", header_hook: str = "",
         #   여기 마진은 안 쓰인다. 외곽선 0 — 도형에 테두리가 생기면 촉이 뭉툼해진다.
         f"Style: Pointer,{font_name},20,{config.OVERLAY_POINTER_COLOR_ASS},"
         f"&H00000000,&H64000000,0,0,1,0,0,7,0,0,0\n"
+        # ★ 화면 숫자 카드(2026-10-05, V2): 키워드 카드와 같은 반투명 상자, 화면 가운데 위쪽(근거 카드 자리).
+        f"Style: ScreenFact,{font_name},{config.OVERLAY_SCREEN_FACT_FONT_SIZE},{config.OVERLAY_KEYWORD_COLOR_ASS},"
+        f"{config.OVERLAY_KEYWORD_BOX_ASS},&H00000000,1,0,3,8,0,2,{config.OVERLAY_SIDE_MARGIN_PX},"
+        f"{config.OVERLAY_SIDE_MARGIN_PX},{config.OVERLAY_MARGIN_V}\n"
     ) if ov else ""
     header = (
         "[Script Info]\n"

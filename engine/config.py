@@ -1505,18 +1505,32 @@ OVERLAY_TYPES: tuple[str, ...] = (
     #     pointer  설명 대상에 **화살표**를 직접 얹는다. 색만으로 가리키는 것보다 세다.
     #   둘 다 생성 모델이 아니라 **코드가 그린다**(ASS 텍스트·도형) — 추가 비용 0, 언어별 렌더.
     "keyword", "pointer",
+    # ★ 2026-10-05 Explanation Engine v2 — 화면 숫자 카드. V2 는 숫자를 영상 전체 2개만 말하고 나머지를
+    #   말로 풀어 쓴다(spoken_numbers). 말에서 뺀 숫자를 **화면에만** 보여 주는 카드다 — 9/8 에 운영자가 뺀
+    #   "나레이션이 이미 말한 숫자를 또 얹는" 카드가 아니다. V2 브리지만 만든다(Production 지시서엔 없다).
+    "screen_fact",
     # 아래 4종은 도형·차트가 필요해 M-E4(코드 시각화)에서 처리한다. 지금 지정되면 텍스트로 폴백.
     "before_after", "group_compare", "timeline", "mechanism_steps",
 )
 OVERLAY_TEXT_TYPES: tuple[str, ...] = (
     "source_card", "evidence_card", "number_punch", "caveat_tag", "scope_tag",
     "legend", "label_pair", "keyword", "pointer",
+    # ★ screen_fact 는 여기 넣지 않는다 — 이 목록은 Production 지시서 프롬프트의 선택지다
+    #   (directive._OVERLAY_TYPES_HELP, photo_prompt._OVERLAY_TYPES). 그 카드는 V2 브리지만 만든다.
 )
 #: 문구 하나가 아니라 **구조(payload)** 를 갖는 오버레이. normalize 가 payload 를 보존한다.
 OVERLAY_STRUCTURED_TYPES: tuple[str, ...] = ("legend", "label_pair", "pointer")
 #: **주석 레이어** — 화면 가장자리·대상 위에 놓여 가운데 근거 카드와 자리를 다투지 않는다.
 #  컷당 상한(OVERLAY_MAX_PER_CUT)을 따로 세고, 근거 카드가 꺼져 있어도 이것만 나간다.
-OVERLAY_ANNOTATION_TYPES: tuple[str, ...] = ("legend", "label_pair", "keyword", "pointer")
+OVERLAY_ANNOTATION_TYPES: tuple[str, ...] = ("legend", "label_pair", "keyword", "pointer", "screen_fact")
+# 화면 숫자 카드(screen_fact) 켜기/끄기·크기·등장 효과. 끄면 렌더가 그리지 않는다(지시서엔 남는다).
+SCREEN_FACT_CARDS_ENABLED: bool = _get_bool("SCREEN_FACT_CARDS_ENABLED", True)
+OVERLAY_SCREEN_FACT_FONT_SIZE: int = _get_int("OVERLAY_SCREEN_FACT_FONT_SIZE", 64)
+# ★ 첫 "움직이는 정보"(원 작업지시서 Phase 11 REVEAL). 지금까지 화면 글자는 전부 컷 시작부터 끝까지
+#   정지해 있었다(엔진에 ASS 애니메이션 태그 0건, 2026-10-05 조사). 카드가 살짝 늦게 떠오르게 한다.
+OVERLAY_SCREEN_FACT_DELAY_SEC: float = 0.4
+OVERLAY_FADE_IN_MS: int = 250
+OVERLAY_FADE_OUT_MS: int = 150
 OVERLAY_PRIORITIES: tuple[str, ...] = ("primary", "supporting")
 DEFAULT_OVERLAY_PRIORITY: str = "supporting"
 OVERLAY_MIN_SEC: float = 2.0          # §11-4 2초 미만으로 지나가는 복잡한 카드 금지

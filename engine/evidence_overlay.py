@@ -34,6 +34,7 @@ _STYLE_BY_TYPE: dict[str, str] = {
     "legend": "Legend",
     "keyword": "Keyword",
     "pointer": "Pointer",
+    "screen_fact": "ScreenFact",
 }
 _DEFAULT_STYLE = "Evidence"
 _LABEL_TOP_STYLE = "LabelTop"
@@ -375,6 +376,11 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
 _HANGUL = re.compile(r"[가-힣]")
 
 
+def screen_fact_ass_text(text: str) -> str:
+    """화면 숫자 카드 문구 + 페이드 인/아웃 태그(ASS `\\fad`). 엔진의 첫 화면 글자 애니메이션이다."""
+    return f"{{\\fad({config.OVERLAY_FADE_IN_MS},{config.OVERLAY_FADE_OUT_MS})}}{text}"
+
+
 def gloss_card_text(item: dict[str, Any], lang: str = "ko") -> str:
     """풀이 카드 → ASS 글자. 1줄 용어, 2줄 풀이(작게). 못 만들면 "" (카드를 안 띄운다). 순수.
 
@@ -477,6 +483,12 @@ def build_overlay_cues(
                 text = gloss_card_text(item, lang)
                 if text:
                     cues.append((start, end, text, _STYLE_BY_TYPE["keyword"]))
+                continue
+            if item["type"] == "screen_fact":
+                # 말에서 뺀 숫자를 화면에만 — 컷이 시작하고 잠시 뒤 페이드로 떠오른다(첫 코드 모션).
+                fact_start = min(start + config.OVERLAY_SCREEN_FACT_DELAY_SEC, max(start, end - 0.5))
+                cues.append((fact_start, end, screen_fact_ass_text(item["text"]),
+                             _STYLE_BY_TYPE["screen_fact"]))
                 continue
             if item["type"] == "legend":
                 cues.append((start, end, legend_ass_text((item.get("payload") or {}).get("items") or []),

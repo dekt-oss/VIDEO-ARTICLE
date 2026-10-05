@@ -27,7 +27,7 @@ import math
 import re
 from typing import Any, Callable
 
-from . import config, cut_skeleton
+from . import config, cut_skeleton, script_polish, spoken_numbers
 from .llm import set_text_purpose
 
 CONTRACT_VERSION = "v2-directive-bridge-v1"
@@ -207,6 +207,65 @@ def attach_trace(directive: dict[str, Any], shadow: dict[str, Any]) -> tuple[dic
     return result, {"cuts": cuts, "traced_cuts": matched, "untraced_cuts": cuts - matched}
 
 
+_LABEL_PARTICLE = re.compile(r"(?:으로|에서|이|가|은|는|을|를|의|도|과|와|에|로)$")
+_LABEL_WORD = re.compile(r"[가-힣A-Za-z][가-힣A-Za-z0-9·]*")
+
+
+def screen_card_text(text: str, max_items: int = 3) -> str:
+    """말에서 뺀 숫자 문장 → 화면 카드 한 줄("DRAM 가격 18.0% · NAND 가격 16.0%").
+
+    숫자 바로 앞의 낱말 두 개(조사 떼고)를 이름표로 쓴다. 이름표를 못 찾으면 숫자만 쓴다.
+    """
+    masked = spoken_numbers.mask_non_values(text)
+    parts: list[str] = []
+    previous_end = -100
+    for start, end, _ in spoken_numbers.value_spans(text):
+        value = text[start:end].strip()
+        if parts and start - previous_end <= 4:          # "26%에서 41%" — 범위는 한 항목
+            parts[-1] = f"{parts[-1]}~{value}"
+            previous_end = end
+            continue
+        if len(parts) >= max_items:
+            break
+        words = [_LABEL_PARTICLE.sub("", word) or word
+                 for word in _LABEL_WORD.findall(masked[max(0, start - 16):start])[-2:]]
+        parts.append(f"{' '.join(words)} {value}".strip())
+        previous_end = end
+    return " · ".join(parts)
+
+
+def _stem_overlap(a: str, b: str) -> int:
+    return len(script_polish._stems(a) & script_polish._stems(b))
+
+
+def attach_screen_cards(directive: dict[str, Any], shadow: dict[str, Any]) -> int:
+    """V2 가 말에서 뺀 숫자 문장을 그 내용을 말하는 컷의 화면 숫자 카드로 단다. 반환: 붙인 카드 수.
+
+    ★ 지시서 생성기는 정해진 칸 밖의 정보를 지운다 — 그래서 생성 **뒤에** 추적 정보(v2_trace)로 컷을 찾아
+      `overlay_plan` 에 `screen_fact` 를 더한다. 같은 비트의 컷이 여럿이면 낱말이 가장 많이 겹치는 컷.
+    """
+    attached = 0
+    cuts = [cut for cut in directive.get("cuts") or [] if isinstance(cut, dict)]
+    for beat in _beats(shadow):
+        delivery = beat.get("number_delivery") if isinstance(beat.get("number_delivery"), dict) else {}
+        candidates = [cut for cut in cuts
+                      if (cut.get("v2_trace") or {}).get("beat_id") == _text(beat.get("beat_id"))]
+        for fact in delivery.get("screen_facts") or []:
+            card = screen_card_text(_text((fact or {}).get("text")))
+            if not card or not candidates:
+                continue
+            target = max(candidates, key=lambda cut: _stem_overlap(
+                _text(cut.get("narration_ko")), _text(fact.get("text"))))
+            plan = target.get("overlay_plan") if isinstance(target.get("overlay_plan"), list) else []
+            if any(item.get("type") == "screen_fact" for item in plan if isinstance(item, dict)):
+                continue                       # 컷당 한 장 — 같은 컷 후보에 이미 붙었다
+            plan.append({"type": "screen_fact", "text": card, "priority": "primary",
+                         "claim_ids": [], "ref": _text(fact.get("ref"))})
+            target["overlay_plan"] = plan
+            attached += 1
+    return attached
+
+
 Generator = Callable[[dict[str, Any]], dict[str, Any]]
 
 
@@ -234,6 +293,7 @@ def generate(domain: str, shadow: dict[str, Any], legacy_draft: dict[str, Any], 
     if domain == "report" and report and isinstance(produced.get("header"), dict):
         produced["header"].setdefault("broker", report.get("broker"))
     directive, trace = attach_trace(produced, shadow)
+    trace["screen_cards"] = attach_screen_cards(directive, shadow)
     header = directive.get("header") if isinstance(directive.get("header"), dict) else {}
     return {
         "contract_version": CONTRACT_VERSION,
