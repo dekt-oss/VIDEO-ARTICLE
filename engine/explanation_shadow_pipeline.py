@@ -190,7 +190,10 @@ def run(
     phases = result["phase_status"]
     phase = "phase2"
     try:
-        pack = evidence_pack.build(fact_sheet, domain, content_id=content_id)
+        pack = evidence_pack.build(
+            fact_sheet, domain, content_id=content_id,
+            financial_reasoning=financial_reasoning if domain == "report" else None,
+        )
         pack_errors = evidence_pack.validate(pack)
         if pack_errors:
             raise ValueError("evidence_pack_invalid:" + ",".join(pack_errors))

@@ -546,3 +546,17 @@ def test_six_gold_cases_have_deterministic_calibrated_shadow_ir():
     ship = outputs["shipbuilding-rerating-2026-09"]
     assert all(u["causal_level"] == "broker_projection" for u in ship["reasoning_units"])
     assert all(u["attribution"] == "한국투자증권" for u in ship["reasoning_units"])
+
+
+def test_report_step_without_fact_ids_uses_its_verified_quote_evidence():
+    """설계 점검 E: 숫자 근거 번호가 없어도 원문 인용이 확인된 단계는 버리지 않는다(리스크 포함)."""
+    from engine import evidence_pack, report_reasoning_adapter
+    from test_evidence_pack import _reasoning_with_quotes, report_fact_sheet
+
+    reasoning = _reasoning_with_quotes()
+    pack = evidence_pack.build(report_fact_sheet(), "report", financial_reasoning=reasoning)
+    ir = report_reasoning_adapter.build(pack, reasoning)
+
+    risk_units = [u for u in ir["reasoning_units"] if u["role"] == "risk"]
+    assert [u["evidence_ids"] for u in risk_units] == [["report:step:R04#1"]]
+    assert "report_step_without_evidence_id:R04#2" in ir["warnings"]       # 확인 안 된 단계는 여전히 근거 없음

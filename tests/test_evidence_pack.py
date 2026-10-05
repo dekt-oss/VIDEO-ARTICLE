@@ -251,3 +251,34 @@ def test_validate_rejects_missing_verification_scope():
     pack = evidence_pack.build(paper_fact_sheet(), "paper")
     del pack["claims"][0]["verification_scope"]
     assert "verification_scope_invalid:paper:C01" in evidence_pack.validate(pack)
+
+
+# ─── 설계 점검 E(2026-10-05): 원문 인용이 확인된 논리 단계를 근거로 ─────────────
+
+def _reasoning_with_quotes():
+    return {"units": [{
+        "reasoning_id": "R04", "unit_type": "RISK_PATH", "attributed_to": "테스트증권",
+        "steps": [
+            {"step": 1, "text": "시장은 2028년 피크아웃을 우려한다.", "fact_ids": [],
+             "source_refs": [{"quote": "2028년 피크아웃 우려", "chunk_id": "C1", "verified": True}]},
+            {"step": 2, "text": "확인 안 된 인용만 있는 단계.", "fact_ids": [],
+             "source_refs": [{"quote": "원문에 없는 말", "verified": False}]},
+        ],
+    }]}
+
+
+def test_verified_step_quotes_become_quote_supported_evidence():
+    pack = evidence_pack.build(report_fact_sheet(), "report", financial_reasoning=_reasoning_with_quotes())
+
+    steps = [c for c in pack["claims"] if c["claim_type"] == "reasoning_step"]
+    assert [c["evidence_id"] for c in steps] == ["report:step:R04#1"]       # 확인 안 된 인용은 싣지 않는다
+    assert steps[0]["verification_state"] == "SUPPORTED"
+    assert steps[0]["verification_scope"]["quote_presence"] is True
+    assert steps[0]["verification_scope"]["semantic_entailment"] is False   # 뜻까지 확인한 것은 아니다
+    assert steps[0]["attribution"] == "테스트증권"
+    assert evidence_pack.validate(pack) == []
+
+
+def test_without_reasoning_the_pack_is_unchanged():
+    assert evidence_pack.build(report_fact_sheet(), "report") == \
+        evidence_pack.build(report_fact_sheet(), "report", financial_reasoning=None)
