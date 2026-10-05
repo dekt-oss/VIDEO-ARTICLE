@@ -19,6 +19,8 @@ ROLES: tuple[str, ...] = (
     "result", "limitation", "risk", "payoff",
 )
 CONSTRAINT_ROLES = frozenset({"limitation", "risk"})
+#: 이 IR 을 누가 만들었나 — "adapter"(Fact Sheet 주장 재분류, 옛 경로) | "model_reasoning"(Phase 3 생각 단계, 2026-10-06).
+ORIGINS = frozenset({"adapter", "model_reasoning"})
 # 근거(인과·결과·기전)로 쓸 수 없는 상태. 한계·리스크 같은 제약 역할은 예외로 남긴다.
 # ★ NOT_CHECKED 추가(2026-10-05 설계 점검 B): 종전에는 "한 번도 검증 안 된 근거"가 경고만 붙고 통과했고
 #   "옛 규칙으로 검증된 근거(STALE)"는 막혔다 — 안전 쪽으로 거꾸로였다. 실데이터에서 retinotopic 논문의
@@ -131,6 +133,7 @@ def normalize(candidate: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]
     return {
         "contract_version": CONTRACT_VERSION,
         "domain": _text((candidate or {}).get("domain")) or _text(pack.get("domain")),
+        "origin": _text((candidate or {}).get("origin")) or "adapter",
         "content_id": _text(pack.get("content_id")),
         "core_question": _text((candidate or {}).get("core_question")),
         "thesis": _text((candidate or {}).get("thesis")),
@@ -155,6 +158,8 @@ def validate(ir: dict[str, Any], pack: dict[str, Any] | None = None) -> list[str
         errors.append("domain_invalid")
     if not _text(ir.get("core_question")):
         errors.append("core_question_missing")
+    if ir.get("origin", "adapter") not in ORIGINS:
+        errors.append("origin_invalid")
     if not isinstance(ir.get("reasoning_units"), list):
         errors.append("reasoning_units_not_list")
         units: list[Any] = []

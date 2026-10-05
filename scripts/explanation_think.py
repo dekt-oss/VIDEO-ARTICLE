@@ -20,15 +20,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from engine import db, evidence_pack, explanation_reasoning, report_db  # noqa: E402
-from scripts.compare_explanation_v2 import canonical_content_id, count_ledger_writes  # noqa: E402
-
-
-def _paper_title(paper_id: str) -> str:
-    rows = db.client().table("scores").select("title_ko").eq("paper_id", paper_id).limit(1).execute().data
-    title_ko = (rows[0].get("title_ko") if rows else "") or ""
-    paper = db.client().table("papers").select("title").eq("id", paper_id).limit(1).execute().data
-    title = (paper[0].get("title") if paper else "") or ""
-    return f"{title_ko} ({title})" if title_ko and title else (title_ko or title)
+from scripts.compare_explanation_v2 import canonical_content_id, count_ledger_writes, paper_title  # noqa: E402
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -42,7 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     content_id = canonical_content_id(args.content_id)
     if args.domain == "paper":
         draft = db.get_draft_full(content_id)
-        report_meta, financial_reasoning, title = None, None, _paper_title(content_id)
+        report_meta, financial_reasoning, title = None, None, paper_title(content_id)
     else:
         draft = report_db.get_report_draft(content_id)
         report_meta = report_db.get_report(content_id) or {}

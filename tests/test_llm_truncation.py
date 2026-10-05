@@ -18,6 +18,15 @@ import pytest
 from engine import config, llm
 
 
+@pytest.fixture(autouse=True)
+def _real_low_level_calls(monkeypatch):
+    """이 파일은 저수준 호출 함수 자체를 **가짜 클라이언트로** 검사한다(네트워크 없음) — conftest 의 차단을 푼다."""
+    from conftest import REAL_MODEL_CALLS
+
+    for name, fn in REAL_MODEL_CALLS.items():
+        monkeypatch.setattr(llm, name, fn)
+
+
 class _Resp:
     def __init__(self, text: str, stop_reason: str):
         self.stop_reason = stop_reason

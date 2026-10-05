@@ -84,15 +84,17 @@ SYSTEM_PROMPT = """너는 과학 논문·증권 리포트를 일반 시청자에
 - 관찰·측정과 저자 해석·가설을 구분해 kind 에 적는다. 리포트는 사실·회사 가이던스·애널리스트 추정·전망·시나리오를 구분한다.
 - 선행 개념의 쉬운 설명이 원문 근거에 있으면 basis="source"+evidence_ids, 없으면 basis="glossary_needed"(설명은 짧게 쓰되
   사실 근거로 쓰지 않는다).
-- verification_state 가 SUPPORTED 가 아닌 근거는 보조로만 쓴다.
+- 단계와 의미(payoff)마다 verification_state 가 SUPPORTED 인 근거를 **최소 하나** 단다. 그 밖의 근거는 보조로만 쓴다.
 
 설계 규칙:
-- core_question 은 **이 편만의** 질문 한 문장. 시청자가 "정말?" 하고 따라오게. "이 연구는 무엇을 보여 주는가?" 같은 범용 질문 금지.
+- core_question 은 **이 편만의** 질문 한 문장, **40자 안팎**(말로 한 번에 들리게). 시청자가 "정말?" 하고 따라오게.
+  "이 연구는 무엇을 보여 주는가?" 같은 범용 질문 금지.
 - viewer_reason_to_care: 시청자 삶·관심과 닿는 한 문장.
 - starting_assumption: 시청자가 보통 그렇게 알고 있는 것(근거·상식으로 무리 없는 것). 지어낸 오해 금지 — 없으면 빈 문자열.
 - surprising_conflict: 이 연구/리포트가 그 가정과 어긋나는 지점. 없으면 빈 문자열.
 - story_pattern 은 주어진 후보 중 하나, 이유를 한 줄로.
-- explanation_steps 는 시청자 순서다(원문 순서가 아니다). 각 단계는 시청자가 품을 **질문 하나**와 그 **답**,
+- explanation_steps 는 시청자 순서다(원문 순서가 아니다). **핵심 결과를 예비·보조 결과보다 앞에** 둔다.
+- answer 는 쉬운 말로. 숫자는 이해에 꼭 필요한 대표 숫자 한두 개만(통계값 p·±오차 등은 넣지 마라 — 화면 카드가 맡는다). 각 단계는 시청자가 품을 **질문 하나**와 그 **답**,
   앞 단계와의 관계(relation_to_previous: question_answer|cause_effect|whole_detail|phenomenon_data|contrast|process_next|micro_whole),
   그리고 must_visualize(이 단계에서 화면이 꼭 보여 줄 물체·변화 — 구체적인 사물로).
 - 단계 수는 step_range 안. 원문이 얕으면 적게, 깊이를 억지로 늘리지 마라.
@@ -134,15 +136,8 @@ def evidence_index(pack: dict[str, Any], financial_reasoning: dict[str, Any] | N
         if isinstance(item, dict) and _text(item.get("evidence_id")) and _text(item.get("display")):
             out[item["evidence_id"]] = {"section": "numbers", "text": _text(item["display"]),
                                         "type": "number", "state": _text(item.get("verification_state"))}
-    for unit in (financial_reasoning or {}).get("units") or []:
-        if not isinstance(unit, dict):
-            continue
-        rid = _text(unit.get("reasoning_id"))
-        for step in unit.get("steps") or []:
-            if isinstance(step, dict) and rid and _text(step.get("text")):
-                out[f"report:step:{rid}#{step.get('step')}"] = {
-                    "section": "financial_reasoning", "text": _text(step["text"]),
-                    "type": _text(unit.get("unit_type")), "state": "REASONING_STEP"}
+    # ★ 증권사 논리 단계는 근거 묶음(evidence_pack)이 원문 인용으로 확인한 것만 claims 로 들어온다 — 여기서 따로
+    #   더하지 않는다. 설명 설계(explanation_ir)가 보는 근거와 **같은 한 벌**이어야 단계가 근거를 잃지 않는다.
     return out
 
 
@@ -181,6 +176,8 @@ def validate(result: dict[str, Any], pack: dict[str, Any],
     core = _text(result.get("core_question"))
     if not core.endswith(("?", "？")):
         errors.append("core_question_not_a_question")
+    if len(core) > 45:
+        warnings.append(f"core_question_long:{len(core)}")
     if core.replace(" ", "") in {"이연구는무엇을보여주는가?", "왜이증권사는이런전망을하는가?"}:
         errors.append("core_question_generic")
     if _text(result.get("story_pattern")) not in PATTERNS.get(domain, {}):
@@ -199,10 +196,14 @@ def validate(result: dict[str, Any], pack: dict[str, Any],
         if unknown:
             errors.append(f"unknown_evidence:{label}:{unknown[0]}")
         cited = [index[i]["text"] for i in ids if i in index]
+        if label != "limitation" and not label.startswith("limitation") and cited and not any(
+                index[i]["state"] == "SUPPORTED" for i in ids if i in index):
+            errors.append(f"no_supported_evidence:{label}")
         extra = spoken_numbers.multiset_minus(spoken_numbers.value_tokens(text), _numbers_in(cited))
         if extra:
             errors.append(f"number_not_in_cited_evidence:{label}:{extra[0]}")
-        if cited and all(index[i]["state"] not in {"SUPPORTED", "REASONING_STEP"} for i in ids if i in index):
+        if label.startswith("limitation") and cited and all(
+                index[i]["state"] != "SUPPORTED" for i in ids if i in index):
             warnings.append(f"only_unverified_evidence:{label}")
 
     for step in steps:
@@ -228,11 +229,12 @@ def validate(result: dict[str, Any], pack: dict[str, Any],
 
 
 def think(pack: dict[str, Any], *, title: str = "", financial_reasoning: dict[str, Any] | None = None,
-          report_meta: dict[str, Any] | None = None, model: str | None = None) -> dict[str, Any]:
+          report_meta: dict[str, Any] | None = None, model: str | None = None,
+          caller: Any = None) -> dict[str, Any]:
     """모델 1회 호출 → 생각 결과 + 근거 연결 검사. 저장하지 않는다(비용 장부만 남는다)."""
     payload = prompt_payload(pack, title=title, financial_reasoning=financial_reasoning, report_meta=report_meta)
     set_text_purpose("explanation_reasoning_preview")
-    raw = call_json(model=model or config.MODEL_EXPLANATION_REASONING, system=SYSTEM_PROMPT,
+    raw = (caller or call_json)(model=model or config.MODEL_EXPLANATION_REASONING, system=SYSTEM_PROMPT,
                     user=json.dumps(payload, ensure_ascii=False),
                     # 추론형 모델은 답 전에 긴 생각을 쓴다 — 지시서와 같은 상한(절단 방지, 쓴 만큼만 과금).
                     max_tokens=config.LLM_DIRECTIVE_MAX_TOKENS)
@@ -292,3 +294,81 @@ def markdown(out: dict[str, Any], *, title: str = "", evidence: dict[str, dict[s
     lines += ["## 코드 검사(근거 연결만)", f"- 오류: {', '.join(qa.get('errors') or []) or '없음'}",
               f"- 참고: {', '.join(qa.get('warnings') or []) or '없음'}"]
     return "\n".join(lines) + "\n"
+
+
+# ─────────────────────────────────────────────────────────────
+# 생각 결과 → 기존 설명 설계(explanation-ir-v1) 후보. Phase 4~10 은 이 IR 을 그대로 소비한다.
+# ─────────────────────────────────────────────────────────────
+_INTERPRETIVE_KINDS = frozenset({"interpretation", "author_interpretation", "hypothesis"})
+_NO_UNCERTAINTY = {"", "없음", "none", "n/a", "-"}
+
+
+def _role_for(step: dict[str, Any]) -> str:
+    kind = step_kind(step.get("kind"))
+    if kind in _INTERPRETIVE_KINDS:
+        return "mechanism"
+    if _text(step.get("relation_to_previous")) == "cause_effect":
+        return "cause"
+    return "result"
+
+
+def _attribution(ids: list[str], index: dict[str, dict[str, Any]]) -> tuple[list[str], str]:
+    """리포트 근거는 귀속(증권사·출처)이 하나여야 한다 — 첫 귀속과 다른 근거는 이 단계에서 뺀다."""
+    first = next((_text(index[i].get("attribution")) for i in ids
+                  if i in index and _text(index[i].get("attribution"))), "")
+    if not first:
+        return ids, ""
+    return [i for i in ids if i in index and _text(index[i].get("attribution")) in {"", first}], first
+
+
+def to_ir_candidate(reasoning: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]:
+    """생각 결과 → `explanation_ir.normalize` 후보. 순서: 원문 근거가 있는 선행 개념 → 설명 단계 → 의미 → 한계.
+
+    문장(text)은 모델이 쉬운 말로 쓴 답이다 — 원문 복사가 아니다. 근거 id·검증 상태 필터·원문 위치는
+    `explanation_ir.normalize` 가 종전대로 강제한다(검증 안 된 근거만 단 단계는 거기서 빠진다).
+    """
+    from . import explanation_ir
+
+    index = explanation_ir.build_index(pack)
+    report = pack.get("domain") == "report"
+    units: list[dict[str, Any]] = []
+
+    def add(role: str, text: str, ids: list[str], *, uncertainty: str = "", causal: str = "",
+            relation: str = "", step_id: str = "") -> None:
+        ids, attribution = _attribution(ids, index) if report else (ids, "")
+        unit = {"role": role, "text": text, "evidence_ids": ids, "uncertainty": uncertainty,
+                "causal_level": causal, "transition_relation": relation, "attribution": attribution}
+        if step_id:
+            unit["source_reasoning_id"] = step_id          # 설명 단계 번호(S1…) — 화면 단계까지 따라간다
+        units.append(unit)
+
+    for concept in reasoning.get("prerequisite_concepts") or []:
+        if isinstance(concept, dict) and concept.get("basis") == "source" and _strings(concept.get("evidence_ids")):
+            add("prerequisite", f"{_text(concept.get('concept'))}: {_text(concept.get('simple_explanation'))}",
+                _strings(concept.get("evidence_ids")))
+    for step in reasoning.get("explanation_steps") or []:
+        if not isinstance(step, dict):
+            continue
+        kind = step_kind(step.get("kind"))
+        uncertainty = _text(step.get("uncertainty"))
+        if uncertainty.lower() in _NO_UNCERTAINTY:
+            uncertainty = "author_interpretation" if kind in _INTERPRETIVE_KINDS else ""
+        add(_role_for(step), _text(step.get("answer")), _strings(step.get("evidence_ids")),
+            uncertainty=uncertainty, causal="speculation" if kind in _INTERPRETIVE_KINDS else "",
+            relation=_text(step.get("relation_to_previous")), step_id=_text(step.get("step_id")))
+    payoff = reasoning.get("payoff") if isinstance(reasoning.get("payoff"), dict) else {}
+    if _text(payoff.get("text")):
+        add("payoff", _text(payoff["text"]), _strings(payoff.get("evidence_ids")), step_id="PAYOFF")
+    for lim in reasoning.get("limitations") or []:
+        if isinstance(lim, dict) and _text(lim.get("text")):
+            add("limitation", _text(lim["text"]), _strings(lim.get("evidence_ids")))
+    return {"domain": pack.get("domain"), "origin": "model_reasoning",
+            "core_question": _text(reasoning.get("core_question")),
+            "thesis": _text(payoff.get("text")), "reasoning_units": units}
+
+
+def gloss_terms(reasoning: dict[str, Any]) -> list[dict[str, str]]:
+    """원문에 설명이 없는 용어 — 대본은 쉬운 말로 **바꿔 부르기만** 하고 사실처럼 설명하지 않는다(§6)."""
+    return [{"term": _text(c.get("concept")), "plain": _text(c.get("simple_explanation"))}
+            for c in reasoning.get("prerequisite_concepts") or []
+            if isinstance(c, dict) and c.get("basis") != "source" and _text(c.get("concept"))]

@@ -96,6 +96,15 @@ def _load(domain: str, content_id: str,
     return draft, directive, "이 콘텐츠의 가장 최근 지시서(version_type·상태 무관)"
 
 
+def paper_title(paper_id: str) -> str:
+    """한글 제목(scores.title_ko) + 원제(papers.title) — 생각 단계가 이 편의 요점을 잡는 단서다(읽기만)."""
+    rows = db.client().table("scores").select("title_ko").eq("paper_id", paper_id).limit(1).execute().data
+    title_ko = (rows[0].get("title_ko") if rows else "") or ""
+    paper = db.client().table("papers").select("title").eq("id", paper_id).limit(1).execute().data
+    title = (paper[0].get("title") if paper else "") or ""
+    return f"{title_ko} ({title})" if title_ko and title else (title_ko or title)
+
+
 def _load_concepts(path: str | None) -> list[dict[str, Any]] | None:
     if not path:
         return None
@@ -189,8 +198,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     directive_id = canonical_content_id(args.directive_id) if args.directive_id else None
     requested_concepts = _load_concepts(args.concepts_file)
     draft, directive, selection = _load(args.domain, content_id, directive_id)
+    # 리포트 메타(증권사·제목)는 생각 단계(모델 실행)와 지시서 생성 둘 다 쓴다.
     report_row = (report_db.get_report(content_id)
-                  if args.domain == "report" and args.with_directive else None)
+                  if args.domain == "report" and args.with_model else None)
+    title = (paper_title(content_id) if args.domain == "paper" and args.with_model
+             else f"{(report_row or {}).get('broker') or ''} · {(report_row or {}).get('title') or ''}"
+             if report_row else "")
     with count_ledger_writes() as writes:
         result = explanation_shadow_pipeline.run(
             domain=args.domain,
@@ -205,6 +218,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             allow_model_calls=args.with_model,
             with_directive=args.with_directive,
             report=report_row,
+            title=title,
         )
     result["legacy_selection"] = selection
     render_qa = _render_qa(args.domain, args.render_qa, args.render_job_id)

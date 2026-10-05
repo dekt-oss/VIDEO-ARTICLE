@@ -20,6 +20,7 @@ from . import (
     narrative_planner,
     prerequisite_resolver,
     spoken_narration,
+    spoken_numbers,
 )
 from .llm import call_json, set_text_purpose
 
@@ -28,6 +29,9 @@ CONTRACT_VERSION = "semantic-fidelity-v1"
 QA_STATUSES = frozenset({
     "PASSED", "REJECTED", "BLOCKED_UPSTREAM", "REJECTED_UPSTREAM", "CRITIC_ERROR",
 })
+#: 이해용 비교 절의 표지 — "마치 ~처럼", "~같은", "~듯". 숫자가 들어간 비교는 면제하지 않는다.
+_COMPARISON_MARKER = re.compile(r"처럼|마치|같은|같이|듯")
+
 VERDICTS = frozenset({
     "ENTAILED", "CONTRADICTED", "UNSUPPORTED", "UNVERIFIABLE", "RHETORICAL",
 })
@@ -45,10 +49,12 @@ SYSTEM_PROMPT = """너는 작성 모델과 분리된 의미 충실도 검증관�
 Explanation IR만 사용해 절별 판정을 내려라. source quote의 존재는 claim 전체의 의미 보증이
 아니다. 범위 확대, 인과 강화, 수식어 누락, 모순, 근거 없는 배경, 귀속 손실을 각각 표시하라.
 HOOK도 사실 주장이면 근거가 필요하다. 순수한 핵심 질문만 RHETORICAL로 분류할 수 있다.
+"마치 ~처럼" 같은 이해용 비교 절은 COMPARISON(verdict RHETORICAL)으로 분류하라 — 비교 자체는 근거가 필요 없다.
+단 그 비교가 새 사실·숫자·인과를 주장하면 FACTUAL 로 보고 근거와 대조하라.
 절 텍스트는 원문 문장의 연속된 글자를 그대로 복사하며 어떤 내용도 생략하거나 추가하지 마라.
 evidence_id는 해당 beat에 제공된 값만 사용하라. reasoning/raw ref/aggregate status는 만들지 마라.
 JSON only: {"clauses":[{"narration_id":"SN01","sentence_index":1,
-"clause_text":"...","clause_kind":"FACTUAL|RHETORICAL",
+"clause_text":"...","clause_kind":"FACTUAL|RHETORICAL|COMPARISON",
 "verdict":"ENTAILED|CONTRADICTED|UNSUPPORTED|UNVERIFIABLE|RHETORICAL",
 "evidence_ids":[],"finding_codes":[],"rationale":"..."}]}
 """
@@ -256,6 +262,16 @@ def _semantic_findings(
         verdict = row.get("verdict")
         evidence_ids = _strings(row.get("evidence_ids"))
         findings = _strings(row.get("finding_codes"))
+        if kind == "COMPARISON":
+            # 이해용 비교(작업지시서 §8 목표 문체 "지렛대처럼"). 비교 표지가 있고, 근거·지적 사항이 없을 때만 면제.
+            text = _text(row.get("clause_text"))
+            valid = (verdict == "RHETORICAL" and not evidence_ids and not findings
+                     and bool(_COMPARISON_MARKER.search(text))
+                     and not spoken_numbers.value_tokens(text))
+            if not valid:
+                failed = True
+                errors.append(f"comparison_exemption_invalid:{clause_id}")
+            continue
         if kind == "RHETORICAL":
             valid = (
                 beat.get("stage") == "HOOK"
@@ -355,7 +371,7 @@ def normalize_review(
                 errors.append(f"finding_codes_invalid:{key[0]}:{sentence_index}")
             evidence_ids = _strings(row.get("evidence_ids"))
             finding_codes = _strings(row.get("finding_codes"))
-            if clause_kind not in {"FACTUAL", "RHETORICAL"}:
+            if clause_kind not in {"FACTUAL", "RHETORICAL", "COMPARISON"}:
                 errors.append(f"clause_kind_invalid:{key[0]}:{sentence_index}")
             if verdict not in VERDICTS:
                 errors.append(f"verdict_invalid:{key[0]}:{sentence_index}")
@@ -621,7 +637,7 @@ def review(
     invoke = caller or call_json
     try:
         payload = invoke(
-            model=config.MODEL_SELFCHECK,
+            model=config.MODEL_V2_CRITIC,
             system=SYSTEM_PROMPT,
             user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
             max_tokens=config.LLM_SELFCHECK_MAX_TOKENS,

@@ -92,3 +92,38 @@ def _no_live_judge_calls_from_tests(monkeypatch):
     #   흉내 내는 테스트에서 `.env` 의 GEMINI 키로 **실제 판정 호출**이 나갔다(test_shared_assets).
     #   켜진 상태를 보고 싶은 테스트는 config.STILL_CHECK_ENABLED 를 스스로 켠다.
     monkeypatch.setattr(config, "STILL_CHECK_ENABLED", False)
+
+
+REAL_MODEL_CALLS: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _no_real_model_calls_from_tests(monkeypatch):
+    """★ 테스트가 **실제 유료 모델을 부르지 못하게** 막는다 (2026-10-06 사고).
+
+    무슨 일이 있었나: V2 생각 단계(explanation_reasoning.think)를 파이프라인에 연결하자, 모델 허용으로 도는 기존
+    파이프라인 테스트들이 대본·검증관은 가짜로 넘기면서 **새 생각 단계에는 가짜를 넘기지 않아** 실제
+    deepseek-v4-pro 를 불렀다. 위 원장 가드가 기록만 막아서 원장에는 0건으로 보였다 — 돈은 나가고 기록은 없는 최악.
+    ★ 가장 안쪽(공급자별 HTTP 함수)을 막는다. 모듈마다 `from .llm import call_json` 으로 이름을 들고 있어서
+      `llm.call_json` 하나를 바꿔서는 다 못 막는다. 가짜 caller 를 넘기는 테스트는 여기까지 오지 않는다.
+    """
+    from engine import llm
+
+    def _blocked(*_args, **_kwargs):
+        raise AssertionError("테스트가 실제 유료 모델을 부르려 했다 — conftest 가 막았다. 가짜 caller 를 넘겨라.")
+
+    names = ("_create", "_gemini_create", "_deepseek_create")          # 실제 HTTP 를 내는 셋
+    # 원본 — 이 함수들 자체를 가짜 클라이언트로 검사하는 테스트(test_llm_truncation)가 되찾아 쓴다.
+    REAL_MODEL_CALLS.update({name: getattr(llm, name) for name in names if name not in REAL_MODEL_CALLS})
+    for name in names:
+        monkeypatch.setattr(llm, name, _blocked)
+
+
+@pytest.fixture(autouse=True)
+def _v2_model_steps_off_by_default(monkeypatch):
+    """V2 생각 단계·2차 다듬기는 모델을 한 번씩 더 부른다. 옛 경로를 검사하는 테스트는 끈 채로 돌고,
+    새 경로 테스트는 스스로 켜고 가짜 caller(reasoning_caller·polish_caller)를 넘긴다."""
+    from engine import config
+
+    monkeypatch.setattr(config, "V2_EXPLANATION_REASONING", False)
+    monkeypatch.setattr(config, "V2_SPOKEN_POLISH", False)

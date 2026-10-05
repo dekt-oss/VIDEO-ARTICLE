@@ -14,6 +14,8 @@ from . import (
     content_complexity_gate,
     evidence_pack,
     explanation_directive,
+    explanation_ir,
+    explanation_reasoning,
     narrative_planner,
     paper_reasoning_adapter,
     prerequisite_resolver,
@@ -105,8 +107,8 @@ def _empty_result(
         "run": {
             "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "model_calls_allowed": allow_model_calls,
-            "narration_model": config.MODEL_SCRIPT if allow_model_calls else "",
-            "critic_model": config.MODEL_SELFCHECK if allow_model_calls else "",
+            "narration_model": config.MODEL_V2_NARRATION if allow_model_calls else "",
+            "critic_model": config.MODEL_V2_CRITIC if allow_model_calls else "",
             "fact_sheet_snapshot_sha256": snapshot,
             "content_plan_source": "",
             "prerequisite_requests": {
@@ -117,6 +119,7 @@ def _empty_result(
         "legacy": legacy,
         "phase_status": {phase: "NOT_RUN" for phase in _PHASES},
         "shadow": {
+            "reasoning": None,
             "evidence_pack": None,
             "ir": None,
             "resolution": None,
@@ -162,6 +165,9 @@ def _run(
     with_directive: bool = False,
     directive_generator: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     report: dict[str, Any] | None = None,
+    title: str = "",
+    reasoning_caller: Callable[..., dict[str, Any]] | None = None,
+    polish_caller: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build shadow artifacts without any database write or render side effect.
 
@@ -214,6 +220,27 @@ def _run(
             if domain == "paper"
             else report_reasoning_adapter.build(pack, financial_reasoning)
         )
+        gloss: list[dict[str, str]] = []
+        # ★ Phase 3 생각 단계(2026-10-06 재구현, docs/전체재검토_ExplanationEngine_v2_2026-10-05.md). 모델이 설명을
+        #   설계하고 그 결과가 IR 이 된다. 위 어댑터 IR 은 모델을 부르기 전 원문 검사(깊이·모드 기록이 서로 맞는가)에만
+        #   쓴다 — 어차피 그 검사에서 죽을 입력에 돈을 쓰지 않는다. 원문이 **얕은** 것은 여기서 막지 않는다: 생각 단계의
+        #   단계 수 범위(STEP_RANGE_BY_MODE)와 Phase 8 길이 판정이 줄인다. 모델을 안 부르는 실행(dry)은 옛 경로 그대로다.
+        if allow_model_calls and config.V2_EXPLANATION_REASONING:
+            phase = "phase3_preflight"
+            preflight = content_complexity_gate.source_errors(pack, ir)
+            if preflight:
+                raise ValueError("preflight_failed_before_model_call:" + ",".join(preflight))
+            phase = "phase3_reasoning"
+            thought = explanation_reasoning.think(
+                pack, title=title, financial_reasoning=financial_reasoning if domain == "report" else None,
+                report_meta=report if isinstance(report, dict) else None, caller=reasoning_caller)
+            shadow["reasoning"] = thought
+            ir = explanation_ir.normalize(
+                explanation_reasoning.to_ir_candidate(thought["reasoning"], pack), pack)
+            ir_errors = explanation_ir.validate(ir, pack)
+            if ir_errors:
+                raise ValueError("reasoning_ir_invalid:" + ",".join(ir_errors))
+            gloss = explanation_reasoning.gloss_terms(thought["reasoning"])
         shadow["ir"] = ir
         phases["phase3"] = "READY" if ir.get("reasoning_units") else "EMPTY"
 
@@ -241,7 +268,16 @@ def _run(
         narration = spoken_narration.generate(
             plan, ir, resolution, pack,
             caller=narration_caller if allow_model_calls else None,
+            gloss_terms=gloss,
         )
+        # 2차 다듬기(§8 "별도 pass"). 실패해도 사실 검사를 통과한 초안을 그대로 쓴다 — 다듬기는 덤이다.
+        if (allow_model_calls and config.V2_SPOKEN_POLISH
+                and narration.get("generation_status") == "DRAFT_ACCEPTED"):
+            try:
+                narration = spoken_narration.polish(narration, plan, ir, resolution, pack,
+                                                    caller=polish_caller)
+            except Exception as exc:  # noqa: BLE001 — 덤이 본문을 망치지 않게
+                shadow["polish_error"] = {"type": type(exc).__name__, "message": str(exc)[:300]}
         shadow["narration"] = narration
         phases["phase6"] = narration.get("generation_status")
 
@@ -282,7 +318,7 @@ def _run(
         phases["phase10"] = "READY" if directive else "BLOCKED"
     except Exception as exc:  # noqa: BLE001 — 실패를 성공처럼 숨기지 않고 결과에 남긴다
         shadow["directive"] = None
-        phases["phase6" if phase == "phase6_preflight" else phase] = "ERROR"
+        phases[phase.split("_")[0]] = "ERROR"
         result["error"] = {
             "phase": phase,
             "type": type(exc).__name__,

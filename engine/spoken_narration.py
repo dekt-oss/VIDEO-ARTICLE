@@ -52,13 +52,20 @@ def _meaning_classes(text: str) -> set[str]:
     return classes | {"negation"} if _SINO_NEGATION.search(text) else classes
 
 
-SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다.
-입력의 비트 순서와 의미를 그대로 유지해 말하기 쉬운 문장으로 바꿔라.
+SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다. 논문·리포트를 **읽어 주는 사람**이다 —
+처음 듣는 시청자가 한 번 듣고 따라오도록 말한다. 입력의 비트 순서와 사실은 그대로 두고, 말은 네가 새로 짓는다.
+말하기 규칙(작업지시서 §8 목표 문체):
+- content_points 는 재료다. 원문 문장을 옮기지 말고 평소 말투로 다시 말하라. 한 문장에 한 가지.
+- 전문용어는 꼭 필요할 때만, 처음 한 번 짧게 풀어서. 역할로 말해도 뜻이 같으면 이름을 뺀다.
+- terms_to_gloss 의 용어는 plain 표현으로 **바꿔 부르기만** 하라(그 설명을 사실 주장처럼 덧붙이지 마라).
+- 이해를 돕는 쉬운 비교는 "마치 ~처럼"으로 한 편에 한두 번 써도 된다(예: "다리가 조금 더 긴 지렛대처럼").
+  비교가 새 사실·숫자·인과를 만들면 안 된다.
+- 출처(기관·증권사)는 한두 번이면 된다. 매 문장 "○○에 따르면"으로 시작하지 마라.
 부정, 불확실성, 연관성, 범위 단서(평균·일부·약 등), 출처 귀속을 바꾸거나 빼지 마라.
 숫자: 각 비트의 spoken_numbers 에 있는 수만 값·단위 그대로 말한다. screen_numbers 의 수는 말하지 말고
 크기와 방향을 말로 풀어라(예: "2.4배에서 8.6배 더 넓다" → "훨씬 넓다") — 그 수는 화면 카드로 나간다.
 연도·분기 같은 시점 표현은 그대로 둔다. 입력에 없는 숫자를 만들지 마라.
-새 사실, 비유, 인과, 근거, ID를 추가하지 마라.
+새 사실, 인과, 근거, ID를 추가하지 마라.
 stage 가 HOOK 인 비트는 core_question 을 한 문장 그대로 쓴다. 바꿔도 되는 것은 문장 끝 어미뿐이다
 (예: "…하는가?" → "…하는 걸까요?"). 낱말을 바꾸거나 다른 문장을 덧붙이면 코드가 core_question 으로 되돌린다.
 각 beat_id를 한 번씩 같은 순서로 반환하라.
@@ -479,9 +486,14 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
     return sorted(set(errors))
 
 
+def _max_tokens(model: str) -> int:
+    # 추론형 모델(deepseek-v4-pro)은 답 전에 긴 생각을 쓴다 — 절단 방지(쓴 만큼만 과금).
+    return config.LLM_DIRECTIVE_MAX_TOKENS if model.startswith("deepseek") else MAX_TOKENS
+
+
 def generate(plan: dict[str, Any], ir: dict[str, Any], resolution: dict[str, Any],
-             pack: dict[str, Any], *, caller: Callable[..., dict[str, Any]] | None = None
-             ) -> dict[str, Any]:
+             pack: dict[str, Any], *, caller: Callable[..., dict[str, Any]] | None = None,
+             gloss_terms: list[dict[str, str]] | None = None) -> dict[str, Any]:
     """Generate a shadow draft; blocked upstream plans never resolve the caller."""
     _require_valid_upstream(plan, ir, resolution, pack)
     if plan["planning_status"] != "READY":
@@ -491,15 +503,43 @@ def generate(plan: dict[str, Any], ir: dict[str, Any], resolution: dict[str, Any
             warnings=[f"upstream_{plan['planning_status'].lower()}"] + list(plan["warnings"]),
         )
     visible = prompt_payload(plan, ir, resolution, pack)
+    if gloss_terms:
+        visible["terms_to_gloss"] = deepcopy(gloss_terms)
     set_text_purpose("spoken_narration_shadow")
     invoke = caller or call_json
     payload = invoke(
-        model=config.MODEL_SCRIPT,
+        model=config.MODEL_V2_NARRATION,
         system=SYSTEM_PROMPT,
         user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
-        max_tokens=MAX_TOKENS,
+        max_tokens=_max_tokens(config.MODEL_V2_NARRATION),
     )
     return normalize_draft(payload, plan, ir, resolution, pack)
+
+
+POLISH_PROMPT = """너는 짧은 한국어 설명 영상 나레이션의 **2차 다듬기** 담당이다(작업지시서 §8 Spoken Polish).
+이미 사실 검사를 통과한 대본이다. 사실·숫자·순서·비트 수는 그대로 두고 **말로 들을 때**만 고쳐라.
+보는 것: 한 호흡이 너무 긴가(한 문장 40자 안팎) · 명사형 표현("~의 증가") · 논문/리포트 문체("~함", "본 연구는") ·
+앞 문장과 이어지는가("그래서·그런데·즉") · 같은 질문을 두 번 하는가 · 전문용어를 풀기 전에 쓰는가 · 숫자를 너무 많이 읽는가 ·
+TTS 로 읽었을 때 어색한 곳.
+금지: 숫자·부정·범위 단서(평균·일부·약)·출처 귀속·불확실성 표현을 바꾸거나 빼지 마라. 새 사실·인과를 더하지 마라.
+HOOK 비트는 그대로 둔다. 고칠 것이 없으면 그대로 돌려줘라.
+JSON only: {"beats":[{"beat_id":"NB01","sentences":["..."]}]}
+"""
+
+
+def polish(narration: dict[str, Any], plan: dict[str, Any], ir: dict[str, Any],
+           resolution: dict[str, Any], pack: dict[str, Any], *,
+           caller: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
+    """2차 다듬기 — 모델 1회 + `apply_polish`(사실 검사를 깨는 수정은 비트별로 버린다)."""
+    beats = [{"beat_id": b["beat_id"], "stage": b["stage"], "sentences": b["sentences"]}
+             for b in narration["narration_beats"]]
+    set_text_purpose("spoken_polish_shadow")
+    payload = (caller or call_json)(
+        model=config.MODEL_V2_NARRATION, system=POLISH_PROMPT,
+        user=json.dumps({"beats": beats}, ensure_ascii=False),
+        max_tokens=_max_tokens(config.MODEL_V2_NARRATION),
+    )
+    return apply_polish(narration, payload, plan, ir, resolution, pack)
 
 
 def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],

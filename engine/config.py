@@ -189,11 +189,18 @@ MODEL_SELFCHECK: str = os.getenv("MODEL_SELFCHECK", "gemini-2.5-flash")    # 자
 #   승인한 품질 모델이다. Anthropic 은 ANTHROPIC_DISABLED(운영자 결정)로 막혀 있어 쓰지 않는다. Gold Set 비교 뒤
 #   다른 후보와 A/B 한다(§17 "현재 기본 모델을 즉시 교체하지 말고 비교한다").
 MODEL_EXPLANATION_REASONING: str = os.getenv("MODEL_EXPLANATION_REASONING", "deepseek-v4-pro")
+#   V2 생각 단계를 켜고 끈다. 끄면 옛 경로(Fact Sheet 주장 재분류)로 돈다. 모델을 안 부르는 실행(dry)은 늘 옛 경로다.
+V2_EXPLANATION_REASONING: bool = _get_bool("V2_EXPLANATION_REASONING", True)
+#   V2 대본 2차 다듬기(§8 "별도 pass")를 실제로 돌린다. 함수(apply_polish)는 있었으나 부르는 곳이 없었다(2026-10-05 재검토).
+V2_SPOKEN_POLISH: bool = _get_bool("V2_SPOKEN_POLISH", True)
 # ★ 기본을 flash 로 내렸다(2026-08-29). pro/opus 는 flash 의 25~30배이고, 어제 실측에서
 #   대본 합성이 그날 텍스트 비용의 큰 몫을 먹었다(논문 16편 × 3안 = 48벌).
 #   품질이 필요한 편은 MODEL_SCRIPT 를 **명시로** 올려 쓴다 — 비싼 것이 기본값이면
 #   아무도 모르는 사이에 돈이 나간다.
 MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", "gemini-3.8-flash")            # 대본 합성 (2026-09-28 ↑, 위 주석)
+#   V2 대본·다듬기·검증관 모델. 기본은 운영 대본·자기검증과 같은 모델(바꾸지 않는다). 검증관은 작성 모델과 달라야 한다(§9.4).
+MODEL_V2_NARRATION: str = os.getenv("MODEL_V2_NARRATION", MODEL_SCRIPT)
+MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
 # 한국어 채점/추출 JSON(긴 rationale·red_flag 포함)이 잘리지 않도록 넉넉히.
 # ★ 2048 은 한글 출력에 부족해 JSON 이 잘려 파싱 실패→전 축 0점이 되던 원인이었다.
 LLM_MAX_TOKENS: int = 8192
