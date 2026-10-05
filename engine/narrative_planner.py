@@ -30,8 +30,56 @@ _STAGE_BY_ROLE = {
 }
 
 
+#: 시청자 순서(논문). 원문 순서는 근거가 쌓인 순서라 가장 흥미로운 결과가 뒤에 묻힌다(2026-10-05 실측).
+#  선행 개념(SETUP)이 맨 앞, 한계(BOUNDARY)가 맨 끝 — Production 4막(문제 → 상황 → 반전·원리 → 결과)과 같은 흐름.
+_AUDIENCE_STAGE_RANK = {
+    "SETUP": 0, "CONFLICT": 1, "EVIDENCE": 2, "EXPLANATION": 3, "PAYOFF": 4, "BOUNDARY": 5,
+}
+
+
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+_QUALIFYING_ROLES = frozenset({"limitation", "risk"})
+
+
+def audience_order(ir: dict[str, Any], reasoning_ids: list[str]) -> list[str]:
+    """비트로 놓을 논증 단위 순서. 논문은 시청자 순서, 리포트·스위치 꺼짐은 원문 순서 그대로.
+
+    ★ 한계는 **자기가 꾸미는 결과 바로 뒤**에 남는다(결과 + 그 한계 = 한 묶음, 묶음 단위로 정렬). 한계만
+      끝으로 모으면 "개별 수면 에피소드의 지속 시간 자체는 변하지 않았다"가 무엇의 한계인지 모르는 문장이 된다.
+    """
+    if ir.get("domain") != "paper" or not config.V2_AUDIENCE_ORDER:
+        return list(reasoning_ids)
+    roles = {unit.get("reasoning_id"): unit.get("role") for unit in ir.get("reasoning_units") or []}
+    groups: list[list[str]] = []
+    for rid in reasoning_ids:
+        if groups and roles.get(rid) in _QUALIFYING_ROLES:
+            groups[-1].append(rid)
+        else:
+            groups.append([rid])
+    groups.sort(key=lambda group: _AUDIENCE_STAGE_RANK.get(
+        _STAGE_BY_ROLE.get(roles.get(group[0]), ""), 9))           # 안정 정렬 — 같은 순위는 원문 순서
+    return [rid for group in groups for rid in group]
+
+
+def hook_units(ir: dict[str, Any], kept_ids: list[str]) -> list[dict[str, Any]]:
+    """첫 질문의 재료 — 이 편에 실린 **주요 발견 전부**(한계·리스크 제외). 어느 것이 가장 흥미로운지는
+    대본 모델이 고른다. 코드로 고르면 틀린다: 실측 신피질 논문은 주요 결과 7개가 모두 main_result 였고
+    핵심 주장(thesis)은 Fact Sheet 첫 주장(해부학)이라, 제목의 요점인 '수면'을 못 골랐다(2026-10-05)."""
+    if not config.V2_CONTENT_HOOK:
+        return []
+    return [unit for unit in ir.get("reasoning_units") or []
+            if unit.get("reasoning_id") in kept_ids and unit.get("role") not in _QUALIFYING_ROLES]
+
+
+def hook_fields(ir: dict[str, Any], kept_ids: list[str]) -> dict[str, Any]:
+    """HOOK 비트에 얹는 재료와 근거. 재료 문장은 대본 숫자 검사·검증관 대조의 기준이 된다."""
+    units = hook_units(ir, kept_ids)
+    return {"hook_material": [_text(unit.get("text")) for unit in units],
+            "evidence_ids": _unique_from_units(units, "evidence_ids"),
+            "raw_refs": _unique_from_units(units, "raw_refs")}
 
 
 def _strings(value: Any) -> list[str]:
@@ -261,7 +309,10 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
         }
 
     beats: list[dict[str, Any]] = []
-    beats.append(_beat("NB01", "HOOK", "open_core_question", [ir["core_question"]]))
+    kept_ids, excluded_ids = select_for_length(ir)
+    hook = _beat("NB01", "HOOK", "open_core_question", [ir["core_question"]])
+    hook.update(hook_fields(ir, kept_ids))
+    beats.append(hook)
     resolved = [
         concept for concept in resolution["concepts"]
         if concept.get("status") in {"RESOLVED_SOURCE", "RESOLVED_GLOSSARY"}
@@ -272,15 +323,15 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
             [_text(concept.get("simple_explanation")) for concept in resolved], concepts=resolved,
         ))
 
-    kept_ids, excluded_ids = select_for_length(ir)
     if excluded_ids:
         warnings.extend(f"length_budget_excluded:{rid}" for rid in excluded_ids)
     grouped: list[tuple[str, list[dict[str, Any]]]] = []
-    for unit in ir.get("reasoning_units") or []:
-        if unit.get("reasoning_id") not in kept_ids:
-            continue
+    unit_by_id = {unit.get("reasoning_id"): unit for unit in ir.get("reasoning_units") or []}
+    for rid in audience_order(ir, kept_ids):
+        unit = unit_by_id[rid]
         stage = _STAGE_BY_ROLE[unit["role"]]
-        if grouped and grouped[-1][0] == stage:
+        # 한 비트에 발견 두 개까지 — 실측 비트 하나에 결과 다섯 개가 몰려 한 문단짜리 대사가 됐다.
+        if grouped and grouped[-1][0] == stage and len(grouped[-1][1]) < config.V2_MAX_UNITS_PER_BEAT:
             grouped[-1][1].append(unit)
         else:
             grouped.append((stage, [unit]))
@@ -355,6 +406,7 @@ def validate(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
         return sorted(set(errors + ["beats_not_list"]))
 
     unit_index = {unit["reasoning_id"]: unit for unit in ir.get("reasoning_units") or []}
+    blocked_plan = plan.get("planning_status") != "READY"
     concept_index = {concept["concept_id"]: concept for concept in resolution.get("concepts") or []}
     seen_reasoning: list[str] = []
     for position, beat in enumerate(beats, 1):
@@ -376,6 +428,9 @@ def validate(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
 
         if beat.get("stage") == "HOOK":
             expected_points = [ir.get("core_question")]
+            expected_hook = hook_fields(ir, select_for_length(ir)[0]) if not blocked_plan else {}
+            if beat.get("hook_material", []) != expected_hook.get("hook_material", []):
+                errors.append(f"hook_material_invalid:{beat_id or position}")
         elif concept_ids:
             expected_points = [concept_index[cid].get("simple_explanation") for cid in concept_ids]
         else:
@@ -388,9 +443,14 @@ def validate(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
             _unique_from_units(expected_units, "evidence_ids")
             + _unique_from_concepts(expected_concepts, "evidence_ids")
         ))
+        if beat.get("stage") == "HOOK" and not blocked_plan:
+            expected_evidence = hook_fields(ir, select_for_length(ir)[0])["evidence_ids"]
         if beat.get("evidence_ids") != expected_evidence:
             errors.append(f"evidence_refs_invalid:{beat_id or position}")
-        if beat.get("raw_refs") != _unique_from_units(expected_units, "raw_refs"):
+        expected_raw = (hook_fields(ir, select_for_length(ir)[0])["raw_refs"]
+                        if beat.get("stage") == "HOOK" and not blocked_plan
+                        else _unique_from_units(expected_units, "raw_refs"))
+        if beat.get("raw_refs") != expected_raw:
             errors.append(f"raw_refs_invalid:{beat_id or position}")
         expected_knowledge = _unique_from_concepts(expected_concepts, "knowledge_refs")
         if beat.get("knowledge_refs") != expected_knowledge:
@@ -434,7 +494,7 @@ def validate(plan: Any, ir: dict[str, Any], resolution: dict[str, Any],
             errors.append("blocked_excluded_reasoning_invalid")
     else:
         kept_ids, excluded_ids = select_for_length(ir)
-        if seen_reasoning != kept_ids:
+        if seen_reasoning != audience_order(ir, kept_ids):
             errors.append("reasoning_chain_coverage_invalid")
         valid_beats = [beat for beat in beats if isinstance(beat, dict)]
         for beat, expected in zip(valid_beats, number_delivery(valid_beats, ir)):

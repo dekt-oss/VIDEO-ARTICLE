@@ -554,6 +554,18 @@ UNCAPPED_DURATION_SEC: int = 600
 # 근거 인정 범위를 넓히자(설계 점검 E) 재료가 Samsung 890자·Shipbuilding 898자로 늘었다. 기존 Production 대본
 # 실측(Samsung 518자, 지시서 42초)에 맞춘 목표치다. 넘치는 근거 단위는 버리지 않고 "빠진 내용"으로 남긴다.
 V2_NARRATION_TARGET_CHARS: int = _get_int("V2_NARRATION_TARGET_CHARS", 520)
+# ★ V2 대본 "퇴화" 교정(2026-10-05, 운영자 "말투만 고치면 해결되나?"). 실측 두 편에서 V2 대본이 Production 보다
+#   보기 나빴다 — 원인은 말투가 아니라 구조 셋이었다:
+#   ① 첫 문장이 모든 논문에서 "이 연구는 무엇을 보여 주는 걸까요?" 로 같았다(Phase 6 이 핵심 질문으로 되돌렸다).
+#   ② 비트 순서가 원문(근거 묶음) 순서라 가장 흥미로운 결과("잠드는 시간이 줄었다")가 맨 끝에 묻혔다.
+#   ③ 대본 지시가 "의미를 그대로"·"비유 금지"뿐이라 모델이 논문 문장을 거의 복사했다(전문용어 그대로).
+#   V2_CONTENT_HOOK: 첫 질문을 그 편의 대표 결과로 만든다(재료·근거를 비트에 싣는다).
+#   V2_AUDIENCE_ORDER: 논문 비트를 시청자 순서(현상 → 결과 → 원리 → 의미 → 한계)로 놓는다. 리포트는 논증 순서
+#     (driver → 실적 → 밸류)가 곧 이야기라 그대로 둔다.
+V2_CONTENT_HOOK: bool = _get_bool("V2_CONTENT_HOOK", True)
+V2_AUDIENCE_ORDER: bool = _get_bool("V2_AUDIENCE_ORDER", True)
+#   한 비트에 담는 논증 단위 상한 — 넘치면 다음 비트로 나눈다(대사 한 덩어리가 길어지지 않게).
+V2_MAX_UNITS_PER_BEAT: int = _get_int("V2_MAX_UNITS_PER_BEAT", 2)
 CONTENT_MODE_SOFT_MIN_SEC: int = 25   # 미만 → 경고만(RENDER_QA_MIN_SEC=20 은 그대로)
 CONTENT_MODE_CUT_RANGE: dict[str, tuple[int, int]] = {
     "flash": (4, 5), "standard": (5, 7), "deep": (6, 8), "extended": (7, 9),

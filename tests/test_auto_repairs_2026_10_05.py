@@ -107,3 +107,53 @@ def test_gwanryeon_as_a_claim_is_still_association():
     for text in ("수면 시간은 기억력과 관련이 있다.", "두 변수는 관련된다.", "관련성이 보고됐다.",
                  "운동과 관련해 차이가 컸다.", "우울증과 연관된다."):
         assert "assoc" in spoken_narration._meaning_classes(text), text
+
+
+# ── V2 대본 퇴화 교정: 이 편만의 첫 질문 · 시청자 순서 ───────────────
+_HOOK_BEAT = {"stage": "HOOK", "hook_material": [
+    "신피질 억제 세포 1%를 활성화하자 잠드는 데 걸리는 시간이 줄었다."]}
+
+
+def test_content_hook_accepts_a_specific_question_from_the_material():
+    assert spoken_narration.content_hook_ok("뇌세포 1%만 깨웠는데 더 빨리 잠들 수 있을까요?", _HOOK_BEAT)
+
+
+def test_content_hook_rejects_rule_breaks():
+    for bad in ("뇌세포 3%만 깨웠는데 잠들까요?",                 # 재료에 없는 숫자
+                "억제 세포가 잠을 결정한다. 정말일까요?",          # 질문 앞 단정문
+                "억제 세포가 잠을 결정할까요?",                     # 재료에 없는 인과
+                "모든 뇌세포가 잠들까요?",                          # 범위 강화
+                "뇌세포 1%만 깨웠는데 더 빨리 잠들 수 있을까요? 놀랍습니다",  # 질문 뒤 단정
+                "뇌세포가 1%만 움직였는데도 우리가 밤에 잠드는 데 걸리는 시간이 이렇게나 크게 달라질 수 있다는 것이 정말 사실일까요?"):  # 50자 초과
+        assert not spoken_narration.content_hook_ok(bad, _HOOK_BEAT), bad
+    assert not spoken_narration.content_hook_ok("잠들 수 있을까요?", {"stage": "HOOK"}), "재료 없으면 불가"
+
+
+def test_bad_hook_falls_back_to_the_core_question():
+    sentences, changed = spoken_narration._restore_hook(
+        ["모든 뇌세포가 잠들까요?"], "이 연구는 무엇을 보여 주는가?", _HOOK_BEAT)
+    assert changed and sentences == ["이 연구는 무엇을 보여 주는가?"]
+    sentences, changed = spoken_narration._restore_hook(
+        ["뇌세포 1%만 깨웠는데 더 빨리 잠들 수 있을까요?"], "이 연구는 무엇을 보여 주는가?", _HOOK_BEAT)
+    assert not changed
+
+
+def test_paper_beats_follow_viewer_order_and_keep_limitations_with_their_result():
+    from engine import narrative_planner as np
+    ir = {"domain": "paper", "reasoning_units": [
+        {"reasoning_id": "XR01", "role": "mechanism"}, {"reasoning_id": "XR02", "role": "limitation"},
+        {"reasoning_id": "XR03", "role": "result"}, {"reasoning_id": "XR04", "role": "phenomenon"}]}
+    # 원리(+그 한계) 묶음이 결과 뒤로 가고, 한계는 원리 바로 뒤에 붙어 다닌다.
+    assert np.audience_order(ir, ["XR01", "XR02", "XR03", "XR04"]) == ["XR04", "XR03", "XR01", "XR02"]
+    assert np.audience_order({**ir, "domain": "report"}, ["XR01", "XR02"]) == ["XR01", "XR02"]
+
+
+def test_hook_material_is_every_main_finding_not_limitations():
+    from engine import narrative_planner as np
+    ir = {"reasoning_units": [
+        {"reasoning_id": "XR01", "role": "result", "text": "A", "evidence_ids": ["paper:C01"], "raw_refs": ["claims:C01"]},
+        {"reasoning_id": "XR02", "role": "limitation", "text": "L", "evidence_ids": ["paper:C01"], "raw_refs": ["claims:C01"]},
+        {"reasoning_id": "XR03", "role": "result", "text": "B", "evidence_ids": ["paper:C02"], "raw_refs": ["claims:C02"]}]}
+    assert np.hook_fields(ir, ["XR01", "XR02", "XR03"]) == {
+        "hook_material": ["A", "B"], "evidence_ids": ["paper:C01", "paper:C02"],
+        "raw_refs": ["claims:C01", "claims:C02"]}

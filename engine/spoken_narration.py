@@ -52,15 +52,23 @@ def _meaning_classes(text: str) -> set[str]:
     return classes | {"negation"} if _SINO_NEGATION.search(text) else classes
 
 
-SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다.
-입력의 비트 순서와 의미를 그대로 유지해 말하기 쉬운 문장으로 바꿔라.
+SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다. 논문·리포트를 **읽어 주는 사람**이다 —
+처음 듣는 시청자가 한 번 듣고 따라오도록 말한다. 입력의 비트 순서와 사실은 그대로 두고, 말은 네가 새로 짓는다.
+말하기 규칙:
+- content_points 는 **재료**이지 읽을 문장이 아니다. 원문 문장을 그대로 옮기지 말고 평소 말투로 다시 말하라.
+- 전문용어·약어(유전자·세포 이름, V1, LFP 같은 것)는 꼭 필요할 때만, 처음 한 번 짧게 풀어서("시각 영역 V1").
+  역할로 말해도 뜻이 같으면 이름을 빼라("Sst-Chodl 억제성 뉴런" → "드문 억제 세포").
+- 한 문장에는 한 가지만. 긴 나열은 대표 하나로 줄이고 나머지는 "등"으로 묶는다.
+- 출처(기관·증권사)는 한두 번이면 된다. 매 문장 "○○에 따르면"으로 시작하지 마라.
+- 쉬운 비교는 "마치 ~처럼"으로만, 한 편에 한두 번. 비교가 새 사실을 만들면 안 된다.
 부정, 불확실성, 연관성, 범위 단서(평균·일부·약 등), 출처 귀속을 바꾸거나 빼지 마라.
 숫자: 각 비트의 spoken_numbers 에 있는 수만 값·단위 그대로 말한다. screen_numbers 의 수는 말하지 말고
 크기와 방향을 말로 풀어라(예: "2.4배에서 8.6배 더 넓다" → "훨씬 넓다") — 그 수는 화면 카드로 나간다.
 연도·분기 같은 시점 표현은 그대로 둔다. 입력에 없는 숫자를 만들지 마라.
-새 사실, 비유, 인과, 근거, ID를 추가하지 마라.
-stage 가 HOOK 인 비트는 core_question 을 한 문장 그대로 쓴다. 바꿔도 되는 것은 문장 끝 어미뿐이다
-(예: "…하는가?" → "…하는 걸까요?"). 낱말을 바꾸거나 다른 문장을 덧붙이면 코드가 core_question 으로 되돌린다.
+새 사실, 인과, 근거, ID를 추가하지 마라.
+stage 가 HOOK 인 비트는 **이 편만의 짧은 질문 한 문장**이다. hook_material(이 편의 주요 발견들) 중 시청자가
+가장 놀랄 하나를 골라 "정말?" 하고 궁금해하도록 묻는다(예: "뇌세포의 1%만 건드렸는데 깊은 잠에 빠질 수 있을까요?"). 물음표로 끝나는 한 문장,
+40자 안팎, 숫자는 hook_material 에 있는 것만. 규칙을 어기면 코드가 core_question 으로 되돌린다.
 각 beat_id를 한 번씩 같은 순서로 반환하라.
 JSON only: {"beats":[{"beat_id":"NB01","sentences":["..."]}]}
 """
@@ -109,9 +117,46 @@ def hook_matches_core_question(text: Any, core_question: Any) -> bool:
     return _question_core(sentence) == _question_core(core_question)
 
 
-def _restore_hook(sentences: list[str], core_question: str) -> tuple[list[str], bool]:
-    """도입 질문이 핵심 질문과 다르면 승인된 핵심 질문으로 되돌린다(대본 전체를 버리지 않는다)."""
-    if len(sentences) == 1 and hook_matches_core_question(sentences[0], core_question):
+HOOK_MAX_CHARS = 50
+
+
+def content_hook_ok(text: Any, beat: dict[str, Any]) -> bool:
+    """이 편만의 첫 질문이 규칙을 지키는가(2026-10-05 대본 퇴화 교정).
+
+    재료(hook_material, 대표 결과 한 문장)가 있을 때만 쓸 수 있다. 물음표로 끝나는 한 문장, 50자 이하,
+    숫자·시점 표현은 재료에 있는 것만, "모든·항상" 같은 범위 강화어는 재료에 없으면 금지. 질문 속 사실이
+    재료와 맞는지는 Phase 7 검증관이 HOOK 비트 근거(대표 결과의 근거)와 대조한다.
+    """
+    sentence = _text(text)
+    material = " ".join(_strings(beat.get("hook_material")))
+    if not material or not sentence or len(sentence) > HOOK_MAX_CHARS:
+        return False
+    if sentence.count("?") + sentence.count("？") != 1 or not sentence.endswith(("?", "？")):
+        return False
+    if re.search(r"[.!。](?=\s|$)", sentence[:-1]):
+        return False                                   # 질문 앞에 단정문을 끼우면 안 된다
+    if any(term in sentence and term not in material for term in _DETERMINATION_TERMS):
+        return False                                   # 재료에 없는 인과를 질문이 만들지 않는다
+    if spoken_numbers.multiset_minus(spoken_numbers.value_tokens(sentence),
+                                     spoken_numbers.value_tokens(material)):
+        return False
+    if [p for p in spoken_numbers.period_tokens(sentence)
+            if p not in spoken_numbers.period_tokens(material)]:
+        return False
+    return not any(term in sentence and term not in material for term in _SCOPE_INTENSIFIERS)
+
+
+def hook_ok(sentences: list[str], core_question: str, beat: dict[str, Any]) -> bool:
+    if len(sentences) != 1:
+        return False
+    return (hook_matches_core_question(sentences[0], core_question)
+            or content_hook_ok(sentences[0], beat))
+
+
+def _restore_hook(sentences: list[str], core_question: str,
+                  beat: dict[str, Any] | None = None) -> tuple[list[str], bool]:
+    """도입 질문이 규칙을 어기면 승인된 핵심 질문으로 되돌린다(대본 전체를 버리지 않는다)."""
+    if hook_ok(sentences, core_question, beat or {}):
         return sentences, False
     return [core_question], True
 
@@ -136,6 +181,17 @@ def _draft_guard_findings(
             continue
         before = " ".join(_strings(source.get("content_points")))
         after = _joined_sentences(beat)
+        if source.get("stage") == "HOOK":
+            # 첫 질문은 재료를 묻는 수사 질문이다 — 숫자·뜻 갈래 대조는 content_hook_ok 가 맡는다.
+            question_count += after.count(plan["core_question"])
+            if "?" not in after:
+                errors.append(f"hook_not_question:{beat_id}")
+                errors.append(f"hook_not_grounded:{beat_id}")
+            elif not hook_ok(_strings(beat.get("sentences")), plan["core_question"], source):
+                errors.append(f"hook_not_grounded:{beat_id}")
+            if "?" in after and after.rsplit("?", 1)[1].strip():
+                errors.append(f"hook_factual_assertion_added:{beat_id}")
+            continue
         # 숫자 계약(spoken_numbers 모듈): 말하기로 고른 값만 그대로, 화면용 값은 말하지 않고,
         # 시점 표현은 그대로. 입력에 없는 값은 어느 쪽이든 numbers_changed.
         delivery = source.get("number_delivery") if isinstance(
@@ -281,6 +337,7 @@ def prompt_payload(plan: dict[str, Any], ir: dict[str, Any],
             "stage": beat["stage"],
             "purpose": beat["purpose"],
             "content_points": deepcopy(beat["content_points"]),
+            **({"hook_material": deepcopy(beat["hook_material"])} if beat.get("hook_material") else {}),
             "spoken_numbers": deepcopy(beat["number_delivery"]["spoken_numbers"]),
             "screen_numbers": sorted(
                 number for fact in beat["number_delivery"]["screen_facts"]
@@ -351,7 +408,7 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
         if not sentences:
             errors.append(f"draft_sentences_empty:{beat['beat_id']}")
         elif beat["stage"] == "HOOK":
-            restored, changed = _restore_hook(sentences, plan["core_question"])
+            restored, changed = _restore_hook(sentences, plan["core_question"], beat)
             if changed:
                 repairs.append({
                     "beat_id": beat["beat_id"],

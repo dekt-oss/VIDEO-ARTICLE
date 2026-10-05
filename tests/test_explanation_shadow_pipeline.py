@@ -438,7 +438,8 @@ def test_markdown_discloses_hook_restoration():
         payload = json.loads(kwargs["user"])
         return {"beats": [{
             "beat_id": beat["beat_id"],
-            "sentences": ["발뒤꿈치 보행은 위험하다?"] if beat["stage"] == "HOOK"
+            # 규칙 위반 첫 질문(질문 앞에 단정문) — 핵심 질문으로 되돌린다.
+            "sentences": ["발뒤꿈치 보행은 위험하다. 정말일까?"] if beat["stage"] == "HOOK"
             else list(beat["content_points"]),
         } for beat in payload["beats"]]}
 
@@ -447,7 +448,7 @@ def test_markdown_discloses_hook_restoration():
     assert result["shadow"]["narration"]["repairs"][0]["repair"] == "hook_restored_to_core_question"
     markdown = explanation_shadow_pipeline.render_markdown(result)
     assert "phase6 코드 교정(NB01): hook_restored_to_core_question" in markdown
-    assert "모델 원문: 발뒤꿈치 보행은 위험하다?" in markdown
+    assert "모델 원문: 발뒤꿈치 보행은 위험하다. 정말일까?" in markdown
 
 
 # ─── Phase 8 은 V2 대본 길이로 판정한다(2026-10-05, 설계 점검 D 후속) ─────────────────────

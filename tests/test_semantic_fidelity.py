@@ -430,13 +430,15 @@ def test_rhetorical_exemption_is_only_for_pure_grounded_hook_question():
     assert result["qa_status"] == "REJECTED"
     assert "rhetorical_exemption_invalid:SC03" in result["qa"]["errors"]
 
+    # 2026-10-05: 첫 질문은 대표 결과의 근거를 갖는다 — 그 밖의 근거를 대면 여전히 오류다.
+    assert narration["narration_beats"][0]["evidence_ids"] == ["paper:C01"]
     cited_hook = _critic_payload(narration)
-    cited_hook["clauses"][0]["evidence_ids"] = ["paper:C01"]
+    cited_hook["clauses"][0]["evidence_ids"] = ["paper:C99"]
     result = semantic_fidelity.normalize_review(
         cited_hook, narration, plan, ir, resolution, pack
     )
     assert result["qa_status"] == "CRITIC_ERROR"
-    assert "evidence_ref_outside_beat:SN01:paper:C01" in result["qa"]["errors"]
+    assert any(e.startswith("evidence_ref_") and e.endswith("paper:C99") for e in result["qa"]["errors"])
 
     factual_hook = _critic_payload(narration)
     factual_hook["clauses"][0].update(

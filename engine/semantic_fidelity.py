@@ -44,7 +44,8 @@ SYSTEM_PROMPT = """너는 작성 모델과 분리된 의미 충실도 검증관�
 각 나레이션 문장을 빠짐없이 순서대로 의미 절로 나누고, 입력에 포함된 Evidence Pack 항목과
 Explanation IR만 사용해 절별 판정을 내려라. source quote의 존재는 claim 전체의 의미 보증이
 아니다. 범위 확대, 인과 강화, 수식어 누락, 모순, 근거 없는 배경, 귀속 손실을 각각 표시하라.
-HOOK도 사실 주장이면 근거가 필요하다. 순수한 핵심 질문만 RHETORICAL로 분류할 수 있다.
+HOOK 은 이 편의 대표 결과를 묻는 질문 한 문장이다. 질문 자체는 RHETORICAL 로 분류하되, 질문이 담은 사실
+(숫자·대상·결과)이 그 비트의 근거와 어긋나면 finding_codes 에 표시하라. 질문이 아닌 HOOK 문장은 FACTUAL 이다.
 절 텍스트는 원문 문장의 연속된 글자를 그대로 복사하며 어떤 내용도 생략하거나 추가하지 마라.
 evidence_id는 해당 beat에 제공된 값만 사용하라. reasoning/raw ref/aggregate status는 만들지 마라.
 JSON only: {"clauses":[{"narration_id":"SN01","sentence_index":1,
@@ -262,8 +263,12 @@ def _semantic_findings(
                 and verdict == "RHETORICAL"
                 and not evidence_ids
                 and not findings
-                and spoken_narration.hook_matches_core_question(
-                    row.get("clause_text"), core_question
+                and (
+                    spoken_narration.hook_matches_core_question(row.get("clause_text"), core_question)
+                    # 2026-10-05: 이 편만의 첫 질문도 수사 질문이다 — Phase 6 이 규칙(한 문장·재료 숫자만·
+                    # 단정 금지)을 통과한 것만 남기고 나머지는 핵심 질문으로 되돌렸다. 그 질문 자체만 인정한다.
+                    or (_text(row.get("clause_text")).endswith(("?", "？"))
+                        and _text(row.get("clause_text")) in _strings(beat.get("sentences")))
                 )
             )
             if not valid:

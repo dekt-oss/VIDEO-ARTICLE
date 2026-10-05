@@ -80,7 +80,8 @@ def test_ready_plan_keeps_reasoning_evidence_stage_mutation_and_shot_trace():
         or len(sequence["stage_ids"]) >= 2
         for sequence in result["sequences"]
     )
-    assert result["qa"]["metrics"]["traced_stage_count"] == len(result["visual_beats"]) - 1
+    # 2026-10-05: 첫 질문(HOOK)도 대표 결과의 근거를 갖는다 — 모든 장면이 추적된다.
+    assert result["qa"]["metrics"]["traced_stage_count"] == len(result["visual_beats"])
 
 
 def test_non_ready_gate_cannot_emit_visual_stage_or_shot():
