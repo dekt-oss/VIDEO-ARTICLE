@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from engine import db, explanation_shadow_pipeline, report_db
+from engine import db, explanation_shadow_pipeline, publish_gate_v2, report_db
 
 _DIRECTIVE_TABLES = {
     "paper": ("directives", "paper_id"),
@@ -136,6 +136,19 @@ def _output_paths(output_dir: Path, domain: str, content_id: str,
     raise RuntimeError("output_path_exhausted")
 
 
+def _render_qa(domain: str, path: str | None, job_id: str | None) -> dict[str, Any] | None:
+    """Phase 13 렌더 단계 입력 — 파일이 먼저, 없으면 렌더 작업 행의 `qa`(읽기만 한다)."""
+    if path:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    if not job_id:
+        return None
+    job_id = canonical_content_id(job_id)
+    job = db.get_render_job(job_id) if domain == "paper" else report_db.get_report_render_job(job_id)
+    if not job:
+        raise SystemExit(f"render_job_not_found:{job_id}")
+    return job.get("qa") if isinstance(job.get("qa"), dict) else None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="정확한 콘텐츠 ID 한 건을 읽어 V2 Shadow 비교 자료를 로컬에 저장합니다."
@@ -151,6 +164,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="Phase 4 선행 개념 명시 요청 JSON 목록")
     parser.add_argument("--override-series-split", default="", metavar="REASON",
                         help="Phase 8 series_split 명시적 override 사유(비우면 override 없음)")
+    parser.add_argument("--render-qa", default=None, metavar="JSON",
+                        help="최종 렌더의 렌더 QA 결과 JSON — Phase 13 관문의 렌더 단계를 판정한다")
+    parser.add_argument("--render-job-id", default=None,
+                        help="최종 렌더 작업 id — 저장된 렌더 QA(render_jobs.qa)를 읽어 렌더 단계를 판정한다(읽기 전용)")
     parser.add_argument("--output-dir", default="artifacts/explanation-v2-phase11")
     args = parser.parse_args(argv)
 
@@ -178,6 +195,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             report=report_row,
         )
     result["legacy_selection"] = selection
+    render_qa = _render_qa(args.domain, args.render_qa, args.render_job_id)
+    if render_qa is not None or "publish_gate" not in result:
+        result["publish_gate"] = publish_gate_v2.evaluate(result, render_qa)
     result["side_effects"] = {
         "database_writes": dict(writes),
         "approvals": 0,
@@ -191,6 +211,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     md_path.write_text(explanation_shadow_pipeline.render_markdown(result), encoding="utf-8")
     print(json.dumps({
         "run_status": result["run_status"],
+        "publish_gate": result["publish_gate"]["verdict"],
         "error": result.get("error"),
         "json": str(json_path),
         "markdown": str(md_path),

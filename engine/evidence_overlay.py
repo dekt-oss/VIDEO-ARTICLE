@@ -540,7 +540,8 @@ def cue_visibility_warnings(
         shown = float(end) - float(start)
         if shown + 1e-6 >= floor:
             continue
-        label = (text or "").strip().replace("\n", " ")[:18]
+        # ★ 등장 움직임 태그({\fad…})를 떼고 글자만 — 안 떼면 사유에 태그만 보인다(2026-10-05 S2 이후).
+        label = re.sub(r"\{[^}]*\}", "", text or "").strip().replace("\n", " ")[:18]
         out.append(f"overlay_too_brief:{style}:{shown:.1f}s<{floor:.1f}s:'{label}'")
     # 출처가 먼저 보이게 정렬한다(사유가 많을 때 잘려도 중요한 것이 남는다).
     out.sort(key=lambda r: (0 if ":Evidence:" in r else 1, r))
