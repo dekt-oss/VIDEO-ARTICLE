@@ -8,7 +8,9 @@
   초안 모양으로 넣는다. 화풍·실사형 계약·화면 구성 계약이 그대로 적용되고, 기존 지시서와
   **같은 생성기**로 만들어지므로 비교가 공정해진다(차이는 대본에서만 난다).
 
-경계: `generate()` 만 부른다 — 지시서 표에 저장(`insert_directive`)·승인·렌더는 하지 않는다.
+경계: `generate()` 는 저장하지 않는다. 저장은 `save()` 한 곳뿐이고 운영자가 `--save-directive` 로 부를 때만
+돈다(2026-10-05 운영자 결정 "가로 진행", 저장 코드 추가 허락 — V2 영상을 렌더하려면 지시서가 지시서 표에
+있어야 한다). 승인·렌더는 여전히 하지 않는다 — 대시보드에서 사람이 한다.
 모델·판정 호출은 비용 장부(`generation_attempts`)에 기록되며 호출자가 센다.
 
 1단계 `paper_draft` / `report_draft` — V2 대본 → 기존 생성기가 읽는 초안 모양.
@@ -307,3 +309,60 @@ def generate(domain: str, shadow: dict[str, Any], legacy_draft: dict[str, Any], 
         "approval_blocked": bool(header.get("approval_blocked")),
         "block_reasons": list(header.get("block_reasons") or []),
     }
+
+
+#: 저장된 V2 지시서 표시(header 안). 대시보드가 이것을 보고 "V2 설명 엔진" 안내를 띄운다.
+V2_HEADER_KEY = "explanation_v2"
+
+
+def save_refusal(result: dict[str, Any]) -> str:
+    """저장하면 안 되는 이유. 빈 문자열이면 저장해도 된다.
+
+    승인이 막힌 지시서는 저장하지 않는다 — 대시보드가 **가장 최근 지시서**를 보여 주므로, 렌더할 수 없는
+    지시서가 멀쩡한 Production 지시서를 화면에서 밀어낸다.
+    """
+    if result.get("run_status") != "READY":
+        return f"v2_not_ready:{result.get('run_status')}"
+    generated = (result.get("shadow") or {}).get("generated")
+    if not isinstance(generated, dict) or not isinstance(generated.get("directive"), dict):
+        return "no_generated_directive(--with-directive 필요)"
+    if generated.get("approval_blocked"):
+        return "approval_blocked:" + ",".join(str(r) for r in generated.get("block_reasons") or [])
+    return ""
+
+
+def saved_row(result: dict[str, Any]) -> dict[str, Any]:
+    """지시서 표에 넣을 행 — 기존 워커(`process_paper`/`process_report`)와 같은 모양 + V2 표시."""
+    domain, content_id = result["domain"], result["content_id"]
+    directive = deepcopy(result["shadow"]["generated"]["directive"])
+    header = directive.get("header") if isinstance(directive.get("header"), dict) else {}
+    run = result.get("run") or {}
+    gate = result.get("publish_gate") or {}
+    header[V2_HEADER_KEY] = {
+        "bridge": CONTRACT_VERSION,
+        "run_at": run.get("run_at"),
+        "fact_sheet_snapshot_sha256": run.get("fact_sheet_snapshot_sha256"),
+        "narration_model": run.get("narration_model"),
+        "publish_gate_verdict": gate.get("verdict"),
+        "script": "v2_narration",           # 컷 나레이션은 V2 대본이다(초안 표의 Production 대본과 다르다)
+    }
+    return {
+        ("paper_id" if domain == "paper" else "report_id"): content_id,
+        "version_type": directive.get("version_type") or "photo",
+        "header": header,
+        "cuts": directive.get("cuts") or [],
+        "status": "draft",
+    }
+
+
+def save(result: dict[str, Any]) -> str:
+    """V2 지시서를 지시서 표에 draft 로 넣는다. 반환: 새 지시서 id. 거절 사유가 있으면 ValueError."""
+    refusal = save_refusal(result)
+    if refusal:
+        raise ValueError(f"v2_directive_not_saved:{refusal}")
+    row = saved_row(result)
+    if result["domain"] == "paper":
+        from . import db
+        return db.insert_directive(row)
+    from . import report_db
+    return report_db.insert_report_directive(row)

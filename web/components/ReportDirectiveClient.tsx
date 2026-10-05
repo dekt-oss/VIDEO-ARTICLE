@@ -16,6 +16,7 @@ import UnsavedGuard from "@/components/UnsavedGuard";
 import SaveStatus from "@/components/SaveStatus";
 import ExplainerPanel from "@/components/ExplainerPanel";
 import WarningSummaryView from "@/components/WarningSummaryView";
+import ExplanationV2Banner from "@/components/ExplanationV2Banner";
 import { blockLabel } from "@/lib/blockLabels";
 
 const TRANSITIONS = ["cut", "crossfade"];
@@ -328,6 +329,7 @@ export default function ReportDirectiveClient({
               ⛔ 승인 차단 — {(h.block_reasons ?? []).map((r) => blockLabel(r)).join(" · ")}
             </div>
           )}
+          <ExplanationV2Banner info={h.explanation_v2} />
           <WarningSummaryView summary={h.warning_summary} all={h.mode_warnings} />
         </div>
       )}
