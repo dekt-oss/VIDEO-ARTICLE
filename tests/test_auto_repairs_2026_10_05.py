@@ -95,3 +95,15 @@ def test_average_qualifier_on_a_spoken_number_is_still_protected():
     spoken = [{"beat_id": "NB02", "sentences": ["참가자의 반응 시간은 12% 줄었습니다."]}]
     errors, _warnings, _ = spoken_narration._draft_guard_findings(spoken, plan)
     assert "qualifier_dropped:NB02:평균" in errors
+
+
+# ── "관련 기업" 은 연관 주장이 아니다 ─────────────────────────────
+def test_gwanryeon_as_a_modifier_is_not_an_association_claim():
+    assert "assoc" not in spoken_narration._meaning_classes("관련 기업의 연구비 지원을 받았습니다.")
+    assert "assoc" not in spoken_narration._meaning_classes("관련 자료를 제공받았습니다.")
+
+
+def test_gwanryeon_as_a_claim_is_still_association():
+    for text in ("수면 시간은 기억력과 관련이 있다.", "두 변수는 관련된다.", "관련성이 보고됐다.",
+                 "운동과 관련해 차이가 컸다.", "우울증과 연관된다."):
+        assert "assoc" in spoken_narration._meaning_classes(text), text

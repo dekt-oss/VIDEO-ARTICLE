@@ -40,7 +40,14 @@ _WEAKENING_CLASSES = frozenset({"hedge", "uncertain"})
 _ABBREVIATION = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9+.-]{1,}(?![A-Za-z])")
 _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시사한다", "할 수 있습니다")
 
+# "관련"이 **연관 주장**일 때만 연관이다("~와 관련이 있다", "관련된", "관련성"). "관련 기업·관련 자료"처럼
+# 명사 앞 수식어는 "해당"이라는 뜻이라 연관 주장이 아니다 — 후원사 이름을 "관련 기업"으로 줄이자 연관이 새로
+# 생긴 것으로 거절됐다(2026-10-05 조화 음파 논문 실측). Production 다듬기(script_polish)는 그대로 둔다.
+_NON_ASSOC_GWANRYEON = re.compile(r"관련(?!\s*(?:이|성|되|된|돼|해|하|있|없|지|을|은|도))")
+
+
 def _meaning_classes(text: str) -> set[str]:
+    text = _NON_ASSOC_GWANRYEON.sub("□", text)
     classes = script_polish.meaning_classes(text) & _PROTECTED_MEANING_CLASSES
     return classes | {"negation"} if _SINO_NEGATION.search(text) else classes
 
