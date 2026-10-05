@@ -321,26 +321,6 @@ def test_empty_or_missing_source_never_raises_and_never_emits_directive(sheet, a
     explanation_shadow_pipeline.render_markdown(result)
 
 
-def test_stored_production_content_plan_feeds_the_complexity_gate():
-    result = _run(
-        domain="report", content_id="report-1", fact_sheet=_report_fact_sheet(),
-        financial_reasoning=_financial_reasoning(),
-        production_content_plan={"selected_mode": "extended", "target_duration_max_sec": 90},
-    )
-
-    assert result["run"]["content_plan_source"] == "production_draft"
-    assert result["phase_status"]["phase8"] == "ACTION_REQUIRED"
-    actions = [row["action"] for row in result["shadow"]["gate"]["required_actions"]]
-    assert "DOWNGRADE_LENGTH" in actions
-    assert result["shadow"]["directive"] is None
-    assert "DOWNGRADE_LENGTH" in explanation_shadow_pipeline.render_markdown(result)
-
-
-def test_policy_ceiling_plan_is_disclosed_as_not_evaluated():
-    result = _run(production_content_plan={"selected_mode": "bogus"})
-
-    assert result["run"]["content_plan_source"] == "source_policy_ceiling"
-    assert "complexity_source_limit_not_evaluated" in result["non_claims"]
 
 
 def test_prerequisite_requests_are_explicit_or_disclosed_as_not_evaluated():
@@ -446,58 +426,11 @@ def test_preflight_refuses_inconsistent_source_before_any_model_call(monkeypatch
     assert result["shadow"]["directive"] is None
 
 
-SERIES_SPLIT_PLAN = {"selected_mode": "series_split", "target_duration_max_sec": 50}
 
 
-def test_series_split_without_override_blocks_the_directive():
-    result = _run(production_content_plan=SERIES_SPLIT_PLAN)
-
-    assert result["phase_status"]["phase8"] == "ACTION_REQUIRED"
-    assert "SPLIT_SERIES" in [a["action"] for a in result["shadow"]["gate"]["required_actions"]]
-    assert result["shadow"]["directive"] is None
-    assert result["run"]["series_split_override_reason"] == ""
 
 
-def test_blank_override_reason_is_not_an_override():
-    result = _run(production_content_plan=SERIES_SPLIT_PLAN, series_split_override_reason="   ")
 
-    assert result["phase_status"]["phase8"] == "ACTION_REQUIRED"
-    assert result["shadow"]["directive"] is None
-
-
-def test_explicit_series_split_override_is_applied_and_recorded():
-    reason = "비교용: 첫 편만 V2 로 만들어 본다"
-    result = _run(production_content_plan=SERIES_SPLIT_PLAN, series_split_override_reason=reason)
-
-    assert result["phase_status"]["phase8"] == "READY"
-    assert result["shadow"]["gate"]["applied_overrides"] == [
-        {"signal": "series_split", "reason": reason}
-    ]
-    assert result["run_status"] == "READY"
-    markdown = explanation_shadow_pipeline.render_markdown(result)
-    assert f"series_split override: {reason}" in markdown
-    assert f"phase8 적용된 override: series_split — {reason}" in markdown
-
-
-def test_override_cannot_lift_a_shallow_source_length_overrun():
-    """원문이 일부뿐인 논문(partial_body, 50초)은 길이 상한이 남는다 — 분할 해제로 못 푼다."""
-    sheet = _paper_fact_sheet()
-    sheet["source_provenance"] = {"source_depth": "partial_body", "char_count": 4000}
-    plan = {"selected_mode": "standard", "target_duration_max_sec": 90}
-    result = _run(fact_sheet=sheet, production_content_plan=plan,
-                  series_split_override_reason="비교용")
-
-    actions = [a["action"] for a in result["shadow"]["gate"]["required_actions"]]
-    assert actions == ["DOWNGRADE_LENGTH"]
-    assert result["shadow"]["directive"] is None
-
-
-def test_full_source_has_no_length_cap():
-    """2026-10-05 운영자 지시 "80초 상한은 없애" — 원문이 충분하면 90초 계획도 막지 않는다."""
-    plan = {"selected_mode": "series_split", "target_duration_max_sec": 90}
-    result = _run(production_content_plan=plan, series_split_override_reason="비교용")
-
-    assert result["shadow"]["gate"]["required_actions"] == []
 
 
 def test_markdown_discloses_hook_restoration():
@@ -515,3 +448,38 @@ def test_markdown_discloses_hook_restoration():
     markdown = explanation_shadow_pipeline.render_markdown(result)
     assert "phase6 코드 교정(NB01): hook_restored_to_core_question" in markdown
     assert "모델 원문: 발뒤꿈치 보행은 위험하다?" in markdown
+
+
+# ─── Phase 8 은 V2 대본 길이로 판정한다(2026-10-05, 설계 점검 D 후속) ─────────────────────
+
+def test_production_series_split_plan_no_longer_blocks_v2():
+    """논문 파일럿 3건이 Production 계획의 '두 편 분할' 때문에 막히던 것."""
+    result = _run(production_content_plan={"selected_mode": "series_split", "target_duration_max_sec": 90})
+
+    assert result["run_status"] == "READY"
+    assert result["shadow"]["gate"]["required_actions"] == []
+    assert result["run"]["content_plan_source"] == "v2_narration"
+    assert result["run"]["production_content_plan"]["selected_mode"] == "series_split"   # 기록만
+
+
+def test_v2_plan_measures_the_narration_actually_written():
+    import math
+
+    result = _run()
+    text = "".join("".join(b["sentences"]) for b in result["shadow"]["narration"]["narration_beats"])
+    expected = math.ceil(len("".join(text.split())) / config.STORY_SPEAK_CHARS_PER_SEC)
+
+    assert result["shadow"]["content_plan"]["target_duration_max_sec"] == expected
+
+
+def test_shallow_source_still_caps_the_v2_length():
+    sheet = _paper_fact_sheet()
+    sheet["source_provenance"] = {"source_depth": "abstract_only", "char_count": 900}
+    long_claim = "압력이 높아지면 구조가 변한다. " * 30
+    sheet["claims"][0]["claim_ko"] = long_claim.strip()
+
+    result = _run(fact_sheet=sheet)
+
+    actions = [a["action"] for a in result["shadow"]["gate"]["required_actions"]]
+    assert "DOWNGRADE_LENGTH" in actions
+    assert result["shadow"]["directive"] is None
