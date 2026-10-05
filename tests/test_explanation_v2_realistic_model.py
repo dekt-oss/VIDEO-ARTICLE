@@ -202,3 +202,26 @@ def test_association_upgrade_is_rejected_after_realistic_paraphrase(monkeypatch)
     assert result["shadow"]["narration"]["generation_status"] == "REJECTED_DRAFT"
     assert any(e.startswith(("association_upgraded:", "protected_meaning_changed:",
                              "causal_language_added:")) for e in errors), errors
+
+
+# ─── 설계 점검 C (가)(2026-10-05): 원문 구절이 있는 논문 한계는 한계 장면이 된다 ──────────────
+
+def _paper_with_limitation(quoted: bool) -> dict:
+    sheet = fixtures._paper_fact_sheet()
+    sheet["limitations"] = ["침팬지 연구는 3마리에서만 수집됐다."]
+    sheet["limitation_quotes"] = ([{"limitation": "침팬지 연구는 3마리에서만 수집됐다.",
+                                    "quote": "data from three chimpanzees", "verified": True}]
+                                  if quoted else [])
+    return sheet
+
+
+@pytest.mark.parametrize("quoted", [True, False])
+def test_quoted_paper_limitation_becomes_a_boundary_beat(quoted):
+    result = explanation_shadow_pipeline.run(
+        domain="paper", content_id="paper-lim", fact_sheet=_paper_with_limitation(quoted),
+        legacy_draft={}, legacy_directive={}, allow_model_calls=True,
+        narration_caller=realistic_narrator(), critic_caller=fixtures._critic_caller)
+
+    stages = [beat["stage"] for beat in result["shadow"]["narrative_plan"]["beats"]]
+    assert result["run_status"] == "READY", (result["phase_status"], result.get("error"))
+    assert ("BOUNDARY" in stages) is quoted          # 구절 없는 옛 Fact Sheet 는 종전처럼 한계를 뺀다

@@ -81,6 +81,23 @@ def build(pack: dict[str, Any], *, core_question: str = "",
                 "transition_relation": "qualifies",
             })
 
+    # 논문 전체에 걸린 연구 한계(Fact Sheet `limitations`) — **원문 구절이 있는 것만** 한계 장면으로 넣는다
+    # (설계 점검 C, 운영자 결정 (가)). 구절이 없는 옛 Fact Sheet 의 한계는 코드로 대조할 수 없어 종전처럼 뺀다.
+    for item in pack.get("limitations") or []:
+        if not isinstance(item, dict) or not _text(item.get("text")):
+            continue
+        if not any(isinstance(ref, dict) and _text(ref.get("quote")) for ref in item.get("source_refs") or []):
+            continue
+        units.append({
+            "role": "limitation",
+            "text": _text(item.get("text")),
+            "evidence_ids": [_text(item.get("evidence_id"))],
+            "causal_level": "",
+            "uncertainty": "",
+            "attribution": "",
+            "transition_relation": "qualifies",
+        })
+
     anchor = _first_usable_claim(pack)
     candidate = {
         "domain": "paper",

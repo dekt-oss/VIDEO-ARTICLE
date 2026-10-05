@@ -39,6 +39,7 @@ JSON only. 설명 문장·마크다운·코드펜스 금지.
   "how": ["<방법 요약>"],
   "numbers": ["<구체 수치와 그 의미>"],
   "limitations": ["<한계·표본·조건>"],
+  "limitation_quotes": [{{"limitation": "<위 limitations 의 한 항목 그대로>", "quote": "<그 한계를 말하는 원문 구절(원문 언어 그대로). 없으면 null>"}}],
   "claim_strength": "<저자 주장의 강도: 강/중/약 + 근거>",
   "claims": [
     {{ "claim_id": "<비우면 코드가 C01, C02 … 로 부여>",
@@ -82,6 +83,25 @@ _LIST_KEYS = ("what_found", "how", "numbers", "limitations")
 # claim 항목 중 "논문에 없으면 null" 인 필드 — missing_fields 재계산의 기준(config 단일 출처).
 _CLAIM_NULLABLE = config.CLAIM_NULLABLE_FIELDS
 _SOURCE_SECTIONS = ("abstract", "body", "table", "figure")
+
+
+def _limitation_quotes(raw: Any) -> list[dict[str, Any]]:
+    """연구 한계마다 원문 구절(2026-10-05 설계 점검 C, 운영자 결정 (가)).
+
+    ★ 왜: 한계 문장은 모델이 한국어로 요약한 것이라 원문과 코드로 대조할 수 없었다 — 그래서 V2 가 한계를
+      대본에 못 넣었다. 원문 구절을 같이 받으면 `paper_evidence.attach_evidence` 가 원문에서 찾아 본다.
+      `limitations`(문자열 목록)는 그대로 둔다 — 대시보드·대본이 이미 읽는다.
+    """
+    out: list[dict[str, Any]] = []
+    for row in raw if isinstance(raw, list) else []:
+        if not isinstance(row, dict):
+            continue
+        limitation = str(row.get("limitation") or "").strip()
+        if not limitation:
+            continue
+        quote = _nullable(row.get("quote"))
+        out.append({"limitation": limitation, "quote": quote if isinstance(quote, str) else None})
+    return out
 
 
 def factsheet_user_prompt(title: str, venue: str | None, abstract: str,
@@ -219,6 +239,7 @@ def normalize_factsheet(obj: dict[str, Any]) -> dict[str, Any]:
             val = [val] if val else []
         out[k] = [str(x) for x in (val or [])]
     out["claim_strength"] = str(obj.get("claim_strength") or "")
+    out["limitation_quotes"] = _limitation_quotes(obj.get("limitation_quotes"))
 
     raw_claims = obj.get("claims")
     claims = [_normalize_claim(c, i) for i, c in enumerate(raw_claims)] \

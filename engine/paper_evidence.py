@@ -191,6 +191,13 @@ def attach_evidence(fact_sheet: dict[str, Any],
         v = verify_claim(claim, packet)
         claim["validation"] = v
         claim["evidence_grade"] = v["grade_effective"]
+    # 연구 한계의 원문 구절도 같은 방식으로 대조한다(설계 점검 C). None = 대조할 원문이 없었다.
+    source_text = str(packet.get("text") or "")
+    for row in fact_sheet.get("limitation_quotes") or []:
+        if isinstance(row, dict):
+            quote = row.get("quote")
+            row["verified"] = (report_evidence.quote_found_in_source(quote, source_text)
+                               if (quote and source_text) else None)
     fact_sheet["source_provenance"] = {
         "source_depth": str(packet.get("source_depth") or "none"),
         "provider": str(packet.get("provider") or "none"),

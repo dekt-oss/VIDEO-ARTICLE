@@ -166,6 +166,7 @@ JSON only. 설명 문장·마크다운·코드펜스 금지.
   "how": ["<방법 요약>"],
   "numbers": ["<구체 수치와 그 의미>"],
   "limitations": ["<한계·표본·조건>"],
+  "limitation_quotes": [{"limitation": "<위 limitations 의 한 항목 그대로>", "quote": "<그 한계를 말하는 원문 구절(원문 언어 그대로). 없으면 null>"}],
   "claim_strength": "<저자 주장의 강도: 강/중/약 + 근거>",
   "claims": [
     { "claim_id": "<비우면 코드가 C01, C02 … 로 부여>",
@@ -712,6 +713,13 @@ function normalizeFactsheet(obj: any) {
     out[k] = (Array.isArray(val) ? val : []).map((x: any) => String(x));
   }
   out.claim_strength = String(obj?.claim_strength ?? "");
+  // engine/factsheet.py:_limitation_quotes 이식(2026-10-05 설계 점검 C).
+  out.limitation_quotes = (Array.isArray(obj?.limitation_quotes) ? obj.limitation_quotes : [])
+    .filter((row: any) => row && typeof row === "object" && String(row.limitation ?? "").trim())
+    .map((row: any) => {
+      const quote = nullable(row.quote);
+      return { limitation: String(row.limitation).trim(), quote: typeof quote === "string" ? quote : null };
+    });
   // claims 는 기존 5키 **위에 병렬 추가**한다(원장 없는 과거 초안도 그대로 동작).
   const raw = obj?.claims;
   out.claims = Array.isArray(raw)
