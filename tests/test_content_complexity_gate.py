@@ -308,7 +308,7 @@ def test_ready_gate_preserves_source_and_mechanism_constraints():
     assert result["constraints"] == {
         "source_depth": "full_body",
         "source_mode": "FULL_EXPLAINER",
-        "max_duration_sec": 80,
+        "max_duration_sec": 0,              # 상한 없음(2026-10-05)
         "max_content_mode": "extended",
         "mechanism_visual_allowed": True,
         "mechanism_reasoning_ids": ["XR01"],
@@ -605,7 +605,7 @@ def test_gold_cases_never_create_complexity_actions_from_unsafe_upstream():
                 "series_split" if case_id == "nh-ai-mid-cycle-2026-09"
                 else policy.get("max_content_mode") or "flash"
             ),
-            target_duration_max_sec=policy["max_duration_sec"],
+            target_duration_max_sec=policy["max_duration_sec"] or config.UNCAPPED_DURATION_SEC,
             series_split_reason="두 편 분할 경고",
         )
         result = gate.evaluate(

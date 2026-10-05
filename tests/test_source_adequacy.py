@@ -43,7 +43,7 @@ def test_paper_source_modes_follow_existing_depth_classifier():
     assert (partial["source_mode"], partial["max_duration_sec"],
             partial["max_content_mode"]) == ("SOURCE_EXPLAINER", 50, "standard")
     assert (full["source_mode"], full["max_duration_sec"], full["max_content_mode"]) == (
-        "FULL_EXPLAINER", 80, "extended"
+        "FULL_EXPLAINER", 0, "extended"   # 0 = 길이 상한 없음(2026-10-05)
     )
 
 

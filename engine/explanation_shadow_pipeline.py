@@ -85,7 +85,8 @@ def _content_plan(pack: dict[str, Any], production: Any) -> tuple[dict[str, Any]
     policy = policies.get(depth) or policies["__default__"]
     return {
         "selected_mode": str(policy.get("max_content_mode") or "flash"),
-        "target_duration_max_sec": int(policy.get("max_duration_sec") or 30),
+        "target_duration_max_sec": int(policy.get("max_duration_sec") or 0)
+        or config.UNCAPPED_DURATION_SEC,
         "series_split_reason": "",
     }, "source_policy_ceiling"
 

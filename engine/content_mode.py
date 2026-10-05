@@ -241,7 +241,8 @@ def block_reasons(plan: dict[str, Any] | None, total_sec: int | float | None) ->
       되돌리려면 이 줄을 reasons 로 옮기면 된다 — 그때는 2편 분할 UI 를 같이 만들어야 한다.
     """
     reasons: list[str] = []
-    if total_sec is not None and total_sec > config.CONTENT_MODE_HARD_MAX_SEC:
+    if (config.CONTENT_MODE_HARD_MAX_SEC and total_sec is not None
+            and total_sec > config.CONTENT_MODE_HARD_MAX_SEC):
         reasons.append("over_max_duration")
     # Explanation Engine v2 Phase 1: source가 얕은데 mode 자체의 전역 80초 상한만 보면
     # 35초짜리 BRIEF_EXPLAINER가 60초로 부풀어도 통과한다. scriptgen 이 plan에 박아 둔

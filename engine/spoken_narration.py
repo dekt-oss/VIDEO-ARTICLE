@@ -149,7 +149,14 @@ def _draft_guard_findings(
         if added_scope:
             errors.append(f"scope_intensifier_added:{beat_id}:{added_scope[0]}")
 
-        before_meaning = _NON_HEDGE_YAK.sub("□", before)
+        # 화면으로 보낸 숫자에 붙은 "약 N"·"N 가량/정도" 는 숫자와 함께 말에서 빠진다 — 그 단서는 화면 카드의
+        # 숫자에 남는다. 이걸 "범위 단서를 뺐다"로 보면 숫자를 화면으로 보낼 때마다 거절된다(Shipbuilding 실측).
+        before_meaning = before
+        for number in screen_numbers:
+            escaped = re.escape(number)
+            before_meaning = re.sub(rf"약\s*{escaped}", number, before_meaning)
+            before_meaning = re.sub(rf"{escaped}\s*(?:가량|정도)", number, before_meaning)
+        before_meaning = _NON_HEDGE_YAK.sub("□", before_meaning)
         after_meaning = _NON_HEDGE_YAK.sub("□", after)
         before_classes = (
             script_polish.meaning_classes(before_meaning) & _PROTECTED_MEANING_CLASSES

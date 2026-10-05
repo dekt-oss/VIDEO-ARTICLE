@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 import pytest
 
-from engine import evidence_pack, explanation_shadow_pipeline
+from engine import evidence_pack, explanation_shadow_pipeline, spoken_numbers
 
 import test_content_complexity_gate as gate_fixtures
 import test_explanation_shadow_pipeline as fixtures
@@ -43,8 +43,18 @@ def _spoken_hook(question: str) -> str:
 
 
 def _speak(text: str, beat: dict[str, Any]) -> str:
+    # 시점 표현("2023년 4월")은 건드리지 않는다 — 실제 모델도 화면 숫자를 지우며 날짜를 바꾸지 않는다.
+    pieces = spoken_numbers._PERIOD.split(text)
+    periods = spoken_numbers._PERIOD.findall(text)
     for index, token in enumerate(beat.get("screen_numbers") or []):
-        text = text.replace(token, "약간" if index == 0 else "", 1)
+        # 숫자 자리에서만 바꾼다 — "2" 를 지우려다 "2028년" 의 2 를 지우면 안 된다.
+        pattern = rf"(?:약\s*)?(?<![\d.]){re.escape(token)}(?!\d)(?!\.\d)(?:\s*(?:가량|정도))?"
+        for at, piece in enumerate(pieces):
+            replaced = re.sub(pattern, "약간" if index == 0 else "", piece, count=1)
+            if replaced != piece:
+                pieces[at] = replaced
+                break
+    text = "".join(piece + (periods[at] if at < len(periods) else "") for at, piece in enumerate(pieces))
     text = re.sub(r"\s{2,}", " ", text).replace(" ,", ",").strip()
     text = text.replace("것이다.", "것으로 보입니다.")
     for plain, polite in _POLITE:
@@ -192,3 +202,26 @@ def test_association_upgrade_is_rejected_after_realistic_paraphrase(monkeypatch)
     assert result["shadow"]["narration"]["generation_status"] == "REJECTED_DRAFT"
     assert any(e.startswith(("association_upgraded:", "protected_meaning_changed:",
                              "causal_language_added:")) for e in errors), errors
+
+
+# ─── 설계 점검 C (가)(2026-10-05): 원문 구절이 있는 논문 한계는 한계 장면이 된다 ──────────────
+
+def _paper_with_limitation(quoted: bool) -> dict:
+    sheet = fixtures._paper_fact_sheet()
+    sheet["limitations"] = ["침팬지 연구는 3마리에서만 수집됐다."]
+    sheet["limitation_quotes"] = ([{"limitation": "침팬지 연구는 3마리에서만 수집됐다.",
+                                    "quote": "data from three chimpanzees", "verified": True}]
+                                  if quoted else [])
+    return sheet
+
+
+@pytest.mark.parametrize("quoted", [True, False])
+def test_quoted_paper_limitation_becomes_a_boundary_beat(quoted):
+    result = explanation_shadow_pipeline.run(
+        domain="paper", content_id="paper-lim", fact_sheet=_paper_with_limitation(quoted),
+        legacy_draft={}, legacy_directive={}, allow_model_calls=True,
+        narration_caller=realistic_narrator(), critic_caller=fixtures._critic_caller)
+
+    stages = [beat["stage"] for beat in result["shadow"]["narrative_plan"]["beats"]]
+    assert result["run_status"] == "READY", (result["phase_status"], result.get("error"))
+    assert ("BOUNDARY" in stages) is quoted          # 구절 없는 옛 Fact Sheet 는 종전처럼 한계를 뺀다

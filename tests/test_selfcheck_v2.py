@@ -144,7 +144,11 @@ def test_only_deterministic_reasons_can_block():
         assert not reason.startswith(llm_judgment), f"LLM 판단이 차단 사유에 섞였다: {reason}"
 
 
-def test_over_80_sec_blocks():
+def test_length_cap_off_by_default_blocks_when_configured(monkeypatch):
+    from engine import config as cfg
+
+    assert "over_max_duration" not in normalize_selfcheck(_clean(), _ledger(), _plan(), 85)["block_reasons"]
+    monkeypatch.setattr(cfg, "CONTENT_MODE_HARD_MAX_SEC", 80)
     out = normalize_selfcheck(_clean(), _ledger(), _plan(), 85)
     assert "over_max_duration" in out["block_reasons"]
 

@@ -14,8 +14,8 @@
 
 import type { Cut, DirectiveHeader } from "@/lib/types";
 
-// engine/config.py 와 동기화.
-const CONTENT_MODE_HARD_MAX_SEC = 80;
+// engine/config.py 와 동기화. 0 = 상한 없음(2026-10-05 운영자 지시 "80초 상한은 없애").
+const CONTENT_MODE_HARD_MAX_SEC = 0;
 const VEO_CLIP_MAX_TIER_SEC = 4;
 
 export function approvalBlockReasons(
@@ -30,7 +30,9 @@ export function approvalBlockReasons(
   const hasPlan = Boolean(h.content_mode);
 
   const total = rows.reduce((acc, c) => acc + (Number(c.estimated_sec) || 0), 0);
-  if (hasPlan && total > CONTENT_MODE_HARD_MAX_SEC) out.add("over_max_duration");
+  if (hasPlan && CONTENT_MODE_HARD_MAX_SEC > 0 && total > CONTENT_MODE_HARD_MAX_SEC) {
+    out.add("over_max_duration");
+  }
   // Explanation Engine v2 Phase 1: 저장된 source contract도 편집 뒤 다시 센다.
   // 생성 시 24초였던 shallow-source 지시서를 화면에서 50초/12컷으로 늘려도 통과하면
   // 서버 생성 게이트만으로는 충분하지 않다.

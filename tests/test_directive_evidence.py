@@ -210,12 +210,19 @@ def test_dangling_claim_ids_dropped_from_cuts():
     assert out["cuts"][0]["claim_ids"] == ["C01"]
 
 
-def test_over_80_sec_blocks_approval():
+def test_long_video_is_not_blocked_by_default_but_cap_still_works(monkeypatch):
+    """80초 상한은 기본 꺼짐(2026-10-05 운영자 지시). 설정하면 지시서에서도 막는다."""
+    from engine import config as cfg
+
     cuts = [_cut(i, estimated_sec=10, claim_ids=["C01"], evidence_role="primary_result")
             for i in range(1, 10)]
     out = normalize_directive({"cuts": cuts}, "comic",
                               fact_sheet=_ledger(), content_plan=_plan())
     assert out["header"]["total_estimated_sec"] == 90
+    assert "over_max_duration" not in out["header"]["block_reasons"]
+    monkeypatch.setattr(cfg, "CONTENT_MODE_HARD_MAX_SEC", 80)
+    out = normalize_directive({"cuts": cuts}, "comic",
+                              fact_sheet=_ledger(), content_plan=_plan())
     assert "over_max_duration" in out["header"]["block_reasons"]
 
 

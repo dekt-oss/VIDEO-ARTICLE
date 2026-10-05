@@ -124,8 +124,12 @@ def test_garbage_input_yields_usable_plan():
 
 
 # ── 차단 / 경고 ──
-def test_over_80_sec_blocks_approval():
+def test_length_cap_is_off_by_default_and_still_blocks_when_configured(monkeypatch):
+    """2026-10-05 운영자 지시 "80초 상한은 없애" — 기본 0(상한 없음). 값을 넣으면 장치는 그대로 막는다."""
     plan = cm.normalize_content_plan({"selected_mode": "extended", "compression_risk": "high"})
+    assert config.CONTENT_MODE_HARD_MAX_SEC == 0
+    assert cm.block_reasons(plan, 120) == []
+    monkeypatch.setattr(cm.config, "CONTENT_MODE_HARD_MAX_SEC", 80)
     assert "over_max_duration" in cm.block_reasons(plan, 85)
     assert cm.block_reasons(plan, 78) == []
 
@@ -144,8 +148,9 @@ def test_series_split_recommends_but_does_not_block():
     assert plan["selected_mode"] == "series_split"
 
 
-def test_the_length_block_still_works():
-    """★ 분할만 내렸다. 길이 하드 상한은 그대로 막아야 한다(같이 풀리지 않았는지)."""
+def test_the_length_block_still_works(monkeypatch):
+    """★ 분할만 내렸다. 길이 상한을 설정하면 그대로 막아야 한다(같이 풀리지 않았는지)."""
+    monkeypatch.setattr(cm.config, "CONTENT_MODE_HARD_MAX_SEC", 80)
     plan = cm.normalize_content_plan({"selected_mode": "series_split"}, independent_main_claims=2)
     assert "over_max_duration" in cm.block_reasons(plan, cm.config.CONTENT_MODE_HARD_MAX_SEC + 1)
 

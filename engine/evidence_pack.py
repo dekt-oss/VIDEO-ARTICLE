@@ -325,6 +325,28 @@ def _report_step_claims(financial_reasoning: Any, broker: str) -> list[dict[str,
     return out
 
 
+def _limitation_quote(fact_sheet: dict[str, Any], text: str) -> dict[str, Any]:
+    """`limitation_quotes`(2026-10-05 추출 개정)에서 이 한계의 원문 구절을 찾는다. 없으면 빈 dict."""
+    for row in fact_sheet.get("limitation_quotes") or []:
+        if isinstance(row, dict) and str(row.get("limitation") or "").strip() == text and row.get("quote"):
+            return row
+    return {}
+
+
+def _paper_limitation(index: int, text: str, quote: dict[str, Any]) -> dict[str, Any]:
+    """연구 한계 근거. 원문 구절이 있으면 싣고, 원문에서 찾았으면 SUPPORTED(설계 점검 C)."""
+    refs = ([{"quote": str(quote["quote"]), "chunk_id": "", "source_section": "",
+              "source_page": None, "table_or_figure": None}] if quote else [])
+    return {
+        "evidence_id": f"paper:limitation:{index:02d}",
+        "raw_ref": f"limitations[{index - 1}]",
+        "text": text,
+        "verification_state": "SUPPORTED" if quote.get("verified") is True else "NOT_CHECKED",
+        "verification_scope": _verification_scope(quote=quote.get("verified") is True),
+        "source_refs": refs,
+    }
+
+
 def _paper_numbers(fact_sheet: dict[str, Any]) -> list[dict[str, Any]]:
     """Paper legacy number strings are kept as text; do not invent numeric parsing."""
     return [
@@ -363,13 +385,7 @@ def build(fact_sheet: dict[str, Any] | None, domain: str,
         numbers = _paper_numbers(fs)
         risks: list[dict[str, Any]] = []
         limitations = [
-            {
-                "evidence_id": f"paper:limitation:{i:02d}",
-                "raw_ref": f"limitations[{i - 1}]",
-                "text": text,
-                "verification_state": "NOT_CHECKED",
-                "verification_scope": _verification_scope(),
-            }
+            _paper_limitation(i, text, _limitation_quote(fs, text))
             for i, text in enumerate(_list_text(fs.get("limitations")), 1)
         ]
         context = [

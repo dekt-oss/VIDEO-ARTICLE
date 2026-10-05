@@ -282,3 +282,15 @@ def test_verified_step_quotes_become_quote_supported_evidence():
 def test_without_reasoning_the_pack_is_unchanged():
     assert evidence_pack.build(report_fact_sheet(), "report") == \
         evidence_pack.build(report_fact_sheet(), "report", financial_reasoning=None)
+
+
+def test_paper_limitation_carries_its_source_quote():
+    sheet = paper_fact_sheet()
+    sheet["limitations"] = ["표본이 작다."]
+    sheet["limitation_quotes"] = [{"limitation": "표본이 작다.", "quote": "small sample", "verified": True}]
+
+    item = evidence_pack.build(sheet, "paper")["limitations"][0]
+
+    assert item["verification_state"] == "SUPPORTED"
+    assert item["source_refs"][0]["quote"] == "small sample"
+    assert evidence_pack.validate(evidence_pack.build(sheet, "paper")) == []
