@@ -67,3 +67,31 @@ def test_mechanism_cut_on_a_number_step_is_demoted_to_reality():
     assert cuts[1]["resolved_visual_plan"]["visual_role"] == "REALITY"
     assert cuts[0]["visual_role"] == "MECHANISM", "과정 단계 도해는 그대로"
     assert report_reasoning.mechanism_step_misuse(cuts, _REASONING) == []
+
+
+# ── 화면으로 보낸 "평균 N" ──────────────────────────────────────
+def test_average_qualifier_leaves_with_its_screen_number():
+    """조화 음파 논문 실측: 26.8% 를 화면 카드로 보내자 '평균'도 같이 빠졌고, 그게 거절 사유가 됐다."""
+    point = ("조화 음향 파일 처리는 5회의 독립된 실험에서 결합조직 섬유아세포의 재생을 비처리 대조군 대비 "
+             "평균 26.8 ± 7.4% 유의하게 향상시켰다.")
+    plan = {"core_question": "이 연구는 무엇을 보여 주는가?", "beats": [{
+        "beat_id": "NB02", "stage": "RESULT", "content_points": [point], "causal_levels": [],
+        "number_delivery": {"spoken_numbers": [], "screen_facts": [
+            {"ref": "XR01", "text": point, "numbers": ["26.8", "5회", "7.4%"]}]},
+    }]}
+    spoken = [{"beat_id": "NB02", "sentences": [
+        "조화 음향 파일 처리는 여러 차례의 독립된 실험에서 결합조직 섬유아세포의 재생을 "
+        "비처리 대조군 대비 유의하게 향상시켰습니다."]}]
+    errors, _warnings, _ = spoken_narration._draft_guard_findings(spoken, plan)
+    assert not [e for e in errors if "평균" in e or e.endswith(":hedge")], errors
+
+
+def test_average_qualifier_on_a_spoken_number_is_still_protected():
+    point = "참가자의 반응 시간은 평균 12% 줄었다."
+    plan = {"core_question": "이 연구는 무엇을 보여 주는가?", "beats": [{
+        "beat_id": "NB02", "stage": "RESULT", "content_points": [point], "causal_levels": [],
+        "number_delivery": {"spoken_numbers": ["12%"], "screen_facts": []},
+    }]}
+    spoken = [{"beat_id": "NB02", "sentences": ["참가자의 반응 시간은 12% 줄었습니다."]}]
+    errors, _warnings, _ = spoken_narration._draft_guard_findings(spoken, plan)
+    assert "qualifier_dropped:NB02:평균" in errors

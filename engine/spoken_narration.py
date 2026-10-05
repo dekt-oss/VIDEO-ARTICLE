@@ -162,7 +162,8 @@ def _draft_guard_findings(
         before_meaning = before
         for number in screen_numbers:
             escaped = re.escape(number)
-            before_meaning = re.sub(rf"약\s*{escaped}", number, before_meaning)
+            # "평균 26.8" 도 같다(2026-10-05 조화 음파 논문 실측 — 숫자와 함께 '평균'이 빠져 거절됐다).
+            before_meaning = re.sub(rf"(?:약|평균)\s*{escaped}", number, before_meaning)
             before_meaning = re.sub(rf"{escaped}\s*(?:가량|정도)", number, before_meaning)
         before_meaning = _NON_HEDGE_YAK.sub("□", before_meaning)
         after_meaning = _NON_HEDGE_YAK.sub("□", after)
