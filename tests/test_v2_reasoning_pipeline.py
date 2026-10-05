@@ -202,3 +202,21 @@ def test_keyword_meaning_checks_are_handed_to_the_critic_on_the_reasoning_path(v
     qa = result["shadow"]["narration"]["qa"]
     assert result["phase_status"]["phase6"] == "DRAFT_ACCEPTED"
     assert any(w.startswith("critic_judges:causal_language_added") for w in qa["warnings"])
+
+
+def test_critic_slips_are_tolerated_not_fatal(v2_on):
+    def critic(**kw):
+        payload = base._critic_caller(**kw)
+        payload["clauses"][1]["finding_codes"] = []
+        payload["clauses"][2]["finding_codes"] = []
+        payload["clauses"][2]["evidence_ids"] = list(payload["clauses"][2]["evidence_ids"]) + ["paper:C01"]
+        return payload
+
+    result = base._run(reasoning_caller=_reasoning, critic_caller=critic)
+    assert result["phase_status"]["phase7"] == "PASSED"
+
+
+def test_critic_alias_finding_still_rejects():
+    from engine import semantic_fidelity as sf
+    assert sf._FINDING_ALIASES["scope_overextension"] == "scope_expansion"
+    assert sf._FINDING_ALIASES["unjustified_causal_link"] == "causal_upgrade"

@@ -35,6 +35,18 @@ _COMPARISON_MARKER = re.compile(r"처럼|마치|같은|같이|듯")
 VERDICTS = frozenset({
     "ENTAILED", "CONTRADICTED", "UNSUPPORTED", "UNVERIFIABLE", "RHETORICAL",
 })
+#: 검증관이 정의 밖 이름으로 적는 같은 뜻의 지적(2026-10-06 실측: scope_overextension·unjustified_causal_link).
+#  뜻이 같으면 정의된 이름으로 옮긴다 — 지적을 버리지 않는다. 모르는 이름은 종전대로 형식 오류다.
+_FINDING_ALIASES = {
+    "scope_overextension": "scope_expansion", "overgeneralization": "scope_expansion",
+    "overgeneralisation": "scope_expansion", "overclaim": "scope_expansion", "scope_overreach": "scope_expansion",
+    "unjustified_causal_link": "causal_upgrade", "causal_overreach": "causal_upgrade",
+    "causal_inference": "causal_upgrade", "unsupported_causal_claim": "causal_upgrade",
+    "dropped_qualifier": "missing_qualifier", "missing_hedge": "missing_qualifier",
+    "qualifier_dropped": "missing_qualifier", "misattribution": "attribution_loss",
+    "contradicted": "contradiction", "unsupported_claim": "unsupported_background",
+}
+
 FINDING_CODES = frozenset({
     "contradiction", "scope_expansion", "causal_upgrade", "missing_qualifier",
     "unsupported_background", "attribution_loss", "unsupported_factual_hook",
@@ -340,6 +352,7 @@ def normalize_review(
     ]
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
+    critic_notes: list[str] = []
     cursor = 0
 
     for beat, sentence_index, sentence in expected:
@@ -376,7 +389,14 @@ def normalize_review(
             ):
                 errors.append(f"finding_codes_invalid:{key[0]}:{sentence_index}")
             evidence_ids = _strings(row.get("evidence_ids"))
-            finding_codes = _strings(row.get("finding_codes"))
+            finding_codes = [_FINDING_ALIASES.get(code.lower(), code) for code in _strings(row.get("finding_codes"))]
+            # 다른 비트의 근거를 댄 것은 검증관의 인용 실수다 — 그 id 만 빼고 경고로 남긴다. 빼고 나서 근거가 하나도
+            # 없으면 아래 판정(factual_evidence_missing)이 그대로 거절한다(2026-10-06 실측: 세 편 모두 이걸로 멈췄다).
+            outside_dropped = [e for e in evidence_ids
+                               if e in evidence_index and e not in beat.get("evidence_ids", [])]
+            if outside_dropped:
+                critic_notes.append(f"critic_cited_other_beat:{key[0]}:{outside_dropped[0]}")
+                evidence_ids = [e for e in evidence_ids if e not in outside_dropped]
             if clause_kind not in {"FACTUAL", "RHETORICAL", "COMPARISON"}:
                 errors.append(f"clause_kind_invalid:{key[0]}:{sentence_index}")
             if verdict not in VERDICTS:
@@ -453,7 +473,7 @@ def normalize_review(
         "clauses": normalized,
         "qa": {
             "errors": semantic_errors,
-            "warnings": [],
+            "warnings": sorted(set(critic_notes)),
             "metrics": _metrics(normalized, sentence_count),
         },
     }

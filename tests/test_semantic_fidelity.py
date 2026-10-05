@@ -398,8 +398,10 @@ def test_entailed_clause_requires_eligible_beat_owned_support():
     result = semantic_fidelity.normalize_review(
         laundered, narration, plan, ir, resolution, other_beat
     )
-    assert result["qa_status"] == "CRITIC_ERROR"
-    assert "evidence_ref_outside_beat:SN03:paper:C99" in result["qa"]["errors"]
+    # 2026-10-06: 다른 비트 근거는 빼고 경고로 남긴다 — 그것만 댔다면 근거가 없어 여전히 **거절**이다(세탁 불가).
+    assert result["qa_status"] == "REJECTED"
+    assert any(e.startswith("factual_evidence_missing") for e in result["qa"]["errors"])
+    assert "critic_cited_other_beat:SN03:paper:C99" in result["qa"]["warnings"]
 
 
 def test_verified_report_numeric_surface_can_support_entailed_clause():
@@ -435,8 +437,9 @@ def test_rhetorical_exemption_is_only_for_pure_grounded_hook_question():
     result = semantic_fidelity.normalize_review(
         cited_hook, narration, plan, ir, resolution, pack
     )
-    assert result["qa_status"] == "CRITIC_ERROR"
-    assert "evidence_ref_outside_beat:SN01:paper:C01" in result["qa"]["errors"]
+    # 질문에 다른 비트 근거를 댄 실수는 그 id 만 빼고 경고 — 순수 질문이라 통과한다.
+    assert result["qa_status"] == "PASSED"
+    assert "critic_cited_other_beat:SN01:paper:C01" in result["qa"]["warnings"]
 
     factual_hook = _critic_payload(narration)
     factual_hook["clauses"][0].update(
