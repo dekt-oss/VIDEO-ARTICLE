@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from engine import config, evidence_overlay as eo, photo_contract as pc
 from engine import directive as dv, report_directive as rd
+from engine.overlay_motion import strip_entrance
 
 GLOSS = {"type": "keyword", "term": "HBM", "gloss_ko": "고대역폭 메모리", "gloss_en": "high-bandwidth memory"}
 
@@ -35,12 +36,12 @@ def test_it_survives_the_second_normalization():
 def test_an_old_english_word_card_does_not_show_in_korean_videos():
     old = eo.normalize_overlay_plan([{"type": "keyword", "text": "GRID BOTTLENECK"}])
     assert _cues(old, "ko") == []
-    assert _cues(old, "en")[0][2] == "GRID BOTTLENECK", "영어 영상에는 그대로 둔다"
+    assert strip_entrance(_cues(old, "en")[0][2]) == "GRID BOTTLENECK", "영어 영상에는 그대로 둔다"
 
 
 def test_an_old_korean_word_card_still_shows():
     old = eo.normalize_overlay_plan([{"type": "keyword", "text": "미오글로빈"}])
-    assert _cues(old, "ko")[0][2] == "미오글로빈"
+    assert strip_entrance(_cues(old, "ko")[0][2]) == "미오글로빈"
 
 
 def test_the_gate_asks_to_turn_old_cards_into_glosses_or_drop_them():

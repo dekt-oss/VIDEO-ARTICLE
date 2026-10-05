@@ -17,6 +17,7 @@ import tempfile
 
 from engine import (assemble, config, evidence_overlay as eo, photo_contract as pc, render,
                     subtitles, visual_sequence as vs)
+from engine.overlay_motion import strip_entrance
 from engine.providers import image as image_provider
 
 MECH = {
@@ -147,7 +148,7 @@ def test_legend_and_label_pair_normalize_and_become_ass_cues():
     legend_text = cues[0][2]
     assert config.LEGEND_COLORS_ASS["blue"] in legend_text and "정상 청각" in legend_text
     assert "\\N" in legend_text, "항목은 줄바꿈으로 쌓인다"
-    assert cues[1][2] == "변화 전" and cues[2][2] == "변화 후"
+    assert strip_entrance(cues[1][2]) == "변화 전" and strip_entrance(cues[2][2]) == "변화 후"
 
 
 def test_legend_survives_when_the_model_writes_text_instead_of_payload():
@@ -785,7 +786,9 @@ def test_the_split_caption_lasts_the_whole_cut():
     cues = eo.build_overlay_cues([cut], [0.0], [6.0])
     for start, end, _text, style in cues:
         if style in ("LabelTop", "LabelBottom"):
-            assert (start, end) == (0.0, 6.0), (style, start, end)
+            # 아래(후) 캡션은 위(전)보다 조금 늦게 뜬다(S2 차례로 드러내기) — 끝은 둘 다 컷 끝.
+            expect = config.OVERLAY_LABEL_STAGGER_SEC if style == "LabelBottom" else 0.0
+            assert (start, end) == (expect, 6.0), (style, start, end)
 
 
 def test_captions_are_asked_only_where_a_split_actually_happens():

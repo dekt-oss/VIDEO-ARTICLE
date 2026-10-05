@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from . import config
+from . import config, overlay_motion
 from .util import log
 
 # 오버레이 유형 → ASS 스타일 이름. 스타일 정의는 subtitles.build_ass 가 만든다.
@@ -324,6 +324,12 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
                 continue
             structured = {"top": top, "bottom": bottom}
             text = f"{top} / {bottom}"
+        elif otype == "screen_fact":
+            # S5 — 실적/전망·관측/모델/가설 종류(V2 브리지가 정한다). 두 번째 정규화는 payload 에서 읽는다.
+            pay_in = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+            kind = str(item.get("kind") or pay_in.get("kind") or "").strip()
+            structured = ({"kind": kind} if kind in config.SCREEN_FACT_KIND_BADGE else None)
+            text = _payload_text({"text": item.get("text")})
         else:
             text = _payload_text(item)
         if not text:
@@ -374,11 +380,6 @@ def normalize_overlay_plan(v: Any) -> list[dict[str, Any]]:
 
 
 _HANGUL = re.compile(r"[가-힣]")
-
-
-def screen_fact_ass_text(text: str) -> str:
-    """화면 숫자 카드 문구 + 페이드 인/아웃 태그(ASS `\\fad`). 엔진의 첫 화면 글자 애니메이션이다."""
-    return f"{{\\fad({config.OVERLAY_FADE_IN_MS},{config.OVERLAY_FADE_OUT_MS})}}{text}"
 
 
 def gloss_card_text(item: dict[str, Any], lang: str = "ko") -> str:
@@ -486,9 +487,10 @@ def build_overlay_cues(
                 continue
             if item["type"] == "screen_fact":
                 # 말에서 뺀 숫자를 화면에만 — 컷이 시작하고 잠시 뒤 페이드로 떠오른다(첫 코드 모션).
+                # S3 숫자는 0 에서 올라가고, S5 전망·추정이면 이름표와 속 빈 상자로 실적과 구분한다.
                 fact_start = min(start + config.OVERLAY_SCREEN_FACT_DELAY_SEC, max(start, end - 0.5))
-                cues.append((fact_start, end, screen_fact_ass_text(item["text"]),
-                             _STYLE_BY_TYPE["screen_fact"]))
+                cues.extend(overlay_motion.screen_fact_cues(
+                    fact_start, end, item["text"], (item.get("payload") or {}).get("kind", "")))
                 continue
             if item["type"] == "legend":
                 cues.append((start, end, legend_ass_text((item.get("payload") or {}).get("items") or []),
@@ -496,7 +498,8 @@ def build_overlay_cues(
                 continue
             cues.append((start, end, item["text"],
                          _STYLE_BY_TYPE.get(item["type"], _DEFAULT_STYLE)))
-    return cues
+    # S2 — 등장 움직임(페이드·커지기·화살표 그려지기·전후 캡션 차례로). 끄면 종전 정지 출력 그대로.
+    return overlay_motion.animate(cues)
 
 
 def overlay_warnings(cuts: list[dict[str, Any]]) -> list[str]:

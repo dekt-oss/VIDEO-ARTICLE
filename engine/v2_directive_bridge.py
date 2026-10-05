@@ -27,7 +27,7 @@ import math
 import re
 from typing import Any, Callable
 
-from . import config, cut_skeleton, script_polish, spoken_numbers
+from . import config, cut_skeleton, overlay_motion, script_polish, spoken_numbers
 from .llm import set_text_purpose
 
 CONTRACT_VERSION = "v2-directive-bridge-v1"
@@ -238,11 +238,13 @@ def _stem_overlap(a: str, b: str) -> int:
     return len(script_polish._stems(a) & script_polish._stems(b))
 
 
-def attach_screen_cards(directive: dict[str, Any], shadow: dict[str, Any]) -> int:
+def attach_screen_cards(directive: dict[str, Any], shadow: dict[str, Any], domain: str = "paper") -> int:
     """V2 가 말에서 뺀 숫자 문장을 그 내용을 말하는 컷의 화면 숫자 카드로 단다. 반환: 붙인 카드 수.
 
     ★ 지시서 생성기는 정해진 칸 밖의 정보를 지운다 — 그래서 생성 **뒤에** 추적 정보(v2_trace)로 컷을 찾아
       `overlay_plan` 에 `screen_fact` 를 더한다. 같은 비트의 컷이 여럿이면 낱말이 가장 많이 겹치는 컷.
+    ★ S5(2026-10-05): 카드마다 종류(`kind`)를 단다 — 리포트는 실적/전망/가이던스/시나리오, 논문은
+      관측/모델 추정/가설. 렌더가 이름표와 상자 모양으로 구분한다(`overlay_motion.fact_kind`).
     """
     attached = 0
     cuts = [cut for cut in directive.get("cuts") or [] if isinstance(cut, dict)]
@@ -260,7 +262,8 @@ def attach_screen_cards(directive: dict[str, Any], shadow: dict[str, Any]) -> in
             if any(item.get("type") == "screen_fact" for item in plan if isinstance(item, dict)):
                 continue                       # 컷당 한 장 — 같은 컷 후보에 이미 붙었다
             plan.append({"type": "screen_fact", "text": card, "priority": "primary",
-                         "claim_ids": [], "ref": _text(fact.get("ref"))})
+                         "claim_ids": [], "ref": _text(fact.get("ref")),
+                         "kind": overlay_motion.fact_kind(_text(fact.get("text")), domain)})
             target["overlay_plan"] = plan
             attached += 1
     return attached
@@ -293,7 +296,7 @@ def generate(domain: str, shadow: dict[str, Any], legacy_draft: dict[str, Any], 
     if domain == "report" and report and isinstance(produced.get("header"), dict):
         produced["header"].setdefault("broker", report.get("broker"))
     directive, trace = attach_trace(produced, shadow)
-    trace["screen_cards"] = attach_screen_cards(directive, shadow)
+    trace["screen_cards"] = attach_screen_cards(directive, shadow, domain)
     header = directive.get("header") if isinstance(directive.get("header"), dict) else {}
     return {
         "contract_version": CONTRACT_VERSION,

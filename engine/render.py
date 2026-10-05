@@ -24,7 +24,7 @@ from typing import Any, Callable
 
 from . import (assemble, asset_cache, board_render, clip_fit_types, config, cost as cost_ledger,
                crop, db,
-               claim_viz, evidence_overlay, generation_spec, render_manifest as rm, render_qa,
+               claim_viz, evidence_overlay, generation_spec, overlay_motion, render_manifest as rm, render_qa,
                clip_candidates, sequence_tier,
                sequence_render, stage_metrics as sm, stage_render, subtitles,
                visual_sequence)
@@ -1519,9 +1519,13 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
             )
         else:
             # 정지화면 방지: 스틸 컷에 켄번스/팬 모션이 없으면 자동으로 하나 넣어 항상 동적으로.
+            # ★ S4(2026-10-05): 지시서가 고른 효과가 없으면 **stage 의 장면 동작**이 카메라를 정한다
+            #   (확대→밀어 들어가기, 쌓임·분리→빠져나오기, 흐름→따라가기). 그것도 없을 때만 순환.
             effects = list(cut.get("effects") or [])
             if not any(e in config.KEN_BURNS_EFFECTS for e in effects):
-                effects.append(config.KEN_BURNS_EFFECTS[i % len(config.KEN_BURNS_EFFECTS)])
+                staged = overlay_motion.stage_effect(
+                    sequence_render.stage_index(header).get(int(cut.get("cut_no") or (i + 1))))
+                effects.append(staged or config.KEN_BURNS_EFFECTS[i % len(config.KEN_BURNS_EFFECTS)])
             argv = assemble.build_cut_command(
                 image_path=vis, audio_path=aud, duration=clip_dur,
                 effects=effects, out_path=out,
@@ -1592,6 +1596,11 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
             cuts, cut_starts, cut_durs, skip_cut_nos=skip, only_types=only_types,
             images={no: p for no, p in asset_index.items() if p}, drop_types=drop_types,
             lang=lang))
+        # S4 — 장면 동작의 화면 층(드러내기 막 · 흐름 화살표[기본 꺼짐]). 코드 보드 컷은 뺀다.
+        kept = [k for k, c in enumerate(cuts[:len(cut_starts)]) if c.get("cut_no") not in skip]
+        overlay_out.extend(overlay_motion.stage_motion_cues(
+            [cuts[k] for k in kept], [cut_starts[k] for k in kept], [cut_durs[k] for k in kept],
+            sequence_render.stage_index(header), evidence_overlay.content_band()))
     if cut_map_out is not None:
         # ★ cut_no 가 정본이다. 예전 오버레이 경로는 결측 시 리스트 인덱스로 폴백했는데,
         #   그러면 지시서가 컷을 건너뛴 번호를 쓸 때 두 체계가 어긋난다. 여기서는 결측을

@@ -362,12 +362,13 @@ def test_screen_fact_renders_as_a_fading_card_even_with_evidence_cards_off():
     cues = evidence_overlay.build_overlay_cues(
         [cut], [10.0], [5.0], only_types=set(cfg.OVERLAY_ANNOTATION_TYPES))
 
-    assert len(cues) == 1
-    start, end, text, style = cues[0]
-    assert style == "ScreenFact"
-    assert start == pytest.approx(10.0 + cfg.OVERLAY_SCREEN_FACT_DELAY_SEC)   # 살짝 늦게 떠오른다
+    # S3 이후: 숫자가 0 에서 올라가는 프레임들 + 마지막 고정 카드.
+    assert {c[3] for c in cues} == {"ScreenFact"}
+    assert cues[0][0] == pytest.approx(10.0 + cfg.OVERLAY_SCREEN_FACT_DELAY_SEC)   # 살짝 늦게 떠오른다
+    assert cues[0][2].endswith("DRAM 0.0%")
+    start, end, text, style = cues[-1]
     assert end == 15.0
-    assert text.startswith(r"{\fad(") and text.endswith("DRAM 18.0%")
+    assert text.startswith(r"{\fad(0,") and text.endswith("DRAM 18.0%")
     assert "Style: ScreenFact," in subtitles.build_ass([], overlays=cues)
 
 
