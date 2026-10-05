@@ -1690,6 +1690,10 @@ def normalize_directive(
         header["mode_warnings"] = sorted(set([*header.get("mode_warnings", []),
                                               "vseq_lineage_appear_inserted:"
                                               + "; ".join(lineage_fixed[:6])]))
+    relabeled = visual_sequence.relabel_single_stage_mechanism(sequences)
+    if relabeled:
+        header["mode_warnings"] = sorted(set([*header.get("mode_warnings", []),
+                                              "vseq_single_stage_relabeled:" + ",".join(relabeled[:6])]))
     vseq: dict[str, Any] = {}
     depth = source_depth or visual_router.source_depth_of(fact_sheet)
     routed = visual_router.route_all(cuts, source_depth=depth, sequences=sequences)

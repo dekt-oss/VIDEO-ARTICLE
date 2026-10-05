@@ -350,6 +350,16 @@ def _generate_once(draft_row: dict[str, Any], version_type: str, user: str) -> d
     #   새 표면을 만들면 검사만 있고 되먹임이 없는 함정이 된다(gate-prompt-feedback parity).
     if version_type == "photo":
         misuse = report_reasoning.mechanism_step_misuse(d["cuts"], reasoning)
+        # ★ 2026-10-05 운영자 "막힘 자동 교정": 막지 말고 그 컷을 실사(REALITY)로 내린다. 숫자·리스크 단계의
+        #   정답 화면은 계약상 원래 실사 + 카드다 — 모델이 틀린 자리를 코드가 정답으로 옮기는 것뿐이다.
+        #   실측: 삼성 V2 지시서가 컷 6 하나 때문에 두 번 다 막혔다(재생성 비용만 쓰고 같은 실수).
+        #   그림 설명(visual_prompt)은 모델 원문 그대로라 경고로 남겨 운영자가 확인한다.
+        if misuse and config.REPORT_MECHANISM_MISUSE_REPAIR:
+            demoted = report_reasoning.demote_misused_mechanism(d["cuts"], misuse)
+            d["header"]["mode_warnings"] = sorted(set([*(d["header"].get("mode_warnings") or []),
+                                                       "photo_mechanism_demoted:" + ",".join(demoted)]))
+            log.warning("도해가 숫자·리스크 단계를 옮겨 실사로 내렸다: 컷 %s", ", ".join(demoted))
+            misuse = []
         if misuse:
             pg = d["header"].setdefault("photo_gate", {})
             pg["block_reasons"] = sorted(set([*(pg.get("block_reasons") or []), *misuse]))

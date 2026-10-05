@@ -332,6 +332,27 @@ def mechanism_step_misuse(cuts: list[dict[str, Any]],
     return out
 
 
+def demote_misused_mechanism(cuts: list[dict[str, Any]], misuse: list[str]) -> list[str]:
+    """`mechanism_step_misuse` 가 짚은 컷을 MECHANISM → REALITY 로 내린다 → 바꾼 컷 번호(문자열).
+
+    정본 시각 계획(`resolved_visual_plan`)의 역할 표시도 함께 맞춘다 — 렌더가 화풍 접미사를 고를 때
+    visual_role 을 본다. 도해 구조(`mechanism`)는 지운다: 실사 컷 프롬프트에 블록 도해 구조가 실리면 안 된다.
+    """
+    targets = {code.split(":", 1)[1] for code in misuse if ":" in code}
+    changed: list[str] = []
+    for c in cuts:
+        if not isinstance(c, dict) or str(c.get("cut_no")) not in targets:
+            continue
+        c["visual_role"] = "REALITY"
+        c.pop("mechanism", None)
+        c.pop("mechanism_ko", None)
+        plan = c.get("resolved_visual_plan")
+        if isinstance(plan, dict) and plan.get("visual_role"):
+            plan["visual_role"] = "REALITY"
+        changed.append(str(c.get("cut_no")))
+    return changed
+
+
 def units_block(reasoning: dict[str, Any] | None) -> str:
     """대본·지시서 프롬프트에 박을 논증 구간. 단위가 없으면 **빈 문자열**이다.
 
