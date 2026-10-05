@@ -270,6 +270,15 @@ def _run(
             caller=narration_caller if allow_model_calls else None,
             gloss_terms=gloss,
         )
+        # ★ 대본 검사에 걸리면 **한 번** 다시 쓴다 — 걸린 이유를 쉬운 지시로 되먹인다(작업지시서 §10 "경고했으니 됐다" 금지,
+        #   "too_many_spoken_numbers → Narration regenerate"). 첫 시도는 기록으로 남긴다.
+        if (allow_model_calls and config.V2_NARRATION_RETRY
+                and narration.get("generation_status") == "REJECTED_DRAFT"
+                and (narration.get("qa") or {}).get("errors")):
+            shadow["narration_first_attempt"] = narration
+            narration = spoken_narration.generate(
+                plan, ir, resolution, pack, caller=narration_caller, gloss_terms=gloss,
+                fix_these=spoken_narration.fix_feedback(narration["qa"]["errors"]))
         # 2차 다듬기(§8 "별도 pass"). 실패해도 사실 검사를 통과한 초안을 그대로 쓴다 — 다듬기는 덤이다.
         if (allow_model_calls and config.V2_SPOKEN_POLISH
                 and narration.get("generation_status") == "DRAFT_ACCEPTED"):
@@ -286,6 +295,11 @@ def _run(
             narration, plan, ir, resolution, pack,
             caller=critic_caller if allow_model_calls else None,
         )
+        # 검증관 자신의 형식 실수(다른 비트 근거 인용 등 CRITIC_ERROR)는 대본 탓이 아니다 — 검증만 한 번 다시 한다.
+        if allow_model_calls and fidelity.get("qa_status") == "CRITIC_ERROR":
+            shadow["fidelity_first_attempt"] = fidelity
+            fidelity = semantic_fidelity.review(
+                narration, plan, ir, resolution, pack, caller=critic_caller)
         shadow["fidelity"] = fidelity
         phases["phase7"] = fidelity.get("qa_status")
 

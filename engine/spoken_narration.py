@@ -34,9 +34,33 @@ _SCOPE_QUALIFIERS = frozenset({"평균", "일부", "약", "가량", "정도", "�
 _NON_HEDGE_YAK = re.compile(r"약(?!\s*[\d.])")
 # 한자어 부정("불필요·불가능·무관…")도 부정이다. 원문 "허가도 불필요"를 모델이 "허가도 필요 없어"로 풀자 "없"만
 # 부정으로 세져 뜻이 바뀐 것으로 거절됐다(2026-10-05 위성 레이저 광통신 실측). 양쪽 모두 이 낱말을 부정으로 센다.
-_SINO_NEGATION = re.compile(r"불(?:필요|가능|가|충분|충족|명확|분명|일치)|무(?:관|의미|효)|미(?:달|흡|확인|정)")
+_SINO_NEGATION = re.compile(r"불(?:필요|가능|가|충분|충족|명확|분명|일치)|무(?:관|의미|효)|미(?:달|흡|확인|정|처리|투여|처치)"
+                            r"|비(?:처리|투여|노출|처치)")
+# "원인을 단정할 수 없다 / 일반화하기 어렵다" 같은 **조심 표현**은 주장을 약하게 할 뿐이다 — 부정·인과로 세지 않고
+# 불확실성(uncertain)으로 센다(2026-10-06 실측: 조심 문장을 덧붙였다고 "부정 추가·인과 추가"로 거절됐다).
+_HEDGE_PHRASE = re.compile(r"(?:원인(?:이라고|으로|을|이)?\s*)?(?:단정|확정|장담|단언)(?:할|하기|하긴|하기는|하기엔)?\s*"
+                           r"(?:수\s*(?:는\s*)?없|어렵|어려|힘들|이르|이릅)")
+
+
+# "정도"는 **숫자 바로 뒤**("30% 정도")일 때만 범위 단서다. "메우는 정도로 측정"의 정도는 "얼마나"라는 뜻이라
+# 단서가 아니다 — 그걸 뺐다고 거절됐다(2026-10-06 조화 음파 실측). 운영 다듬기(script_polish)는 그대로 둔다.
+_NUMERIC_JEONGDO = re.compile(r"(\d[\d.,]*\s*[^\s가-힣\d]{0,3}[가-힣]{0,2}\s*)?정도")
+
+
+def _mask_non_numeric_jeongdo(text: str) -> str:
+    return _NUMERIC_JEONGDO.sub(lambda m: m.group(0) if m.group(1) else "□", text)
+
+
+def _strip_hedges(text: str) -> tuple[str, bool]:
+    stripped = _HEDGE_PHRASE.sub("□", text)
+    return stripped, stripped != text
+
+
+def _causal_count(text: str, term: str) -> int:
+    """인과어 개수 — "이야기"의 "야기", 조심 표현 속 "원인"은 세지 않는다(실측 오탐 두 건)."""
+    return _strip_hedges(text.replace("이야기", "□"))[0].count(term)
 # 덧붙이면 주장이 약해질 뿐인 갈래 — **빼는 것만** 막는다. 연관·부정은 양방향 모두 막는다.
-_WEAKENING_CLASSES = frozenset({"hedge", "uncertain"})
+_WEAKENING_CLASSES = frozenset({"hedge", "uncertain", "assoc"})   # assoc 를 **덧붙이는** 것도 주장을 약하게 할 뿐이다
 _ABBREVIATION = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9+.-]{1,}(?![A-Za-z])")
 _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시사한다", "할 수 있습니다")
 
@@ -202,10 +226,12 @@ def _draft_guard_findings(
             # "평균 26.8" 도 같다(2026-10-05 조화 음파 논문 실측 — 숫자와 함께 '평균'이 빠져 거절됐다).
             before_meaning = re.sub(rf"(?:약|평균)\s*{escaped}", number, before_meaning)
             before_meaning = re.sub(rf"{escaped}\s*(?:가량|정도)", number, before_meaning)
-        before_meaning = _NON_HEDGE_YAK.sub("□", before_meaning)
-        after_meaning = _NON_HEDGE_YAK.sub("□", after)
-        before_classes = _meaning_classes(before_meaning)
-        after_classes = _meaning_classes(after_meaning)
+        before_meaning = _mask_non_numeric_jeongdo(_NON_HEDGE_YAK.sub("□", before_meaning))
+        after_meaning = _mask_non_numeric_jeongdo(_NON_HEDGE_YAK.sub("□", after))
+        before_meaning, before_hedged = _strip_hedges(before_meaning)
+        after_meaning, after_hedged = _strip_hedges(after_meaning)
+        before_classes = _meaning_classes(before_meaning) | ({"uncertain"} if before_hedged else set())
+        after_classes = _meaning_classes(after_meaning) | ({"uncertain"} if after_hedged else set())
         # 부정 쪽 뜻(진짜 부정 또는 "~기 어렵다·이르다")이 양쪽에 같이 있는지로 본다 — 표현이 달라도 같은 뜻이면 통과,
         # 한쪽에만 생기거나 사라지면("효과가 있다" → "효과를 보기는 어렵다") 뜻이 바뀐 것이다.
         negative_before = "negation" in before_classes or bool(_DIFFICULTY.search(before_meaning))
@@ -235,7 +261,7 @@ def _draft_guard_findings(
             errors.append(f"association_upgraded:{beat_id}")
         added_causal = sorted(
             term for term in _DETERMINATION_TERMS
-            if after.count(term) > before.count(term)
+            if _causal_count(after, term) > _causal_count(before, term)
         )
         if added_causal and source.get("stage") != "HOOK":
             errors.append(f"causal_language_added:{beat_id}:{added_causal[0]}")
@@ -525,9 +551,36 @@ def _max_tokens(model: str) -> int:
     return config.LLM_DIRECTIVE_MAX_TOKENS if model.startswith("deepseek") else MAX_TOKENS
 
 
+_FIX_HINTS = {
+    "numbers_changed": "이 비트의 spoken_numbers 숫자만 값·단위 그대로 말하고, 없는 숫자를 만들거나 빼지 마라",
+    "screen_number_spoken": "screen_numbers 의 숫자는 말하지 말고 크기·방향만 말로 풀어라",
+    "period_changed": "연도·분기 같은 시점 표현을 바꾸거나 빼지 마라",
+    "protected_meaning_changed": "재료의 부정(~없었다·~않았다)·불확실성·연관 표현을 빼거나 뒤집지 마라 — 재료의 사실을 빠뜨리지 마라",
+    "qualifier_dropped": "평균·일부·약 같은 범위 단서를 빼지 마라",
+    "causal_language_added": "재료에 없는 인과 표현(원인·때문·결정·초래)을 덧붙이지 마라",
+    "scope_intensifier_added": "근거에 없는 '모든·전부·유일' 같은 강화어를 쓰지 마라",
+    "attribution_dropped": "출처(기관·증권사)를 대본에서 한 번은 밝혀라",
+    "association_upgraded": "연관을 인과로 바꿔 말하지 마라",
+}
+
+
+def fix_feedback(errors: list[str]) -> list[str]:
+    """거절 사유 → 모델에게 줄 쉬운 지시(비트별). 같은 지시는 한 번만."""
+    out: list[str] = []
+    for error in errors:
+        code, _, rest = error.partition(":")
+        beat = rest.split(":", 1)[0] if rest else ""
+        hint = _FIX_HINTS.get(code)
+        line = f"{beat}: {hint}" if hint and beat.startswith("NB") else (hint or error)
+        if line not in out:
+            out.append(line)
+    return out
+
+
 def generate(plan: dict[str, Any], ir: dict[str, Any], resolution: dict[str, Any],
              pack: dict[str, Any], *, caller: Callable[..., dict[str, Any]] | None = None,
-             gloss_terms: list[dict[str, str]] | None = None) -> dict[str, Any]:
+             gloss_terms: list[dict[str, str]] | None = None,
+             fix_these: list[str] | None = None) -> dict[str, Any]:
     """Generate a shadow draft; blocked upstream plans never resolve the caller."""
     _require_valid_upstream(plan, ir, resolution, pack)
     if plan["planning_status"] != "READY":
@@ -539,6 +592,9 @@ def generate(plan: dict[str, Any], ir: dict[str, Any], resolution: dict[str, Any
     visible = prompt_payload(plan, ir, resolution, pack)
     if gloss_terms:
         visible["terms_to_gloss"] = deepcopy(gloss_terms)
+    if fix_these:
+        # 재생성(작업지시서 §10 "Narration regenerate") — 지난 시도가 걸린 이유를 고쳐서 다시 쓴다.
+        visible["fix_these_from_previous_attempt"] = list(fix_these)
     set_text_purpose("spoken_narration_shadow")
     invoke = caller or call_json
     payload = invoke(

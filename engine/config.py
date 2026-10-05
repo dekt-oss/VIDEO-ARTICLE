@@ -193,6 +193,8 @@ MODEL_EXPLANATION_REASONING: str = os.getenv("MODEL_EXPLANATION_REASONING", "dee
 V2_EXPLANATION_REASONING: bool = _get_bool("V2_EXPLANATION_REASONING", True)
 #   V2 대본 2차 다듬기(§8 "별도 pass")를 실제로 돌린다. 함수(apply_polish)는 있었으나 부르는 곳이 없었다(2026-10-05 재검토).
 V2_SPOKEN_POLISH: bool = _get_bool("V2_SPOKEN_POLISH", True)
+#   대본 검사에 걸리면 걸린 이유를 되먹여 한 번 다시 쓴다(§10). 끄면 종전처럼 거절로 멈춘다.
+V2_NARRATION_RETRY: bool = _get_bool("V2_NARRATION_RETRY", True)
 # ★ 기본을 flash 로 내렸다(2026-08-29). pro/opus 는 flash 의 25~30배이고, 어제 실측에서
 #   대본 합성이 그날 텍스트 비용의 큰 몫을 먹었다(논문 16편 × 3안 = 48벌).
 #   품질이 필요한 편은 MODEL_SCRIPT 를 **명시로** 올려 쓴다 — 비싼 것이 기본값이면

@@ -113,12 +113,12 @@ def test_gwanryeon_as_a_claim_is_still_association():
 def _guard(before: str, after: str, evidence: str = "") -> list[str]:
     plan = {"core_question": "질문?", "beats": [{
         "beat_id": "NB02", "stage": "EVIDENCE", "content_points": [before], "causal_levels": [],
-        "evidence_ids": ["paper:C01"] if evidence else [],
+        "evidence_ids": ["paper:C01"],
         "number_delivery": {"spoken_numbers": spoken_narration.spoken_numbers.value_tokens(before),
                             "screen_facts": []}}]}
     pack = {"claims": [{"evidence_id": "paper:C01", "text": evidence}]} if evidence else None
     return spoken_narration._draft_guard_findings(
-        [{"beat_id": "NB02", "sentences": [after]}], plan, pack)[0]
+        [{"beat_id": "NB02", "sentences": [after], "evidence_ids": ["paper:C01"]}], plan, pack)[0]
 
 
 def test_same_meaning_negation_rewordings_pass():
@@ -143,3 +143,25 @@ def test_scope_word_backed_by_evidence_synonym_passes():
                   evidence="트랜치 위성 전체에 광링크 탑재를 의무화했다.")
     assert not [e for e in errs if e.startswith("scope_intensifier_added")]
     assert "scope_intensifier_added:NB02:전부" in _guard("광링크를 실었다.", "위성 전부에 실었다.")
+
+
+def test_more_real_false_alarms_from_2026_10_06():
+    # 조심 표현을 덧붙인 것은 인과·부정 추가가 아니다
+    assert not _guard("깊은 수면에서 활동한다.", "깊은 수면에서 활동해요. 다만 원인을 단정할 수는 없습니다.")
+    # "이야기"의 "야기"는 인과어가 아니다
+    assert not _guard("수면을 유도한다.", "수면을 유도한다는 이야기입니다.")
+    # "비처리 대조군" = "아무 처치도 하지 않은 쪽"
+    assert not [e for e in _guard("비처리 대조군보다 더 메웠다.", "아무 처치도 하지 않은 쪽보다 더 메웠어요.")
+                if "negation" in e]
+    # 500 µm = 500마이크로미터
+    assert not [e for e in _guard("500 µm 빈틈을 냈다.", "500마이크로미터 빈틈을 냈어요.") if "numbers" in e]
+
+
+def test_dropping_a_negative_fact_is_still_caught():
+    errs = _guard("1회 노출은 개선이 없었으나 3회에서는 좋아졌다.", "노출 횟수가 늘수록 좋아졌어요.")
+    assert "protected_meaning_changed:NB02:negation" in errs
+
+
+def test_jeongdo_is_a_qualifier_only_after_a_number():
+    assert not _guard("세포가 틈을 메우는 정도로 재생을 측정했다.", "세포가 틈을 얼마나 채우는지 관찰했어요.")
+    assert "qualifier_dropped:NB02:정도" in _guard("세포가 30% 정도 늘었다.", "세포가 30% 늘었어요.")
