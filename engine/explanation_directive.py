@@ -314,7 +314,11 @@ def _input_errors(
                 errors.append(f"unknown_evidence_id:{evidence_id}")
             else:
                 state = _text(evidence[evidence_id].get("verification_state"))
-                if state != "SUPPORTED":
+                # 한계·리스크 비트는 주장을 약하게 할 뿐 — 설명 설계(IR)·검증관과 같은 예외(2026-10-06 실측으로 맞췄다).
+                boundary_ok = (stage_name == "BOUNDARY" and evidence_id.split(":", 2)[1:2]
+                               and evidence_id.split(":", 2)[1] in {"limitation", "risk"}
+                               and state in {"NOT_CHECKED", "UNVERIFIABLE_AT_CURRENT_DEPTH"})
+                if state != "SUPPORTED" and not boundary_ok:
                     errors.append(f"evidence_not_supported:{evidence_id}#{state or 'missing'}")
         expected_raw = [_text(evidence[evidence_id].get("raw_ref")) for evidence_id in evidence_ids
                         if evidence_id in evidence]

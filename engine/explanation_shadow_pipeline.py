@@ -307,6 +307,7 @@ def _run(
             rewrite = spoken_narration.generate(
                 plan, ir, resolution, pack, caller=narration_caller, gloss_terms=gloss,
                 fix_these=semantic_fidelity.fix_feedback(fidelity))
+            shadow["critic_rewrite_attempt"] = rewrite            # 성공·실패 모두 기록(실패 이유를 볼 수 있게)
             if rewrite.get("generation_status") == "DRAFT_ACCEPTED":
                 if config.V2_SPOKEN_POLISH:
                     try:
