@@ -220,3 +220,27 @@ def test_critic_alias_finding_still_rejects():
     from engine import semantic_fidelity as sf
     assert sf._FINDING_ALIASES["scope_overextension"] == "scope_expansion"
     assert sf._FINDING_ALIASES["unjustified_causal_link"] == "causal_upgrade"
+
+
+def test_critic_rejection_sends_the_script_back_once_with_its_findings(v2_on):
+    seen = []
+
+    def narration(**kw):
+        seen.append(json.loads(kw["user"]).get("fix_these_from_previous_attempt"))
+        return base._narration_caller(**kw)
+
+    calls = []
+
+    def critic(**kw):
+        calls.append(1)
+        payload = base._critic_caller(**kw)
+        if len(calls) == 1:                                          # 첫 검증: 한 절을 근거로 확인 못 함
+            payload["clauses"][1].update(verdict="UNSUPPORTED", rationale="근거에 없는 단정")
+        return payload
+
+    result = base._run(reasoning_caller=_reasoning, narration_caller=narration, critic_caller=critic)
+
+    assert len(calls) == 2 and len(seen) == 2
+    assert any("근거로 확인되지 않음" in line for line in seen[1])
+    assert result["shadow"]["fidelity_before_critic_rewrite"]["qa_status"] == "REJECTED"
+    assert result["phase_status"]["phase7"] == "PASSED"

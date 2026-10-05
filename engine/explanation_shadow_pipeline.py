@@ -300,6 +300,30 @@ def _run(
             shadow["fidelity_first_attempt"] = fidelity
             fidelity = semantic_fidelity.review(
                 narration, plan, ir, resolution, pack, caller=critic_caller)
+        # ★ 검증관이 **진짜** 문제를 찾으면(REJECTED) 그 지적을 되먹여 대본을 한 번 다시 쓰고 다시 검증한다
+        #   (작업지시서 §10 "경고했으니 됐다" 금지 — 실측: 모델이 근거로 확인 안 되는 메타 문장을 덧붙였다).
+        if (allow_model_calls and config.V2_NARRATION_RETRY and fidelity.get("qa_status") == "REJECTED"
+                and narration.get("generation_status") == "DRAFT_ACCEPTED"):
+            rewrite = spoken_narration.generate(
+                plan, ir, resolution, pack, caller=narration_caller, gloss_terms=gloss,
+                fix_these=semantic_fidelity.fix_feedback(fidelity))
+            if rewrite.get("generation_status") == "DRAFT_ACCEPTED":
+                if config.V2_SPOKEN_POLISH:
+                    try:
+                        rewrite = spoken_narration.polish(rewrite, plan, ir, resolution, pack,
+                                                          caller=polish_caller)
+                    except Exception as exc:  # noqa: BLE001
+                        shadow["polish_error_rewrite"] = {"type": type(exc).__name__, "message": str(exc)[:300]}
+                shadow["narration_before_critic_rewrite"] = narration
+                shadow["fidelity_before_critic_rewrite"] = fidelity
+                narration = rewrite
+                shadow["narration"] = narration
+                phases["phase6"] = narration.get("generation_status")
+                fidelity = semantic_fidelity.review(
+                    narration, plan, ir, resolution, pack, caller=critic_caller)
+                if fidelity.get("qa_status") == "CRITIC_ERROR":
+                    fidelity = semantic_fidelity.review(
+                        narration, plan, ir, resolution, pack, caller=critic_caller)
         shadow["fidelity"] = fidelity
         phases["phase7"] = fidelity.get("qa_status")
 

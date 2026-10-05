@@ -325,6 +325,21 @@ def _semantic_findings(
     return failed, sorted(set(errors))
 
 
+def fix_feedback(fidelity: dict[str, Any]) -> list[str]:
+    """검증관이 걸러낸 절 → 대본 모델에게 줄 쉬운 지시(비트별). 근거로 확인 안 된 문장은 빼거나 근거에 맞춘다."""
+    out: list[str] = []
+    for clause in fidelity.get("clauses") or []:
+        if clause.get("verdict") in {"ENTAILED", "RHETORICAL"} and not clause.get("finding_codes"):
+            continue
+        why = ", ".join(clause.get("finding_codes") or []) or clause.get("verdict") or ""
+        out.append(f"{clause.get('beat_id')}: \"{_text(clause.get('clause_text'))}\" — 근거로 확인되지 않음({why}). "
+                   f"{_text(clause.get('rationale'))[:80]} → 이 내용을 빼거나 그 비트 근거에 맞게 고쳐라")
+    for error in (fidelity.get("qa") or {}).get("errors") or []:
+        if error.startswith("factual_evidence_missing") or error.startswith("support_surface_ineligible"):
+            out.append("근거가 없는 사실 문장을 쓰지 마라 — 각 문장은 그 비트 content_points 에 있는 사실만 말한다")
+    return list(dict.fromkeys(out))
+
+
 def normalize_review(
     payload: object,
     narration: dict[str, Any],
@@ -634,7 +649,14 @@ def validate(
     canonical = normalize_review(
         critic_payload, narration, plan, ir, resolution, pack
     )
-    if result != canonical:
+    # 저장된 절은 이미 다른 비트 인용을 뺀 뒤라 다시 정규화하면 그 경고(critic_cited_other_beat)는 안 생긴다 —
+    # 그 경고만 빼고 대조한다(판정·절·오류·다른 경고는 그대로 같아야 한다 — 위조는 계속 잡는다).
+    def _without_notes(row: dict[str, Any]) -> dict[str, Any]:
+        qa = row.get("qa") if isinstance(row.get("qa"), dict) else {}
+        kept = [w for w in qa.get("warnings") or [] if not str(w).startswith("critic_cited_other_beat:")]
+        return {**row, "qa": {**qa, "warnings": kept}}
+
+    if _without_notes(result) != _without_notes(canonical):
         errors.append("fidelity_not_canonical")
     return sorted(set(errors))
 
@@ -666,7 +688,10 @@ def review(
             model=config.MODEL_V2_CRITIC,
             system=SYSTEM_PROMPT,
             user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
-            max_tokens=config.LLM_SELFCHECK_MAX_TOKENS,
+            # 생각하는 모델(gemini-*-pro·deepseek)은 답 전에 생각을 쓴다 — 작은 상한이면 JSON 이 잘린다(실측 2회).
+            max_tokens=(config.LLM_DIRECTIVE_MAX_TOKENS
+                        if ("pro" in config.MODEL_V2_CRITIC or config.MODEL_V2_CRITIC.startswith("deepseek"))
+                        else config.LLM_SELFCHECK_MAX_TOKENS),
         )
     except Exception as exc:
         return _empty_result(
