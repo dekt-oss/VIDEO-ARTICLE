@@ -191,6 +191,10 @@ MODEL_SELFCHECK: str = os.getenv("MODEL_SELFCHECK", "gemini-2.5-flash")    # 자
 MODEL_EXPLANATION_REASONING: str = os.getenv("MODEL_EXPLANATION_REASONING", "deepseek-v4-pro")
 #   V2 생각 단계를 켜고 끈다. 끄면 옛 경로(Fact Sheet 주장 재분류)로 돈다. 모델을 안 부르는 실행(dry)은 늘 옛 경로다.
 V2_EXPLANATION_REASONING: bool = _get_bool("V2_EXPLANATION_REASONING", True)
+#   V2 영상 길이 범위(2026-10-06 운영자: "완성도와 이해를 위해서라면 100초에서 120초까지도 갈 수 있다. 억지로 늘릴
+#   필요는 없다"). 생각 단계에 알려 주는 범위이지 강제 하한이 아니다 — 이해에 필요한 만큼만.
+V2_TARGET_MIN_SEC: int = _get_int("V2_TARGET_MIN_SEC", 45)
+V2_TARGET_MAX_SEC: int = _get_int("V2_TARGET_MAX_SEC", 120)
 #   V2 대본 2차 다듬기(§8 "별도 pass")를 실제로 돌린다. 함수(apply_polish)는 있었으나 부르는 곳이 없었다(2026-10-05 재검토).
 V2_SPOKEN_POLISH: bool = _get_bool("V2_SPOKEN_POLISH", True)
 #   대본 검사에 걸리면 걸린 이유를 되먹여 한 번 다시 쓴다(§10). 끄면 종전처럼 거절로 멈춘다.

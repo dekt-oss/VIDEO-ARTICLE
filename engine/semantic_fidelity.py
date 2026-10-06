@@ -63,12 +63,14 @@ Explanation IR만 사용해 절별 판정을 내려라. source quote의 존재�
 HOOK도 사실 주장이면 근거가 필요하다. 순수한 핵심 질문만 RHETORICAL로 분류할 수 있다.
 출처(기관·증권사) 귀속은 대본 전체에서 한 번 이상 밝히면 된다 — 매 문장에 출처가 없다고 attribution_loss 로 보지 마라.
 다른 출처의 주장을 이 출처의 것으로 바꿔 말한 경우만 attribution_loss 다.
+용어·개념을 풀어 주는 **쉬운 일반 배경 설명**(예: "물리적인 힘이 세포 안 신호로 바뀌기도 합니다")은 BACKGROUND
+(verdict RHETORICAL)로 분류하라 — 근거가 필요 없다. 단 이번 연구·리포트의 결과·숫자·주장을 말하면 FACTUAL 이다.
 "마치 ~처럼" 같은 이해용 비교 절은 COMPARISON(verdict RHETORICAL)으로 분류하라 — 비교 자체는 근거가 필요 없다.
 단 그 비교가 새 사실·숫자·인과를 주장하면 FACTUAL 로 보고 근거와 대조하라.
 절 텍스트는 원문 문장의 연속된 글자를 그대로 복사하며 어떤 내용도 생략하거나 추가하지 마라.
 evidence_id는 해당 beat에 제공된 값만 사용하라. reasoning/raw ref/aggregate status는 만들지 마라.
 JSON only: {"clauses":[{"narration_id":"SN01","sentence_index":1,
-"clause_text":"...","clause_kind":"FACTUAL|RHETORICAL|COMPARISON",
+"clause_text":"...","clause_kind":"FACTUAL|RHETORICAL|COMPARISON|BACKGROUND",
 "verdict":"ENTAILED|CONTRADICTED|UNSUPPORTED|UNVERIFIABLE|RHETORICAL",
 "evidence_ids":[],"finding_codes":[],"rationale":"..."}]}
 """
@@ -276,6 +278,13 @@ def _semantic_findings(
         verdict = row.get("verdict")
         evidence_ids = _strings(row.get("evidence_ids"))
         findings = _strings(row.get("finding_codes"))
+        if kind == "BACKGROUND":
+            # 쉬운 배경 설명 — 근거 불필요. 숫자가 있거나 다른 지적이 붙으면 배경이 아니다.
+            text = _text(row.get("clause_text"))
+            if verdict != "RHETORICAL" or findings or spoken_numbers.value_tokens(text):
+                failed = True
+                errors.append(f"background_exemption_invalid:{clause_id}")
+            continue
         if kind == "COMPARISON":
             # 이해용 비교(작업지시서 §8 목표 문체 "지렛대처럼"). 비교 표지가 있고, 근거·지적 사항이 없을 때만 면제.
             text = _text(row.get("clause_text"))
@@ -353,6 +362,8 @@ def normalize_review(
     if narration.get("generation_status") != "DRAFT_ACCEPTED":
         raise ValueError("spoken_narration_not_accepted")
     rows = payload.get("clauses") if isinstance(payload, dict) else None
+    if rows is None and isinstance(payload, dict) and isinstance(payload.get("items"), list):
+        rows = payload["items"]          # 검증관이 절 목록을 감싸지 않고 냈다(llm._extract_json 참조)
     if not isinstance(rows, list):
         return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
 
@@ -412,7 +423,12 @@ def normalize_review(
             if outside_dropped:
                 critic_notes.append(f"critic_cited_other_beat:{key[0]}:{outside_dropped[0]}")
                 evidence_ids = [e for e in evidence_ids if e not in outside_dropped]
-            if clause_kind not in {"FACTUAL", "RHETORICAL", "COMPARISON"}:
+            # ★ 쉬운 배경 설명은 통과(2026-10-06 운영자 "쉬운 배경설명은 당연히 통과") — 단 **검증관이 BACKGROUND 로
+            #   분류한 것만**이다. 'unsupported_background' 지적을 배경으로 바꿔 주지 않는다: 그 지적은 골드셋에서 지어낸
+            #   연구 주장("청각→시각 전이")을 잡는 바로 그 신호다.
+            if clause_kind == "BACKGROUND":
+                critic_notes.append(f"background_accepted:{key[0]}:{sentence_index}")
+            if clause_kind not in {"FACTUAL", "RHETORICAL", "COMPARISON", "BACKGROUND"}:
                 errors.append(f"clause_kind_invalid:{key[0]}:{sentence_index}")
             if verdict not in VERDICTS:
                 errors.append(f"verdict_invalid:{key[0]}:{sentence_index}")
@@ -653,7 +669,8 @@ def validate(
     # 그 경고만 빼고 대조한다(판정·절·오류·다른 경고는 그대로 같아야 한다 — 위조는 계속 잡는다).
     def _without_notes(row: dict[str, Any]) -> dict[str, Any]:
         qa = row.get("qa") if isinstance(row.get("qa"), dict) else {}
-        kept = [w for w in qa.get("warnings") or [] if not str(w).startswith("critic_cited_other_beat:")]
+        kept = [w for w in qa.get("warnings") or []
+                if not str(w).startswith(("critic_cited_other_beat:", "background_accepted:"))]
         return {**row, "qa": {**qa, "warnings": kept}}
 
     if _without_notes(result) != _without_notes(canonical):

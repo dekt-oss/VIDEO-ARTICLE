@@ -1051,3 +1051,11 @@ def test_parse_retry_does_not_restart_gemini_after_falling_back():
     # gemini 는 **한 번의 예산만** 쓴다. 두 번째 파싱 시도는 곧장 anthropic 으로 간다.
     assert calls == ["gemini", f"anthropic:{fb}", f"anthropic:{fb}"], calls
     assert calls.count("gemini") == 1, "폴백 뒤에도 gemini 를 처음부터 다시 기다렸다"
+
+
+def test_extract_json_reads_bare_lists():
+    """2026-10-06 실측: 검증관이 [{…},{…}] 로 답해 'Extra data' 로 죽었다."""
+    assert llm._extract_json('[{"a": 1}]') == {"a": 1}
+    assert llm._extract_json('[{"a": 1}, {"b": 2}]') == {"items": [{"a": 1}, {"b": 2}]}
+    assert llm._extract_json('```json\n{"clauses": []}\n```') == {"clauses": []}
+    assert llm._extract_json('앞말 {"a": 1} 뒷말') == {"a": 1}

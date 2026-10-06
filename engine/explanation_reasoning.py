@@ -99,6 +99,8 @@ SYSTEM_PROMPT = """너는 과학 논문·증권 리포트를 일반 시청자에
   그리고 must_visualize(이 단계에서 화면이 꼭 보여 줄 물체·변화 — 구체적인 사물로).
 - 단계 수는 step_range 안. 원문이 얕으면 적게, 깊이를 억지로 늘리지 마라.
 - excluded_details: 흥미롭지만 이 편에서 뺄 것과 이유(길이·초점).
+- 영상 길이는 target_seconds 범위 안에서 **이해에 필요한 만큼만**이다. 전체를 이해시키는 데 필요하면 길게 가도 되지만
+  억지로 늘리지 마라(같은 말 반복·덜 중요한 세부 나열 금지). 한계는 비슷한 것끼리 묶어 짧게.
 
 JSON only:
 {"core_question":"","viewer_reason_to_care":"","starting_assumption":"","surprising_conflict":"",
@@ -156,6 +158,7 @@ def prompt_payload(pack: dict[str, Any], *, title: str = "",
         if domain == "report" else None,
         "source_depth": source.get("source_depth"), "source_mode": mode,
         "step_range": [lo, hi],
+        "target_seconds": [config.V2_TARGET_MIN_SEC, config.V2_TARGET_MAX_SEC],
         "questions_to_answer": _QUESTIONS.get(domain, ""),
         "story_pattern_candidates": PATTERNS.get(domain, {}),
         "evidence": [{"evidence_id": eid, **row} for eid, row in index.items()],

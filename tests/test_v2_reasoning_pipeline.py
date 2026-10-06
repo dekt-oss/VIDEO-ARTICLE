@@ -244,3 +244,48 @@ def test_critic_rejection_sends_the_script_back_once_with_its_findings(v2_on):
     assert any("근거로 확인되지 않음" in line for line in seen[1])
     assert result["shadow"]["fidelity_before_critic_rewrite"]["qa_status"] == "REJECTED"
     assert result["phase_status"]["phase7"] == "PASSED"
+
+
+def test_plain_background_explanations_pass_but_study_claims_do_not(v2_on):
+    def critic_marks(clause_text_override=None):
+        def critic(**kw):
+            payload = base._critic_caller(**kw)
+            row = payload["clauses"][1]
+            if clause_text_override:
+                row["clause_text"] = clause_text_override
+            row.update(clause_kind="BACKGROUND", verdict="RHETORICAL", evidence_ids=[],
+                       finding_codes=[], rationale="용어를 푸는 일반 배경")
+            return payload
+        return critic
+
+    ok = base._run(reasoning_caller=_reasoning, critic_caller=critic_marks())
+    assert ok["phase_status"]["phase7"] == "PASSED", ok["shadow"]["fidelity"]["qa"]
+    assert any(w.startswith("background_accepted:") for w in ok["shadow"]["fidelity"]["qa"]["warnings"])
+    assert ok["shadow"]["fidelity"]["clauses"][1]["clause_kind"] == "BACKGROUND"
+
+
+def test_background_with_numbers_is_not_exempt():
+    from engine import semantic_fidelity as sf
+    failed, errors = sf._semantic_findings(
+        [{"clause_id": "SC1", "narration_id": "SN02", "clause_kind": "BACKGROUND", "verdict": "RHETORICAL",
+          "clause_text": "세포는 30% 더 빨리 아뭅니다.", "evidence_ids": [], "finding_codes": []}],
+        {"SN02": {"stage": "EVIDENCE", "sentences": ["세포는 30% 더 빨리 아뭅니다."]}}, {}, {}, "q?")
+    assert failed and "background_exemption_invalid:SC1" in errors
+
+
+def test_thinking_step_is_told_the_length_range():
+    from engine import explanation_reasoning as er
+    payload = er.prompt_payload({"domain": "paper", "source": {"source_mode": "FULL_EXPLAINER"}})
+    assert payload["target_seconds"] == [config.V2_TARGET_MIN_SEC, 120]
+
+
+def test_unsupported_background_finding_is_not_laundered_into_background(v2_on):
+    """'근거 없는 배경' 지적은 지어낸 연구 주장을 잡는 신호다 — 배경 설명으로 바꿔 통과시키지 않는다."""
+    def critic(**kw):
+        payload = base._critic_caller(**kw)
+        payload["clauses"][1].update(verdict="UNSUPPORTED", evidence_ids=[],
+                                     finding_codes=["unsupported_background"], rationale="원문에 없는 연구 주장")
+        return payload
+
+    result = base._run(reasoning_caller=_reasoning, critic_caller=critic)
+    assert result["shadow"]["fidelity_before_critic_rewrite"]["qa_status"] == "REJECTED"

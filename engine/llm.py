@@ -390,6 +390,19 @@ def _extract_json(text: str) -> dict[str, Any]:
         s = s.split("```", 2)[1] if s.count("```") >= 2 else s.strip("`")
         if s.lstrip().lower().startswith("json"):
             s = s.lstrip()[4:]
+    # ★ 응답 전체가 JSON 이면 그대로 읽는다. 모델이 객체 대신 **목록**을 돌려줄 때가 있다(2026-10-06 실측:
+    #   Gemini 2.5 Pro 가 긴 검증 결과를 [{…},{…}] 로 냈고, 첫 { ~ 끝 } 를 잘라 읽다 "Extra data" 로 죽었다).
+    #   항목 하나짜리 목록은 그 객체로, 여러 개면 {"items": [...]} 로 넘긴다 — 쓰는 쪽이 판단한다.
+    try:
+        whole = json.loads(s.strip())
+    except json.JSONDecodeError:
+        whole = None
+    if isinstance(whole, dict):
+        return whole
+    if isinstance(whole, list):
+        if len(whole) == 1 and isinstance(whole[0], dict):
+            return whole[0]
+        return {"items": whole}
     start, end = s.find("{"), s.rfind("}")
     if start == -1 or end == -1 or end < start:
         raise JSONParseError("JSON 객체를 찾지 못함")
