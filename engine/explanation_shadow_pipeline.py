@@ -16,6 +16,8 @@ from . import (
     explanation_directive,
     explanation_ir,
     explanation_reasoning,
+    report_source,
+    v2_writer,
     narrative_planner,
     paper_reasoning_adapter,
     prerequisite_resolver,
@@ -166,6 +168,7 @@ def _run(
     directive_generator: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     report: dict[str, Any] | None = None,
     title: str = "",
+    writer_caller: Callable[[dict[str, Any], str], dict[str, Any]] | None = None,
     reasoning_caller: Callable[..., dict[str, Any]] | None = None,
     polish_caller: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -241,6 +244,27 @@ def _run(
             if ir_errors:
                 raise ValueError("reasoning_ir_invalid:" + ",".join(ir_errors))
             gloss = explanation_reasoning.gloss_terms(thought["reasoning"])
+            if config.V2_WRITER == "production":
+                # ★ 말은 기존 작성기가 쓴다(2026-10-07 운영자 결정). V2 는 설계(위 생각 단계)와 검사(검증관)만.
+                shadow["ir"] = ir
+                phase = "phase6_writer"
+                packet = None
+                if domain == "report" and isinstance(report, dict):
+                    try:
+                        packet = report_source.resolve(report, store=False)
+                    except Exception as exc:  # noqa: BLE001 — 원문이 없어도 Fact Sheet 로 쓴다
+                        shadow["writer_packet_error"] = str(exc)[:200]
+                writer = writer_caller or v2_writer.default_writer(
+                    domain, packet=packet, financial_reasoning=financial_reasoning if domain == "report" else None)
+                out = v2_writer.write_and_check(writer, fact_sheet or {}, thought["reasoning"], pack,
+                                                domain=domain, content_id=content_id, critic_caller=critic_caller)
+                shadow["writer"] = out
+                phases["phase6"] = "WRITER_SCRIPT"
+                phases["phase7"] = out["status"]
+                result["run_status"] = "READY" if out["status"] == "PASSED" else "BLOCKED"
+                if with_directive and result["run_status"] == "READY":
+                    _bridge_writer(result, legacy_draft, report, directive_generator)
+                return result
         shadow["ir"] = ir
         phases["phase3"] = "READY" if ir.get("reasoning_units") else "EMPTY"
 
@@ -369,6 +393,23 @@ def _run(
     if with_directive and allow_model_calls:
         _bridge(result, legacy_draft, financial_reasoning, report, directive_generator)
     return result
+
+
+def _bridge_writer(result: dict[str, Any], legacy_draft: Any, report: Any, generator: Any) -> None:
+    """기존 작성기가 쓴 V2 대본 → 기존 지시서 생성기(대사 고정 없음)."""
+    shadow = result["shadow"]
+    try:
+        shadow["generated"] = v2_directive_bridge.generate_from_script(
+            result["domain"], shadow["writer"]["script"],
+            legacy_draft if isinstance(legacy_draft, dict) else {},
+            report=report if isinstance(report, dict) else None, generator=generator)
+    except Exception as exc:  # noqa: BLE001
+        shadow["generated"] = None
+        shadow["generated_error"] = {"type": type(exc).__name__, "message": str(exc)[:500]}
+        result["phase_status"]["production_generator"] = "ERROR"
+        return
+    result["phase_status"]["production_generator"] = (
+        "APPROVAL_BLOCKED" if shadow["generated"]["approval_blocked"] else "READY")
 
 
 def _bridge(result: dict[str, Any], legacy_draft: Any, financial_reasoning: Any,
@@ -631,14 +672,25 @@ def render_markdown(result: dict[str, Any]) -> str:
         *_legacy_cut_lines(legacy.get("cuts")), "",
     ])
 
+    writer = _dict(shadow.get("writer"))
+    if writer:
+        script = _dict(writer.get("script"))
+        lines.extend([f"## V2 대본 (설계: 생각 단계 · 말: 기존 작성기 · 사실 검증: {writer.get('status')}"
+                      f"{' · 한 번 다시 씀' if writer.get('first_attempt') else ''})", "",
+                      str(script.get("script_md") or "(대본 없음)"), "",
+                      "<details><summary>기존 작성기에 준 설계 지시</summary>", "", "```",
+                      str(writer.get("instruction") or ""), "```", "</details>", ""])
     narration = _dict(shadow.get("narration"))
     status = narration.get("generation_status") or result["phase_status"].get("phase6")
-    lines.extend([f"## V2 Shadow 대본 (phase6: {status})", ""])
     narration_lines = _narration_lines(narration)
+    if not writer:
+        lines.extend([f"## V2 Shadow 대본 (phase6: {status})", ""])
     if narration_lines and status != "DRAFT_ACCEPTED":
         lines.append("> ⚠ 엔진이 **거절한** 대본이다. V2 결과물로 쓰이지 않는다 — 사유는 아래 '차단·경고'.")
         lines.append("")
-    if narration_lines:
+    if writer:
+        pass
+    elif narration_lines:
         lines.extend(narration_lines)
     elif run_status == "MODEL_CALL_REQUIRED":
         lines.append("- 외부 모델 호출 전 중단: `--with-model`이 필요합니다.")

@@ -284,6 +284,25 @@ def _default_generator(domain: str, report: dict[str, Any] | None) -> Generator:
     return lambda draft: report_directive.generate(draft, "photo", report)
 
 
+def generate_from_script(domain: str, script: dict[str, Any], legacy_draft: dict[str, Any], *,
+                         report: dict[str, Any] | None = None,
+                         generator: Generator | None = None) -> dict[str, Any]:
+    """기존 작성기가 쓴 V2 대본(기존 초안과 같은 모양) → 기존 지시서 생성기. 대사 고정은 쓰지 않는다 —
+    대본이 이미 기존 작성기의 장면 단위라 생성기가 원래 하던 대로 컷을 나눈다."""
+    draft = {**legacy_draft, "script_md": script.get("script_md") or "",
+             "video_flow": script.get("video_flow") or {}}
+    draft["video_prompts" if domain == "paper" else "scenes"] = script.get("scenes") or []
+    set_text_purpose("v2_directive_bridge")
+    directive = (generator or _default_generator(domain, report))(draft)
+    header = directive.get("header") if isinstance(directive.get("header"), dict) else {}
+    if domain == "report" and report:
+        header.setdefault("broker", report.get("broker"))
+    return {"contract_version": CONTRACT_VERSION, "input_draft": draft, "directive": directive,
+            "trace": {"cuts": len(directive.get("cuts") or []), "writer": "production"},
+            "narration_lock": None, "approval_blocked": bool(header.get("approval_blocked")),
+            "block_reasons": list(header.get("block_reasons") or [])}
+
+
 def generate(domain: str, shadow: dict[str, Any], legacy_draft: dict[str, Any], *,
              financial_reasoning: dict[str, Any] | None = None,
              report: dict[str, Any] | None = None,

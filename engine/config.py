@@ -194,6 +194,9 @@ V2_EXPLANATION_REASONING: bool = _get_bool("V2_EXPLANATION_REASONING", True)
 #   V2 영상 길이 범위(2026-10-06 운영자: "완성도와 이해를 위해서라면 100초에서 120초까지도 갈 수 있다. 억지로 늘릴
 #   필요는 없다"). 생각 단계에 알려 주는 범위이지 강제 하한이 아니다 — 이해에 필요한 만큼만.
 V2_TARGET_MIN_SEC: int = _get_int("V2_TARGET_MIN_SEC", 45)
+#   V2 말 쓰기를 누가 하나(2026-10-07 운영자 "추천대로"): "production" = 기존 작성기(scriptgen·report_scriptgen)가 생각 단계
+#   설계를 받아 쓰고 V2 검증관이 본다(engine/v2_writer.py). "v2" = V2 전용 작성기(Phase 5·6, 후킹이 퇴화했던 경로).
+V2_WRITER: str = os.getenv("V2_WRITER", "production")
 V2_TARGET_MAX_SEC: int = _get_int("V2_TARGET_MAX_SEC", 120)
 #   V2 대본 2차 다듬기(§8 "별도 pass")를 실제로 돌린다. 함수(apply_polish)는 있었으나 부르는 곳이 없었다(2026-10-05 재검토).
 V2_SPOKEN_POLISH: bool = _get_bool("V2_SPOKEN_POLISH", True)

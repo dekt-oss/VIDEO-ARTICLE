@@ -311,8 +311,12 @@ def _semantic_findings(
                 and verdict == "RHETORICAL"
                 and not evidence_ids
                 and not findings
-                and spoken_narration.hook_matches_core_question(
-                    row.get("clause_text"), core_question
+                and (
+                    spoken_narration.hook_matches_core_question(row.get("clause_text"), core_question)
+                    # 작성기가 지은 첫 질문(2026-10-07 기존 작성기 경로) — 숫자 없는 순수 질문만 수사로 인정한다.
+                    # 숫자·사실을 담은 질문("1%만 건드렸는데…")은 FACTUAL 로 근거와 대조된다.
+                    or (_text(row.get("clause_text")).endswith(("?", "？"))
+                        and not spoken_numbers.value_tokens(_text(row.get("clause_text"))))
                 )
             )
             if not valid:
@@ -394,6 +398,14 @@ def normalize_review(
     if not isinstance(rows, list):
         return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
 
+    return _judge(rows, narration, pack)
+
+
+def _judge(rows: list[Any], narration: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]:
+    """검증관이 낸 절 목록 → 정규화·판정. V2 비트(normalize_review)와 기존 작성기 장면(review_scenes)이 같이 쓴다.
+
+    narration 은 domain·content_id·core_question·narration_beats 만 있으면 된다.
+    """
     beats = narration["narration_beats"]
     beat_by_narration = {beat["narration_id"]: beat for beat in beats}
     evidence_index = explanation_ir.build_index(pack)
@@ -758,3 +770,55 @@ def review(
             errors=[f"critic_call_failed:{type(exc).__name__}"],
         )
     return normalize_review(payload, narration, plan, ir, resolution, pack)
+
+
+# ─────────────────────────────────────────────────────────────
+# 기존 작성기 장면 검증(2026-10-07 운영자 결정: V2 는 설계·검사·화면, 말은 기존 작성기가 쓴다)
+# ─────────────────────────────────────────────────────────────
+_BEAT_FIELDS = ("narration_id", "beat_id", "stage", "sentences", "reasoning_ids", "evidence_ids", "concept_ids",
+                "knowledge_refs", "causal_levels", "uncertainties", "attributions")
+
+
+def _critic_max_tokens() -> int:
+    return (config.LLM_DIRECTIVE_MAX_TOKENS
+            if ("pro" in config.MODEL_V2_CRITIC or config.MODEL_V2_CRITIC.startswith("deepseek"))
+            else config.LLM_SELFCHECK_MAX_TOKENS)
+
+
+def _rows(payload: Any) -> list[Any] | None:
+    rows = payload.get("clauses") if isinstance(payload, dict) else None
+    if rows is None and isinstance(payload, dict) and isinstance(payload.get("items"), list):
+        rows = []
+        for item in payload["items"]:
+            if isinstance(item, dict) and isinstance(item.get("clauses"), list):
+                rows.extend(item["clauses"])
+            else:
+                rows.append(item)
+    return rows if isinstance(rows, list) else None
+
+
+def review_scenes(beats: list[dict[str, Any]], pack: dict[str, Any], *, domain: str, content_id: str,
+                  core_question: str, caller: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
+    """기존 작성기가 쓴 장면(비트 모양으로 바꾼 것)을 같은 검증관·같은 판정 규칙으로 본다.
+
+    비트마다 그 장면이 가리킨 근거(evidence_ids)만 근거로 쓸 수 있다 — V2 비트와 똑같다.
+    """
+    narration = {"domain": domain, "content_id": content_id, "core_question": core_question,
+                 "narration_beats": [{f: deepcopy(b.get(f)) if b.get(f) is not None else ([] if f not in
+                                      ("narration_id", "beat_id", "stage") else "") for f in _BEAT_FIELDS}
+                                     for b in beats]}
+    wanted = {e for b in narration["narration_beats"] for e in b["evidence_ids"]}
+    visible = {"domain": domain, "content_id": content_id, "core_question": core_question,
+               "narration_beats": narration["narration_beats"], "reasoning_units": [], "concepts": [],
+               "evidence": _evidence_rows(pack, wanted)}
+    set_text_purpose("v2_writer_critic")
+    try:
+        payload = (caller or call_json)(model=config.MODEL_V2_CRITIC, system=SYSTEM_PROMPT,
+                                        user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
+                                        max_tokens=_critic_max_tokens())
+    except Exception as exc:  # noqa: BLE001
+        return _empty_result(narration, "CRITIC_ERROR", errors=[f"critic_call_failed:{type(exc).__name__}"])
+    rows = _rows(payload)
+    if rows is None:
+        return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
+    return _judge(rows, narration, pack)

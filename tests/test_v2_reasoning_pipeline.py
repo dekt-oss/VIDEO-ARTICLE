@@ -34,6 +34,7 @@ def _reasoning(**_kw):
 @pytest.fixture
 def v2_on(monkeypatch):
     monkeypatch.setattr(config, "V2_EXPLANATION_REASONING", True)
+    monkeypatch.setattr(config, "V2_WRITER", "v2")          # 이 파일은 V2 전용 작성기 경로를 본다
 
 
 def test_thinking_result_becomes_the_explanation_and_each_step_its_own_beat(v2_on):
