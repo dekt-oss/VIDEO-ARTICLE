@@ -309,3 +309,13 @@ def test_entailed_clause_without_citation_gets_its_beat_evidence(v2_on):
     result = base._run(reasoning_caller=_reasoning, critic_caller=critic)
     assert result["phase_status"]["phase7"] == "PASSED"
     assert any(w.startswith("critic_omitted_citation:") for w in result["shadow"]["fidelity"]["qa"]["warnings"])
+
+
+def test_mid_script_pure_question_is_allowed_but_not_with_numbers():
+    from engine import semantic_fidelity as sf
+    beat = {"SN03": {"stage": "EVIDENCE", "sentences": ["그렇다면 왜 지금일까요?"]}}
+    row = lambda text: [{"clause_id": "SC1", "narration_id": "SN03", "clause_kind": "RHETORICAL", "verdict": "RHETORICAL",
+                         "clause_text": text, "evidence_ids": [], "finding_codes": []}]
+    assert sf._semantic_findings(row("그렇다면 왜 지금일까요?"), beat, {}, {}, "q?") == (False, [])
+    failed, errors = sf._semantic_findings(row("왜 30%나 늘었을까요?"), beat, {}, {}, "q?")
+    assert failed and "rhetorical_exemption_invalid:SC1" in errors

@@ -296,6 +296,15 @@ def _semantic_findings(
                 failed = True
                 errors.append(f"comparison_exemption_invalid:{clause_id}")
             continue
+        if kind == "RHETORICAL" and beat.get("stage") != "HOOK":
+            # 본문 중간의 순수 질문("그렇다면 왜 지금일까요?")은 이야기 장치다 — 숫자·근거·지적이 없을 때만 면제.
+            text = _text(row.get("clause_text"))
+            valid = (verdict == "RHETORICAL" and not evidence_ids and not findings
+                     and text.endswith(("?", "？")) and not spoken_numbers.value_tokens(text))
+            if not valid:
+                failed = True
+                errors.append(f"rhetorical_exemption_invalid:{clause_id}")
+            continue
         if kind == "RHETORICAL":
             valid = (
                 beat.get("stage") == "HOOK"
@@ -433,6 +442,11 @@ def normalize_review(
             if outside_dropped:
                 critic_notes.append(f"critic_cited_other_beat:{key[0]}:{outside_dropped[0]}")
                 evidence_ids = [e for e in evidence_ids if e not in outside_dropped]
+                if not evidence_ids and clause_kind == "FACTUAL":
+                    # 빌려 온 근거밖에 없었다 — 그 비트 근거로는 받쳐지지 않는 문장이다. 바로 '근거 없음'으로 적어 둔다
+                    # (그래야 저장본을 다시 정규화해도 같은 판정이 나온다 — 빈 인용을 비트 근거로 채우지 않는다).
+                    verdict = "UNSUPPORTED"
+                    row = {**row, "rationale": _text(row.get("rationale")) or "다른 비트의 근거로만 받쳐졌다"}
             # ★ 쉬운 배경 설명은 통과(2026-10-06 운영자 "쉬운 배경설명은 당연히 통과") — 단 **검증관이 BACKGROUND 로
             #   분류한 것만**이다. 'unsupported_background' 지적을 배경으로 바꿔 주지 않는다: 그 지적은 골드셋에서 지어낸
             #   연구 주장("청각→시각 전이")을 잡는 바로 그 신호다.
