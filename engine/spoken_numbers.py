@@ -35,7 +35,7 @@ _IDENTIFIER = re.compile(r"[A-Za-z]+-?\d+[A-Za-z0-9]*|\d+[A-Z](?![A-Za-z])")
 # 값으로 읽히는 수. 단위는 붙여서 하나로 센다(`spoken_narration` 의 종전 정의와 같다).
 _VALUE = re.compile(
     r"[+-]?\d+(?:[.,]\d+)*\s*(?:퍼센트|헤르츠|마이크로미터|밀리미터|센티미터|µm|μm|개월|시간|억원|만원|조원|달러|USD|KRW|%p|%|"
-    r"GHz|MHz|kHz|Hz|배|년|주|일|분|초|명|마리|건|개|회|원|kg|km|mg|ml|mm|cm|g|m|L)?"
+    r"Tbps|Gbps|Mbps|GHz|MHz|kHz|Hz|GW|MW|kW|기|배|년|주|일|분|초|명|마리|건|개|회|원|kg|km|mg|ml|mm|cm|g|m|L)?"
 )
 #: 같은 단위의 한글·기호 표기 — 말로 읽으면 "헤르츠", 원문은 "Hz" 다(2026-10-06 신피질 실측: "1~4헤르츠" 가
 #  이름 속 숫자로 빠져 숫자가 바뀐 것으로 거절됐다).

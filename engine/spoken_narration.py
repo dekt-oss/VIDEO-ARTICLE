@@ -203,8 +203,15 @@ def _draft_guard_findings(
             spoken_screen = [n for n in extra if n in screen_numbers]
             if spoken_screen:
                 errors.append(f"screen_number_spoken:{beat_id}:{spoken_screen[0]}")
-            if missing or len(spoken_screen) != len(extra):
-                errors.append(f"numbers_changed:{beat_id}")
+            if len(spoken_screen) != len(extra):
+                errors.append(f"numbers_changed:{beat_id}")          # 없는 숫자를 만들었거나 바꿨다
+            elif missing:
+                # 말하기로 고른 숫자를 **빠뜨린** 것은 문장을 덜 구체적으로 만들 뿐 거짓을 만들지 않는다(2026-10-06 실측:
+                # "1Tbps급" → "테라비트 수준"). 생각 단계 경로에서는 경고, 옛 경로는 종전대로 오류.
+                if plan.get("origin") == "model_reasoning":
+                    warnings.append(f"spoken_number_omitted:{beat_id}:{missing[0]}")
+                else:
+                    errors.append(f"numbers_changed:{beat_id}")
         if spoken_numbers.period_tokens(before) != spoken_numbers.period_tokens(after):
             errors.append(f"period_changed:{beat_id}")
 

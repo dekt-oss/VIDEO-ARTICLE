@@ -165,3 +165,15 @@ def test_dropping_a_negative_fact_is_still_caught():
 def test_jeongdo_is_a_qualifier_only_after_a_number():
     assert not _guard("세포가 틈을 메우는 정도로 재생을 측정했다.", "세포가 틈을 얼마나 채우는지 관찰했어요.")
     assert "qualifier_dropped:NB02:정도" in _guard("세포가 30% 정도 늘었다.", "세포가 30% 늘었어요.")
+
+
+def test_omitted_number_is_a_warning_on_the_reasoning_path_but_invented_is_an_error():
+    plan = {"core_question": "질문?", "origin": "model_reasoning", "beats": [{
+        "beat_id": "NB02", "stage": "EVIDENCE", "content_points": ["1Tbps급 다운링크를 검증했다."],
+        "causal_levels": [], "evidence_ids": ["paper:C01"],
+        "number_delivery": {"spoken_numbers": ["1Tbps"], "screen_facts": []}}]}
+    beat = lambda text: [{"beat_id": "NB02", "sentences": [text], "evidence_ids": ["paper:C01"]}]
+    errors, warnings, _ = spoken_narration._draft_guard_findings(beat("테라비트 수준 다운링크를 검증했어요."), plan)
+    assert not errors and "spoken_number_omitted:NB02:1Tbps" in warnings
+    errors, _, _ = spoken_narration._draft_guard_findings(beat("3Tbps급 다운링크를 검증했어요."), plan)
+    assert "numbers_changed:NB02" in errors
