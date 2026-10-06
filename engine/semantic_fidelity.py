@@ -327,8 +327,9 @@ def _semantic_findings(
                 continue
             # 한계·리스크 비트의 문장은 주장을 약하게 할 뿐이다 — 인용이 없는 리스크·한계 근거도 받친다
             # (설명 설계 IR 이 제약 역할에 같은 예외를 둔다. 2026-10-06 실측: "레이저는 날씨에 민감" 이 막혔다).
+            # 기준은 근거가 놓인 칸이 아니라 **문장의 역할**이다(IR 과 같다) — 리포트의 한계 근거는 claims 칸에도 있다.
             boundary_ok = (beat.get("stage") == "BOUNDARY"
-                           and evidence_sections.get(evidence_id, "") in {"risks", "limitations"})
+                           and item.get("verification_state") in {"NOT_CHECKED", "UNVERIFIABLE_AT_CURRENT_DEPTH"})
             if not boundary_ok and not _eligible_support(item, evidence_sections.get(evidence_id, "")):
                 failed = True
                 errors.append(f"support_surface_ineligible:{clause_id}:{evidence_id}")
