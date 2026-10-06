@@ -424,6 +424,7 @@ def normalize_review(
             ):
                 errors.append(f"finding_codes_invalid:{key[0]}:{sentence_index}")
             evidence_ids = _strings(row.get("evidence_ids"))
+            cited_nothing = not evidence_ids               # 다른 비트를 댄 뒤 빠진 것과 구별한다(세탁 방지)
             finding_codes = [_FINDING_ALIASES.get(code.lower(), code) for code in _strings(row.get("finding_codes"))]
             # 다른 비트의 근거를 댄 것은 검증관의 인용 실수다 — 그 id 만 빼고 경고로 남긴다. 빼고 나서 근거가 하나도
             # 없으면 아래 판정(factual_evidence_missing)이 그대로 거절한다(2026-10-06 실측: 세 편 모두 이걸로 멈췄다).
@@ -437,6 +438,12 @@ def normalize_review(
             #   연구 주장("청각→시각 전이")을 잡는 바로 그 신호다.
             if clause_kind == "BACKGROUND":
                 critic_notes.append(f"background_accepted:{key[0]}:{sentence_index}")
+            # 검증관이 "맞다"(ENTAILED)고 하고 근거 번호를 빠뜨린 경우 — 검증관은 그 비트 근거만 보고 판정했으므로 그 근거를
+            # 붙인다(2026-10-06 실측 11절). 붙인 근거가 인용 없는 것이면 아래 지지면 검사가 그대로 거절한다.
+            if (clause_kind == "FACTUAL" and verdict == "ENTAILED" and cited_nothing
+                    and beat.get("evidence_ids")):
+                evidence_ids = list(beat["evidence_ids"])
+                critic_notes.append(f"critic_omitted_citation:{key[0]}:{sentence_index}")
             if clause_kind not in {"FACTUAL", "RHETORICAL", "COMPARISON", "BACKGROUND"}:
                 errors.append(f"clause_kind_invalid:{key[0]}:{sentence_index}")
             if verdict not in VERDICTS:
@@ -679,7 +686,8 @@ def validate(
     def _without_notes(row: dict[str, Any]) -> dict[str, Any]:
         qa = row.get("qa") if isinstance(row.get("qa"), dict) else {}
         kept = [w for w in qa.get("warnings") or []
-                if not str(w).startswith(("critic_cited_other_beat:", "background_accepted:"))]
+                if not str(w).startswith(("critic_cited_other_beat:", "background_accepted:",
+                                          "critic_omitted_citation:"))]
         return {**row, "qa": {**qa, "warnings": kept}}
 
     if _without_notes(result) != _without_notes(canonical):

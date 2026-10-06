@@ -143,6 +143,9 @@ def evidence_index(pack: dict[str, Any], financial_reasoning: dict[str, Any] | N
     return out
 
 
+_UNUSABLE_STATES = frozenset({"NOT_CHECKED", "UNSUPPORTED", "STALE"})
+
+
 def prompt_payload(pack: dict[str, Any], *, title: str = "",
                    financial_reasoning: dict[str, Any] | None = None,
                    report_meta: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -161,7 +164,11 @@ def prompt_payload(pack: dict[str, Any], *, title: str = "",
         "target_seconds": [config.V2_TARGET_MIN_SEC, config.V2_TARGET_MAX_SEC],
         "questions_to_answer": _QUESTIONS.get(domain, ""),
         "story_pattern_candidates": PATTERNS.get(domain, {}),
-        "evidence": [{"evidence_id": eid, **row} for eid, row in index.items()],
+        # ★ 검증 안 된 근거(NOT_CHECKED·UNSUPPORTED·STALE)는 재료로 보여 주지 않는다 — 한계·리스크만 예외.
+        #   2026-10-06 실측: 리포트 Fact Sheet 의 미검증 항목("KSAT 하이브리드 지상국 시연")을 생각 단계가 답에 섞었고,
+        #   설명 설계는 그 근거를 뺐지만 문장은 남아 대본까지 갔다. 보여 주지 않으면 섞을 수 없다.
+        "evidence": [{"evidence_id": eid, **row} for eid, row in index.items()
+                     if row["state"] not in _UNUSABLE_STATES or row["section"] in {"limitations", "risks"}],
     }
 
 

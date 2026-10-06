@@ -298,3 +298,14 @@ def test_critic_answer_split_into_per_beat_blocks_is_flattened(v2_on):
 
     result = base._run(reasoning_caller=_reasoning, critic_caller=critic)
     assert result["phase_status"]["phase7"] == "PASSED"
+
+
+def test_entailed_clause_without_citation_gets_its_beat_evidence(v2_on):
+    def critic(**kw):
+        payload = base._critic_caller(**kw)
+        payload["clauses"][2]["evidence_ids"] = []                        # 맞다고 하고 번호를 빠뜨렸다
+        return payload
+
+    result = base._run(reasoning_caller=_reasoning, critic_caller=critic)
+    assert result["phase_status"]["phase7"] == "PASSED"
+    assert any(w.startswith("critic_omitted_citation:") for w in result["shadow"]["fidelity"]["qa"]["warnings"])
