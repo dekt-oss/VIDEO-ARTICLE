@@ -289,3 +289,12 @@ def test_unsupported_background_finding_is_not_laundered_into_background(v2_on):
 
     result = base._run(reasoning_caller=_reasoning, critic_caller=critic)
     assert result["shadow"]["fidelity_before_critic_rewrite"]["qa_status"] == "REJECTED"
+
+
+def test_critic_answer_split_into_per_beat_blocks_is_flattened(v2_on):
+    def critic(**kw):
+        clauses = base._critic_caller(**kw)["clauses"]
+        return {"items": [{"clauses": [c]} for c in clauses]}           # 실측 모양: 비트별 묶음 목록
+
+    result = base._run(reasoning_caller=_reasoning, critic_caller=critic)
+    assert result["phase_status"]["phase7"] == "PASSED"

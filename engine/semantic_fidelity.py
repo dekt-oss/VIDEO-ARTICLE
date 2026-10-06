@@ -45,6 +45,7 @@ _FINDING_ALIASES = {
     "dropped_qualifier": "missing_qualifier", "missing_hedge": "missing_qualifier",
     "qualifier_dropped": "missing_qualifier", "misattribution": "attribution_loss",
     "contradicted": "contradiction", "unsupported_claim": "unsupported_background",
+    "unsupported": "unsupported_background", "unverifiable": "unsupported_background",
 }
 
 FINDING_CODES = frozenset({
@@ -363,7 +364,14 @@ def normalize_review(
         raise ValueError("spoken_narration_not_accepted")
     rows = payload.get("clauses") if isinstance(payload, dict) else None
     if rows is None and isinstance(payload, dict) and isinstance(payload.get("items"), list):
-        rows = payload["items"]          # 검증관이 절 목록을 감싸지 않고 냈다(llm._extract_json 참조)
+        # 검증관이 절 목록을 감싸지 않고 냈다(llm._extract_json 참조). 비트마다 {"clauses": [...]} 묶음으로 낸
+        # 경우(2026-10-06 실측, 11묶음)는 순서대로 펼친다.
+        rows = []
+        for item in payload["items"]:
+            if isinstance(item, dict) and isinstance(item.get("clauses"), list):
+                rows.extend(item["clauses"])
+            else:
+                rows.append(item)
     if not isinstance(rows, list):
         return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
 
