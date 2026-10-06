@@ -345,6 +345,15 @@ def _semantic_findings(
     return failed, sorted(set(errors))
 
 
+def _citable(beat: dict[str, Any], beats: list[dict[str, Any]]) -> set[str]:
+    """이 비트 문장이 댈 수 있는 근거. 정리(PAYOFF) 비트는 앞 내용을 묶어 말하므로 **이 대본 전체**의 근거를 댈 수 있다
+    (2026-10-06 실측: 리포트 정리 문장이 앞 비트 근거로 받쳐졌는데 '빌려 온 근거'로 막혔다). 대본 밖 근거는 여전히 안 된다."""
+    own = set(beat.get("evidence_ids") or [])
+    if beat.get("stage") == "PAYOFF":
+        own |= {e for b in beats for e in (b.get("evidence_ids") or [])}
+    return own
+
+
 def fix_feedback(fidelity: dict[str, Any]) -> list[str]:
     """검증관이 걸러낸 절 → 대본 모델에게 줄 쉬운 지시(비트별). 근거로 확인 안 된 문장은 빼거나 근거에 맞춘다."""
     out: list[str] = []
@@ -437,8 +446,8 @@ def normalize_review(
             finding_codes = [_FINDING_ALIASES.get(code.lower(), code) for code in _strings(row.get("finding_codes"))]
             # 다른 비트의 근거를 댄 것은 검증관의 인용 실수다 — 그 id 만 빼고 경고로 남긴다. 빼고 나서 근거가 하나도
             # 없으면 아래 판정(factual_evidence_missing)이 그대로 거절한다(2026-10-06 실측: 세 편 모두 이걸로 멈췄다).
-            outside_dropped = [e for e in evidence_ids
-                               if e in evidence_index and e not in beat.get("evidence_ids", [])]
+            citable = _citable(beat, beats)
+            outside_dropped = [e for e in evidence_ids if e in evidence_index and e not in citable]
             if outside_dropped:
                 critic_notes.append(f"critic_cited_other_beat:{key[0]}:{outside_dropped[0]}")
                 evidence_ids = [e for e in evidence_ids if e not in outside_dropped]
@@ -450,6 +459,8 @@ def normalize_review(
             # ★ 쉬운 배경 설명은 통과(2026-10-06 운영자 "쉬운 배경설명은 당연히 통과") — 단 **검증관이 BACKGROUND 로
             #   분류한 것만**이다. 'unsupported_background' 지적을 배경으로 바꿔 주지 않는다: 그 지적은 골드셋에서 지어낸
             #   연구 주장("청각→시각 전이")을 잡는 바로 그 신호다.
+            if clause_kind == "BACKGROUND" and verdict == "ENTAILED" and evidence_ids:
+                clause_kind = "FACTUAL"            # 배경이라 했지만 근거로 맞다고 확인했다 — 그냥 근거 있는 사실이다
             if clause_kind == "BACKGROUND":
                 critic_notes.append(f"background_accepted:{key[0]}:{sentence_index}")
             # 검증관이 "맞다"(ENTAILED)고 하고 근거 번호를 빠뜨린 경우 — 검증관은 그 비트 근거만 보고 판정했으므로 그 근거를
@@ -474,8 +485,7 @@ def normalize_review(
                        if evidence_id not in evidence_index]
             if unknown:
                 errors.append(f"evidence_ref_unknown:{key[0]}:{unknown[0]}")
-            outside = [evidence_id for evidence_id in evidence_ids
-                       if evidence_id not in beat.get("evidence_ids", [])]
+            outside = [evidence_id for evidence_id in evidence_ids if evidence_id not in citable]
             if outside:
                 errors.append(f"evidence_ref_outside_beat:{key[0]}:{outside[0]}")
             if (
@@ -630,7 +640,7 @@ def validate(
             for evidence_id in unknown
         )
         outside = [evidence_id for evidence_id in evidence_ids
-                   if evidence_id not in beat.get("evidence_ids", [])]
+                   if evidence_id not in _citable(beat, narration["narration_beats"])]
         errors.extend(
             f"evidence_ref_outside_beat:{row.get('clause_id')}:{evidence_id}"
             for evidence_id in outside
