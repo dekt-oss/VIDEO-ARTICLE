@@ -210,6 +210,12 @@ MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", "gemini-3.8-flash")            # �
 #   V2 대본·다듬기·검증관 모델. 기본은 운영 대본·자기검증과 같은 모델(바꾸지 않는다). 검증관은 작성 모델과 달라야 한다(§9.4).
 MODEL_V2_NARRATION: str = os.getenv("MODEL_V2_NARRATION", MODEL_SCRIPT)
 MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
+#   V2 검증관 백엔드(2026-10-07 운영자 "검증을 더 저렴한 모델로 — jev 쓰면 되잖아"). jev = 문장마다 Jev 근거 판정
+#   (Fact Sheet + 논문/리포트 메타와 대조, 한 편 1센트 안팎). llm = MODEL_V2_CRITIC(Gemini 2.5 Pro 한 편 약 $0.1).
+#   Jev 는 절 나누기·위반 종류(인과 강화·범위 확대)를 따로 이름 붙이지 못한다 — "근거를 넘었나" 하나만 본다.
+V2_CRITIC_BACKEND: str = os.getenv("V2_CRITIC_BACKEND", "jev")
+#   Jev 판정 문턱. 운영 경고(JEV_UNSUPPORTED_CLAIM_MIN, 원문 대조 31건)와 같은 값에서 시작한다.
+V2_JEV_UNSUPPORTED_MIN: float = _get_float("V2_JEV_UNSUPPORTED_MIN", 0.6)
 # 한국어 채점/추출 JSON(긴 rationale·red_flag 포함)이 잘리지 않도록 넉넉히.
 # ★ 2048 은 한글 출력에 부족해 JSON 이 잘려 파싱 실패→전 축 0점이 되던 원인이었다.
 LLM_MAX_TOKENS: int = 8192

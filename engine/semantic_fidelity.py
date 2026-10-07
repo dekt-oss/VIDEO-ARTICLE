@@ -69,7 +69,8 @@ HOOK도 사실 주장이면 근거가 필요하다. 순수한 핵심 질문만 R
 "마치 ~처럼" 같은 이해용 비교 절은 COMPARISON(verdict RHETORICAL)으로 분류하라 — 비교 자체는 근거가 필요 없다.
 단 그 비교가 새 사실·숫자·인과를 주장하면 FACTUAL 로 보고 근거와 대조하라.
 절 텍스트는 원문 문장의 연속된 글자를 그대로 복사하며 어떤 내용도 생략하거나 추가하지 마라.
-evidence_id는 해당 beat에 제공된 값만 사용하라. reasoning/raw ref/aggregate status는 만들지 마라.
+evidence_id는 해당 beat에 제공된 값만 사용하라. 단 HOOK(첫 질문)과 PAYOFF(정리) beat 는 대본 전체 beat 의 근거를
+댈 수 있다 — 본문 내용을 미리 당기거나 묶어 말하기 때문이다. reasoning/raw ref/aggregate status는 만들지 마라.
 JSON only: {"clauses":[{"narration_id":"SN01","sentence_index":1,
 "clause_text":"...","clause_kind":"FACTUAL|RHETORICAL|COMPARISON|BACKGROUND",
 "verdict":"ENTAILED|CONTRADICTED|UNSUPPORTED|UNVERIFIABLE|RHETORICAL",
@@ -162,6 +163,12 @@ def _eligible_support(item: dict[str, Any], section: str) -> bool:
         for ref in item.get("source_refs") or []
     )
     if has_source_span or scope.get("semantic_entailment") is True:
+        return True
+    # 논문 Fact Sheet 의 수치·발견 요약 칸은 운영 대본이 쓰는 바로 그 사실 원천이다(불변식 "Fact Sheet 만").
+    # 이 칸에는 원문 인용 칸이 아예 없어서, 맞는 문장도 영영 근거로 인정받지 못했다
+    # (2026-10-07 실측: "피질 억제 뉴런의 1% 미만" — 검증관 ENTAILED, 그런데 차단). 뜻 대조는 검증관 판정이 맡는다.
+    if (_text(item.get("evidence_id")).startswith("paper:") and section in {"numbers", "background_context"}
+            and item.get("verification_state") == "NOT_CHECKED"):
         return True
     if section != "numbers" or scope.get("numeric_value") is not True:
         return False
@@ -353,7 +360,9 @@ def _citable(beat: dict[str, Any], beats: list[dict[str, Any]]) -> set[str]:
     """이 비트 문장이 댈 수 있는 근거. 정리(PAYOFF) 비트는 앞 내용을 묶어 말하므로 **이 대본 전체**의 근거를 댈 수 있다
     (2026-10-06 실측: 리포트 정리 문장이 앞 비트 근거로 받쳐졌는데 '빌려 온 근거'로 막혔다). 대본 밖 근거는 여전히 안 된다."""
     own = set(beat.get("evidence_ids") or [])
-    if beat.get("stage") == "PAYOFF":
+    # 첫 질문(HOOK)도 본문 내용을 미리 당겨 말한다("피질의 1% 뉴런이라고요?") — 2026-10-07 실측: 작성기가 첫 장면에
+    # 주장 하나만 달아 두어, 3장면에 있는 1% 수치를 첫 질문이 못 댔다.
+    if beat.get("stage") in {"PAYOFF", "HOOK"}:
         own |= {e for b in beats for e in (b.get("evidence_ids") or [])}
     return own
 
@@ -458,7 +467,9 @@ def _judge(rows: list[Any], narration: dict[str, Any], pack: dict[str, Any]) -> 
             finding_codes = [_FINDING_ALIASES.get(code.lower(), code) for code in _strings(row.get("finding_codes"))]
             # 다른 비트의 근거를 댄 것은 검증관의 인용 실수다 — 그 id 만 빼고 경고로 남긴다. 빼고 나서 근거가 하나도
             # 없으면 아래 판정(factual_evidence_missing)이 그대로 거절한다(2026-10-06 실측: 세 편 모두 이걸로 멈췄다).
-            citable = _citable(beat, beats)
+            # 순수 질문(수사)은 근거를 댈 일이 없다 — 첫 질문의 '대본 전체 근거' 확장은 사실을 말하는 첫 문장에만 준다.
+            citable = (set(beat.get("evidence_ids") or []) if clause_kind == "RHETORICAL"
+                       else _citable(beat, beats))
             outside_dropped = [e for e in evidence_ids if e in evidence_index and e not in citable]
             if outside_dropped:
                 critic_notes.append(f"critic_cited_other_beat:{key[0]}:{outside_dropped[0]}")
@@ -821,4 +832,65 @@ def review_scenes(beats: list[dict[str, Any]], pack: dict[str, Any], *, domain: 
     rows = _rows(payload)
     if rows is None:
         return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
+    return _judge(rows, narration, pack)
+
+
+def _jev_source(pack: dict[str, Any], fact_sheet: dict[str, Any]) -> str:
+    """Jev 판정 근거 = 출처 메타(제목·기관/증권사) + Fact Sheet 전체. 운영 근거 경고(engine/grounding.py)와 같은 모양."""
+    from . import grounding
+    attribution = ((pack.get("source") or {}).get("attribution") or {})
+    meta = " | ".join(f"{k}: {v if isinstance(v, str) else ', '.join(map(str, v))}"
+                      for k, v in attribution.items() if v and k != "url")
+    return f"SOURCE META: {meta}\nFACT SHEET:\n{grounding.facts_text(fact_sheet or {})}"
+
+
+def _jev_rows(narration: dict[str, Any], pack: dict[str, Any], source: str,
+              judge: Callable[[str, str], float | None]) -> list[dict[str, Any]] | None:
+    """문장 하나 = 절 하나. 숫자 없는 순수 질문은 수사(RHETORICAL), 나머지는 Jev 가 근거를 넘었나 본다.
+
+    근거 id 는 그 비트가 댈 수 있는 근거(HOOK·PAYOFF 는 대본 전체)를 그대로 단다 — Jev 는 Fact Sheet 전체와 대조하므로
+    '어느 항목'을 고르지 않는다. 한 문장이라도 Jev 가 답을 못 하면 None(검증 못 함 → CRITIC_ERROR).
+    """
+    beats = narration["narration_beats"]
+    index = explanation_ir.build_index(pack)
+    sections = _evidence_sections(pack)
+    rows: list[dict[str, Any]] = []
+    for beat in beats:
+        # 그 자리에서 쓸 수 있는 근거만 단다 — 한계 근거는 한계 장면(BOUNDARY)에서만 받친다(아래 판정과 같은 기준).
+        cite = [e for e in sorted(_citable(beat, beats)) if e in index
+                and (beat.get("stage") == "BOUNDARY" or _eligible_support(index[e], sections.get(e, "")))]
+        for n, sentence in enumerate(beat["sentences"], 1):
+            text = _text(sentence)
+            base = {"narration_id": beat["narration_id"], "sentence_index": n, "clause_text": text,
+                    "finding_codes": []}
+            if text.endswith(("?", "？")) and not spoken_numbers.value_tokens(text):
+                rows.append({**base, "clause_kind": "RHETORICAL", "verdict": "RHETORICAL", "evidence_ids": [],
+                             "rationale": "숫자 없는 순수 질문"})
+                continue
+            p = judge(text, source)
+            if p is None:
+                return None
+            bad = p >= config.V2_JEV_UNSUPPORTED_MIN
+            rows.append({**base, "clause_kind": "FACTUAL", "verdict": "UNSUPPORTED" if bad else "ENTAILED",
+                         "evidence_ids": cite, "finding_codes": ["unsupported_background"] if bad else [],
+                         "rationale": f"Jev 근거 판정 p(근거 넘음)={p:.2f} (문턱 {config.V2_JEV_UNSUPPORTED_MIN})"})
+    return rows
+
+
+def review_scenes_jev(beats: list[dict[str, Any]], pack: dict[str, Any], fact_sheet: dict[str, Any], *,
+                      domain: str, content_id: str, core_question: str,
+                      judge: Callable[[str, str], float | None] | None = None) -> dict[str, Any]:
+    """`review_scenes` 의 Jev 판. 같은 판정 규칙(_judge)을 탄다 — 바뀌는 것은 절 판정을 누가 하느냐뿐이다."""
+    from . import decide
+    narration = {"domain": domain, "content_id": content_id, "core_question": core_question,
+                 "narration_beats": [{f: deepcopy(b.get(f)) if b.get(f) is not None else ([] if f not in
+                                      ("narration_id", "beat_id", "stage") else "") for f in _BEAT_FIELDS}
+                                     for b in beats]}
+    if judge is None:
+        if not decide.enabled():
+            return _empty_result(narration, "CRITIC_ERROR", errors=["critic_jev_disabled"])
+        judge = decide.unsupported_claim_p
+    rows = _jev_rows(narration, pack, _jev_source(pack, fact_sheet), judge)
+    if rows is None:
+        return _empty_result(narration, "CRITIC_ERROR", errors=["critic_jev_no_answer"])
     return _judge(rows, narration, pack)

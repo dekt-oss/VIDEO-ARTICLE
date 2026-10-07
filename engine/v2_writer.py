@@ -108,6 +108,20 @@ def scene_beats(scenes: list[dict[str, Any]], pack: dict[str, Any]) -> list[dict
     return beats
 
 
+def critic_backend(critic_caller: Callable[..., dict[str, Any]] | None = None) -> str:
+    """가짜 LLM 검증관을 넘기면(테스트) 그 모양 그대로 llm, 아니면 설정(V2_CRITIC_BACKEND, 기본 jev)."""
+    return "llm" if critic_caller is not None else config.V2_CRITIC_BACKEND
+
+
+def _check(beats: list[dict[str, Any]], pack: dict[str, Any], fact_sheet: dict[str, Any], *, domain: str,
+           content_id: str, core: str, critic_caller: Callable[..., dict[str, Any]] | None) -> dict[str, Any]:
+    if critic_backend(critic_caller) == "jev":
+        return semantic_fidelity.review_scenes_jev(beats, pack, fact_sheet, domain=domain, content_id=content_id,
+                                                   core_question=core)
+    return semantic_fidelity.review_scenes(beats, pack, domain=domain, content_id=content_id,
+                                           core_question=core, caller=critic_caller)
+
+
 def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[str, Any], pack: dict[str, Any], *,
                     domain: str, content_id: str, critic_caller: Callable[..., dict[str, Any]] | None = None
                     ) -> dict[str, Any]:
@@ -119,11 +133,11 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
         instruction = design_instruction(reasoning, fix_these=fix)
         script = writer(fact_sheet, instruction)
         beats = scene_beats(script.get("scenes") or [], pack)
-        fidelity = semantic_fidelity.review_scenes(beats, pack, domain=domain, content_id=content_id,
-                                                   core_question=core, caller=critic_caller)
+        fidelity = _check(beats, pack, fact_sheet, domain=domain, content_id=content_id, core=core,
+                          critic_caller=critic_caller)
         if fidelity.get("qa_status") == "CRITIC_ERROR":          # 검증관 형식 실수는 대본 탓이 아니다 — 검증만 한 번 더
-            fidelity = semantic_fidelity.review_scenes(beats, pack, domain=domain, content_id=content_id,
-                                                       core_question=core, caller=critic_caller)
+            fidelity = _check(beats, pack, fact_sheet, domain=domain, content_id=content_id, core=core,
+                              critic_caller=critic_caller)
         attempts.append({"instruction": instruction, "script": script, "beats": beats, "fidelity": fidelity})
         if fidelity.get("qa_status") != "REJECTED":
             break

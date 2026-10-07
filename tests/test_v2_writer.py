@@ -93,3 +93,70 @@ def test_directive_is_made_by_the_existing_generator_from_the_v2_script(writer_o
     assert result["phase_status"]["production_generator"] == "READY"
     assert drafts[0]["script_md"].startswith("소리로 세포가") and len(drafts[0]["video_prompts"]) == 3
     assert "narration_lock" not in drafts[0]
+
+
+# ─── 2026-10-07 실측 후속: 맞는 사실이 막히지 않게, 검증은 Jev 로 ───────────────────────────────────
+
+def _paper_pack():
+    from engine import evidence_pack
+    fs = base._paper_fact_sheet()
+    fs["numbers"] = ["세포의 1% 미만이 반응 (less than 1% of cells)"]
+    return fs, evidence_pack.build(fs, "paper", content_id="paper-1")
+
+
+def _beats(pack, hook="세포의 1% 미만이 반응한다고요?"):
+    scenes = [{"scene": 1, "narration_ko": hook, "claim_ids": [], "source_facts": []},
+              {"scene": 2, "narration_ko": "세포의 1% 미만이 반응합니다.", "claim_ids": [],
+               "source_facts": ["numbers[0]"], "evidence_role": "primary_result"},
+              {"scene": 3, "narration_ko": "그래서 압력이 열쇠입니다.", "claim_ids": ["C01"], "source_facts": []}]
+    return v2_writer.scene_beats(scenes, pack)
+
+
+def test_paper_fact_sheet_number_counts_as_evidence():
+    """Fact Sheet 수치 칸에는 원문 인용 칸이 없다 — 그래도 검증이 맞다고 한 문장은 통과해야 한다(신피질 1% 사례)."""
+    from engine import semantic_fidelity
+    fs, pack = _paper_pack()
+    out = semantic_fidelity.review_scenes_jev(_beats(pack), pack, fs, domain="paper", content_id="paper-1",
+                                              core_question="", judge=lambda text, source: 0.1)
+    assert out["qa_status"] == "PASSED", out["qa"]["errors"]
+
+
+def test_factual_hook_may_cite_a_later_scene():
+    """첫 질문이 본문 수치를 당겨 말해도(숫자가 있어 수사가 아니다) 그 수치를 근거로 댈 수 있다."""
+    from engine import semantic_fidelity
+    fs, pack = _paper_pack()
+    out = semantic_fidelity.review_scenes_jev(_beats(pack, "세포 1% 미만이 반응합니다."), pack, fs,
+                                              domain="paper", content_id="paper-1", core_question="",
+                                              judge=lambda text, source: 0.1)
+    assert out["qa_status"] == "PASSED", out["qa"]["errors"]
+    assert "paper:number:01" in out["clauses"][0]["evidence_ids"]
+
+
+def test_jev_rejects_a_sentence_beyond_the_source_and_feeds_it_back():
+    from engine import semantic_fidelity
+    fs, pack = _paper_pack()
+    seen = []
+
+    def judge(text, source):
+        seen.append(source)
+        return 0.9 if "열쇠" in text else 0.1
+
+    out = semantic_fidelity.review_scenes_jev(_beats(pack), pack, fs, domain="paper", content_id="paper-1",
+                                              core_question="", judge=judge)
+    assert out["qa_status"] == "REJECTED"
+    assert "FACT SHEET" in seen[0] and "less than 1% of cells" in seen[0]
+    assert any("그래서 압력이 열쇠입니다." in line for line in semantic_fidelity.fix_feedback(out))
+
+
+def test_jev_silence_is_a_checker_error_not_a_pass():
+    from engine import semantic_fidelity
+    fs, pack = _paper_pack()
+    out = semantic_fidelity.review_scenes_jev(_beats(pack), pack, fs, domain="paper", content_id="paper-1",
+                                              core_question="", judge=lambda text, source: None)
+    assert out["qa_status"] == "CRITIC_ERROR"
+
+
+def test_default_checker_is_jev_unless_a_fake_llm_critic_is_passed():
+    assert config.V2_CRITIC_BACKEND == "jev"
+    assert v2_writer.critic_backend() == "jev"
+    assert v2_writer.critic_backend(lambda **kw: {}) == "llm"

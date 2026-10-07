@@ -110,7 +110,8 @@ def _empty_result(
             "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "model_calls_allowed": allow_model_calls,
             "narration_model": config.MODEL_V2_NARRATION if allow_model_calls else "",
-            "critic_model": config.MODEL_V2_CRITIC if allow_model_calls else "",
+            "critic_model": ((f"jev:{config.JEV_MODEL}" if config.V2_CRITIC_BACKEND == "jev" and config.V2_WRITER == "production"
+                               else config.MODEL_V2_CRITIC) if allow_model_calls else ""),
             "fact_sheet_snapshot_sha256": snapshot,
             "content_plan_source": "",
             "prerequisite_requests": {
