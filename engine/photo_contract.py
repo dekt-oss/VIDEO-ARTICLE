@@ -136,7 +136,10 @@ _FORBIDDEN_SCREEN = re.compile(
     #   "a digital timer overlay next to it displays a consistent rotation period" 가
     #   통과했고 화면에 `3.456 s` 가 그대로 박혔다. Phase 0 의 `35°` 번인과 같은 계열이다.
     #   차트·라벨은 잡으면서 계기판·타이머는 못 잡고 있었다.
-    r"timers?|counters?|stopwatch(?:es)?|readouts?|gauges?|dials?|"
+    # ★ `counter` 를 맨몸으로 두지 않는다(2026-10-08 실측, `meters`·`axis` 와 같은 계열). "the steel counter"(실험실
+    #   작업대)가 걸려 승인이 막혔다 — 계수기를 요구한 적이 없다. 계수기는 앞뒤 말이 붙을 때만 잡는다.
+    r"timers?|(?:digital|electronic|numeric|lcd|led|cell|tally|geiger|frame|step)\s+counters?|counters?\s+(?:display|reading|readout|shows?|showing|ticks?)|"
+    r"stopwatch(?:es)?|readouts?|gauges?|dials?|"
     # ★ `meters?` 를 **맨몸으로 두지 않는다**(2026-09-02 실측). 계기판을 잡으라고 넣은
     #   단어인데 영어에서 meter 는 압도적으로 **길이 단위**다. 실측: 실사형 컷 12 의
     #   "a large, circular crater, approximately 40 meters in diameter" 가 걸려
