@@ -114,8 +114,14 @@ def _narration(result: dict[str, Any]) -> dict[str, Any]:
         fails = [] if writer.get("status") == "PASSED" else (
             [f"사실 검증 판정 {writer.get('status')}"] + [str(e) for e in _list(qa.get("errors"))])
         warns = [str(w) for w in _list(qa.get("warnings"))]
-        if writer.get("first_attempt"):
-            warns.append("사실 검증 지적으로 한 번 다시 썼다")
+        first = _dict(writer.get("first_attempt"))
+        if first:
+            why = [n for n, hit in (("사실 검증", _dict(first.get("fidelity")).get("qa_status") == "REJECTED"),
+                                    ("쉬운 말 검사", bool(_dict(first.get("plain")).get("findings")))) if hit]
+            warns.append(f"{'·'.join(why) or '검사'} 지적으로 한 번 다시 썼다")
+        plain = _dict(writer.get("plain"))
+        if plain.get("findings"):
+            warns.append("쉬운 말 검사 남은 지적: " + ", ".join(str(x) for x in _list(plain.get("findings"))))
         return _stage(fails, warns)
     fails = _error_in(result, {"phase6", "phase7"})
     if not fails and shadow.get("narration") is None:
