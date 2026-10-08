@@ -215,7 +215,14 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
     hook_j, term_j = plain_judges or (None, None)
     for _ in range(2 if config.V2_NARRATION_RETRY else 1):
         instruction = design_instruction(reasoning, fix_these=fix, legacy_hook=legacy_hook)
-        script = writer(fact_sheet, instruction)
+        try:
+            script = writer(fact_sheet, instruction)
+        except Exception as exc:  # noqa: BLE001
+            if not attempts:
+                raise
+            # 다시 쓰기가 죽어도 앞 회차는 살린다(2026-10-08 위성 레이저 편: 2회차가 출력 상한에서 잘려 멀쩡한 1회차까지 버렸다).
+            attempts[-1]["retry_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+            break
         beats = scene_beats(script.get("scenes") or [], pack)
         fidelity = _check(beats, pack, fact_sheet, domain=domain, content_id=content_id, core=core,
                           critic_caller=critic_caller)
@@ -233,6 +240,7 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
     for later in attempts[1:]:
         final = _better(final, later)
     return {"status": final["fidelity"].get("qa_status"), "script": final["script"], "beats": final["beats"],
+            "retry_error": attempts[-1].get("retry_error"),
             "fidelity": final["fidelity"], "plain": final["plain"], "instruction": final["instruction"],
             "attempts": len(attempts), "chosen_attempt": attempts.index(final) + 1,
             "first_attempt": attempts[0] if len(attempts) > 1 else None}

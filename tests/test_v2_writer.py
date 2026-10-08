@@ -277,3 +277,37 @@ def test_v2_starts_from_the_production_opening_line():
     text = v2_writer.design_instruction(_reasoning(), legacy_hook=hook)
     assert "그대로" in text and hook in text and "그 낱말만" in text
     assert "그대로" not in v2_writer.design_instruction(_reasoning()).split("검사 기준")[0]
+
+
+def test_jev_cleared_line_without_numbers_or_evidence_counts_as_background():
+    from engine import semantic_fidelity
+    fs, pack = _paper_pack()
+    scenes = [{"scene": 1, "narration_ko": "소리가 세포를 아물게 할까요?", "claim_ids": [], "source_facts": []},
+              {"scene": 2, "narration_ko": "흔히 소리는 기분만 바꾼다고 생각하죠. 3배 빨라졌어요.",
+               "claim_ids": [], "source_facts": ["source.authors"]},
+              {"scene": 3, "narration_ko": "그래서 압력이 열쇠입니다.", "claim_ids": ["C01"], "source_facts": []}]
+    out = semantic_fidelity.review_scenes_jev(v2_writer.scene_beats(scenes, pack), pack, fs, domain="paper",
+                                              content_id="paper-1", core_question="", judge=lambda t, s: 0.1)
+    kinds = {c["clause_text"]: c["clause_kind"] for c in out["clauses"]}
+    assert kinds["흔히 소리는 기분만 바꾼다고 생각하죠."] == "BACKGROUND"
+    assert kinds["3배 빨라졌어요."] == "FACTUAL"                      # 숫자는 여전히 근거가 필요하다
+    assert out["qa_status"] == "REJECTED" and any("factual_evidence_missing" in e for e in out["qa"]["errors"])
+
+
+def test_a_failed_rewrite_keeps_the_first_attempt(monkeypatch):
+    from engine import evidence_pack, semantic_fidelity
+    monkeypatch.setattr(config, "V2_NARRATION_RETRY", True)
+    pack = evidence_pack.build(base._paper_fact_sheet(), "paper", content_id="paper-1")
+    calls = []
+
+    def writer(fs, instruction):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("출력이 max_tokens 에서 잘렸다")
+        return _script(("피질 뉴런이 잠을 켤까요?", "b", "c"))
+
+    monkeypatch.setattr(semantic_fidelity, "review_scenes_jev",
+                        lambda beats, *a, **k: {"qa_status": "PASSED", "clauses": [], "qa": {"errors": []}})
+    out = v2_writer.write_and_check(writer, {}, _reasoning(), pack, domain="paper", content_id="paper-1",
+                                    plain_judges=(lambda line: {"jargon": 0.9, "spoiler": 0.1}, lambda s, e: 0.1))
+    assert out["status"] == "PASSED" and out["attempts"] == 1 and "max_tokens" in out["retry_error"]

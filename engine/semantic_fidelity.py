@@ -886,6 +886,13 @@ def _jev_rows(narration: dict[str, Any], pack: dict[str, Any], source: str,
             if p is None:
                 return None
             bad = p >= config.V2_JEV_UNSUPPORTED_MIN
+            if not bad and not cite and not spoken_numbers.value_tokens(text):
+                # 근거 칸이 빈 장면의 숫자 없는 문장 — 통념("흔히 소리는 기분만 바꾼다고 생각하죠")·출처("○○ 연구진이")다.
+                # Jev 가 Fact Sheet+출처 정보와 대조해 넘지 않았다고 봤으니 배경으로 둔다(2026-10-08 조화 음파 편: 이 둘이
+                # '근거 없음'으로 막혔다 — 작성기는 source.authors 를 달았는데 그 칸은 근거 묶음에 없다). 숫자가 있으면 종전대로 근거 필수.
+                rows.append({**base, "clause_kind": "BACKGROUND", "verdict": "RHETORICAL", "evidence_ids": [],
+                             "rationale": f"근거 칸 없는 배경·출처 문장 — Jev p(근거 넘음)={p:.2f}"})
+                continue
             rows.append({**base, "clause_kind": "FACTUAL", "verdict": "UNSUPPORTED" if bad else "ENTAILED",
                          "evidence_ids": cite, "finding_codes": ["unsupported_background"] if bad else [],
                          "rationale": f"Jev 근거 판정 p(근거 넘음)={p:.2f} (문턱 {config.V2_JEV_UNSUPPORTED_MIN})"})

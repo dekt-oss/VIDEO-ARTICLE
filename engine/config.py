@@ -249,6 +249,9 @@ LLM_SCRIPT_MAX_TOKENS: int = _get_int("LLM_SCRIPT_MAX_TOKENS", 16384)
 #     deepseek-flash 가 지시서에서 3/3 절단(32,768 정각), Fact Sheet 에서 8,192 정각.
 #     천장이 공급자를 떨어뜨린 것을 그 공급자의 실력으로 읽으면 측정이 거짓말을 한다.
 LLM_PAPER_SCRIPT_MAX_TOKENS: int = _get_int("LLM_PAPER_SCRIPT_MAX_TOKENS", 32768)
+#   리포트 대본도 같은 이유로 따로 둔다(2026-10-08 실측: deepseek 리포트 대본 1회차 16,338, 2회차 16,384 정각 절단 —
+#   옛 LLM_SCRIPT_MAX_TOKENS 16384 는 제미나이 기준이었다). 상한은 사고 방지용이고 쓴 만큼만 과금된다.
+LLM_REPORT_SCRIPT_MAX_TOKENS: int = _get_int("LLM_REPORT_SCRIPT_MAX_TOKENS", 32768)
 # 자기검증 전용 출력 상한. ★ `selfcheck.py:239` 에 **6144 로 박혀 있던 것**을 꺼낸다.
 #   실측: gemini-2.5-flash 최대 3,016(상한의 49%). × 2.4 ≈ 7,240 — 옛 상한을 넘는다.
 #   2026-09-10 에 `korean_natural`·`awkward_spans`·`fluency_issues` 축이 같은 호출에

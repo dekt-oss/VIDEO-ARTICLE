@@ -11,7 +11,7 @@ from typing import Any
 
 from . import config, narrative, report_reasoning, report_source, source_adequacy
 from .narrative import NARRATIVE_ARC
-from .llm import call_json
+from .llm import call_json, set_text_purpose
 
 SCRIPT_SYSTEM = """너는 증권사 리포트를 대중용 숏폼 대본으로 각색하는 작가다.
 JSON only. 설명·마크다운·코드펜스 금지.
@@ -328,11 +328,12 @@ def generate(fact_sheet: dict[str, Any], instruction: str = "",
     씬 하나가 근거를 잃는다). 요약 기반 재고가 아직 많아서 실제로 자주 걸리는 분기다.
     """
     has_units = bool(report_reasoning.reasoning_ids(reasoning))
+    set_text_purpose("script")     # 비용 원장 용도 라벨 — 없으면 앞 단계 라벨이 그대로 찍힌다(2026-10-08 실측)
     obj = call_json(
         model=config.MODEL_REPORT_SCRIPT,
         system=((_narration_only(SCRIPT_SYSTEM) if narration_only else SCRIPT_SYSTEM)
                 + (REASONING_CONTRACT if has_units else "")),
         user=script_user_prompt(fact_sheet, instruction, packet, reasoning),
-        max_tokens=config.LLM_SCRIPT_MAX_TOKENS,
+        max_tokens=config.LLM_REPORT_SCRIPT_MAX_TOKENS,
     )
     return normalize_script(obj, reasoning)

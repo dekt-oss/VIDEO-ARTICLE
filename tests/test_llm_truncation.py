@@ -93,7 +93,8 @@ def test_script_callers_use_the_config_cap():
 
     for fn in (report_scriptgen.generate, report_directive._generate_once):
         src = inspect.getsource(fn)
-        assert "LLM_SCRIPT_MAX_TOKENS" in src, f"{fn.__qualname__}: 상한이 하드코딩돼 있다"
+        # 리포트 대본은 2026-10-08 부터 전용 상한(LLM_REPORT_SCRIPT_MAX_TOKENS)을 쓴다 — 어느 쪽이든 config 상수여야 한다.
+        assert ("LLM_SCRIPT_MAX_TOKENS" in src or "LLM_REPORT_SCRIPT_MAX_TOKENS" in src),             f"{fn.__qualname__}: 상한이 하드코딩돼 있다"
         assert "6144" not in src
 
 
