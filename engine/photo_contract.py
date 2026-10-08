@@ -1030,6 +1030,37 @@ def normalize_prompt_numbers(cuts: list[dict[str, Any]]) -> list[str]:
     return sorted(set(touched))
 
 
+# "a vial labeled L-929" · "a box marked 'XR-7'" — 식별자(숫자가 섞이거나 따옴표거나 대문자 약어)를 **그려 달라는** 구절.
+_PROMPT_LABEL_ID = re.compile(
+    r",?\s*\b(?i:labell?ed|marked|printed|stamped|inscribed)\s+(?:(?i:with)\s+)?(?:(?i:the)\s+)?"
+    r"(?:['\"“‘][^'\"”’]{1,40}['\"”’]"
+    r"|(?=[A-Za-z0-9\-./]*[0-9])[A-Za-z0-9][A-Za-z0-9\-./]*"
+    r"|[A-Z]{2,}[A-Za-z0-9\-./]*\b)")
+
+
+def normalize_prompt_labels(cuts: list[dict[str, Any]]) -> list[str]:
+    """이미지 프롬프트에서 "labeled L-929" 같은 **식별자 라벨 요구**를 지운다(2026-10-08).
+
+    ★ 실측(조화 음파 V2 첫 실전 지시서): 컷 16 "a frosted plastic cell culture vial labeled L-929" 하나로
+      `photo_forbidden_screen_request` 가 승인을 막았다. 그림 모델에 라벨을 요구하면 지어낸 글자가 박힌다 —
+      막는 것은 옳다. 그런데 고치는 법은 늘 같다(그 구절만 지운다): 숫자 수치(`normalize_prompt_numbers`)와 같은
+      이유로 코드가 한다 — 같은 일로 지시서를 통째로 다시 사지 않게.
+    ★ 식별자(숫자 섞임·따옴표·대문자 약어)만 지운다. "with labels" 같은 일반 요구는 남겨 게이트가 그대로 막는다 —
+      문장 구조를 모르고 지우면 뜻이 깨진다.
+    """
+    touched: list[str] = []
+    for c in cuts:
+        if not isinstance(c, dict):
+            continue
+        for k in ("visual_prompt", "motion_prompt"):
+            before = str(c.get(k) or "")
+            after = re.sub(r"\s{2,}", " ", _PROMPT_LABEL_ID.sub("", before)).replace(" .", ".").strip()
+            if after != before.strip() and after != before:
+                c[k] = after
+                touched.append(f"컷{c.get('cut_no')}")
+    return sorted(set(touched))
+
+
 def strip_optics(text: str, rewrites: tuple = _OPTICS_REWRITES) -> str:
     """렌즈·광학 어휘 → 배치 표현. **정보는 남기고 렌즈 지시만 뺀다.**
 

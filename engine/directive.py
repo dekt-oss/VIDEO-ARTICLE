@@ -1877,6 +1877,11 @@ def normalize_directive(
                 "photo_color_code_assigned:" + ", ".join(color_fixed[:6])]))
         # ★ 카드가 이미 그리는 퍼센트 수치는 이미지 프롬프트에서 코드가 지운다(2026-09-14 —
         #   같은 논문 세 편 연속 같은 차단, 세 번 다 손으로 숫자만 지웠다. 함수 주석).
+        labels_fixed = photo_contract.normalize_prompt_labels(cuts)
+        if labels_fixed:
+            header["mode_warnings"] = sorted(set([
+                *header.get("mode_warnings", []),
+                "photo_prompt_label_removed:" + ", ".join(labels_fixed[:6])]))
         numbers_fixed = photo_contract.normalize_prompt_numbers(cuts)
         if numbers_fixed:
             header["mode_warnings"] = sorted(set([
