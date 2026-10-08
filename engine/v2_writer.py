@@ -30,10 +30,18 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def design_instruction(reasoning: dict[str, Any], *, fix_these: list[str] | None = None) -> str:
-    """생각 단계 결과 → 기존 작성기에게 주는 구성 지시. 사실은 여전히 Fact Sheet 범위 안에서만 쓴다."""
+def design_instruction(reasoning: dict[str, Any], *, fix_these: list[str] | None = None, legacy_hook: str = "") -> str:
+    """생각 단계 결과 → 기존 작성기에게 주는 구성 지시. 사실은 여전히 Fact Sheet 범위 안에서만 쓴다.
+
+    `legacy_hook` = 운영 대본의 첫 문장. 있으면 그대로 쓰게 한다(2026-10-08 운영자: 신피질 편에서 V2 가 다시 쓴 첫 질문
+    여섯 개보다 운영 첫 질문 "뇌세포의 단 1%만 건드렸는데…"이 제일 낫다). 사실과 어긋나는 낱말만 고치게 한다.
+    """
     lines = ["[설명 설계 — 이 순서와 질문으로 대본을 구성하라. 사실은 Fact Sheet 안에서만, 말투·후킹은 네 규칙대로]"]
     core = _text(reasoning.get("core_question"))
+    if _text(legacy_hook):
+        lines.append(f"- ★ 첫 장면은 이 문장을 **그대로** 써라(이미 검증된 후킹이다): «{_text(legacy_hook)}» — 단 Fact Sheet 와"
+                     " 어긋나는 낱말(범위가 넓어진 숫자 등)이 있으면 그 낱말만 Fact Sheet 에 맞게 고쳐라. 아래 '이 편의 질문'은"
+                     " 본문이 답할 질문으로 쓴다.")
     if core:
         lines.append(f"- 이 편의 질문(첫 장면은 이 질문을 시청자가 '정말?' 하게 짧고 강하게 던져라): {core}")
     for label, key in (("왜 관심을 가져야 하나", "viewer_reason_to_care"), ("사람들이 보통 아는 것", "starting_assumption"),
@@ -110,6 +118,19 @@ def scene_beats(scenes: list[dict[str, Any]], pack: dict[str, Any]) -> list[dict
     return beats
 
 
+def legacy_hook(legacy_draft: dict[str, Any] | None) -> str:
+    """운영 대본의 첫 문장(첫 장면). 대본 장면이 있으면 첫 장면 나레이션, 없으면 script_md 첫 줄."""
+    draft = legacy_draft or {}
+    for key in ("video_prompts", "scenes"):
+        scenes = draft.get(key)
+        if isinstance(scenes, list) and scenes and isinstance(scenes[0], dict) and _text(scenes[0].get("narration_ko")):
+            return _text(scenes[0]["narration_ko"])
+    for line in str(draft.get("script_md") or "").splitlines():
+        if _text(line) and not _text(line).startswith(("#", "씬")):
+            return _text(line)
+    return ""
+
+
 def critic_backend(critic_caller: Callable[..., dict[str, Any]] | None = None) -> str:
     """가짜 LLM 검증관을 넘기면(테스트) 그 모양 그대로 llm, 아니면 설정(V2_CRITIC_BACKEND, 기본 jev)."""
     return "llm" if critic_caller is not None else config.V2_CRITIC_BACKEND
@@ -183,7 +204,7 @@ def _better(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
 
 def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[str, Any], pack: dict[str, Any], *,
                     domain: str, content_id: str, critic_caller: Callable[..., dict[str, Any]] | None = None,
-                    plain_judges: tuple[Any, Any] | None = None) -> dict[str, Any]:
+                    plain_judges: tuple[Any, Any] | None = None, legacy_hook: str = "") -> dict[str, Any]:
     """설계 → 기존 작성기 → 사실 검사 + 쉬운 말 검사 → (지적이 있으면) 한 번 다시 쓰고 다시 검사. 저장하지 않는다.
 
     다시 쓴 쪽이 더 나쁘면(사실 검사를 새로 놓쳤으면) 앞 회차를 고른다 — 고쳐 쓰기가 멀쩡한 대본을 망치지 않게.
@@ -193,7 +214,7 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
     fix: list[str] | None = None
     hook_j, term_j = plain_judges or (None, None)
     for _ in range(2 if config.V2_NARRATION_RETRY else 1):
-        instruction = design_instruction(reasoning, fix_these=fix)
+        instruction = design_instruction(reasoning, fix_these=fix, legacy_hook=legacy_hook)
         script = writer(fact_sheet, instruction)
         beats = scene_beats(script.get("scenes") or [], pack)
         fidelity = _check(beats, pack, fact_sheet, domain=domain, content_id=content_id, core=core,

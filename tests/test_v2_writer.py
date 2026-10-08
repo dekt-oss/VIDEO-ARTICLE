@@ -267,3 +267,13 @@ def test_compare_cli_reuses_a_saved_design(tmp_path):
     assert cli._saved_reasoning(str(path), "paper", "c1")(model="x") == {"core_question": "q"}
     with pytest.raises(SystemExit):
         cli._saved_reasoning(str(path), "paper", "other")
+
+
+def test_v2_starts_from_the_production_opening_line():
+    draft = {"video_prompts": [{"narration_ko": "뇌세포의 단 1%만 건드렸는데, 깊은 잠에 빠질 수 있을까요?"}], "script_md": "x"}
+    hook = v2_writer.legacy_hook(draft)
+    assert hook.startswith("뇌세포의 단 1%")
+    assert v2_writer.legacy_hook({"script_md": "씬 1\n주가는 반토막인데 이익은 두 배?\n"}) == "주가는 반토막인데 이익은 두 배?"
+    text = v2_writer.design_instruction(_reasoning(), legacy_hook=hook)
+    assert "그대로" in text and hook in text and "그 낱말만" in text
+    assert "그대로" not in v2_writer.design_instruction(_reasoning()).split("검사 기준")[0]

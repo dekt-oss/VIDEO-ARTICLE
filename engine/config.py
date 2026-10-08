@@ -216,6 +216,8 @@ MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
 V2_CRITIC_BACKEND: str = os.getenv("V2_CRITIC_BACKEND", "jev")
 #   첫 질문만 다시 쓰는 모델(engine/hook_rewrite.py, 2026-10-08). 짧은 후보 5개라 대본 작성기와 같은 모델을 써도 싸다.
 MODEL_V2_HOOK: str = os.getenv("MODEL_V2_HOOK", MODEL_SCRIPT)
+#   V2 대본 첫 장면을 운영 대본 첫 문장으로(사실 어긋남만 고침). 2026-10-08 운영자 판정 — 신피질 편 후보 7개 중 운영 첫 질문이 최선.
+V2_KEEP_LEGACY_HOOK: bool = _get_bool("V2_KEEP_LEGACY_HOOK", True)
 #   Jev 판정 문턱. 운영 경고(JEV_UNSUPPORTED_CLAIM_MIN, 원문 대조 31건)와 같은 값에서 시작한다.
 V2_JEV_UNSUPPORTED_MIN: float = _get_float("V2_JEV_UNSUPPORTED_MIN", 0.6)
 #   쉬운 말 검사(2026-10-08 연구 §3, 표본 10·14문장 — 운영 표본으로 재감사할 것). 걸리면 작성기에 되먹여 한 번 다시 쓴다.

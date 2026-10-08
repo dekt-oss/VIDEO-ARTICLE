@@ -258,7 +258,9 @@ def _run(
                 writer = writer_caller or v2_writer.default_writer(
                     domain, packet=packet, financial_reasoning=financial_reasoning if domain == "report" else None)
                 out = v2_writer.write_and_check(writer, fact_sheet or {}, thought["reasoning"], pack,
-                                                domain=domain, content_id=content_id, critic_caller=critic_caller)
+                                                domain=domain, content_id=content_id, critic_caller=critic_caller,
+                                                legacy_hook=(v2_writer.legacy_hook(legacy_draft)
+                                                             if config.V2_KEEP_LEGACY_HOOK else ""))
                 shadow["writer"] = out
                 phases["phase6"] = "WRITER_SCRIPT"
                 phases["phase7"] = out["status"]
