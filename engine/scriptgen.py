@@ -203,6 +203,31 @@ image_prompt_ko(어떤 스틸 장면인지)·video_prompt_ko(어떻게 움직이
 }"""
 
 
+def _narration_only(system: str) -> str:
+    """V2 용 대본 프롬프트 — 장면 그림·영상 프롬프트를 쓰지 않는다(2026-10-08 운영자 "대본 단가 줄이는 작업").
+
+    ★ 왜: 실측(2026-10-07 신피질) 대본 1회 출력 2만 1천 토큰, 받은 글 1만 4천 자의 대부분이 장면별 영문
+      image/video 프롬프트와 그 한국어 설명이었다. 그런데 실사형 지시서는 그 필드를 **입력에서 뺀다**
+      (`directive._DRAFT_SCENE_VISUAL_FIELDS`) — 지시서가 화면을 다시 정하기 때문이다. 쓰고 버리던 몫이다.
+    후킹·4막·나레이션 규칙·훅 후보·제목은 그대로 둔다(말 품질은 건드리지 않는다).
+    """
+    start = system.index("[image_prompt 작성 규칙")
+    end = system.index("[★ 훅 후보 3개")
+    out = system[:start] + system[end:]
+    out = out.replace(
+        "(3) scenes — 주요 장면마다 [이미지 프롬프트 → 영상 프롬프트 → 나레이션]. 제작 순서는\n"
+        "    각 장면의 스틸 이미지를 먼저 만들고 → 그 이미지를 움직여 영상화 → 나레이션으로 진행한다.",
+        "(3) scenes — 주요 장면마다 나레이션과 근거. ★ 그림·영상 프롬프트는 쓰지 마라 — 화면은 다음 단계"
+        "(지시서)가 정한다.")
+    for line in ('      "image_prompt": "<위 규칙대로 매우 상세한 영문 텍스트→이미지 프롬프트(스틸)>",\n',
+                 '      "image_prompt_ko": "<image_prompt의 한국어 설명 — 어떤 스틸 장면인지 1~2문장>",\n',
+                 '      "video_prompt": "<위 규칙대로 영문 이미지→영상 프롬프트(그 스틸의 모션)>",\n',
+                 '      "video_prompt_ko": "<video_prompt의 한국어 설명 — 어떻게 움직이는지 1~2문장>",\n'):
+        assert line in out, line
+        out = out.replace(line, "")
+    return out
+
+
 def mechanism_supply_block(fact_sheet: dict[str, Any] | None) -> str:
     """소재가 **왜 그런지**를 대는가를 코드가 단정해서 알려준다 (2026-09-09).
 
@@ -437,12 +462,13 @@ def normalize_script(
 
 
 def generate(
-    fact_sheet: dict[str, Any], instruction: str = "",
+    fact_sheet: dict[str, Any], instruction: str = "", *, narration_only: bool = False,
 ) -> dict[str, Any]:
+    """`narration_only` = V2 경로(장면 그림·영상 프롬프트 생략). 운영 초안은 종전 그대로(False)."""
     set_text_purpose("script")     # 비용 원장의 용도 라벨(engine/llm.py)
     obj = call_json(
         model=config.MODEL_SCRIPT,
-        system=SCRIPT_SYSTEM,
+        system=_narration_only(SCRIPT_SYSTEM) if narration_only else SCRIPT_SYSTEM,
         user=script_user_prompt(fact_sheet, instruction),
         # content_plan·hook_candidates·씬별 근거 필드로 출력이 약 900토큰 늘었다. 6144 로 두면
         # 잘림 → JSON 파싱 실패 → 재시도 1회 → 하드 에러(파이프라인 정지)라 소프트 저하가 아니다.

@@ -160,3 +160,34 @@ def test_default_checker_is_jev_unless_a_fake_llm_critic_is_passed():
     assert config.V2_CRITIC_BACKEND == "jev"
     assert v2_writer.critic_backend() == "jev"
     assert v2_writer.critic_backend(lambda **kw: {}) == "llm"
+
+
+# ─── 2026-10-08: 검사 기준을 미리 주고, V2 대본은 나레이션만 ─────────────────────────────────────
+
+def test_writer_gets_the_check_criteria_up_front():
+    from engine import semantic_fidelity
+    text = v2_writer.design_instruction(_reasoning())
+    assert "검사 기준" in text
+    for line in semantic_fidelity.WRITER_CHECK_CRITERIA:
+        assert line in text
+
+
+def test_v2_writer_prompts_skip_scene_picture_prompts():
+    from engine import report_scriptgen, scriptgen
+    paper = scriptgen._narration_only(scriptgen.SCRIPT_SYSTEM)
+    report = report_scriptgen._narration_only(report_scriptgen.SCRIPT_SYSTEM)
+    for text in (paper, report):
+        assert '"image_prompt"' not in text and '"video_prompt"' not in text
+        assert '"narration_ko"' in text and '"source_facts"' in text
+    assert "hook_candidates" in paper                       # 후킹 장치는 그대로
+    assert len(paper) < len(scriptgen.SCRIPT_SYSTEM) * 0.85
+
+
+def test_default_writer_asks_for_narration_only(monkeypatch):
+    from engine import report_scriptgen, scriptgen
+    seen = {}
+    monkeypatch.setattr(scriptgen, "generate", lambda fs, ins, **kw: seen.setdefault("paper", kw) or {})
+    monkeypatch.setattr(report_scriptgen, "generate", lambda fs, ins, **kw: seen.setdefault("report", kw) or {})
+    v2_writer.default_writer("paper")({}, "")
+    v2_writer.default_writer("report")({}, "")
+    assert seen["paper"]["narration_only"] is True and seen["report"]["narration_only"] is True

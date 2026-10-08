@@ -60,6 +60,8 @@ def design_instruction(reasoning: dict[str, Any], *, fix_these: list[str] | None
         lines.append("- 처음 한 번 쉬운 말로 풀 용어: " + ", ".join(
             f"{_text(c['concept'])}({_text(c.get('simple_explanation'))})" for c in gloss))
     lines.append(f"- 길이: {config.V2_TARGET_MIN_SEC}~{config.V2_TARGET_MAX_SEC}초 안에서 이해에 필요한 만큼. 억지로 늘리지 마라.")
+    lines.append("- ★ 검사 기준(이 대본은 쓴 뒤 문장마다 이 기준으로 검사된다 — 처음부터 맞춰 써라):")
+    lines.extend(f"  · {x}" for x in semantic_fidelity.WRITER_CHECK_CRITERIA)
     if fix_these:
         lines.append("- ★ 지난 대본에서 사실 검증에 걸린 것(반드시 고쳐라 — 빼거나 Fact Sheet 에 맞게):")
         lines.extend(f"  · {x}" for x in fix_these)
@@ -150,10 +152,13 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
 
 def default_writer(domain: str, *, packet: dict[str, Any] | None = None,
                    financial_reasoning: dict[str, Any] | None = None) -> Writer:
-    """기존 운영 작성기. 논문 `scriptgen.generate`, 리포트 `report_scriptgen.generate`(원문·논증 단위 포함)."""
+    """기존 운영 작성기. 논문 `scriptgen.generate`, 리포트 `report_scriptgen.generate`(원문·논증 단위 포함).
+
+    V2 에서는 나레이션만 쓴다(narration_only) — 장면 그림·영상 프롬프트는 지시서가 다시 정한다(2026-10-08).
+    """
     if domain == "paper":
         from . import scriptgen
-        return lambda fact_sheet, instruction: scriptgen.generate(fact_sheet, instruction)
+        return lambda fact_sheet, instruction: scriptgen.generate(fact_sheet, instruction, narration_only=True)
     from . import report_scriptgen
     return lambda fact_sheet, instruction: report_scriptgen.generate(
-        fact_sheet, instruction, packet=packet, reasoning=financial_reasoning)
+        fact_sheet, instruction, packet=packet, reasoning=financial_reasoning, narration_only=True)

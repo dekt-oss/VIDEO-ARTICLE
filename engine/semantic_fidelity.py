@@ -835,6 +835,21 @@ def review_scenes(beats: list[dict[str, Any]], pack: dict[str, Any], *, domain: 
     return _judge(rows, narration, pack)
 
 
+# ★ 작성기에게 **미리** 주는 검사 기준(2026-10-08 운영자 "검사 기준을 주고 그 기준에 맞춰 쓰라고 하면 되잖아").
+#   아래 판정(_semantic_findings·_jev_rows)이 실제로 보는 것만 적는다 — 여기와 판정이 어긋나면 작성기는 모르는 기준에
+#   걸린다(게이트·프롬프트·되먹임 셋이 같은 말을 해야 한다). tests/test_v2_writer.py 가 문구를 확인한다.
+WRITER_CHECK_CRITERIA: tuple[str, ...] = (
+    "사실을 말하는 모든 문장은 Fact Sheet 항목 하나 이상으로 확인돼야 한다 — 문장마다 Fact Sheet(+출처 정보)와 대조해 "
+    "근거를 넘으면 그 대본은 차단된다.",
+    "장면마다 source_facts·claim_ids 에 그 장면 문장이 기대는 항목을 **빠짐없이** 달아라. 첫 장면(질문)도 숫자나 "
+    "사실을 말하면 그 항목을 단다(예: 1% 를 말하면 그 수치가 있는 numbers[i]).",
+    "Fact Sheet 의 source 에 없는 기관·저자·연도·지명을 쓰지 마라.",
+    "말의 세기를 올리지 마라: 연관 → 원인, 일부 → 전체, 동물 → 사람, '늘었다' → '두 배' 같은 강화·확대 금지.",
+    "숫자 없는 순수 질문(첫 질문·중간 질문)은 검사 대상이 아니다 — 질문은 자유롭게, 단 질문 안에 사실을 단정하지 마라.",
+    "연구 한계는 한계 장면(evidence_role=caveat) 하나에 묶어라 — 한계 근거는 그 장면에서만 쓸 수 있다.",
+)
+
+
 def _jev_source(pack: dict[str, Any], fact_sheet: dict[str, Any]) -> str:
     """Jev 판정 근거 = 출처 메타(제목·기관/증권사) + Fact Sheet 전체. 운영 근거 경고(engine/grounding.py)와 같은 모양."""
     from . import grounding

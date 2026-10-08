@@ -303,9 +303,24 @@ def normalize_script(obj: dict[str, Any],
     }
 
 
+_VISUAL_SCHEMA_LINES = (
+    '      "image_prompt": "<영문 text-to-image 프롬프트>", "image_prompt_ko": "<한글 설명>",\n',
+    '      "video_prompt": "<영문 image-to-video 프롬프트>", "video_prompt_ko": "<한글 설명>",\n',
+)
+
+
+def _narration_only(system: str) -> str:
+    """V2 용 — 장면 그림·영상 프롬프트를 쓰지 않는다. 논문 `scriptgen._narration_only` 와 같은 이유(지시서가 화면을
+    다시 정한다, 2026-10-08 운영자 "대본 단가 줄이는 작업"). 말·논증 규칙은 그대로다."""
+    for line in _VISUAL_SCHEMA_LINES:
+        assert line in system, line
+        system = system.replace(line, "")
+    return system + "\n★ scenes 에 image_prompt·video_prompt 를 쓰지 마라 — 화면은 다음 단계(지시서)가 정한다.\n"
+
+
 def generate(fact_sheet: dict[str, Any], instruction: str = "",
              packet: dict[str, Any] | None = None,
-             reasoning: dict[str, Any] | None = None) -> dict[str, Any]:
+             reasoning: dict[str, Any] | None = None, *, narration_only: bool = False) -> dict[str, Any]:
     """★ 논증 단위가 있을 때만 REASONING_CONTRACT 를 얹는다.
 
     없는데 계약만 붙이면 모델이 "논증 단위를 참조하라"는 지시를 받고 참조할 것이 없어
@@ -315,7 +330,8 @@ def generate(fact_sheet: dict[str, Any], instruction: str = "",
     has_units = bool(report_reasoning.reasoning_ids(reasoning))
     obj = call_json(
         model=config.MODEL_REPORT_SCRIPT,
-        system=SCRIPT_SYSTEM + (REASONING_CONTRACT if has_units else ""),
+        system=((_narration_only(SCRIPT_SYSTEM) if narration_only else SCRIPT_SYSTEM)
+                + (REASONING_CONTRACT if has_units else "")),
         user=script_user_prompt(fact_sheet, instruction, packet, reasoning),
         max_tokens=config.LLM_SCRIPT_MAX_TOKENS,
     )
