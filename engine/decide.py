@@ -570,3 +570,17 @@ def term_unexplained(sentence: str, earlier: str, subject: str = "") -> float | 
         return None
     return noul(f"EARLIER: {earlier or '(none)'}\nSENTENCE: {sentence}", TERM_UNEXPLAINED_Q[0],
                 TERM_UNEXPLAINED_Q[1], site="v2_term_plain", subject=subject)
+
+SCENE_CROWDED_Q = (
+    "Is SCENE (one short-video narration scene) crowded — does it make the listener hold more than one proper name "
+    "(company, organization, product, program, person) or more than one number/quantity at once?",
+    {"true": "two or more distinct proper names, or two or more numbers/quantities, are packed into this one scene",
+     "false": "at most one proper name and at most one number — a listener can follow it in one hearing"},
+)
+
+
+def scene_crowded(scene: str, subject: str = "") -> float | None:
+    """한 장면에 이름·숫자가 몰렸을 확률(2026-10-08). 못 물었으면 None."""
+    if not str(scene or "").strip():
+        return None
+    return noul(f"SCENE: {scene}", SCENE_CROWDED_Q[0], SCENE_CROWDED_Q[1], site="v2_scene_crowded", subject=subject)

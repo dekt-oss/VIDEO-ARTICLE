@@ -226,6 +226,9 @@ V2_PLAIN_CHECK: bool = _get_bool("V2_PLAIN_CHECK", True)
 V2_HOOK_JARGON_MIN: float = _get_float("V2_HOOK_JARGON_MIN", 0.6)
 V2_HOOK_SPOILER_MIN: float = _get_float("V2_HOOK_SPOILER_MIN", 0.6)
 V2_TERM_UNEXPLAINED_MIN: float = _get_float("V2_TERM_UNEXPLAINED_MIN", 0.8)
+#   한 장면 이름·숫자 과밀(2026-10-08, 세 편 24장면 실측). 진짜 과밀(케플러·10기·40기·SDA·KSAT 한 장면 / 기관 셋)은 0.97~0.98,
+#   운영자가 좋다고 한 장면("한 번, 두 번, 세 번")도 0.82~0.93 이 나왔다 → 진짜만 고치게 0.95.
+V2_SCENE_CROWDED_MIN: float = _get_float("V2_SCENE_CROWDED_MIN", 0.95)
 # 한국어 채점/추출 JSON(긴 rationale·red_flag 포함)이 잘리지 않도록 넉넉히.
 # ★ 2048 은 한글 출력에 부족해 JSON 이 잘려 파싱 실패→전 축 0점이 되던 원인이었다.
 LLM_MAX_TOKENS: int = 8192

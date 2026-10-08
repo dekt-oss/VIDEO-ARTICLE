@@ -311,3 +311,18 @@ def test_a_failed_rewrite_keeps_the_first_attempt(monkeypatch):
     out = v2_writer.write_and_check(writer, {}, _reasoning(), pack, domain="paper", content_id="paper-1",
                                     plain_judges=(lambda line: {"jargon": 0.9, "spoiler": 0.1}, lambda s, e: 0.1))
     assert out["status"] == "PASSED" and out["attempts"] == 1 and "max_tokens" in out["retry_error"]
+
+
+def test_crowded_scene_is_fed_back_and_the_rule_is_given_up_front():
+    beats = [{"beat_id": "SC01", "sentences": ["인터넷이 하늘로 간다고요?"]},
+             {"beat_id": "SC03", "sentences": ["케플러가 중계위성 10기와 단말 40기로, KSAT 도 시연했어요."]},
+             {"beat_id": "SC05", "sentences": ["한 번은 변화가 없었는데, 두 번, 세 번 반복하자 줄었어요."]}]
+    scores = {"SC03": 0.98, "SC05": 0.82, "SC01": 0.07}
+    out = v2_writer.plain_check(beats, hook_judge=lambda line: {"jargon": 0.1, "spoiler": 0.1},
+                                term_judge=lambda s, e: 0.1,
+                                crowded_judge=lambda scene: next(v for k, v in scores.items()
+                                                                 if any(scene.startswith(b["sentences"][0][:5])
+                                                                        for b in beats if b["beat_id"] == k)))
+    assert out["findings"] == ["scene_crowded"]                    # 0.82(운영자가 좋다고 한 장면)는 건드리지 않는다
+    assert "SC03" in out["feedback"][0] and "이름 하나·숫자 하나" in out["feedback"][0]
+    assert "이름(회사·기관·사람) 하나, 숫자 하나까지만" in v2_writer.design_instruction(_reasoning())

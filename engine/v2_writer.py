@@ -68,6 +68,8 @@ def design_instruction(reasoning: dict[str, Any], *, fix_these: list[str] | None
         lines.append("- 처음 한 번 쉬운 말로 풀 용어: " + ", ".join(
             f"{_text(c['concept'])}({_text(c.get('simple_explanation'))})" for c in gloss))
     lines.append(f"- 길이: {config.V2_TARGET_MIN_SEC}~{config.V2_TARGET_MAX_SEC}초 안에서 이해에 필요한 만큼. 억지로 늘리지 마라.")
+    lines.append("- 귀로 듣는 대본이다: 한 장면에 이름(회사·기관·사람) 하나, 숫자 하나까지만. 더 있으면 빼거나"
+                 " '여러 회사가'·'몇 배'처럼 묶어라. 화면 자막이 아니라 말이다.")
     lines.append("- ★ 검사 기준(이 대본은 쓴 뒤 문장마다 이 기준으로 검사된다 — 처음부터 맞춰 써라):")
     lines.extend(f"  · {x}" for x in semantic_fidelity.WRITER_CHECK_CRITERIA)
     if fix_these:
@@ -149,7 +151,8 @@ PlainJudge = Callable[[str, str], float | None]
 
 
 def plain_check(beats: list[dict[str, Any]], *, hook_judge: Callable[[str], dict[str, float] | None] | None = None,
-                term_judge: PlainJudge | None = None) -> dict[str, Any]:
+                term_judge: PlainJudge | None = None,
+                crowded_judge: Callable[[str], float | None] | None = None) -> dict[str, Any]:
     """쉬운 말 검사(Jev): 첫 질문의 전문용어·답 노출, 본문의 풀지 않은 용어. **되먹임용 경고**다 — 차단하지 않는다.
 
     ★ 왜(2026-10-08): 사실 검사는 "맞나"만 본다. 운영자가 지적한 후킹 퇴화("피질 안 극소수 장거리 억제 뉴런이…")와
@@ -164,6 +167,7 @@ def plain_check(beats: list[dict[str, Any]], *, hook_judge: Callable[[str], dict
         if not decide.enabled():
             out["unchecked"] = -1
             return out
+    crowded_judge = crowded_judge or (decide.scene_crowded if decide.enabled() else (lambda scene: None))
     hook_judge = hook_judge or decide.hook_plainness
     term_judge = term_judge or (lambda sentence, earlier: decide.term_unexplained(sentence, earlier))
     sentences = [s for b in beats for s in b.get("sentences") or []]
@@ -192,6 +196,17 @@ def plain_check(beats: list[dict[str, Any]], *, hook_judge: Callable[[str], dict
             out["findings"].append("term_unexplained")
             out["feedback"].append(f"\"{sentence}\" — 풀지 않은 전문용어가 있다. 처음 나올 때 쉬운 말로 한 번 풀거나"
                                    " 일상어로 바꿔라(사실은 바꾸지 마라).")
+    # 장면 단위: 이름·숫자가 한 장면에 몰렸나(위성 레이저 편 3·6장면 — 회사·기관 넷과 숫자 셋이 한 장면에).
+    for beat in beats:
+        scene = " ".join(beat.get("sentences") or [])
+        p = crowded_judge(scene)
+        if p is None:
+            continue
+        out["scores"].append({"sentence": f"[장면 {beat.get('beat_id', '')}] {scene}", "crowded": round(p, 3)})
+        if p >= config.V2_SCENE_CROWDED_MIN:
+            out["findings"].append("scene_crowded")
+            out["feedback"].append(f"장면 {beat.get('beat_id', '')} \"{scene[:60]}…\" — 이름·숫자가 한 장면에 몰려 귀로 못 따라간다."
+                                   " 이 장면에는 이름 하나·숫자 하나만 남기고, 나머지는 빼거나 '여러 회사가'처럼 묶어라.")
     return out
 
 
@@ -212,7 +227,8 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
     core = _text(reasoning.get("core_question"))
     attempts: list[dict[str, Any]] = []
     fix: list[str] | None = None
-    hook_j, term_j = plain_judges or (None, None)
+    hook_j, term_j, *rest = plain_judges or (None, None)
+    crowd_j = rest[0] if rest else None
     for _ in range(2 if config.V2_NARRATION_RETRY else 1):
         instruction = design_instruction(reasoning, fix_these=fix, legacy_hook=legacy_hook)
         try:
@@ -229,7 +245,7 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
         if fidelity.get("qa_status") == "CRITIC_ERROR":          # 검증관 형식 실수는 대본 탓이 아니다 — 검증만 한 번 더
             fidelity = _check(beats, pack, fact_sheet, domain=domain, content_id=content_id, core=core,
                               critic_caller=critic_caller)
-        plain = plain_check(beats, hook_judge=hook_j, term_judge=term_j)
+        plain = plain_check(beats, hook_judge=hook_j, term_judge=term_j, crowded_judge=crowd_j)
         attempts.append({"instruction": instruction, "script": script, "beats": beats, "fidelity": fidelity,
                          "plain": plain})
         rejected = fidelity.get("qa_status") == "REJECTED"
