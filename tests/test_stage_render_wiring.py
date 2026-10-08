@@ -160,8 +160,7 @@ def test_the_switch_falls_back_to_the_cut_path(rec, tmp_path):
     assert legacy.called and rec.slices == []
 
 
-def test_a_failed_stage_video_falls_back_instead_of_killing_the_render(tmp_path):
-    """★ stage 하나가 실패해도 렌더 전체가 죽으면 안 된다 — 화면이 비는 게 가장 나쁘다."""
+def _fail_stage_render(tmp_path):
     def boom(*a, **k):
         raise RuntimeError("Veo 죽음")
 
@@ -179,7 +178,21 @@ def test_a_failed_stage_video_falls_back_instead_of_killing_the_render(tmp_path)
         open(tmp_path / "x.png", "wb").write(b"p")
         open(tmp_path / "a.m4a", "wb").write(b"a")
         _run(tmp_path)
-    assert legacy.called, "stage 실패 뒤 컷 경로로 안 넘어갔다"
+    return legacy
+
+
+def test_a_failed_stage_video_falls_back_only_when_stills_are_allowed(tmp_path, monkeypatch):
+    """종전 계약(사진 대체 허용)일 때만 컷 경로로 넘어간다 — 스위치로 되돌릴 수 있게 남긴다."""
+    monkeypatch.setattr(render.config, "PHOTO_STILL_FALLBACK", True)
+    assert _fail_stage_render(tmp_path).called, "stage 실패 뒤 컷 경로로 안 넘어갔다"
+
+
+def test_photo_stage_video_failure_retries_then_stops_instead_of_photos(tmp_path, monkeypatch):
+    """★ 2026-10-09 운영자: "사진으로 영상 구성하지 말라". 실사형은 1회 재시도하고, 그래도 안 되면 렌더를 멈춘다."""
+    monkeypatch.setattr(render.config, "PHOTO_STILL_FALLBACK", False)
+    import pytest
+    with pytest.raises(render.VideoRequiredError):
+        _fail_stage_render(tmp_path)
 
 
 def test_tts_runs_once_per_cut_not_twice(rec, tmp_path):

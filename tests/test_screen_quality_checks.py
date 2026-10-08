@@ -87,3 +87,18 @@ def test_cell_diagram_images_get_cell_anatomy_and_one_frame():
     src = inspect.getsource(image)
     assert "PHOTO_CELL_ANATOMY_CLAUSE" in src and "PHOTO_SINGLE_FRAME_CLAUSE" in src
     assert "nucleus" in config.PHOTO_CELL_ANATOMY_CLAUSE and "no panels" in config.PHOTO_SINGLE_FRAME_CLAUSE
+
+
+def test_a_new_sequence_in_an_already_drawn_world_references_that_picture(tmp_path):
+    from engine import sequence_render
+    header = {"version_type": "photo", "visual_sequences": [
+        {"sequence_id": "SEQ0", "world": {"world_id": "CELL"}, "stages": [{"stage_id": "S0", "cut_refs": [1], "continuity_mode": "NEW_WORLD"}]},
+        {"sequence_id": "SEQ1", "world": {"world_id": "LAB"}, "stages": [{"stage_id": "S1", "cut_refs": [2], "continuity_mode": "NEW_WORLD"}]},
+        {"sequence_id": "SEQ2", "world": {"world_id": "CELL"}, "stages": [{"stage_id": "S3", "cut_refs": [7], "continuity_mode": "NEW_WORLD"}]}]}
+    pic = tmp_path / "s0.png"
+    pic.write_bytes(b"p")
+    assets = {"S0": str(pic), "S1": str(tmp_path / "lab.png")}
+    got = sequence_render.reference_decision({"cut_no": 7}, header, assets)
+    assert got["kind"] == "reference" and got["ref_stage"] == "S0" and got.get("same_world")
+    lab = sequence_render.reference_decision({"cut_no": 2}, header, {"S0": str(pic)})
+    assert lab["kind"] == "new_world"                      # 다른 세계는 새로 그린다

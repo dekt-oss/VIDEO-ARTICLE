@@ -192,6 +192,16 @@ def take_placeholder_fallbacks() -> list[Any]:
     return out
 
 
+class VideoRequiredError(RuntimeError):
+    """실사형에서 영상이 끝내 안 만들어졌다 — 사진+카메라 이동으로 대신하지 않고 렌더를 멈춘다(2026-10-09 운영자)."""
+
+
+def no_still_fallback(header: dict[str, Any]) -> bool:
+    """실사형은 영상 실패를 사진으로 메우지 않는다(config.PHOTO_STILL_FALLBACK=False 가 기본)."""
+    return (str((header or {}).get("version_type") or "photo") == "photo"
+            and not config.PHOTO_STILL_FALLBACK)
+
+
 # 영상(Veo)으로 만들려던 컷이 실패해 **스틸로 대신 나간** 컷 번호(2026-10-08 리뷰). 그동안은 원장 status=fallback 에만
 # 남아 렌더는 "완료"로 보였다 — 운영자는 움직여야 할 컷이 멈춰 있는 이유를 알 수 없었다.
 VIDEO_FALLBACKS: list[Any] = []
@@ -1065,6 +1075,8 @@ def _gen_cut_assets(cut: dict[str, Any], header: dict[str, Any], work_dir: str, 
                     log.warning("컷 %s 마지막 프레임 추출 실패 — 연쇄 끊김(무시): %s",
                                 cut.get("cut_no"), exc)
             return clip_path, "clip", aud_path, measured, cost + c, words
+        if no_still_fallback(header):
+            raise VideoRequiredError(f"컷 {cut.get('cut_no')} 영상 실패 — 사진으로 대신하지 않고 멈춘다(운영자 2026-10-09)")
         VIDEO_FALLBACKS.append(cut.get("cut_no") or (idx + 1))
         return img_path, "image", aud_path, measured, cost + c, words
 
@@ -1471,11 +1483,31 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                 except _SplitStillDone:
                     pass
                 except Exception as exc:  # noqa: BLE001
-                    # ★ stage 영상이 실패해도 렌더를 죽이지 않는다 — 그 그룹만 옛 컷 경로로.
-                    log.error("stage %s 영상 실패 → 컷 단위로 폴백: %s",
-                              plan["stage_id"] or gi, str(exc)[:160])
-                    for ci in plan["indexes"]:
-                        cut_group.pop(ci, None)
+                    if no_still_fallback(header):
+                        # ★ 2026-10-09 운영자: "사진 띄우고 화면 떨리는 표현 하지 말라 — 사진으로 영상 구성하지 말라".
+                        #   종전에는 그 그룹을 컷 경로로 돌렸고, 그 경로도 영상이 실패하면 스틸+카메라 이동으로 나갔다
+                        #   (샘플 컷7: 8초 내내 정지 그림). 실사형은 한 번 더 만들어 보고, 그래도 안 되면 **렌더를 멈춘다**.
+                        log.error("stage %s 영상 실패 → 1회 재시도(사진 대체 금지): %s",
+                                  plan["stage_id"] or gi, str(exc)[:300])
+                        try:
+                            sv, c2 = _build_stage_video(
+                                plan, cuts, header, work_dir, gi, start_image=img0, lang=lang,
+                                clip_metrics_out=clip_metrics_out,
+                                directive_id=directive_id, render_job_id=render_job_id,
+                                render_job_kind=render_job_kind, qa_out=stage_qa_out)
+                            _store_stage_video(sv, plan, cuts, header, directive_id, render_job_kind)
+                            stage_videos[gi] = sv
+                            cost += c2
+                        except Exception as exc2:  # noqa: BLE001
+                            raise VideoRequiredError(
+                                f"stage {plan['stage_id'] or gi} 영상 2회 실패 — 사진으로 대신하지 않고 멈춘다: "
+                                f"{str(exc2)[:300]}") from exc2
+                    else:
+                        # ★ stage 영상이 실패해도 렌더를 죽이지 않는다 — 그 그룹만 옛 컷 경로로.
+                        log.error("stage %s 영상 실패 → 컷 단위로 폴백: %s",
+                                  plan["stage_id"] or gi, str(exc)[:160])
+                        for ci in plan["indexes"]:
+                            cut_group.pop(ci, None)
             if gi in stage_videos:
                 vis, kind = stage_videos[gi], "stage"
                 slice_window = plan["windows"][k]

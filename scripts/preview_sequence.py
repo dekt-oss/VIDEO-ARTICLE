@@ -331,6 +331,8 @@ def main() -> None:
     ap.add_argument("directive_id")
     ap.add_argument("--sequence", default="", help="시퀀스 id(기본: 기전 컷이 가장 많은 것)")
     ap.add_argument("--stages", type=int, default=4, help="앞에서 몇 단계까지(기본 4)")
+    ap.add_argument("--allow-gap", action="store_true",
+                    help="떨어진 컷(1,7-8)을 이어 붙이는 것을 허용한다 — 나레이션이 중간에서 끊기므로 운영자 샘플로 쓰지 마라")
     ap.add_argument("--cuts", default="", metavar="A-B",
                     help="시퀀스 대신 컷 번호 범위로 자른다(예: 1-8 = 전반부). --keep 과 같이 쓰면 편 전체 렌더가 물려받는다")
     ap.add_argument("--stills", action="store_true", help="그림만 만든다(영상 생성 0)")
@@ -393,6 +395,9 @@ def main() -> None:
         raise SystemExit(f"지시서 없음(논문·리포트 양쪽에서 못 찾음): {args.directive_id}")
     if args.cuts:
         wanted = parse_cuts(args.cuts)
+        if not args.allow_gap and wanted != set(range(min(wanted), max(wanted) + 1)):
+            # ★ 2026-10-09 운영자: 컷1 + 컷7~8 샘플이 "할 수 있을까요? → 그 결과…"로 말이 안 됐다. 중간 문장이 빠져서다.
+            raise SystemExit("떨어진 컷은 나레이션이 끊긴다 — 이어진 범위로 고르거나 --allow-gap 을 붙여라")
         seq_id = f"cuts_{args.cuts}"
         mini = slice_cuts(directive, wanted, want_video=not args.stills)
     else:
