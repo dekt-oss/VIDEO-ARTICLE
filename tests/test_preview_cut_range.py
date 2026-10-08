@@ -35,3 +35,10 @@ def test_range_parsing():
     assert ps.parse_range("1-8") == (1, 8) and ps.parse_range("3") == (3, 3)
     with pytest.raises(SystemExit):
         ps.parse_range("8-1")
+
+
+def test_scattered_cuts_for_a_sample():
+    assert ps.parse_cuts("1,7-8") == {1, 7, 8}
+    mini = ps.slice_cuts(_directive(), {1, 5, 6}, want_video=True)
+    assert [c["cut_no"] for c in mini["cuts"]] == [1, 5, 6]
+    assert [st["stage_id"] for seq in mini["header"]["visual_sequences"] for st in seq["stages"]] == ["S3"]

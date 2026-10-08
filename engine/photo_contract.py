@@ -1646,7 +1646,7 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
             lead = by_no[idx[0]]
             beats = [b for b in (lead.get("temporal_plan") or []) if isinstance(b, dict)]
             cams = {str(b.get("camera") or "").upper() for b in beats}
-            if len(beats) < min(len(idx), 3) or len(cams) < 2:
+            if len(beats) < 2 or len(cams) < 2:      # 코드 채움(beats_from_stage)과 같은 기준 — 비트 2+·카메라 2종+
                 flat_view.append(str(lead.get("cut_no")))
         if flat_view:
             warns.append("photo_consecutive_same_view:" + ",".join(flat_view[:6]))

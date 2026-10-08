@@ -118,6 +118,10 @@ def slice_keep(directive: dict, sequence_id: str, n_stages: int,
 
 
 def slice_range(directive: dict, first: int, last: int, want_video: bool) -> dict:
+    return slice_cuts(directive, set(range(first, last + 1)), want_video)
+
+
+def slice_cuts(directive: dict, wanted: set, want_video: bool) -> dict:
     """컷 번호 first~last 만 남긴 미니 지시서 — **편을 전반·후반으로 나눠 사기** 위한 것(2026-10-08 운영자
     "전체 한 번에 하지 말고 전반부만 먼저 만들어 봐. 괜찮으면 후반 만들고 합쳐서 업로드").
 
@@ -128,9 +132,9 @@ def slice_range(directive: dict, first: int, last: int, want_video: bool) -> dic
     """
     header = dict(directive["header"])
     keep = {int(c.get("cut_no") or 0) for c in directive.get("cuts") or []
-            if first <= int(c.get("cut_no") or 0) <= last}
+            if int(c.get("cut_no") or 0) in wanted}
     if not keep:
-        raise SystemExit(f"컷 {first}~{last} 가 지시서에 없다")
+        raise SystemExit(f"컷 {sorted(wanted)} 가 지시서에 없다")
     seqs = []
     for seq in header.get("visual_sequences") or []:
         if not isinstance(seq, dict):
@@ -163,6 +167,16 @@ def parse_range(text: str) -> tuple[int, int]:
     if first < 1 or last < first:
         raise SystemExit(f"--cuts 형식: 1-8 (받은 값 {text})")
     return first, last
+
+
+def parse_cuts(text: str) -> set:
+    """'1,7-8' → {1, 7, 8}. 샘플(여는 컷 + 세포 컷)처럼 떨어진 컷을 함께 본다(2026-10-09)."""
+    out: set = set()
+    for part in str(text).split(","):
+        if part.strip():
+            a, b = parse_range(part.strip())
+            out |= set(range(a, b + 1))
+    return out
 
 
 def narration_sec(cut: dict, lang: str) -> float:
@@ -378,9 +392,9 @@ def main() -> None:
     if not directive:
         raise SystemExit(f"지시서 없음(논문·리포트 양쪽에서 못 찾음): {args.directive_id}")
     if args.cuts:
-        first, last = parse_range(args.cuts)
-        seq_id = f"cuts_{first}-{last}"
-        mini = slice_range(directive, first, last, want_video=not args.stills)
+        wanted = parse_cuts(args.cuts)
+        seq_id = f"cuts_{args.cuts}"
+        mini = slice_cuts(directive, wanted, want_video=not args.stills)
     else:
         seq_id = pick_sequence(directive, args.sequence)
         slicer = slice_keep if args.keep else slice_directive
