@@ -216,6 +216,12 @@ MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
 V2_CRITIC_BACKEND: str = os.getenv("V2_CRITIC_BACKEND", "jev")
 #   Jev 판정 문턱. 운영 경고(JEV_UNSUPPORTED_CLAIM_MIN, 원문 대조 31건)와 같은 값에서 시작한다.
 V2_JEV_UNSUPPORTED_MIN: float = _get_float("V2_JEV_UNSUPPORTED_MIN", 0.6)
+#   쉬운 말 검사(2026-10-08 연구 §3, 표본 10·14문장 — 운영 표본으로 재감사할 것). 걸리면 작성기에 되먹여 한 번 다시 쓴다.
+#   첫 질문: 쉬운 것 최고 0.38 · 어려운 것 최저 0.89 사이가 비어 있었다 → 0.6. 본문 용어: 0.6~0.7 이 애매해 0.8.
+V2_PLAIN_CHECK: bool = _get_bool("V2_PLAIN_CHECK", True)
+V2_HOOK_JARGON_MIN: float = _get_float("V2_HOOK_JARGON_MIN", 0.6)
+V2_HOOK_SPOILER_MIN: float = _get_float("V2_HOOK_SPOILER_MIN", 0.6)
+V2_TERM_UNEXPLAINED_MIN: float = _get_float("V2_TERM_UNEXPLAINED_MIN", 0.8)
 # 한국어 채점/추출 JSON(긴 rationale·red_flag 포함)이 잘리지 않도록 넉넉히.
 # ★ 2048 은 한글 출력에 부족해 JSON 이 잘려 파싱 실패→전 축 0점이 되던 원인이었다.
 LLM_MAX_TOKENS: int = 8192

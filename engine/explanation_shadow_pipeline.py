@@ -678,8 +678,22 @@ def render_markdown(result: dict[str, Any]) -> str:
         script = _dict(writer.get("script"))
         lines.extend([f"## V2 대본 (설계: 생각 단계 · 말: 기존 작성기 · 사실 검증: {writer.get('status')}"
                       f"{' · 한 번 다시 씀' if writer.get('first_attempt') else ''})", "",
-                      str(script.get("script_md") or "(대본 없음)"), "",
-                      "<details><summary>기존 작성기에 준 설계 지시</summary>", "", "```",
+                      str(script.get("script_md") or "(대본 없음)"), ""])
+        plain = _dict(writer.get("plain"))
+        if plain:
+            found = plain.get("findings") or []
+            lines.append(f"- 쉬운 말 검사(Jev): {'지적 없음' if not found else ', '.join(found)}"
+                         f"{' · 검사 못 한 문장 ' + str(plain.get('unchecked')) if plain.get('unchecked') else ''}"
+                         f" · {writer.get('attempts')}회 중 {writer.get('chosen_attempt')}회차를 골랐다")
+            for row in plain.get("scores") or []:
+                vals = " ".join(f"{k} {v}" for k, v in row.items() if k != "sentence")
+                lines.append(f"  - {vals} | {str(row.get('sentence'))[:70]}")
+            lines.append("")
+        first = _dict(writer.get("first_attempt"))
+        if first:
+            lines.extend(["<details><summary>1회차 대본(다시 쓰기 전)</summary>", "",
+                          str(_dict(first.get("script")).get("script_md") or ""), "</details>", ""])
+        lines.extend(["<details><summary>기존 작성기에 준 설계 지시</summary>", "", "```",
                       str(writer.get("instruction") or ""), "```", "</details>", ""])
     narration = _dict(shadow.get("narration"))
     status = narration.get("generation_status") or result["phase_status"].get("phase6")

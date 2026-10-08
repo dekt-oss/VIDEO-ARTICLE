@@ -63,7 +63,7 @@ def design_instruction(reasoning: dict[str, Any], *, fix_these: list[str] | None
     lines.append("- ★ 검사 기준(이 대본은 쓴 뒤 문장마다 이 기준으로 검사된다 — 처음부터 맞춰 써라):")
     lines.extend(f"  · {x}" for x in semantic_fidelity.WRITER_CHECK_CRITERIA)
     if fix_these:
-        lines.append("- ★ 지난 대본에서 사실 검증에 걸린 것(반드시 고쳐라 — 빼거나 Fact Sheet 에 맞게):")
+        lines.append("- ★ 지난 대본에서 검사에 걸린 것(반드시 고쳐라 — 사실은 빼거나 Fact Sheet 에 맞게, 말은 쉽게):")
         lines.extend(f"  · {x}" for x in fix_these)
     return "\n".join(lines)
 
@@ -124,13 +124,74 @@ def _check(beats: list[dict[str, Any]], pack: dict[str, Any], fact_sheet: dict[s
                                            core_question=core, caller=critic_caller)
 
 
+PlainJudge = Callable[[str, str], float | None]
+
+
+def plain_check(beats: list[dict[str, Any]], *, hook_judge: Callable[[str], dict[str, float] | None] | None = None,
+                term_judge: PlainJudge | None = None) -> dict[str, Any]:
+    """쉬운 말 검사(Jev): 첫 질문의 전문용어·답 노출, 본문의 풀지 않은 용어. **되먹임용 경고**다 — 차단하지 않는다.
+
+    ★ 왜(2026-10-08): 사실 검사는 "맞나"만 본다. 운영자가 지적한 후킹 퇴화("피질 안 극소수 장거리 억제 뉴런이…")와
+      풀지 않은 용어(델타파·Martinotti)는 사실은 맞아서 그대로 통과했다. 연구 §3 에서 Jev 가 이 둘을 갈랐다.
+    Jev 가 답을 못 하면 그 문장은 검사하지 않은 것으로 남긴다(`unchecked`) — 통과로 세지 않는다.
+    """
+    from . import decide
+    out: dict[str, Any] = {"findings": [], "feedback": [], "unchecked": 0, "scores": []}
+    if not config.V2_PLAIN_CHECK:
+        return out
+    if hook_judge is None or term_judge is None:
+        if not decide.enabled():
+            out["unchecked"] = -1
+            return out
+    hook_judge = hook_judge or decide.hook_plainness
+    term_judge = term_judge or (lambda sentence, earlier: decide.term_unexplained(sentence, earlier))
+    sentences = [s for b in beats for s in b.get("sentences") or []]
+    if not sentences:
+        return out
+    hook = hook_judge(sentences[0])
+    if hook is None:
+        out["unchecked"] += 1
+    else:
+        out["scores"].append({"sentence": sentences[0], **{k: round(v, 3) for k, v in hook.items()}})
+        if hook.get("jargon", 0) >= config.V2_HOOK_JARGON_MIN:
+            out["findings"].append("hook_jargon")
+            out["feedback"].append(f"첫 질문 \"{sentences[0]}\" — 일반 시청자가 모르는 말이 있다. 일상어만으로 다시 써라"
+                                   " (전문용어는 본문에서 풀어 주고, 첫 질문에는 넣지 마라).")
+        if hook.get("spoiler", 0) >= config.V2_HOOK_SPOILER_MIN:
+            out["findings"].append("hook_spoiler")
+            out["feedback"].append(f"첫 질문 \"{sentences[0]}\" — 답(연구 결과)을 미리 말해 버린다. 결과는 숨기고"
+                                   " '정말?' 하는 궁금증만 남겨라.")
+    for i, sentence in enumerate(sentences[1:], 1):
+        p = term_judge(sentence, " ".join(sentences[:i]))
+        if p is None:
+            out["unchecked"] += 1
+            continue
+        out["scores"].append({"sentence": sentence, "term": round(p, 3)})
+        if p >= config.V2_TERM_UNEXPLAINED_MIN:
+            out["findings"].append("term_unexplained")
+            out["feedback"].append(f"\"{sentence}\" — 풀지 않은 전문용어가 있다. 처음 나올 때 쉬운 말로 한 번 풀거나"
+                                   " 일상어로 바꿔라(사실은 바꾸지 마라).")
+    return out
+
+
+def _better(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """두 회차 중 낫는 것: 사실 검사 통과가 먼저, 그다음 쉬운 말 지적이 적은 쪽. 같으면 나중 것."""
+    def key(x: dict[str, Any]) -> tuple[int, int]:
+        return (1 if x["fidelity"].get("qa_status") == "PASSED" else 0, -len(x["plain"]["findings"]))
+    return a if key(a) > key(b) else b
+
+
 def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[str, Any], pack: dict[str, Any], *,
-                    domain: str, content_id: str, critic_caller: Callable[..., dict[str, Any]] | None = None
-                    ) -> dict[str, Any]:
-    """설계 → 기존 작성기 → V2 검증관 → (진짜 지적이면) 한 번 다시 쓰고 다시 검증. 저장하지 않는다."""
+                    domain: str, content_id: str, critic_caller: Callable[..., dict[str, Any]] | None = None,
+                    plain_judges: tuple[Any, Any] | None = None) -> dict[str, Any]:
+    """설계 → 기존 작성기 → 사실 검사 + 쉬운 말 검사 → (지적이 있으면) 한 번 다시 쓰고 다시 검사. 저장하지 않는다.
+
+    다시 쓴 쪽이 더 나쁘면(사실 검사를 새로 놓쳤으면) 앞 회차를 고른다 — 고쳐 쓰기가 멀쩡한 대본을 망치지 않게.
+    """
     core = _text(reasoning.get("core_question"))
     attempts: list[dict[str, Any]] = []
     fix: list[str] | None = None
+    hook_j, term_j = plain_judges or (None, None)
     for _ in range(2 if config.V2_NARRATION_RETRY else 1):
         instruction = design_instruction(reasoning, fix_these=fix)
         script = writer(fact_sheet, instruction)
@@ -140,13 +201,19 @@ def write_and_check(writer: Writer, fact_sheet: dict[str, Any], reasoning: dict[
         if fidelity.get("qa_status") == "CRITIC_ERROR":          # 검증관 형식 실수는 대본 탓이 아니다 — 검증만 한 번 더
             fidelity = _check(beats, pack, fact_sheet, domain=domain, content_id=content_id, core=core,
                               critic_caller=critic_caller)
-        attempts.append({"instruction": instruction, "script": script, "beats": beats, "fidelity": fidelity})
-        if fidelity.get("qa_status") != "REJECTED":
+        plain = plain_check(beats, hook_judge=hook_j, term_judge=term_j)
+        attempts.append({"instruction": instruction, "script": script, "beats": beats, "fidelity": fidelity,
+                         "plain": plain})
+        rejected = fidelity.get("qa_status") == "REJECTED"
+        if not rejected and not plain["findings"]:
             break
-        fix = semantic_fidelity.fix_feedback(fidelity)
-    final = attempts[-1]
+        fix = [*(semantic_fidelity.fix_feedback(fidelity) if rejected else []), *plain["feedback"]]
+    final = attempts[0]
+    for later in attempts[1:]:
+        final = _better(final, later)
     return {"status": final["fidelity"].get("qa_status"), "script": final["script"], "beats": final["beats"],
-            "fidelity": final["fidelity"], "instruction": final["instruction"], "attempts": len(attempts),
+            "fidelity": final["fidelity"], "plain": final["plain"], "instruction": final["instruction"],
+            "attempts": len(attempts), "chosen_attempt": attempts.index(final) + 1,
             "first_attempt": attempts[0] if len(attempts) > 1 else None}
 
 

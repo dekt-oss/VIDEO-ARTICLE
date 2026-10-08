@@ -76,7 +76,7 @@ def test_critic_rejection_rewrites_once_with_its_findings(writer_on):
         return payload
 
     result = base._run(reasoning_caller=_reasoning, writer_caller=writer, critic_caller=critic)
-    assert len(seen) == 2 and "사실 검증에 걸린 것" in seen[1]
+    assert len(seen) == 2 and "검사에 걸린 것" in seen[1]
     assert result["shadow"]["writer"]["first_attempt"]["fidelity"]["qa_status"] == "REJECTED"
     assert result["phase_status"]["phase7"] == "PASSED"
 
@@ -191,3 +191,79 @@ def test_default_writer_asks_for_narration_only(monkeypatch):
     v2_writer.default_writer("paper")({}, "")
     v2_writer.default_writer("report")({}, "")
     assert seen["paper"]["narration_only"] is True and seen["report"]["narration_only"] is True
+
+
+# ─── 2026-10-08: 쉬운 말 검사(Jev) — 되먹임만, 더 나쁜 다시 쓰기는 버린다 ─────────────────────────
+
+def _plain_beats(hook="피질 장거리 억제 뉴런이 잠을 켤까요?", body=("Sst-Chodl 세포가 델타파를 키웁니다.",)):
+    return [{"sentences": [hook]}, {"sentences": list(body)}]
+
+
+def test_plain_check_flags_jargon_hook_spoiler_and_unexplained_terms():
+    out = v2_writer.plain_check(_plain_beats(),
+                                hook_judge=lambda line: {"jargon": 0.98, "spoiler": 0.83},
+                                term_judge=lambda sentence, earlier: 0.9)
+    assert out["findings"] == ["hook_jargon", "hook_spoiler", "term_unexplained"]
+    assert any("일상어만으로" in f for f in out["feedback"]) and any("궁금증" in f for f in out["feedback"])
+    easy = v2_writer.plain_check(_plain_beats("소리만 들려줘도 상처가 아물까요?", ("움직일 땐 꺼져요.",)),
+                                 hook_judge=lambda line: {"jargon": 0.06, "spoiler": 0.12},
+                                 term_judge=lambda sentence, earlier: 0.08)
+    assert easy["findings"] == []
+
+
+def test_plain_check_counts_silence_as_unchecked_not_passed():
+    out = v2_writer.plain_check(_plain_beats(), hook_judge=lambda line: None, term_judge=lambda s, e: None)
+    assert out["findings"] == [] and out["unchecked"] == 2
+
+
+def _loop(monkeypatch, judges, scripts):
+    from engine import evidence_pack, semantic_fidelity
+    monkeypatch.setattr(config, "V2_NARRATION_RETRY", True)
+    pack = evidence_pack.build(base._paper_fact_sheet(), "paper", content_id="paper-1")
+    calls = iter(scripts)
+    seen = []
+
+    def writer(fs, instruction):
+        seen.append(instruction)
+        return next(calls)
+
+    monkeypatch.setattr(semantic_fidelity, "review_scenes_jev",
+                        lambda beats, *a, **k: {"qa_status": "PASSED", "clauses": [], "qa": {"errors": []}})
+    out = v2_writer.write_and_check(writer, {}, _reasoning(), pack, domain="paper", content_id="paper-1",
+                                    plain_judges=judges)
+    return out, seen
+
+
+def test_plain_findings_trigger_one_rewrite_with_the_feedback(monkeypatch):
+    hard, easy = _script(("피질 장거리 억제 뉴런이 잠을 켤까요?", "b", "c")), _script(("깊은 잠의 스위치는 어디 있을까요?", "b", "c"))
+    out, seen = _loop(monkeypatch, (lambda line: {"jargon": 0.98 if "피질" in line else 0.1, "spoiler": 0.1},
+                                    lambda s, e: 0.1), [hard, easy])
+    assert len(seen) == 2 and "일상어만으로" in seen[1]
+    assert out["chosen_attempt"] == 2 and out["plain"]["findings"] == []
+
+
+def test_a_worse_rewrite_is_not_chosen(monkeypatch):
+    hard = _script(("피질 장거리 억제 뉴런이 잠을 켤까요?", "b", "c"))
+    out, _ = _loop(monkeypatch, (lambda line: {"jargon": 0.98, "spoiler": 0.9}, lambda s, e: 0.1), [hard, hard])
+    assert out["attempts"] == 2 and out["chosen_attempt"] == 2          # 같으면 나중 것
+
+    from engine import semantic_fidelity
+    calls = iter([{"qa_status": "PASSED"}, {"qa_status": "REJECTED"}])
+    monkeypatch.setattr(semantic_fidelity, "review_scenes_jev",
+                        lambda beats, *a, **k: {**next(calls), "clauses": [], "qa": {"errors": []}})
+    from engine import evidence_pack
+    pack = evidence_pack.build(base._paper_fact_sheet(), "paper", content_id="paper-1")
+    out = v2_writer.write_and_check(lambda fs, ins: hard, {}, _reasoning(), pack, domain="paper",
+                                    content_id="paper-1",
+                                    plain_judges=(lambda line: {"jargon": 0.98, "spoiler": 0.1}, lambda s, e: 0.1))
+    assert out["chosen_attempt"] == 1 and out["status"] == "PASSED"   # 사실 검사를 새로 놓친 다시 쓰기는 버린다
+
+
+def test_compare_cli_reuses_a_saved_design(tmp_path):
+    from scripts import compare_explanation_v2 as cli
+    saved = {"domain": "paper", "content_id": "c1", "shadow": {"reasoning": {"reasoning": {"core_question": "q"}}}}
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps(saved), encoding="utf-8")
+    assert cli._saved_reasoning(str(path), "paper", "c1")(model="x") == {"core_question": "q"}
+    with pytest.raises(SystemExit):
+        cli._saved_reasoning(str(path), "paper", "other")

@@ -529,3 +529,44 @@ def cross_modal_conflict(narration: str, scene: str, structure: str, claim: str,
                 f"SOURCE CLAIM: {claim or '(none)'}",
                 CROSS_MODAL_CONFLICT_Q[0], CROSS_MODAL_CONFLICT_Q[1],
                 site="shadow_cross_modal", subject=subject)
+
+
+# ─── 쉬운 말 검사(2026-10-08, docs/연구_Jev배치확대_2026-10-08.md §3) ─────────────────────────────
+#  문턱(config.V2_HOOK_*_MIN·V2_TERM_UNEXPLAINED_MIN)이 아래 문구·상태 모양에 묶여 있다 — 바꾸면 다시 잰다.
+HOOK_JARGON_Q = (
+    "Would a typical adult viewer with no science background stumble on a word or term in this opening line "
+    "of a short video (a technical term, gene/cell/brand name, or jargon they would not know)?",
+    {"true": "the line contains at least one term an ordinary viewer would not understand without explanation "
+             "(e.g. 'cortex', 'long-range inhibitory neuron', 'Sst-Chodl', 'delta waves', 'GABAergic')",
+     "false": "every word is everyday language an ordinary viewer understands immediately"},
+)
+HOOK_SPOILER_Q = (
+    "Does this opening question of a short video already give away the answer it is asking about, instead of "
+    "leaving the viewer curious?",
+    {"true": "the question states the finding itself (e.g. 'X is caused by Y, right?'), so there is nothing "
+             "left to wonder about",
+     "false": "the question creates curiosity without revealing the finding"},
+)
+TERM_UNEXPLAINED_Q = (
+    "Does SENTENCE use a technical term (scientific/financial jargon, gene/cell/compound name, abbreviation) "
+    "that an ordinary viewer would not understand AND that is not explained in plain words in SENTENCE or in "
+    "EARLIER?",
+    {"true": "at least one such term is used without a plain-language explanation so far",
+     "false": "every term is everyday language, or each technical term has already been explained in plain words"},
+)
+
+
+def hook_plainness(line: str) -> dict[str, float] | None:
+    """첫 질문 → {jargon, spoiler} 확률(한 호출). 못 물었으면 None."""
+    if not str(line or "").strip():
+        return None
+    return ask(f"OPENING LINE (Korean): {line}", {"jargon": HOOK_JARGON_Q, "spoiler": HOOK_SPOILER_Q},
+               site="v2_hook_plain")
+
+
+def term_unexplained(sentence: str, earlier: str, subject: str = "") -> float | None:
+    """앞 문장까지 풀지 않은 전문용어가 이 문장에 있을 확률. 못 물었으면 None."""
+    if not str(sentence or "").strip():
+        return None
+    return noul(f"EARLIER: {earlier or '(none)'}\nSENTENCE: {sentence}", TERM_UNEXPLAINED_Q[0],
+                TERM_UNEXPLAINED_Q[1], site="v2_term_plain", subject=subject)

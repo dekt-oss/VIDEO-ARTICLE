@@ -166,6 +166,19 @@ def _save_directive(result: dict[str, Any]) -> dict[str, Any]:
     return {"id": v2_directive_bridge.save(result), "refused": ""}
 
 
+def _saved_reasoning(path: str | None, domain: str, content_id: str):
+    """저장된 결과의 생각 단계 결과를 돌려주는 가짜 호출. 다른 편의 설계를 실수로 쓰지 않게 id 를 대조한다."""
+    if not path:
+        return None
+    saved = json.loads(Path(path).read_text(encoding="utf-8"))
+    if saved.get("domain") != domain or saved.get("content_id") != content_id:
+        raise SystemExit(f"--reuse-reasoning: 다른 편의 결과입니다 ({saved.get('domain')}/{saved.get('content_id')})")
+    reasoning = ((saved.get("shadow") or {}).get("reasoning") or {}).get("reasoning")
+    if not isinstance(reasoning, dict) or not reasoning:
+        raise SystemExit("--reuse-reasoning: 저장된 생각 단계 결과가 없습니다")
+    return lambda **_: reasoning
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="정확한 콘텐츠 ID 한 건을 읽어 V2 Shadow 비교 자료를 로컬에 저장합니다."
@@ -188,6 +201,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--render-job-id", default=None,
                         help="최종 렌더 작업 id — 저장된 렌더 QA(render_jobs.qa)를 읽어 렌더 단계를 판정한다(읽기 전용)")
     parser.add_argument("--output-dir", default="artifacts/explanation-v2-phase11")
+    parser.add_argument("--reuse-reasoning", default=None, metavar="JSON",
+                        help="저장된 결과 JSON 의 생각 단계 설계를 다시 쓴다(생각 단계 모델 호출 0 — 2026-10-08)")
     args = parser.parse_args(argv)
 
     if args.with_directive and not args.with_model:
@@ -219,6 +234,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             with_directive=args.with_directive,
             report=report_row,
             title=title,
+            reasoning_caller=_saved_reasoning(args.reuse_reasoning, args.domain, content_id),
         )
     result["legacy_selection"] = selection
     render_qa = _render_qa(args.domain, args.render_qa, args.render_job_id)
