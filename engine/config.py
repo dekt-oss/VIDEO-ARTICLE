@@ -1110,13 +1110,18 @@ MECHANISM_START_SHARE_WARN: float = _get_float("MECHANISM_START_SHARE_WARN", 0.4
 #   ★ 언제 올리나: 지시서 **내용**을 바꾸는 변경(프롬프트·정규화·게이트·영상 배정)을 머지할 때. 날짜 문자열이고
 #     문자열 비교를 한다. web/lib/work/decision.ts 의 같은 이름 상수와 **같아야** 한다(tests/test_prompt_sync.py).
 #     프롬프트 문자열이 바뀌었는데 이 값을 안 올리면 tests/test_directive_engine_version.py 가 실패한다.
-DIRECTIVE_ENGINE_VERSION: str = "2026-09-29"
+DIRECTIVE_ENGINE_VERSION: str = "2026-10-08"
 
 # ★ 경고 요약 — 승인 화면 위에 크게 보이는 개수(engine/warning_triage.py). 실측 중앙값 56개 중 진짜
 #   고칠 것은 5~8개였다(docs/규칙통합_분석_2026-09-28.md §1-2). 나머지는 접는다.
 WARNING_SUMMARY_TOP_N: int = 3
 
 RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
+    # ★ 2026-10-08 운영자: 화면을 Jev 로 검증해 이해도·흥미·호감 높은 장면으로. 카메라만 움직이는 컷·잘게 쪼갠 stage 금지.
+    "photo_scene_dull",
+    "photo_scene_unclear",
+    "photo_motion_camera_only",
+    "photo_stages_fragmented",
     "photo_subject_dominates",
     "photo_narrative_no_mechanism",
     "photo_hook_visual_repeated",
@@ -2907,6 +2912,12 @@ JEV_WORLD_MULTI_PLACE_MIN: float = _get_float("JEV_WORLD_MULTI_PLACE_MIN", 0.7)
 #   0.6 이상 → O 9 · △ 5 · X 1. 리포트 컷은 걸린 것이 전부 O(0.6 이상 3/3). 0.7 로 올리면 X 0 이지만
 #   O 가 7 로 준다. 경고(사람이 원문 대조)라서 재현율을 조금 더 샀다. 숫자 3배 합성 양성: 0.6 이상 22/22.
 #   ★ 판정은 Claude 의 원문 대조다(운영자 판정 아님). 걸린 것만 봤으니 재현율은 상대값이다.
+# 화면 품질 Jev 문턱(2026-10-08 실측 — decide.SCREEN_QUALITY_Q 주석). 경고 → 재생성 1회 되먹임(차단 아님).
+JEV_SCREEN_ENGAGING_BELOW: float = _get_float("JEV_SCREEN_ENGAGING_BELOW", 0.35)
+JEV_SCREEN_UNDERSTAND_BELOW: float = _get_float("JEV_SCREEN_UNDERSTAND_BELOW", 0.35)
+JEV_SCREEN_CAMERA_ONLY_MIN: float = _get_float("JEV_SCREEN_CAMERA_ONLY_MIN", 0.8)
+# stage 당 평균 컷 수가 이보다 적으면 "잘게 쪼갰다"(문장마다 새 영상 → 뚝뚝 끊김).
+PHOTO_STAGE_MIN_AVG_CUTS: float = _get_float("PHOTO_STAGE_MIN_AVG_CUTS", 1.6)
 JEV_UNSUPPORTED_CLAIM_MIN: float = _get_float("JEV_UNSUPPORTED_CLAIM_MIN", 0.6)
 JEV_GROUNDING_REPORT_ENABLED: bool = _get_bool("JEV_GROUNDING_REPORT_ENABLED", True)
 JEV_GROUNDING_PAPER_ENABLED: bool = _get_bool("JEV_GROUNDING_PAPER_ENABLED", True)   # 2026-09-30 운영자 "논문에도"

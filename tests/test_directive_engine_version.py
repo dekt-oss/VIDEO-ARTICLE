@@ -20,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # ★ 프롬프트를 바꿨으면: config.DIRECTIVE_ENGINE_VERSION 과 web/lib/work/decision.ts 의 같은 상수를 오늘 날짜로
 #   올리고, 아래 두 값을 새로 적는다(실패 메시지가 새 지문을 알려 준다).
-RECORDED = {"version": "2026-09-29", "prompt_fingerprint": "b2a7380b85a3fc99"}
+RECORDED = {"version": "2026-10-08", "prompt_fingerprint": "3fa508a2138d5c49"}
 
 
 def _fingerprint() -> str:
