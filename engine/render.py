@@ -192,6 +192,26 @@ def take_placeholder_fallbacks() -> list[Any]:
     return out
 
 
+# 영상(Veo)으로 만들려던 컷이 실패해 **스틸로 대신 나간** 컷 번호(2026-10-08 리뷰). 그동안은 원장 status=fallback 에만
+# 남아 렌더는 "완료"로 보였다 — 운영자는 움직여야 할 컷이 멈춰 있는 이유를 알 수 없었다.
+VIDEO_FALLBACKS: list[Any] = []
+
+
+def flag_video_fallbacks(status: str, reasons: list[str], qa: dict[str, Any] | None = None
+                         ) -> tuple[str, list[str]]:
+    """영상이 스틸로 바뀐 컷이 있으면 경고로 올리고, '완료'는 '사람 확인(degraded)'으로 낮춘다. 두 공장이 같이 쓴다.
+    빈 화면(placeholder)과 달리 발행은 가능하다 — 보고 괜찮으면 승인한다."""
+    cuts = list(dict.fromkeys(VIDEO_FALLBACKS))
+    VIDEO_FALLBACKS.clear()
+    if not cuts:
+        return status, reasons
+    tag = "video_to_still_cuts:" + ",".join(str(x) for x in cuts)
+    if qa is not None:
+        qa.setdefault("warnings", []).append(tag)
+        qa["video_to_still_cuts"] = cuts
+    return ("degraded" if status == "done" else status), [*reasons, tag]
+
+
 def fail_if_placeholders(status: str, reasons: list[str], qa: dict[str, Any] | None = None
                          ) -> tuple[str, list[str]]:
     """placeholder 컷이 하나라도 있으면 **failed** 다 — 빈 화면은 발행할 수 없다.
@@ -1045,6 +1065,7 @@ def _gen_cut_assets(cut: dict[str, Any], header: dict[str, Any], work_dir: str, 
                     log.warning("컷 %s 마지막 프레임 추출 실패 — 연쇄 끊김(무시): %s",
                                 cut.get("cut_no"), exc)
             return clip_path, "clip", aud_path, measured, cost + c, words
+        VIDEO_FALLBACKS.append(cut.get("cut_no") or (idx + 1))
         return img_path, "image", aud_path, measured, cost + c, words
 
     wants_clip = config.ANIMATION_ENGINE != "off" and \
@@ -1782,6 +1803,7 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     #   잘못됐는지 보려면 영상을 봐야 하는데, 주소가 없으면 진단이 불가능하다.
     status, reasons = rm.terminal_status(board_qa)
     status, reasons = fail_if_placeholders(status, reasons, qa)   # 빈 화면은 발행 불가(2026-09-24)
+    status, reasons = flag_video_fallbacks(status, reasons, qa)   # 영상→스틸 대체를 드러낸다(2026-10-08)
     db.update_render_job(job_id, status=status, progress=100,
                          output_url=url, cost_estimate=spent["cost"], qa=qa,
                          error_log="; ".join(reasons)[:1000] or None,

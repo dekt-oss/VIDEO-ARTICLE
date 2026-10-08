@@ -210,6 +210,10 @@ MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", "gemini-3.8-flash")            # �
 #   V2 대본·다듬기·검증관 모델. 기본은 운영 대본·자기검증과 같은 모델(바꾸지 않는다). 검증관은 작성 모델과 달라야 한다(§9.4).
 MODEL_V2_NARRATION: str = os.getenv("MODEL_V2_NARRATION", MODEL_SCRIPT)
 MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
+#   Gemini 가 402(결제 필요)로 거절하면 텍스트 호출을 이 모델로 대신한다(2026-10-08 운영자 지시). 비우면 대체 없음.
+#   그림·영상 생성은 대체가 없다(deepseek 는 텍스트 전용) — 그쪽 402 는 그대로 실패한다.
+LLM_PAYMENT_FALLBACK_MODEL: str = os.getenv("LLM_PAYMENT_FALLBACK_MODEL", "deepseek-v4-pro")
+LLM_PAYMENT_FALLBACK_TOKEN_SCALE: float = _get_float("LLM_PAYMENT_FALLBACK_TOKEN_SCALE", 2.4)
 #   V2 검증관 백엔드(2026-10-07 운영자 "검증을 더 저렴한 모델로 — jev 쓰면 되잖아"). jev = 문장마다 Jev 근거 판정
 #   (Fact Sheet + 논문/리포트 메타와 대조, 한 편 1센트 안팎). llm = MODEL_V2_CRITIC(Gemini 2.5 Pro 한 편 약 $0.1).
 #   Jev 는 절 나누기·위반 종류(인과 강화·범위 확대)를 따로 이름 붙이지 못한다 — "근거를 넘었나" 하나만 본다.
@@ -1849,7 +1853,10 @@ RENDER_QA_MAX_SILENCE_MS: int = _get_int("RENDER_QA_MAX_SILENCE_MS", 250)  # 이
 RENDER_QA_END_BLACK_MAX_SEC: float = float(os.getenv("RENDER_QA_END_BLACK_MAX_SEC", "0.3"))  # 끝 검은프레임 허용
 RENDER_QA_PEAK_CEILING_DB: float = float(os.getenv("RENDER_QA_PEAK_CEILING_DB", "-0.5"))  # 이보다 크면 클리핑 위험
 RENDER_QA_MIN_SEC: int = 20          # 이보다 짧으면 렌더 이상(길이 게이트)
-RENDER_QA_MAX_SEC: int = 100         # 이보다 길면 렌더 이상
+# ★ 2026-10-08 운영자: "최대길이는 안 바꿉니다. 100초 넘으면 오류라고 보는 룰을 수정하세요." V2 대본은 120초까지
+#   허용(V2_TARGET_MAX_SEC)인데 렌더 검사가 100초에서 실패로 처리했다. 오류 경계는 **유튜브 쇼츠 상한(180초)** 이다 —
+#   그보다 길면 쇼츠로 올라가지 않으니 진짜 이상이다. 그 안쪽 길이는 대본 단계가 정한다.
+RENDER_QA_MAX_SEC: int = _get_int("RENDER_QA_MAX_SEC", 180)
 # ── Q1 정지 화면(지시서 v3 §9 "3초 동일 프레임 검사" · §14-1 "3초 연속 빈 콘텐츠 0") ──
 # ★ 최종 mp4 에는 이 검사가 없었다(2026-09-03). 컷 후보에는 freezedetect 가 있는데
 #   (CANDIDATE_FREEZE_*) 조립된 영상에는 없어서, 화면이 멈춘 채로 나가도 QA 가 통과시켰다.
@@ -1879,7 +1886,9 @@ HEADER_HOOK_SIZE: int = 46          # 상단 후킹(부제) 폰트
 # 헤드 부제(후킹) 강조색 — 노랑(#FFE000). ASS 인라인 색 &HBBGGRR&. 제목(흰색)과 대비로 특징↑.
 HEADER_HOOK_COLOR_ASS: str = "&H00E0FF&"
 # BGM(무드 라이브러리 트랙 or 플레이스홀더 톤) + 나레이션 구간 자동 더킹(sidechain).
-BGM_ENABLED: bool = _get_bool("BGM_ENABLED", True)
+# ★ 2026-10-08 운영자 지시로 기본 꺼짐: 지금 "BGM"은 220Hz 사인 톤 플레이스홀더라(assemble.build_bgm_tone_command)
+#   "웅" 하는 단음이 영상 내내 깔렸다. 저작권 없는 실제 트랙이 생기면 그때 켠다.
+BGM_ENABLED: bool = _get_bool("BGM_ENABLED", False)
 BGM_VOLUME: float = 0.18            # 기본 BGM 볼륨(나레이션 대비 낮게)
 BGM_DUCK_THRESHOLD: float = 0.05    # sidechaincompress threshold
 BGM_DUCK_RATIO: int = 8             # 나레이션 구간 감쇠 비율

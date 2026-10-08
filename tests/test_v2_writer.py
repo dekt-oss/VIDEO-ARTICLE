@@ -92,7 +92,10 @@ def test_directive_is_made_by_the_existing_generator_from_the_v2_script(writer_o
                        with_directive=True, directive_generator=generator)
     assert result["phase_status"]["production_generator"] == "READY"
     assert drafts[0]["script_md"].startswith("소리로 세포가") and len(drafts[0]["video_prompts"]) == 3
-    assert "narration_lock" not in drafts[0]
+    # 2026-10-08: 검사를 통과한 V2 대사는 지시서에서 글자 그대로 고정된다(지시서가 다듬지 못하게).
+    assert drafts[0]["narration_lock"]["source"] == "v2_writer"
+    assert drafts[0]["script_md"] == "\n\n".join(
+        ["소리로 세포가 더 빨리 아물까요?", "압력이 높아지면 구조가 바뀝니다.", "그래서 압력이 열쇠입니다."])
 
 
 # ─── 2026-10-07 실측 후속: 맞는 사실이 막히지 않게, 검증은 Jev 로 ───────────────────────────────────
@@ -326,3 +329,33 @@ def test_crowded_scene_is_fed_back_and_the_rule_is_given_up_front():
     assert out["findings"] == ["scene_crowded"]                    # 0.82(운영자가 좋다고 한 장면)는 건드리지 않는다
     assert "SC03" in out["feedback"][0] and "이름 하나·숫자 하나" in out["feedback"][0]
     assert "이름(회사·기관·사람) 하나, 숫자 하나까지만" in v2_writer.design_instruction(_reasoning())
+
+
+def test_v2_directive_locks_narration_and_passes_mechanism_hints():
+    from engine import cut_skeleton, v2_directive_bridge
+    seen = []
+    script = {"script_md": "**Scene 1 (problem / HOOK)**\n소리가 세포를 아물게 할까요?", "video_flow": {},
+              "scenes": [{"scene": 1, "narration_ko": "소리가 세포를 아물게 할까요?", "evidence_role": "connective"},
+                         {"scene": 2, "narration_ko": "음파가 콜라겐을 흔들어 세포가 신호로 바꿔요.",
+                          "evidence_role": "mechanism"}]}
+    out = v2_directive_bridge.generate_from_script(
+        "paper", script, {"fact_sheet": {}},
+        generator=lambda draft: seen.append(draft) or {"header": {"narration_lock": {"status": "LOCKED"}}, "cuts": []})
+    draft = seen[0]
+    assert "Scene 1" not in draft["script_md"]                  # 머리표가 대사로 고정되면 안 된다
+    assert cut_skeleton.lock_hints(draft) == [{"text": "음파가 콜라겐을 흔들어 세포가 신호로 바꿔요.", "hint": "MECHANISM"}]
+    assert out["narration_lock"] == {"status": "LOCKED"}
+
+
+def test_video_fallbacks_are_flagged_and_downgrade_done():
+    from engine import render
+    render.VIDEO_FALLBACKS[:] = [3, 3, 7]
+    qa: dict = {}
+    status, reasons = render.flag_video_fallbacks("done", [], qa)
+    assert status == "degraded" and reasons == ["video_to_still_cuts:3,7"] and qa["video_to_still_cuts"] == [3, 7]
+    assert render.flag_video_fallbacks("done", [], {}) == ("done", [])     # 비워졌다 — 다음 작업에 새지 않는다
+
+
+def test_render_length_limit_is_the_shorts_cap_and_bgm_tone_is_off():
+    assert config.RENDER_QA_MAX_SEC == 180 and config.RENDER_QA_MAX_SEC > config.V2_TARGET_MAX_SEC
+    assert config.BGM_ENABLED is False

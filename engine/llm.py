@@ -412,6 +412,16 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise JSONParseError(str(exc)) from exc
 
 
+# 결제 실패(402)한 Gemini 모델 — 프로세스가 살아 있는 동안 기억한다(워커 한 번 실행 = 한 프로세스).
+_PAYMENT_FAILED: set[str] = set()
+
+
+def _payment_fallback_tokens(mt: int) -> int:
+    """deepseek 는 같은 일에 Gemini 의 약 2.4배 토큰을 쓴다(config.LLM_PAPER_SCRIPT_MAX_TOKENS 주석 실측) — 상한도 키운다.
+    쓴 만큼만 과금되므로 상한을 키워도 비용은 늘지 않는다. 잘리면 그게 더 비싸다(다시 돌려야 한다)."""
+    return max(mt, min(int(mt * config.LLM_PAYMENT_FALLBACK_TOKEN_SCALE), config.LLM_DIRECTIVE_MAX_TOKENS))
+
+
 def call_json(
     *, model: str, system: str, user: str, max_tokens: Optional[int] = None,
     salvage_truncated: bool = False,
@@ -437,14 +447,28 @@ def call_json(
     #   다시 기다리지 않게. 재시도의 목적은 **파싱 실패 복구**이므로, 망가진 응답을 낸 쪽을
     #   다시 부르는 것이 맞다.
     state: dict[str, Any] = {}
+    payment_fallback = config.LLM_PAYMENT_FALLBACK_MODEL
     for attempt in range(config.LLM_JSON_RETRY + 1):
         try:
             if state.get("provider"):
                 raw = _create(_client(), model=state["provider"], system=system,
                               user=user, max_tokens=mt)
+            elif backend == "gemini" and model in _PAYMENT_FAILED and payment_fallback:
+                raw = _deepseek_create(model=payment_fallback, system=system, user=user,
+                                       max_tokens=_payment_fallback_tokens(mt))
             elif backend == "gemini":
-                raw = _gemini_text(model=model, system=system, user=user, max_tokens=mt,
-                                   state=state)
+                try:
+                    raw = _gemini_text(model=model, system=system, user=user, max_tokens=mt,
+                                       state=state)
+                except httpx.HTTPStatusError as exc:
+                    # ★ 402(결제 필요)만 갈아탄다(2026-10-08 운영자 "제미나이가 결제실패로 안 돌아갈 경우 딥시크로
+                    #   대체"). 다른 4xx(키 오류·모델명 오타)는 종전대로 그대로 올린다 — 설정 오류를 덮으면 안 된다.
+                    if exc.response is None or exc.response.status_code != 402 or not payment_fallback:
+                        raise
+                    _PAYMENT_FAILED.add(model)     # 이 실행 동안은 다시 묻지 않는다(매번 402 를 받으러 가지 않게)
+                    log.warning("gemini 402(결제 필요: %s) → %s 로 대체", model, payment_fallback)
+                    raw = _deepseek_create(model=payment_fallback, system=system, user=user,
+                                           max_tokens=_payment_fallback_tokens(mt))
             elif backend == "deepseek":
                 raw = _deepseek_create(model=model, system=system, user=user, max_tokens=mt)
             else:

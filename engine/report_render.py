@@ -185,6 +185,7 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     status, reasons = render_manifest.terminal_status(board_qa)
     # ★ 빈 화면(placeholder 컷)은 failed — QA 가 mp4 신호만 봐서 놓쳤던 자리(2026-09-24, render 미러).
     status, reasons = render.fail_if_placeholders(status, reasons, qa)
+    status, reasons = render.flag_video_fallbacks(status, reasons, qa)   # 영상→스틸 대체를 드러낸다(render 미러)
     report_db.update_report_render_job(job_id, status=status, progress=100,
                                        output_url=url, cost_estimate=spent["cost"],
                                        qa=qa, error_log="; ".join(reasons)[:1000] or None,
