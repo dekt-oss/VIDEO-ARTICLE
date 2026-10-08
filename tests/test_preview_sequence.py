@@ -63,4 +63,5 @@ def test_it_refuses_to_spend_without_yes():
 
 def test_output_paths_are_absolute():
     """★ 상대 경로를 주면 ffmpeg 가 concat 목록의 경로를 두 번 이어 붙여 죽는다(실측)."""
-    assert "/ args.directive_id[:8]).resolve()" in SRC
+    # 2026-10-08: 컷 범위(--cuts)면 폴더 이름에 범위가 붙는다 — 그래도 끝은 .resolve() 다.
+    assert '/ (args.directive_id[:8] + (f"-cuts{args.cuts}" if args.cuts else ""))).resolve()' in SRC
