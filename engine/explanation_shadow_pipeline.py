@@ -398,8 +398,13 @@ def _run(
     return result
 
 
+def bridge_saved_writer(result: dict[str, Any], legacy_draft: Any, report: Any = None, generator: Any = None) -> None:
+    """저장된 V2 결과(대본 확정본)에서 지시서만 만든다 — 대본을 다시 쓰지 않는다(2026-10-08, 운영자가 고른 대본 그대로)."""
+    _bridge_writer(result, legacy_draft, report, generator)
+
+
 def _bridge_writer(result: dict[str, Any], legacy_draft: Any, report: Any, generator: Any) -> None:
-    """기존 작성기가 쓴 V2 대본 → 기존 지시서 생성기(대사 고정 없음)."""
+    """기존 작성기가 쓴 V2 대본 → 기존 지시서 생성기(대사 글자 그대로 고정 — v2_directive_bridge.generate_from_script)."""
     shadow = result["shadow"]
     try:
         shadow["generated"] = v2_directive_bridge.generate_from_script(

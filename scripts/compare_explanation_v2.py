@@ -166,6 +166,42 @@ def _save_directive(result: dict[str, Any]) -> dict[str, Any]:
     return {"id": v2_directive_bridge.save(result), "refused": ""}
 
 
+def _from_saved_script(args, content_id, draft, directive, selection, report_row) -> int:
+    """저장된 통과본 대본 → 지시서(+저장). 대본은 한 글자도 다시 쓰지 않는다."""
+    saved = json.loads(Path(args.reuse_script).read_text(encoding="utf-8"))
+    if saved.get("domain") != args.domain or saved.get("content_id") != content_id:
+        raise SystemExit(f"--reuse-script: 다른 편의 결과입니다 ({saved.get('domain')}/{saved.get('content_id')})")
+    if saved.get("run_status") != "READY" or not (saved.get("shadow") or {}).get("writer"):
+        raise SystemExit(f"--reuse-script: 통과한 V2 대본이 아닙니다(run_status={saved.get('run_status')})")
+    result = saved
+    result["reused_script_from"] = str(args.reuse_script)
+    result["shadow"].pop("generated", None)
+    result["shadow"].pop("generated_error", None)
+    with count_ledger_writes() as writes:
+        explanation_shadow_pipeline.bridge_saved_writer(result, draft, report_row)
+    result["legacy_selection"] = selection
+    result["legacy"] = result.get("legacy") or {}
+    result["publish_gate"] = publish_gate_v2.evaluate(result, None)
+    saved_row = _save_directive(result) if args.save_directive else {}
+    result["saved_directive"] = saved_row
+    result["side_effects"] = {"database_writes": {**dict(writes), "directive_inserts": 1 if saved_row.get("id") else 0},
+                              "approvals": 0, "queue_inserts": 0, "render_calls": 0}
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path, md_path = _output_paths(output_dir, args.domain, content_id, True)
+    json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    md_path.write_text(explanation_shadow_pipeline.render_markdown(result), encoding="utf-8")
+    generated = (result["shadow"].get("generated") or {})
+    print(json.dumps({"production_generator": result["phase_status"].get("production_generator"),
+                      "generated_error": result["shadow"].get("generated_error"),
+                      "cuts": (generated.get("trace") or {}).get("cuts"),
+                      "narration_lock": generated.get("narration_lock"),
+                      "block_reasons": generated.get("block_reasons"),
+                      "saved_directive": saved_row or None, "json": str(json_path), "markdown": str(md_path),
+                      **result["side_effects"]}, ensure_ascii=False, default=str))
+    return 0
+
+
 def _saved_reasoning(path: str | None, domain: str, content_id: str):
     """저장된 결과의 생각 단계 결과를 돌려주는 가짜 호출. 다른 편의 설계를 실수로 쓰지 않게 id 를 대조한다."""
     if not path:
@@ -201,6 +237,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--render-job-id", default=None,
                         help="최종 렌더 작업 id — 저장된 렌더 QA(render_jobs.qa)를 읽어 렌더 단계를 판정한다(읽기 전용)")
     parser.add_argument("--output-dir", default="artifacts/explanation-v2-phase11")
+    parser.add_argument("--reuse-script", default=None, metavar="JSON",
+                        help="저장된 결과 JSON 의 V2 대본(통과본)으로 지시서만 만든다 — 대본 모델 호출 0. --with-directive 와 함께")
     parser.add_argument("--reuse-reasoning", default=None, metavar="JSON",
                         help="저장된 결과 JSON 의 생각 단계 설계를 다시 쓴다(생각 단계 모델 호출 0 — 2026-10-08)")
     args = parser.parse_args(argv)
@@ -219,6 +257,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     title = (paper_title(content_id) if args.domain == "paper" and args.with_model
              else f"{(report_row or {}).get('broker') or ''} · {(report_row or {}).get('title') or ''}"
              if report_row else "")
+    if args.reuse_script:
+        if not args.with_directive:
+            parser.error("--reuse-script 는 --with-model --with-directive 와 함께만 쓸 수 있습니다")
+        return _from_saved_script(args, content_id, draft, directive, selection, report_row)
     with count_ledger_writes() as writes:
         result = explanation_shadow_pipeline.run(
             domain=args.domain,
