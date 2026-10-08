@@ -51,3 +51,28 @@ def test_fragmented_stages_are_measured_like_the_renderer(monkeypatch):
         c["resolved_visual_plan"] = {"stage_ref": "S1" if c["cut_no"] <= 3 else "S2"}
     assert not any(x.startswith("photo_stages_fragmented")
                    for x in pc.evaluate({"hook_ko": "훅"}, cuts, None)["warnings"])
+
+
+def test_multi_cut_stage_without_varied_beats_is_flagged(monkeypatch):
+    monkeypatch.setattr(decide, "enabled", lambda: False)
+    cuts = _cuts()
+    for c in cuts:
+        c["resolved_visual_plan"] = {"stage_ref": "S1" if c["cut_no"] <= 3 else "S2"}
+    cuts[3]["temporal_plan"] = [{"camera": "PAN"}, {"camera": "DOLLY_IN"}, {"camera": "TRACK"}]
+    header = {"hook_ko": "훅", "version_type": "photo",
+              "visual_sequences": [{"sequence_id": "Q", "stages": [{"stage_id": "S1", "cut_refs": [1, 2, 3]},
+                                                                    {"stage_id": "S2", "cut_refs": [4, 5, 6]}]}]}
+    w = pc.evaluate(header, cuts, None)["warnings"]
+    assert "photo_consecutive_same_view:1" in w          # S1 첫 컷(1)은 비트가 없다 / S2 첫 컷(4)은 통과
+    assert "photo_consecutive_same_view" in config.RETRYABLE_QUALITY_WARNINGS
+
+
+def test_photo_image_prompt_asks_for_one_frame():
+    from engine.providers import image
+    p = image.build_image_prompt({"cut_no": 1, "visual_role": "MECHANISM", "visual_prompt": "cells"},
+                                 {"version_type": "photo"}) if hasattr(image, "build_image_prompt") else None
+    if p is None:
+        import inspect
+        assert "PHOTO_SINGLE_FRAME_CLAUSE" in inspect.getsource(image)
+    else:
+        assert "no panels" in p

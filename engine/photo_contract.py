@@ -58,6 +58,7 @@ WARNING_REASONS: tuple[str, ...] = (
     "photo_scene_unclear",             # 화면이 나레이션 이해를 돕지 않음(Jev, 2026-10-08)
     "photo_motion_camera_only",        # 영상 컷인데 카메라만 움직인다(Jev, 2026-10-08)
     "photo_stages_fragmented",         # stage 를 문장마다 새로 열어 화면이 뚝뚝 끊긴다(2026-10-08)
+    "photo_consecutive_same_view",     # 여러 컷 stage 의 영상에 문장별 비트·카메라 변화가 없다 — 같은 구도 반복(2026-10-08)
     "photo_side_by_side_layout",       # 한 장면 안에서 좌·우로 갈라 견준다(분할은 아니다)
     "photo_role_balance_off",          # 도해/실사 비율이 권장에서 벗어남
     "photo_video_cut_count_off",       # 영상 컷 수가 권장 범위 밖
@@ -1630,6 +1631,26 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
         if _groups and _avg < config.PHOTO_STAGE_MIN_AVG_CUTS:
             warns.append(f"photo_stages_fragmented:{_avg:.1f}")
 
+    # ★ [같은 구도 반복] 2026-10-08 실측(음파 1/4 렌더 컷 4~6): 세 문장이 한 stage 영상의 구간으로 나갔는데 그 stage 첫 컷에
+    #   motion·temporal_plan 이 비어 있어(종전 규칙은 도해·첫·끝 컷에만 적게 했다) 같은 구도가 세 번 이어졌다.
+    #   stage 하나가 영상 하나이므로 여러 컷 stage 의 첫 컷은 문장 수만큼(최대 3) 비트와 서로 다른 카메라를 가져야 한다.
+    from . import stage_render
+    if n >= 2 and stage_render.enabled({**header, "version_type": header.get("version_type") or "photo"}):
+        flat_view = []
+        by_no = {int(c.get("cut_no") or 0): c for c in cuts}
+        for st in [st for seq in (header.get("visual_sequences") or []) if isinstance(seq, dict)
+                   for st in (seq.get("stages") or []) if isinstance(st, dict)]:
+            idx = [int(x) for x in st.get("cut_refs") or [] if int(x) in by_no]
+            if len(idx) < 2:                  # 지시서가 **여러 컷을 한 stage 로 선언한** 경우만 본다(실측 컷 4~6)
+                continue
+            lead = by_no[idx[0]]
+            beats = [b for b in (lead.get("temporal_plan") or []) if isinstance(b, dict)]
+            cams = {str(b.get("camera") or "").upper() for b in beats}
+            if len(beats) < min(len(idx), 3) or len(cams) < 2:
+                flat_view.append(str(lead.get("cut_no")))
+        if flat_view:
+            warns.append("photo_consecutive_same_view:" + ",".join(flat_view[:6]))
+
     # ★ [수치를 사물 개수·높이로 옮겼다] 2026-09-27. 운영자 판정(09-24): "4GW" 를 엔진 네 대로,
     #   13.7조 원을 블록 막대로 그리면 억지 비교다 — 수치는 카드가 쓴다. 어휘로는 못 잡아서
     #   (정상 장면에도 "four engines" 가 나온다) 나레이션 수치와 장면을 Jev 가 대조한다.
@@ -2419,6 +2440,11 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 "- **카메라만 움직이는 영상 컷이다.** motion_prompt 에 줌·팬·푸시인만 있고 화면 속 주인공은 가만히 있다 —"
                 " 컷마다 줌이 되풀이돼 끊기는 슬라이드쇼가 된다(운영자 지적). motion_prompt 를 **주인공의 행동·상태 변화**로"
                 " 다시 써라(세포가 이동해 빈틈이 좁아진다, 파동이 세포층을 지나며 막이 출렁인다). 카메라는 그 행동을 따라갈 때만.")
+        if "photo_consecutive_same_view" in wcodes:
+            wfix.append(
+                "- **여러 문장이 한 영상인데 구도가 그대로다.** 표시된 stage 첫 컷에 temporal_plan 을 **그 stage 문장 수만큼**"
+                " 비트로 적고, 비트마다 다른 카메라(PAN·TRACK·DOLLY_IN…)와 변화를 줘라 — 전체 → 가까이 → 세포 속으로."
+                " motion_prompt 도 주인공의 행동으로 적는다.")
         if "photo_stages_fragmented" in wcodes:
             wfix.append(
                 "- **stage 를 문장마다 새로 열었다 — 화면이 3초마다 끊긴다.** 같은 주인공이 이어지는 문장 2~4개를 **한 stage 의"

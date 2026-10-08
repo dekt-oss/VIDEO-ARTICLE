@@ -11,7 +11,7 @@ export type DirectiveStatus = "draft" | "approved" | "rendering" | "rendered" | 
 /** 지금 엔진 버전 — engine/config.py 의 DIRECTIVE_ENGINE_VERSION 과 **같아야** 한다(tests/test_prompt_sync.py).
  *  이보다 옛 엔진으로 만든 지시서는 "재생성 후 렌더"를 띄운다(2026-09-29 — 발뒤꿈치 편이 수정 7분 전
  *  지시서로 렌더돼 $5.19 를 썼다). 날짜 문자열이라 문자열 비교로 충분하다. */
-export const DIRECTIVE_ENGINE_VERSION = "2026-10-08";
+export const DIRECTIVE_ENGINE_VERSION = "2026-10-09";
 
 /** 헤더에 찍힌 엔진 버전이 지금보다 옛 것인가. 값이 없으면(2026-09-29 이전 지시서) 옛 것이다. */
 export function isOutdatedEngine(engineVersion: string | null | undefined): boolean {

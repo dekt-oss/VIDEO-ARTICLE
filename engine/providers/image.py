@@ -137,8 +137,12 @@ def _build_image_prompt(cut: dict[str, Any], header: dict[str, Any],
     #   그려졌다. 공통 상수를 건드리면 comic 출력이 바뀌므로(바이트 불변 계약) 여기서만 덧붙인다.
     if version == "explainer":
         style_negative += f", {config.EXPLAINER_IMAGE_NEGATIVE_PROMPT}"
+    # ★ 실사형은 **한 장면 한 프레임**(2026-10-08 시험 그림 실측: 사건 셋을 적은 지시문이 4칸·3칸 만화처럼 갈렸다 —
+    #   영상으로 움직이면 칸이 그대로 보인다). 긍정 어휘가 먼저, 부정어는 보조다(화풍 실측과 같은 교훈).
+    #   화풍 문자열(VISUAL_ROLE_STYLE)은 건드리지 않는다 — 이것은 화풍이 아니라 구도 규칙이다.
+    single = f", {config.PHOTO_SINGLE_FRAME_CLAUSE}" if version == "photo" and config.PHOTO_SINGLE_FRAME_CLAUSE else ""
     # ⑤ Burn-in 금지(§5.3): 언어 텍스트가 이미지에 구워지면 언어 공유가 깨진다. 공통 negative 제약.
-    return (f"{body}, vertical 9:16 portrait aspect ratio, {quality}, "
+    return (f"{body}, vertical 9:16 portrait aspect ratio{single}, {quality}, "
             f"{config.BURN_IN_NEGATIVE_PROMPT}{style_negative}")
 
 

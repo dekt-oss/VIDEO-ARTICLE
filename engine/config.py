@@ -1110,7 +1110,7 @@ MECHANISM_START_SHARE_WARN: float = _get_float("MECHANISM_START_SHARE_WARN", 0.4
 #   ★ 언제 올리나: 지시서 **내용**을 바꾸는 변경(프롬프트·정규화·게이트·영상 배정)을 머지할 때. 날짜 문자열이고
 #     문자열 비교를 한다. web/lib/work/decision.ts 의 같은 이름 상수와 **같아야** 한다(tests/test_prompt_sync.py).
 #     프롬프트 문자열이 바뀌었는데 이 값을 안 올리면 tests/test_directive_engine_version.py 가 실패한다.
-DIRECTIVE_ENGINE_VERSION: str = "2026-10-08"
+DIRECTIVE_ENGINE_VERSION: str = "2026-10-09"
 
 # ★ 경고 요약 — 승인 화면 위에 크게 보이는 개수(engine/warning_triage.py). 실측 중앙값 56개 중 진짜
 #   고칠 것은 5~8개였다(docs/규칙통합_분석_2026-09-28.md §1-2). 나머지는 접는다.
@@ -1122,6 +1122,7 @@ RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
     "photo_scene_unclear",
     "photo_motion_camera_only",
     "photo_stages_fragmented",
+    "photo_consecutive_same_view",
     "photo_subject_dominates",
     "photo_narrative_no_mechanism",
     "photo_hook_visual_repeated",
@@ -2275,6 +2276,11 @@ VISUAL_ROLE_STYLE: dict[str, str] = {
         "amber only on the part being explained, neutral studio backdrop"
     ),
 }
+# 실사형 이미지 구도 — 한 장면·한 시점(2026-10-08, providers/image.py 주석). 비우면 붙이지 않는다.
+PHOTO_SINGLE_FRAME_CLAUSE: str = os.getenv(
+    "PHOTO_SINGLE_FRAME_CLAUSE",
+    "one single continuous scene seen from one camera position filling the whole frame, "
+    "no panels, no split layout, no storyboard, no inset frames")
 # 역할별 부정어. 3D 도해는 사진처럼 되면 단면이 안 보이고, 실사는 일러스트가 섞이면 신뢰를 잃는다.
 # ★★ 2026-09-07 재작성. 두 역할이 **같은 것을 금지한다** — 화풍을 하나로 통일했으므로
 #   부정어도 하나여야 한다. 앞 버전은 정반대를 금지하고 있었다(MECHANISM 은 사진을,

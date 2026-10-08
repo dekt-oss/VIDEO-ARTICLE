@@ -51,6 +51,8 @@ export const BLOCK_LABEL: Record<string, string> = {
   photo_scene_unclear: "화면이 나레이션 이해를 돕지 않음",
   photo_motion_camera_only: "카메라만 움직이는 영상 컷(주인공의 행동으로)",
   photo_stages_fragmented: "stage 를 잘게 쪼개 화면이 뚝뚝 끊김(문장 2~4개를 한 stage 로)",
+  photo_consecutive_same_view: "한 영상 안 여러 문장이 같은 구도(문장마다 카메라·변화)",
+  photo_prompt_label_removed: "이미지 지시문의 라벨 구절을 코드가 지움",
   photo_number_as_objects: "수치를 물건 개수·높이로 그림(억지 비교 — 카드가 쓴다)",
   photo_cause_not_shown: "'~해서'의 원인이 화면에 없음(원인 장면을 앞에)",
   photo_hook_cut_too_long: "첫 컷 나레이션이 3초를 넘음(질문 한마디로 줄이기)",
