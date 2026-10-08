@@ -76,3 +76,14 @@ def test_photo_image_prompt_asks_for_one_frame():
         assert "PHOTO_SINGLE_FRAME_CLAUSE" in inspect.getsource(image)
     else:
         assert "no panels" in p
+
+
+def test_cell_diagram_images_get_cell_anatomy_and_one_frame():
+    import inspect
+    from engine.providers import image
+    assert image._CELL_WORDS.search("amber-highlighted fibroblast cells extend protrusions")
+    assert not image._CELL_WORDS.search("an excellent cancellation")
+    assert image._CELL_ANATOMY_WORDS.search("cells with round nuclei")
+    src = inspect.getsource(image)
+    assert "PHOTO_CELL_ANATOMY_CLAUSE" in src and "PHOTO_SINGLE_FRAME_CLAUSE" in src
+    assert "nucleus" in config.PHOTO_CELL_ANATOMY_CLAUSE and "no panels" in config.PHOTO_SINGLE_FRAME_CLAUSE

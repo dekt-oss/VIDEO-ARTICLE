@@ -2281,6 +2281,11 @@ PHOTO_SINGLE_FRAME_CLAUSE: str = os.getenv(
     "PHOTO_SINGLE_FRAME_CLAUSE",
     "one single continuous scene seen from one camera position filling the whole frame, "
     "no panels, no split layout, no storyboard, no inset frames")
+# 세포를 말하는 도해 컷에 코드가 붙이는 세포 생김새(2026-10-09, providers/image.py 주석). 비우면 붙이지 않는다.
+PHOTO_CELL_ANATOMY_CLAUSE: str = os.getenv(
+    "PHOTO_CELL_ANATOMY_CLAUSE",
+    "every cell drawn as a recognizable living cell: a soft rounded body with a translucent membrane and one round "
+    "nucleus visible inside, cells keep the same colour throughout")
 # 역할별 부정어. 3D 도해는 사진처럼 되면 단면이 안 보이고, 실사는 일러스트가 섞이면 신뢰를 잃는다.
 # ★★ 2026-09-07 재작성. 두 역할이 **같은 것을 금지한다** — 화풍을 하나로 통일했으므로
 #   부정어도 하나여야 한다. 앞 버전은 정반대를 금지하고 있었다(MECHANISM 은 사진을,

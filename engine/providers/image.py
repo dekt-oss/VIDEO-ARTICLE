@@ -6,6 +6,8 @@ placeholder 라벨은 CI 폰트 의존을 피하려 ASCII 만 쓴다(한글 자�
 
 from __future__ import annotations
 
+import re
+
 import base64
 import os
 from typing import Any
@@ -141,9 +143,19 @@ def _build_image_prompt(cut: dict[str, Any], header: dict[str, Any],
     #   영상으로 움직이면 칸이 그대로 보인다). 긍정 어휘가 먼저, 부정어는 보조다(화풍 실측과 같은 교훈).
     #   화풍 문자열(VISUAL_ROLE_STYLE)은 건드리지 않는다 — 이것은 화풍이 아니라 구도 규칙이다.
     single = f", {config.PHOTO_SINGLE_FRAME_CLAUSE}" if version == "photo" and config.PHOTO_SINGLE_FRAME_CLAUSE else ""
+    # ★ 세포를 말하는 도해 컷에는 **세포 생김새**를 코드가 붙인다(2026-10-09 샘플 실측: 컷7 프롬프트에 핵·막이 없어서
+    #   도해 화풍의 "simplified geometric forms" 가 이겼고 세포가 파란 벽돌과 나뭇가지가 됐다. 같은 날 핵·막을 적은
+    #   컷1 은 세포로 나왔다). 규칙(photo_prompt)으로 시켰는데 모델이 빠뜨렸다 — 기계가 확실히 하는 일은 기계가 한다.
+    if (version == "photo" and role == "MECHANISM" and config.PHOTO_CELL_ANATOMY_CLAUSE
+            and _CELL_WORDS.search(body) and not _CELL_ANATOMY_WORDS.search(body)):
+        single += f", {config.PHOTO_CELL_ANATOMY_CLAUSE}"
     # ⑤ Burn-in 금지(§5.3): 언어 텍스트가 이미지에 구워지면 언어 공유가 깨진다. 공통 negative 제약.
     return (f"{body}, vertical 9:16 portrait aspect ratio{single}, {quality}, "
             f"{config.BURN_IN_NEGATIVE_PROMPT}{style_negative}")
+
+
+_CELL_WORDS = re.compile(r"\b(?:cells?|fibroblasts?|neurons?|keratinocytes?|stem cells?|cell layer|monolayer)\b", re.I)
+_CELL_ANATOMY_WORDS = re.compile(r"\bnucle(?:us|i)\b", re.I)
 
 
 def _aspect_generation_config() -> dict[str, Any]:
