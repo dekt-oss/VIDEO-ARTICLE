@@ -74,6 +74,18 @@ def _validate_privacy(privacy: str | None) -> str:
     return p if p in config.YOUTUBE_ALLOWED_PRIVACY else config.YOUTUBE_DEFAULT_PRIVACY
 
 
+def publishable(job: dict | None) -> bool:
+    """올릴 수 있는 렌더인가 — 완료(done), 또는 '사람 확인(degraded)'을 운영자가 승인한 것(degraded_approved_at).
+
+    ★ 2026-10-09 실측: 대시보드 업로드 라우트는 degraded+승인을 허락하는데 이 워커는 done 만 봐서, 승인한 영상이
+      "완료된 렌더 mp4 가 없어 업로드 불가"로 늘 실패했다(음파 영문판). 두 경로가 같은 기준을 쓴다.
+    """
+    j = job or {}
+    if not j.get("output_url"):
+        return False
+    return j.get("status") == "done" or (j.get("status") == "degraded" and bool(j.get("degraded_approved_at")))
+
+
 def process_upload(req: dict) -> str:
     """upload_requests 1건 처리: 렌더 mp4 다운로드 → 유튜브 업로드 → published 기록. 반환: youtube_url."""
     from .providers import youtube  # 지연 임포트(googleapiclient 는 이 워커에만 필요)
@@ -82,7 +94,7 @@ def process_upload(req: dict) -> str:
     job = db.get_render_job(req["render_job_id"])
     if not job:
         raise ValueError(f"render_job 없음: {req['render_job_id']}")
-    if job.get("status") != "done" or not job.get("output_url"):
+    if not publishable(job):
         raise ValueError("완료된 렌더 mp4 가 없어 업로드 불가")
 
     lang = req.get("lang") or job.get("lang") or config.DEFAULT_LANG

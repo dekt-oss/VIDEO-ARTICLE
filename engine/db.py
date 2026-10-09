@@ -711,7 +711,7 @@ def insert_generation_attempt(row: dict[str, Any]) -> None:
 def get_render_job(job_id: str) -> dict[str, Any] | None:
     """업로드 워커 입력용: 렌더 mp4 URL·언어·지시서."""
     resp = client().table("render_jobs").select(
-        "id, directive_id, status, output_url, lang"
+        "id, directive_id, status, output_url, lang, degraded_approved_at"
     ).eq("id", job_id).maybe_single().execute()
     return resp.data if resp else None
 

@@ -108,7 +108,8 @@ def process_upload(req: dict) -> str:
     job = report_db.get_report_render_job(req["render_job_id"])
     if not job:
         raise ValueError(f"report_render_job 없음: {req['render_job_id']}")
-    if job.get("status") != "done" or not job.get("output_url"):
+    from .publish import publishable
+    if not publishable(job):
         raise ValueError("완료된 렌더 mp4 가 없어 업로드 불가")
 
     lang = req.get("lang") or job.get("lang") or config.DEFAULT_LANG
