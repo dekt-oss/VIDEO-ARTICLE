@@ -410,7 +410,7 @@ def update_report_render_job(
 
 def get_report_render_job(job_id: str) -> dict[str, Any] | None:
     resp = client().table("report_render_jobs").select(
-        "id, directive_id, status, output_url, lang"
+        "id, directive_id, status, output_url, lang, degraded_approved_at"
     ).eq("id", job_id).maybe_single().execute()
     return resp.data if resp else None
 
