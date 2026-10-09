@@ -110,17 +110,13 @@ def test_photo_never_builds_shots_from_stills_by_default():
     assert config.PHOTO_STILL_FALLBACK is False
 
 
-import shutil as _shutil
-import pytest as _pytest
-
-
-@_pytest.mark.skipif(_shutil.which("ffmpeg") is None, reason="ffmpeg 없음(CI)")
-def test_clip_frames_are_checked_and_failures_downgrade_the_render(tmp_path):
+def test_clip_frames_are_checked_and_failures_downgrade_the_render(tmp_path, monkeypatch):
     import subprocess
     from engine import render, still_check
     video = tmp_path / "s.mp4"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=gray:s=180x320:d=6",
-                    "-pix_fmt", "yuv420p", str(video)], check=True)
+    video.write_bytes(b"v")
+    # 프레임 추출은 ffmpeg 다 — CI 에는 ffmpeg 가 없다(건너뛰기 예산 12). 추출만 가짜로 갈아 끼운다.
+    monkeypatch.setattr(subprocess, "run", lambda argv, **k: open(argv[-1], "wb").write(b"png"))
     cuts = [{"cut_no": 15, "visual_prompt": "A person's hand with a small scrape rests beside a culture dish."},
             {"cut_no": 16, "visual_prompt": "The same hand lifts the culture dish toward the light."}]
     plan = {"indexes": [0, 1], "windows": [(0.0, 3.0), (3.0, 3.0)]}
