@@ -108,3 +108,33 @@ def test_photo_never_builds_shots_from_stills_by_default():
     """운영자 2026-10-09: 사진으로 영상 구성 금지 — 분할 스틸·영상 실패 사진 대체 둘 다 기본 꺼짐."""
     assert config.MECHANISM_SPLIT_BEFORE_AFTER is False
     assert config.PHOTO_STILL_FALLBACK is False
+
+
+def test_clip_frames_are_checked_and_failures_downgrade_the_render(tmp_path):
+    import subprocess
+    from engine import render, still_check
+    video = tmp_path / "s.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=gray:s=180x320:d=6",
+                    "-pix_fmt", "yuv420p", str(video)], check=True)
+    cuts = [{"cut_no": 15, "visual_prompt": "A person's hand with a small scrape rests beside a culture dish."},
+            {"cut_no": 16, "visual_prompt": "The same hand lifts the culture dish toward the light."}]
+    plan = {"indexes": [0, 1], "windows": [(0.0, 3.0), (3.0, 3.0)]}
+    calls = []
+
+    def asker(system, user, images):
+        calls.append(images[0])
+        return {"text_in_image": "scrape" not in user, "subject_present": True, "split_panels": False,
+                "reason": "fake writing on a page"}
+    still_check.CLIP_CHECK_FAILS.clear()
+    bad = still_check.check_clip_frames(str(video), plan, cuts, str(tmp_path), asker=asker)
+    assert [b["cut_no"] for b in bad] == [16] and len(calls) >= 2
+    qa: dict = {}
+    status, reasons = render.flag_clip_check("done", [], qa)
+    assert status == "degraded" and reasons == ["clip_check_failed_cuts:16"] and not still_check.CLIP_CHECK_FAILS
+
+
+def test_cached_images_are_not_rechecked():
+    import inspect
+    from engine import render
+    src = inspect.getsource(render._obtain_still)
+    assert "image_is_paid() and cost == 0.0" in src

@@ -2278,6 +2278,8 @@ VISUAL_ROLE_STYLE: dict[str, str] = {
 }
 # 실사형 영상 실패를 사진+카메라 이동으로 메울지(2026-10-09 운영자: "사진으로 영상 구성하지 말라" → 기본 False = 1회 재시도 후 렌더 중단).
 PHOTO_STILL_FALLBACK: bool = _get_bool("PHOTO_STILL_FALLBACK", False)
+# 렌더 직후 영상 프레임 검사(2026-10-09, still_check.check_clip_frames). 실패 컷은 기록 + 렌더를 사람 확인으로. 다시 사지 않는다.
+CLIP_CHECK_ENABLED: bool = _get_bool("CLIP_CHECK_ENABLED", True)
 # 같은 세계(world_id)를 이미 그렸으면 새 시퀀스의 NEW_WORLD 도 그 그림을 참조한다(2026-10-09, sequence_render 주석).
 SAME_WORLD_REFERENCE: bool = _get_bool("SAME_WORLD_REFERENCE", True)
 # 실사형 이미지 구도 — 한 장면·한 시점(2026-10-08, providers/image.py 주석). 비우면 붙이지 않는다.
