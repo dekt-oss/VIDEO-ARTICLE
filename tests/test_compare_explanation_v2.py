@@ -10,6 +10,12 @@ import pytest
 from scripts import compare_explanation_v2
 
 
+@pytest.fixture(autouse=True)
+def _no_db_title(monkeypatch):
+    """논문 제목 조회(paper_title)는 실제 DB 를 부른다 — 키가 없는 CI 에서 4개가 죽었다(2026-10-09). 테스트는 제목이 필요 없다."""
+    monkeypatch.setattr(compare_explanation_v2, "paper_title", lambda paper_id: "")
+
+
 class _Response:
     def __init__(self, data):
         self.data = data
