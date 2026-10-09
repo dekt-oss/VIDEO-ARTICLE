@@ -691,8 +691,14 @@ def split_before_after_applies(cut: dict[str, Any], header: dict[str, Any]) -> b
     선언하고 · 이어받을 앞 stage(continuity_from)가 있다. 참조 그림이 실제로 있는지는
     렌더 시점에 `_compose_split_still` 이 다시 본다(없으면 I2V 로 되돌아간다).
     """
+    seqs0 = (header or {}).get("visual_sequences")
     if not config.MECHANISM_SPLIT_BEFORE_AFTER:
-        return False
+        # 기본 꺼짐(2026-10-09 운영자). 예외: 지시서가 **이미 분할로 만든** stage 를 명시하면(keep_split_stages) 그 stage 만
+        #   분할을 유지한다 — 이미 산 그림을 버리고 영상을 다시 사지 않기 위해서다(운영자: "전반부는 수정하지 마, 돈 아까우니까").
+        keep = {str(x) for x in ((header or {}).get("keep_split_stages") or [])}
+        st0 = (visual_sequence.cut_to_stage(seqs0).get(int(cut.get("cut_no") or 0)) or {}) if isinstance(seqs0, list) else {}
+        if not keep or str(st0.get("stage_id") or "") not in keep:
+            return False
     if generation_spec.effective_visual_role(cut) != "MECHANISM":
         return False
     seqs = (header or {}).get("visual_sequences")
@@ -1694,7 +1700,8 @@ def render_directive_local(directive: dict[str, Any], out_path: str,
                               platform=platform or config.DEFAULT_PLATFORM,
                               overlays=overlays)
     assemble.assemble_full(cut_files, tmp, out_path, ass_text=ass, total_sec=total,
-                           duck_spans=duck_spans)
+                           duck_spans=duck_spans,
+                           transitions=stage_render.transitions(directive.get("cuts") or []))
     fit_qa = render_qa.evaluate_clip_fit(fit_log)
     log.info("렌더 완료(local): %s (lang=%s, 컷 %d, 자막 %d) 길이보정=%s",
              out_path, lang, len(cut_files), len(cues), fit_qa["strategy_counts"])
@@ -1777,7 +1784,8 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
                               overlays=overlays)
     with sm.stage(metrics, "assemble"):
         assemble.assemble_full(cut_files, work_dir, out_path, ass_text=ass, total_sec=total,
-                               duck_spans=duck_spans)
+                               duck_spans=duck_spans,
+                               transitions=stage_render.transitions(directive.get("cuts") or []))
 
     # §7 렌더 QA: 발행 전 실제 mp4 실검(끝 검은프레임·무음·클리핑·길이). 하드 실패는 로그+저장(사람이 승인 화면에서 확인).
     # + §3-6 길이 보정 QA: ratio>0.60 빨간 플래그 · pingpong 과다 노란 경고(렌더 차단은 아님).

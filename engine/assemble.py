@@ -439,6 +439,33 @@ def build_concat_command(list_path: str, out_path: str) -> list[str]:
     ]
 
 
+def build_crossfade_command(cut_files: list[str], durations: list[float], transitions: list[float],
+                            audio_src: str, out_path: str) -> list[str]:
+    """컷 영상을 이어 붙이되 경계마다 크로스페이드(transitions[k] 초, 0 이면 그냥 이음). **길이·음성은 그대로다.**
+
+    앞 묶음 끝을 마지막 프레임으로 t 초 늘리고(tpad clone) 그 t 초 동안 다음 컷과 겹친다 — xfade 결과 길이 =
+    앞 길이 + 다음 길이(겹친 만큼 줄지 않는다). 음성은 이미 이어 붙인 파일(audio_src)의 것을 그대로 쓴다.
+    """
+    n = len(cut_files)
+    argv = ["ffmpeg", "-y"]
+    for f in cut_files:
+        argv += ["-i", f]
+    argv += ["-i", audio_src]
+    parts = [f"[{i}:v]fps={config.ASSEMBLE_FPS},format=yuv420p,setsar=1,settb=AVTB[v{i}]" for i in range(n)]
+    cur, acc = "v0", float(durations[0])
+    for k in range(1, n):
+        t = float(transitions[k - 1]) if k - 1 < len(transitions) else 0.0
+        if t > 0:
+            parts.append(f"[{cur}]tpad=stop_mode=clone:stop_duration={t:.3f}[p{k}]")
+            parts.append(f"[p{k}][v{k}]xfade=transition=fade:duration={t:.3f}:offset={acc:.3f}[x{k}]")
+        else:
+            parts.append(f"[{cur}][v{k}]concat=n=2:v=1:a=0[x{k}]")
+        cur, acc = f"x{k}", acc + float(durations[k])
+    argv += ["-filter_complex", ";".join(parts), "-map", f"[{cur}]", "-map", f"{n}:a",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", out_path]
+    return argv
+
+
 def build_loudnorm_command(
     in_path: str, out_path: str, lufs: float = config.LOUDNESS_LUFS
 ) -> list[str]:
@@ -672,7 +699,8 @@ def build_speed_command(in_path: str, out_path: str, speed: float) -> list[str]:
 
 def assemble_full(cut_files: list[str], work_dir: str, out_path: str, *,
                   ass_text: str = "", bgm: bool = None, total_sec: float = 0.0,
-                  duck_spans: list[tuple[float, float]] | None = None) -> str:
+                  duck_spans: list[tuple[float, float]] | None = None,
+                  transitions: list[float] | None = None) -> str:
     """컷 mp4 → concat → (ASS 자막 번인) → (BGM 더킹)/loudnorm → 최종 mp4.
 
     ass_text 있으면 libass 로 자막 번인. bgm(기본 config.BGM_ENABLED) 이면 플레이스홀더 톤을
@@ -703,6 +731,17 @@ def assemble_full(cut_files: list[str], work_dir: str, out_path: str, *,
         f.write(build_concat_file(cut_files))
     stage = _os.path.join(work_dir, "_joined.mp4")
     run_ffmpeg(build_concat_command(list_path, stage))
+    # ★ 장면이 바뀌는 경계는 크로스페이드(2026-10-09 운영자 "뚝뚝 끊긴다"). 실패하면 종전 하드컷 그대로 간다 —
+    #   전환 하나 때문에 완성본을 잃지 않는다.
+    if transitions and any(t > 0 for t in transitions) and len(cut_files) == len(transitions) + 1:
+        faded = _os.path.join(work_dir, "_faded.mp4")
+        try:
+            durs = [probe_duration(p) for p in cut_files]
+            run_ffmpeg(build_crossfade_command(cut_files, durs, transitions, stage, faded))
+            stage = faded
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger("engine").warning("크로스페이드 실패 — 하드컷으로 조립: %s", str(exc)[:200])
 
     if ass_text.strip():
         ass_path = _os.path.join(work_dir, "subs.ass")

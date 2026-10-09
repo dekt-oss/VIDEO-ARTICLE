@@ -153,7 +153,8 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
                               footer_from=_footer_start(cut_map, total), **band_margins)
     with sm.stage(metrics, "assemble"):
         assemble.assemble_full(cut_files, work_dir, out_path, ass_text=ass, total_sec=total,
-                               duck_spans=duck_spans)
+                               duck_spans=duck_spans,
+                               transitions=render.stage_render.transitions(directive.get("cuts") or []))
 
     # ★ 리포트 라인은 지금까지 **아무 검사도 받지 않고** 나갔다 — 논문 라인은 run_qa 로
     #   mp4 를 실검하는데(끝 검은프레임·무음·클리핑·길이) 여기엔 호출도, 저장할 컬럼도 없었다.

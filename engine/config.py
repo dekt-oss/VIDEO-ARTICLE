@@ -2363,6 +2363,10 @@ I2V_CHAIN_VERSIONS: tuple[str, ...] = tuple(
 #   나레이션에 8초 클립 → 4.7초 정지. 근거·설계는 docs/설계안_시퀀스단위_렌더_v1.md.
 # ★ 끄면 즉시 옛 컷 경로로 돌아간다 — 새 경로가 실패했을 때 되돌리는 스위치다.
 STAGE_RENDER_ENABLED: bool = _get_bool("STAGE_RENDER_ENABLED", True)
+# 장면(stage)이 바뀌는 경계의 크로스페이드 길이(초). 0 이면 종전처럼 하드컷(2026-10-09, stage_render.transitions).
+#   앞 컷 마지막 프레임을 그만큼 늘려 겹치므로 전체 길이·음성 타이밍은 바뀌지 않는다.
+STAGE_TRANSITION_SEC: float = _get_float("STAGE_TRANSITION_SEC", 0.5)
+ASSEMBLE_FPS: int = _get_int("ASSEMBLE_FPS", 30)   # 크로스페이드 전 컷 영상을 맞추는 프레임 수(xfade 는 같은 fps·시간축이 필요)
 
 # ★★ 전·후 분할 스틸(2026-09-18, 연구 T2). 상태가 **바뀌는** stage(TRANSFORM·GROW·SHRINK 등)를
 #   I2V 에 맡기면 카메라만 돌고 대상은 안 바뀐다 — 영상 모델은 의미 변화를 못 만든다(연구 §3-2,

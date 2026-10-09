@@ -460,8 +460,9 @@ def main() -> None:
         # ★ 본 렌더와 같게 — 리포트 면책 줄은 마지막 컷에만(2026-09-28, report_render._footer_start).
         footer_from=(report_render._footer_start(cut_map, total) if kind == "report" else 0.0))
     mp4 = str(out_dir / "preview_ko.mp4")
+    from engine import stage_render
     assemble.assemble_full(cut_files, str(work), mp4, ass_text=ass, total_sec=total,
-                           duck_spans=duck)
+                           duck_spans=duck, transitions=stage_render.transitions(mini.get("cuts") or []))
 
     for p in (sorted(work.glob("stage_*_start.png")) + sorted(work.glob("stage_*_split.png"))
               + sorted(work.glob("cut_*.png"))):
