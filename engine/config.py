@@ -2276,6 +2276,10 @@ VISUAL_ROLE_STYLE: dict[str, str] = {
         "amber only on the part being explained, neutral studio backdrop"
     ),
 }
+# 캐시 기록은 있는데 내려받기가 실패하면: 몇 번 다시 받고, 그래도 안 되면 멈춘다(2026-10-09 영문판 $4.88 사고).
+CACHE_DOWNLOAD_ATTEMPTS: int = _get_int("CACHE_DOWNLOAD_ATTEMPTS", 3)
+CACHE_DOWNLOAD_BACKOFF_SEC: float = _get_float("CACHE_DOWNLOAD_BACKOFF_SEC", 3.0)
+CACHE_DOWNLOAD_FAIL_REGENERATE: bool = _get_bool("CACHE_DOWNLOAD_FAIL_REGENERATE", False)
 # 실사형 영상 실패를 사진+카메라 이동으로 메울지(2026-10-09 운영자: "사진으로 영상 구성하지 말라" → 기본 False = 1회 재시도 후 렌더 중단).
 PHOTO_STILL_FALLBACK: bool = _get_bool("PHOTO_STILL_FALLBACK", False)
 # 렌더 직후 영상 프레임 검사(2026-10-09, still_check.check_clip_frames). 실패 컷은 기록 + 렌더를 사람 확인으로. 다시 사지 않는다.
