@@ -192,6 +192,32 @@ def take_placeholder_fallbacks() -> list[Any]:
     return out
 
 
+class CacheDownloadError(RuntimeError):
+    """캐시 기록은 있는데 내려받기가 끝내 실패했다 — 다시 사지 않고 렌더를 멈춘다(2026-10-09)."""
+
+
+def _download_cached(url: str, path: str, what: str) -> None:
+    """캐시 내려받기 — 몇 번 다시 시도하고, 그래도 안 되면 CacheDownloadError.
+
+    ★ 2026-10-09 실측: 영문판 렌더에서 저장소가 잠깐 400 을 돌려주자 '캐시 없음'과 똑같이 취급해 그림·영상을
+      **전부 다시 샀다**($4.88). 한 시간 전 한국어판은 같은 파일을 잘 받았고, 끝난 뒤에 열어 보니 200 이었다.
+      "기록은 있는데 못 받았다"는 "없다"가 아니다 — 돈을 쓰기 전에 멈춰서 사람에게 알린다.
+    """
+    import time as _time
+    last: Exception | None = None
+    for i in range(max(1, int(config.CACHE_DOWNLOAD_ATTEMPTS))):
+        try:
+            _download_to(url, path)
+            return
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            log.warning("%s 캐시 내려받기 실패(%d/%d): %s", what, i + 1, config.CACHE_DOWNLOAD_ATTEMPTS, exc)
+            _time.sleep(float(config.CACHE_DOWNLOAD_BACKOFF_SEC) * (i + 1))
+    if config.CACHE_DOWNLOAD_FAIL_REGENERATE:
+        raise RuntimeError(f"{what} 캐시 실패 → 재생성 허용(설정)") from last
+    raise CacheDownloadError(f"{what} 캐시가 있는데 내려받지 못했다 — 다시 사지 않고 멈춘다: {last}") from last
+
+
 class VideoRequiredError(RuntimeError):
     """실사형에서 영상이 끝내 안 만들어졌다 — 사진+카메라 이동으로 대신하지 않고 렌더를 멈춘다(2026-10-09 운영자)."""
 
@@ -293,10 +319,12 @@ def _gen_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
         existing = asset_cache.get(render_job_kind, directive_id, cut_no, "image")
         if assemble.cache_hit(existing, content_h) and existing.get("asset_url"):
             try:
-                _download_to(existing["asset_url"], img_path)
+                _download_cached(existing["asset_url"], img_path, f"컷 {cut_no} 그림")
                 log.info("컷 %s 이미지 캐시 재사용", cut_no)
                 return 0.0
-            except Exception as exc:  # noqa: BLE001 — 캐시 다운로드 실패면 재생성
+            except CacheDownloadError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — 설정으로 재생성을 허용한 경우만
                 log.warning("캐시 다운로드 실패, 재생성: %s", exc)
 
     cost = 0.0
@@ -591,10 +619,12 @@ def _gen_veo_clip(cut: dict[str, Any], header: dict[str, Any], clip_path: str,
         existing = asset_cache.get(render_job_kind, directive_id, cut_no, "clip")
         if assemble.cache_hit(existing, content_h) and existing.get("asset_url"):
             try:
-                _download_to(existing["asset_url"], clip_path)
+                _download_cached(existing["asset_url"], clip_path, f"컷 {cut_no} 클립")
                 log.info("컷 %s 클립 캐시 재사용(언어 공유)", cut_no)
                 return True, content_h, 0.0
-            except Exception as exc:  # noqa: BLE001 — 캐시 다운로드 실패면 재생성
+            except CacheDownloadError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — 설정으로 재생성을 허용한 경우만
                 log.warning("클립 캐시 다운로드 실패, 재생성: %s", exc)
 
     cand_pick: dict[str, Any] | None = None
@@ -821,8 +851,10 @@ def _cached_stage_video(plan: dict[str, Any], cuts: list[dict[str, Any]], header
         if not (assemble.cache_hit(existing, h) and existing.get("asset_url")):
             return None, 0.0
         path = os.path.join(work_dir, f"stage_{gi}.mp4")
-        _download_to(existing["asset_url"], path)
-    except Exception as exc:  # noqa: BLE001 — 캐시 실패면 만든다(렌더를 막지 않는다)
+        _download_cached(existing["asset_url"], path, f"stage {plan.get('stage_id') or gi} 영상")
+    except CacheDownloadError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 캐시 기록 조회 자체가 안 되면 만든다(렌더를 막지 않는다)
         log.warning("stage %s 영상 캐시 조회 실패(재생성): %s", plan.get("stage_id") or gi, exc)
         return None, 0.0
     # 이 언어의 나레이션이 캐시 영상보다 길면 마지막 프레임으로 메운다(_build_stage_video 와 같은 규칙).
@@ -1512,6 +1544,8 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                     cost += c2
                 except _SplitStillDone:
                     pass
+                except CacheDownloadError:
+                    raise                      # 캐시가 있는데 못 받았다 — 새로 사지 않고 멈춘다
                 except Exception as exc:  # noqa: BLE001
                     if no_still_fallback(header):
                         # ★ 2026-10-09 운영자: "사진 띄우고 화면 떨리는 표현 하지 말라 — 사진으로 영상 구성하지 말라".

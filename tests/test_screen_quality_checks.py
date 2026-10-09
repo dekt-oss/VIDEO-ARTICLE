@@ -139,3 +139,22 @@ def test_cached_images_are_not_rechecked():
     from engine import render
     src = inspect.getsource(render._obtain_still)
     assert "image_is_paid() and cost == 0.0" in src
+
+
+def test_cache_download_failure_stops_instead_of_rebuying(monkeypatch):
+    import pytest
+    from engine import render
+    monkeypatch.setattr(config, "CACHE_DOWNLOAD_BACKOFF_SEC", 0.0)
+    calls = []
+
+    def boom(url, path):
+        calls.append(url)
+        raise RuntimeError("400 Bad Request")
+    monkeypatch.setattr(render, "_download_to", boom)
+    with pytest.raises(render.CacheDownloadError):
+        render._download_cached("u", "p", "컷 1 그림")
+    assert len(calls) == config.CACHE_DOWNLOAD_ATTEMPTS
+    ok = []
+    monkeypatch.setattr(render, "_download_to", lambda url, path: ok.append(1) if len(calls) < 99 else None)
+    render._download_cached("u", "p", "컷 1 그림")          # 성공하면 그대로 끝
+    assert ok == [1]

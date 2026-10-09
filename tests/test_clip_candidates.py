@@ -380,6 +380,7 @@ def test_no_undefined_names_in_the_veo_candidate_path():
                for imp in ast.walk(tree) if isinstance(imp, (ast.Import, ast.ImportFrom))
                for a in imp.names}
     module |= {f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)}
+    module |= {c.name for c in ast.walk(tree) if isinstance(c, ast.ClassDef)}   # 모듈의 예외 클래스도 정의된 이름이다
 
     for name in ("_gen_veo_clip", "_veo_generate_scored", "_build_stage_video"):
         fn = next(n for n in ast.walk(tree)
