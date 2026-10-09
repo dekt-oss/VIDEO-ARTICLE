@@ -36,8 +36,11 @@ _USER = (
     "INTENDED SUBJECT: {subject}\n\n"
     "1. text_in_image — Would a viewer watching this on a PHONE notice prominent lettering, "
     "numbers, a logo-like glyph or a label drawn on an object (a big sign, a caption, a chart "
-    "label, large digits on a hull)? Answer false for small print on papers or documents, "
-    "rolled drawings, screens, and fine texture — those read as texture on a phone.\n"
+    "label, large digits on a hull)? A page, card or screen that fills a large part of the frame "
+    "with lines of lettering counts as true — fake writing is obvious on a phone. Answer false only "
+    "for tiny print on small papers far away, rolled drawings and fine texture. IGNORE our own "
+    "overlays: centered subtitle lines (white text with a dark outline) and small colored caption "
+    "boxes or tags laid over the picture — judge only lettering that is part of the scene itself.\n"
     "2. subject_present — Is the main object of the INTENDED SUBJECT recognizably in the picture? "
     "Judge only whether that object is there and is the focus. Size, count, exact pose, "
     "lighting and small details do NOT matter.\n"
@@ -114,3 +117,42 @@ def failed(verdict: dict[str, Any] | None) -> bool:
     return bool(v.get("measured")) and (v.get("text_in_image") is True
                                         or v.get("subject_present") is False
                                         or v.get("split_panels") is True)
+
+
+# ─── 렌더 직후 — 만들어진 **영상**의 프레임을 본다(2026-10-09 운영자 "렌더 직후 그림 검사 개선") ─────────────
+#   그림 검사는 클립을 사기 **전** 그림만 봤다. 음파 완성본 컷 15~17 은 그림이 아니라 **영상이 만들어지며** 계획에서
+#   벗어났다(사람 손등 상처 → 마네킹 손이 종이에 펜으로 쓰고, 종이에 가짜 글자). 그래서 stage 영상이 만들어진 직후
+#   컷마다 그 컷 구간의 가운데 프레임 한 장을 같은 질문(주인공·글자·분할)으로 본다. 판정 한 번 ≈ $0.0002.
+#   ★ 다시 사지 않는다(운영자: 비용 최소) — 실패 컷을 기록하고 렌더를 '사람 확인(degraded)'으로 돌린다.
+CLIP_CHECK_FAILS: list[dict[str, Any]] = []
+
+
+def check_clip_frames(video_path: str, plan: dict[str, Any], cuts: list[dict[str, Any]], work_dir: str,
+                      asker=None) -> list[dict[str, Any]]:
+    """stage 영상 → 컷 구간마다 가운데 프레임 판정. 실패만 돌려주고 CLIP_CHECK_FAILS 에도 쌓는다."""
+    import os
+    import subprocess
+    out: list[dict[str, Any]] = []
+    if not (config.CLIP_CHECK_ENABLED and (asker is not None or continuity_qa.enabled())):
+        return out
+    indexes = list(plan.get("indexes") or [])
+    for k, (start, dur) in enumerate(plan.get("windows") or []):
+        if k >= len(indexes) or indexes[k] >= len(cuts):
+            continue
+        cut = cuts[indexes[k]]
+        if not subject_of(cut):
+            continue
+        frame = os.path.join(work_dir, f"clipcheck_{cut.get('cut_no')}.png")
+        try:
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{float(start) + float(dur) / 2:.2f}",
+                            "-i", video_path, "-frames:v", "1", frame], check=True, timeout=60)
+        except Exception:  # noqa: BLE001 — 프레임을 못 뽑으면 판정 불가(통과)
+            continue
+        verdict = check(frame, cut, asker)
+        if failed(verdict):
+            row = {"cut_no": cut.get("cut_no"), "reason": verdict.get("reason", ""),
+                   "text": verdict.get("text_in_image"), "subject": verdict.get("subject_present"),
+                   "split": verdict.get("split_panels")}
+            out.append(row)
+            CLIP_CHECK_FAILS.append(row)
+    return out

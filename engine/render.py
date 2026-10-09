@@ -222,6 +222,20 @@ def flag_video_fallbacks(status: str, reasons: list[str], qa: dict[str, Any] | N
     return ("degraded" if status == "done" else status), [*reasons, tag]
 
 
+def flag_clip_check(status: str, reasons: list[str], qa: dict[str, Any] | None = None
+                    ) -> tuple[str, list[str]]:
+    """렌더 직후 영상 프레임 검사에서 걸린 컷 → 경고 + '완료'를 '사람 확인(degraded)'으로(2026-10-09). 두 공장 공용."""
+    rows = list(still_check.CLIP_CHECK_FAILS)
+    still_check.CLIP_CHECK_FAILS.clear()
+    if not rows:
+        return status, reasons
+    tag = "clip_check_failed_cuts:" + ",".join(str(r["cut_no"]) for r in rows)
+    if qa is not None:
+        qa.setdefault("warnings", []).append(tag)
+        qa["clip_check_failed"] = rows
+    return ("degraded" if status == "done" else status), [*reasons, tag]
+
+
 def fail_if_placeholders(status: str, reasons: list[str], qa: dict[str, Any] | None = None
                          ) -> tuple[str, list[str]]:
     """placeholder 컷이 하나라도 있으면 **failed** 다 — 빈 화면은 발행할 수 없다.
@@ -887,6 +901,11 @@ def _obtain_still(cut: dict[str, Any], header: dict[str, Any], img_path: str,
     cost = _gen_still(
         cut, header, img_path, directive_id, render_job_id, render_job_kind,
         ref_path=ref_path, reference_key=ref_key)
+    # ★ 캐시에서 꺼낸 그림은 **처음 살 때 이미 검사했다** — 다시 검사해 다시 그리면 돈만 나간다(2026-10-09 실측:
+    #   완성본 렌더에서 전반부 컷 3·4 가 캐시 그림인데 재검사·재생성돼 $0.08 이 나갔고, 그 컷의 영상은 캐시라
+    #   새 그림이 결과에 쓰이지도 않았다). 유료 제공자인데 비용 0 = 캐시 적중.
+    if config.image_is_paid() and cost == 0.0:
+        return cost
 
     # ★ 멀티모달 연속성 QA (계획서 Phase 3 D2). 참조를 걸고 그린 컷만 본다 —
     #   참조가 없으면 "이어졌는가"라는 질문 자체가 성립하지 않는다.
@@ -1484,6 +1503,11 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                             directive_id=directive_id, render_job_id=render_job_id,
                             render_job_kind=render_job_kind, qa_out=stage_qa_out)
                         _store_stage_video(sv, plan, cuts, header, directive_id, render_job_kind)
+                        # 렌더 직후 — 새로 만든 영상만 본다(캐시 영상은 처음 만들 때 봤다).
+                        _bad = still_check.check_clip_frames(sv, plan, cuts, work_dir)
+                        if _bad:
+                            log.warning("stage %s 영상 검사 실패 컷 %s: %s", plan["stage_id"] or gi,
+                                        ",".join(str(b["cut_no"]) for b in _bad), _bad[0].get("reason"))
                     stage_videos[gi] = sv
                     cost += c2
                 except _SplitStillDone:
@@ -1844,6 +1868,7 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     status, reasons = rm.terminal_status(board_qa)
     status, reasons = fail_if_placeholders(status, reasons, qa)   # 빈 화면은 발행 불가(2026-09-24)
     status, reasons = flag_video_fallbacks(status, reasons, qa)   # 영상→스틸 대체를 드러낸다(2026-10-08)
+    status, reasons = flag_clip_check(status, reasons, qa)        # 렌더 직후 영상 프레임 검사(2026-10-09)
     db.update_render_job(job_id, status=status, progress=100,
                          output_url=url, cost_estimate=spent["cost"], qa=qa,
                          error_log="; ".join(reasons)[:1000] or None,
