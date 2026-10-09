@@ -159,6 +159,10 @@ def number_delivery(beats: list[dict[str, Any]], ir: dict[str, Any]) -> list[dic
     for beat in beats:
         spoken: list[str] = []
         screen: list[dict[str, Any]] = []
+        if beat.get("stage") == "HOOK":
+            # 첫 질문에 든 숫자("1% 미만")는 질문의 일부로 말한다 — 생각 단계가 질문에 숫자를 넣을 수 있다
+            # (2026-10-06 실측: 질문 속 숫자가 "말할 숫자"에 없어 numbers_changed 로 거절됐다).
+            spoken.extend(spoken_numbers.value_tokens(" ".join(_strings(beat.get("content_points")))))
         for ref, text in _beat_points(beat):
             row = decision.get(ref)
             if not row:
@@ -186,6 +190,9 @@ def select_for_length(ir: dict[str, Any], budget: int | None = None) -> tuple[li
     분량(`V2_NARRATION_TARGET_CHARS`)을 넘기는 단위는 건너뛰고 다음 단위를 본다. 첫 단위는 분량과 무관하게
     담는다(빈 대본 방지). 결정론적이며 모델 판단이 없다.
     """
+    if ir.get("origin") == "model_reasoning":
+        # 생각 단계가 원문 깊이에 맞춰 단계 수를 이미 정했고 뺀 것도 적었다 — 글자 수로 단계를 또 자르지 않는다.
+        return [_text(u.get("reasoning_id")) for u in ir.get("reasoning_units") or []], []
     units = [u for u in ir.get("reasoning_units") or [] if isinstance(u, dict)]
     if not units:
         return [], []
@@ -280,7 +287,8 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
         if unit.get("reasoning_id") not in kept_ids:
             continue
         stage = _STAGE_BY_ROLE[unit["role"]]
-        if grouped and grouped[-1][0] == stage:
+        # ★ Phase 3 생각 단계에서 온 IR 은 단위 하나가 설명 단계 하나다 — 묶지 않는다(한 비트 = 한 질문과 답).
+        if grouped and grouped[-1][0] == stage and ir.get("origin") != "model_reasoning":
             grouped[-1][1].append(unit)
         else:
             grouped.append((stage, [unit]))
@@ -297,6 +305,7 @@ def _build(ir: dict[str, Any], resolution: dict[str, Any]) -> dict[str, Any]:
         "domain": ir.get("domain"),
         "content_id": ir.get("content_id"),
         "planning_status": "READY",
+        "origin": ir.get("origin", "adapter"),
         "core_question": ir.get("core_question"),
         "thesis": ir.get("thesis"),
         "beats": beats,

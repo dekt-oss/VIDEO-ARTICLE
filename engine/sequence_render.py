@@ -71,6 +71,15 @@ def reference_decision(cut: dict[str, Any], header: dict[str, Any],
 
     mode = str(stage.get("continuity_mode") or "")
     if mode not in config.CONTINUITY_NEEDS_REFERENCE:
+        # ★ 같은 세계(world_id)를 **이미 그렸으면** 새로 그리지 않고 그 그림을 참조한다(2026-10-09 운영자: "세포의 모양과
+        #   컨셉이 짧은 시간 동안 3개가 다 다르다"). 실측: 컷1(SEQ0)과 컷7(SEQ2)이 같은 CELL_LAYER_CUTAWAY 인데 둘 다
+        #   NEW_WORLD 라 서로 모르는 그림을 그렸다 — 핵이 보이는 세포 → 파란 벽돌 → 타일. 시퀀스가 갈려도 세계가 같으면
+        #   같은 개체다. 앞 그림을 시작 화면으로 주면 생김새·색이 이어진다.
+        same = _same_world_asset(stage_id, header, stage_assets) if config.SAME_WORLD_REFERENCE else ""
+        if same:
+            out.update(kind="reference", ref_stage=same, ref_asset=stage_assets[same],
+                       reference_key=reference_key(stage, same), same_world=True)
+            return out
         out["kind"] = "new_world"
         return out
 
@@ -157,6 +166,24 @@ def reference_decision(cut: dict[str, Any], header: dict[str, Any],
     out.update(kind="reference", ref_stage=ref_stage, ref_asset=ref_asset,
                reference_key=reference_key(stage, ref_stage))
     return out
+
+
+def _same_world_asset(stage_id: str, header: dict[str, Any], stage_assets: dict[str, str]) -> str:
+    """이 stage 와 world_id 가 같은 **앞서 그린** stage(가장 최근). 없으면 ""."""
+    seqs = header.get("visual_sequences") if isinstance(header.get("visual_sequences"), list) else []
+    world_of: dict[str, str] = {}
+    for seq in seqs:
+        if not isinstance(seq, dict):
+            continue
+        wid = str(((seq.get("world") or {}) if isinstance(seq.get("world"), dict) else {}).get("world_id") or "")
+        for st in seq.get("stages") or []:
+            if isinstance(st, dict) and st.get("stage_id"):
+                world_of[str(st["stage_id"])] = wid
+    mine = world_of.get(stage_id, "")
+    if not mine:
+        return ""
+    hits = [sid for sid in stage_assets if sid != stage_id and world_of.get(sid) == mine and stage_assets.get(sid)]
+    return hits[-1] if hits else ""
 
 
 def reference_key(stage: dict[str, Any], ref_stage: str) -> str:

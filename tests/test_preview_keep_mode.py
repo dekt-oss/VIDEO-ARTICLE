@@ -144,7 +144,10 @@ def test_it_tells_the_operator_which_factory_and_whether_it_will_be_kept():
 
 
 # ── ④ 비용을 사실대로 말한다 ───────────────────────────────────────
-def test_the_estimate_counts_stage_videos_not_cut_videos():
+def test_the_estimate_counts_stage_videos_not_cut_videos(monkeypatch):
+    # 2026-10-09 부터 분할 스틸 기본 꺼짐(운영자: 사진으로 영상 구성 금지) — 기능은 스위치로 남아 켜고 검사한다.
+    from engine import config
+    monkeypatch.setattr(config, "MECHANISM_SPLIT_BEFORE_AFTER", True)
     """★ 옛 셈(`mini_render.estimate`)은 **컷 단위**였다 — `motion_source == "video"` 인
     컷마다 Veo 하나. 실사형 렌더는 **stage 단위**라 둘이 어긋난다:
       · stage 는 `motion_source` 를 읽지 않는다 — 스틸 컷만 있는 stage 도 영상을 산다

@@ -192,6 +192,36 @@ def take_placeholder_fallbacks() -> list[Any]:
     return out
 
 
+class VideoRequiredError(RuntimeError):
+    """실사형에서 영상이 끝내 안 만들어졌다 — 사진+카메라 이동으로 대신하지 않고 렌더를 멈춘다(2026-10-09 운영자)."""
+
+
+def no_still_fallback(header: dict[str, Any]) -> bool:
+    """실사형은 영상 실패를 사진으로 메우지 않는다(config.PHOTO_STILL_FALLBACK=False 가 기본)."""
+    return (str((header or {}).get("version_type") or "photo") == "photo"
+            and not config.PHOTO_STILL_FALLBACK)
+
+
+# 영상(Veo)으로 만들려던 컷이 실패해 **스틸로 대신 나간** 컷 번호(2026-10-08 리뷰). 그동안은 원장 status=fallback 에만
+# 남아 렌더는 "완료"로 보였다 — 운영자는 움직여야 할 컷이 멈춰 있는 이유를 알 수 없었다.
+VIDEO_FALLBACKS: list[Any] = []
+
+
+def flag_video_fallbacks(status: str, reasons: list[str], qa: dict[str, Any] | None = None
+                         ) -> tuple[str, list[str]]:
+    """영상이 스틸로 바뀐 컷이 있으면 경고로 올리고, '완료'는 '사람 확인(degraded)'으로 낮춘다. 두 공장이 같이 쓴다.
+    빈 화면(placeholder)과 달리 발행은 가능하다 — 보고 괜찮으면 승인한다."""
+    cuts = list(dict.fromkeys(VIDEO_FALLBACKS))
+    VIDEO_FALLBACKS.clear()
+    if not cuts:
+        return status, reasons
+    tag = "video_to_still_cuts:" + ",".join(str(x) for x in cuts)
+    if qa is not None:
+        qa.setdefault("warnings", []).append(tag)
+        qa["video_to_still_cuts"] = cuts
+    return ("degraded" if status == "done" else status), [*reasons, tag]
+
+
 def fail_if_placeholders(status: str, reasons: list[str], qa: dict[str, Any] | None = None
                          ) -> tuple[str, list[str]]:
     """placeholder 컷이 하나라도 있으면 **failed** 다 — 빈 화면은 발행할 수 없다.
@@ -661,8 +691,14 @@ def split_before_after_applies(cut: dict[str, Any], header: dict[str, Any]) -> b
     선언하고 · 이어받을 앞 stage(continuity_from)가 있다. 참조 그림이 실제로 있는지는
     렌더 시점에 `_compose_split_still` 이 다시 본다(없으면 I2V 로 되돌아간다).
     """
+    seqs0 = (header or {}).get("visual_sequences")
     if not config.MECHANISM_SPLIT_BEFORE_AFTER:
-        return False
+        # 기본 꺼짐(2026-10-09 운영자). 예외: 지시서가 **이미 분할로 만든** stage 를 명시하면(keep_split_stages) 그 stage 만
+        #   분할을 유지한다 — 이미 산 그림을 버리고 영상을 다시 사지 않기 위해서다(운영자: "전반부는 수정하지 마, 돈 아까우니까").
+        keep = {str(x) for x in ((header or {}).get("keep_split_stages") or [])}
+        st0 = (visual_sequence.cut_to_stage(seqs0).get(int(cut.get("cut_no") or 0)) or {}) if isinstance(seqs0, list) else {}
+        if not keep or str(st0.get("stage_id") or "") not in keep:
+            return False
     if generation_spec.effective_visual_role(cut) != "MECHANISM":
         return False
     seqs = (header or {}).get("visual_sequences")
@@ -1045,6 +1081,9 @@ def _gen_cut_assets(cut: dict[str, Any], header: dict[str, Any], work_dir: str, 
                     log.warning("컷 %s 마지막 프레임 추출 실패 — 연쇄 끊김(무시): %s",
                                 cut.get("cut_no"), exc)
             return clip_path, "clip", aud_path, measured, cost + c, words
+        if no_still_fallback(header):
+            raise VideoRequiredError(f"컷 {cut.get('cut_no')} 영상 실패 — 사진으로 대신하지 않고 멈춘다(운영자 2026-10-09)")
+        VIDEO_FALLBACKS.append(cut.get("cut_no") or (idx + 1))
         return img_path, "image", aud_path, measured, cost + c, words
 
     wants_clip = config.ANIMATION_ENGINE != "off" and \
@@ -1450,11 +1489,31 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
                 except _SplitStillDone:
                     pass
                 except Exception as exc:  # noqa: BLE001
-                    # ★ stage 영상이 실패해도 렌더를 죽이지 않는다 — 그 그룹만 옛 컷 경로로.
-                    log.error("stage %s 영상 실패 → 컷 단위로 폴백: %s",
-                              plan["stage_id"] or gi, str(exc)[:160])
-                    for ci in plan["indexes"]:
-                        cut_group.pop(ci, None)
+                    if no_still_fallback(header):
+                        # ★ 2026-10-09 운영자: "사진 띄우고 화면 떨리는 표현 하지 말라 — 사진으로 영상 구성하지 말라".
+                        #   종전에는 그 그룹을 컷 경로로 돌렸고, 그 경로도 영상이 실패하면 스틸+카메라 이동으로 나갔다
+                        #   (샘플 컷7: 8초 내내 정지 그림). 실사형은 한 번 더 만들어 보고, 그래도 안 되면 **렌더를 멈춘다**.
+                        log.error("stage %s 영상 실패 → 1회 재시도(사진 대체 금지): %s",
+                                  plan["stage_id"] or gi, str(exc)[:300])
+                        try:
+                            sv, c2 = _build_stage_video(
+                                plan, cuts, header, work_dir, gi, start_image=img0, lang=lang,
+                                clip_metrics_out=clip_metrics_out,
+                                directive_id=directive_id, render_job_id=render_job_id,
+                                render_job_kind=render_job_kind, qa_out=stage_qa_out)
+                            _store_stage_video(sv, plan, cuts, header, directive_id, render_job_kind)
+                            stage_videos[gi] = sv
+                            cost += c2
+                        except Exception as exc2:  # noqa: BLE001
+                            raise VideoRequiredError(
+                                f"stage {plan['stage_id'] or gi} 영상 2회 실패 — 사진으로 대신하지 않고 멈춘다: "
+                                f"{str(exc2)[:300]}") from exc2
+                    else:
+                        # ★ stage 영상이 실패해도 렌더를 죽이지 않는다 — 그 그룹만 옛 컷 경로로.
+                        log.error("stage %s 영상 실패 → 컷 단위로 폴백: %s",
+                                  plan["stage_id"] or gi, str(exc)[:160])
+                        for ci in plan["indexes"]:
+                            cut_group.pop(ci, None)
             if gi in stage_videos:
                 vis, kind = stage_videos[gi], "stage"
                 slice_window = plan["windows"][k]
@@ -1641,7 +1700,8 @@ def render_directive_local(directive: dict[str, Any], out_path: str,
                               platform=platform or config.DEFAULT_PLATFORM,
                               overlays=overlays)
     assemble.assemble_full(cut_files, tmp, out_path, ass_text=ass, total_sec=total,
-                           duck_spans=duck_spans)
+                           duck_spans=duck_spans,
+                           transitions=stage_render.transitions(directive.get("cuts") or []))
     fit_qa = render_qa.evaluate_clip_fit(fit_log)
     log.info("렌더 완료(local): %s (lang=%s, 컷 %d, 자막 %d) 길이보정=%s",
              out_path, lang, len(cut_files), len(cues), fit_qa["strategy_counts"])
@@ -1724,7 +1784,8 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
                               overlays=overlays)
     with sm.stage(metrics, "assemble"):
         assemble.assemble_full(cut_files, work_dir, out_path, ass_text=ass, total_sec=total,
-                               duck_spans=duck_spans)
+                               duck_spans=duck_spans,
+                               transitions=stage_render.transitions(directive.get("cuts") or []))
 
     # §7 렌더 QA: 발행 전 실제 mp4 실검(끝 검은프레임·무음·클리핑·길이). 하드 실패는 로그+저장(사람이 승인 화면에서 확인).
     # + §3-6 길이 보정 QA: ratio>0.60 빨간 플래그 · pingpong 과다 노란 경고(렌더 차단은 아님).
@@ -1782,6 +1843,7 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     #   잘못됐는지 보려면 영상을 봐야 하는데, 주소가 없으면 진단이 불가능하다.
     status, reasons = rm.terminal_status(board_qa)
     status, reasons = fail_if_placeholders(status, reasons, qa)   # 빈 화면은 발행 불가(2026-09-24)
+    status, reasons = flag_video_fallbacks(status, reasons, qa)   # 영상→스틸 대체를 드러낸다(2026-10-08)
     db.update_render_job(job_id, status=status, progress=100,
                          output_url=url, cost_estimate=spent["cost"], qa=qa,
                          error_log="; ".join(reasons)[:1000] or None,

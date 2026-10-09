@@ -18,7 +18,8 @@ import inspect
 from engine import config, directive as dv, photo_contract as pc, photo_prompt as pp, report_directive as rd
 
 # ── ① 예산 ─────────────────────────────────────────────────────
-RULES_MAX_CHARS = 18_000     # 통합 직후 15.8k / 16.1k(스키마 6k 포함). 종전 29.5k / 32.0k.
+RULES_MAX_CHARS = 18_500     # 통합 직후 15.8k / 16.1k(스키마 6k 포함). 종전 29.5k / 32.0k.
+#   2026-10-08 +500: 운영자 지시 화면 규칙(세포 눈높이·카메라만 금지·stage 묶기·사건형 첫 컷)을 줄일 만큼 줄여 넣은 몫.
 RULES_MAX_STARS = 20         # 종전 137 / 165. ★ 는 강조가 아니라 "예외"의 표시여야 한다.
 
 

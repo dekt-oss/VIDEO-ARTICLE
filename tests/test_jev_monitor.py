@@ -167,7 +167,9 @@ def test_a_numeric_reality_cut_asks_scene_and_number_in_one_call(monkeypatch):
                                                 "number_as_objects": 0.9}.get(k, 0.5), sent))
     header, cuts, cut = _numeric_real(_good_directive())
     got = pc.evaluate(header, cuts, None)
-    mine = [b for b in sent if f"NARRATION: {cut['narration_ko']}\nSCENE:" in b["state"]]
+    # 화면 품질 질문(2026-10-08 understand·engaging)은 같은 머리말의 **별도 호출**이다 — 여기서 세는 것은 답함·숫자 묶음.
+    mine = [b for b in sent if f"NARRATION: {cut['narration_ko']}\nSCENE:" in b["state"]
+            and "engaging" not in b["questions"]]
     assert len(mine) == 1 and set(mine[0]["questions"]) == {"answers", "showable", "number_as_objects"}
     assert "PREVIOUS SCENE" not in mine[0]["state"], "문턱을 잰 상태 모양 그대로"
     assert f"photo_number_as_objects:{cut['cut_no']}" in got["warnings"]
@@ -181,7 +183,9 @@ def test_merge_can_be_switched_off(monkeypatch):
     monkeypatch.setattr(config, "JEV_MERGE_SAME_STATE", False)
     header, cuts, cut = _numeric_real(_good_directive())
     pc.evaluate(header, cuts, None)
-    mine = [b for b in sent if f"NARRATION: {cut['narration_ko']}\nSCENE:" in b["state"]]
+    # 화면 품질 질문(2026-10-08 understand·engaging)은 같은 머리말의 **별도 호출**이다 — 여기서 세는 것은 답함·숫자 묶음.
+    mine = [b for b in sent if f"NARRATION: {cut['narration_ko']}\nSCENE:" in b["state"]
+            and "engaging" not in b["questions"]]
     assert sorted(len(b["questions"]) for b in mine) == [1, 2]
 
 

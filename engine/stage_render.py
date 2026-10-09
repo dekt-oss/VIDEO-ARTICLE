@@ -218,3 +218,17 @@ def savings(plans: list[dict[str, Any]], cut_count: int) -> dict[str, Any]:
         "generated_sec": round(sum(p["generated_sec"] for p in plans), 3),
         "narration_sec": round(sum(p["total_sec"] for p in plans), 3),
     }
+
+
+def transitions(cuts: list[dict[str, Any]]) -> list[float]:
+    """컷 사이 경계마다 전환 길이(초). 같은 stage 영상의 구간끼리는 0(원래 이어진 영상), stage 가 바뀌면 크로스페이드.
+
+    ★ 2026-10-09 운영자: "화면이 일부 연결(화면전환)이 매끄럽지 않고 뚝뚝 끊기는 느낌". 컷 파일을 그냥 이어 붙여서
+      장면이 바뀌는 곳이 하드컷이었다. 렌더와 **같은 묶음 함수**(group_cuts)로 경계를 정한다.
+    """
+    sec = float(config.STAGE_TRANSITION_SEC)
+    if sec <= 0 or len(cuts) < 2:
+        return [0.0] * max(0, len(cuts) - 1)
+    starts = {g["indexes"][0] for g in group_cuts(cuts)}
+    return [sec if (k + 1) in starts else 0.0 for k in range(len(cuts) - 1)]
+

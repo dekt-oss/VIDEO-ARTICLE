@@ -117,6 +117,68 @@ def slice_keep(directive: dict, sequence_id: str, n_stages: int,
             "header": header, "cuts": cuts}
 
 
+def slice_range(directive: dict, first: int, last: int, want_video: bool) -> dict:
+    return slice_cuts(directive, set(range(first, last + 1)), want_video)
+
+
+def slice_cuts(directive: dict, wanted: set, want_video: bool) -> dict:
+    """컷 번호 first~last 만 남긴 미니 지시서 — **편을 전반·후반으로 나눠 사기** 위한 것(2026-10-08 운영자
+    "전체 한 번에 하지 말고 전반부만 먼저 만들어 봐. 괜찮으면 후반 만들고 합쳐서 업로드").
+
+    `slice_keep` 과 같은 약속을 지킨다 — 컷 번호를 그대로 두고, stage 를 정규화하지 않는다. 그래야 `--keep` 으로
+    캐시에 남긴 그림·클립을 편 전체 렌더가 그대로 물려받는다(후반부만 새로 산다).
+    시각 시퀀스는 **모든 컷이 범위 안에 있는 stage 까지만** 남긴다(앞에서부터). 범위 경계에 걸친 stage 의 컷은
+    시퀀스 없이 낱컷으로 렌더된다 — 그 컷은 본 렌더에서 다시 살 수 있다(캐시 키가 다르면).
+    """
+    header = dict(directive["header"])
+    keep = {int(c.get("cut_no") or 0) for c in directive.get("cuts") or []
+            if int(c.get("cut_no") or 0) in wanted}
+    if not keep:
+        raise SystemExit(f"컷 {sorted(wanted)} 가 지시서에 없다")
+    seqs = []
+    for seq in header.get("visual_sequences") or []:
+        if not isinstance(seq, dict):
+            continue
+        stages = []
+        for st in seq.get("stages") or []:
+            refs = {int(n) for n in st.get("cut_refs") or []}
+            if not refs or not refs <= keep:
+                break                       # 앞에서부터 — 중간이 빠지면 이어받기(continuity_from)가 끊긴다
+            stages.append(st)
+        if stages:
+            seqs.append({**seq, "stages": stages})
+    header["visual_sequences"] = seqs
+    header["hook_ko"] = header.get("hook_ko") or ""
+    cuts = []
+    for c in directive.get("cuts") or []:
+        no = int(c.get("cut_no") or 0)
+        if no in keep:
+            c = dict(c)
+            c["_origin_cut_no"] = no
+            if not want_video:
+                c["motion_source"] = "still"
+            cuts.append(c)
+    return {"version_type": directive.get("version_type", "photo"), "header": header, "cuts": cuts}
+
+
+def parse_range(text: str) -> tuple[int, int]:
+    a, _, b = str(text).partition("-")
+    first, last = int(a), int(b or a)
+    if first < 1 or last < first:
+        raise SystemExit(f"--cuts 형식: 1-8 (받은 값 {text})")
+    return first, last
+
+
+def parse_cuts(text: str) -> set:
+    """'1,7-8' → {1, 7, 8}. 샘플(여는 컷 + 세포 컷)처럼 떨어진 컷을 함께 본다(2026-10-09)."""
+    out: set = set()
+    for part in str(text).split(","):
+        if part.strip():
+            a, b = parse_range(part.strip())
+            out |= set(range(a, b + 1))
+    return out
+
+
 def narration_sec(cut: dict, lang: str) -> float:
     """이 컷의 나레이션이 **몇 초짜리인가** — 글자 수로 센다.
 
@@ -237,7 +299,7 @@ def describe(mini: dict) -> None:
         if c.get("mechanism_ko"):
             print(f"        원리: {c['mechanism_ko']}")
     print("\n[단계]")
-    for st in header["visual_sequences"][0]["stages"]:
+    for st in [st for seq in header.get("visual_sequences") or [] for st in seq.get("stages") or []]:
         ops = [m.get("operation") for m in st.get("mutations") or []]
         print(f"  {st.get('stage_id')} {st.get('continuity_mode')} "
               f"이어받기={st.get('continuity_from') or '-'} 변화={ops or '없음'}")
@@ -269,6 +331,10 @@ def main() -> None:
     ap.add_argument("directive_id")
     ap.add_argument("--sequence", default="", help="시퀀스 id(기본: 기전 컷이 가장 많은 것)")
     ap.add_argument("--stages", type=int, default=4, help="앞에서 몇 단계까지(기본 4)")
+    ap.add_argument("--allow-gap", action="store_true",
+                    help="떨어진 컷(1,7-8)을 이어 붙이는 것을 허용한다 — 나레이션이 중간에서 끊기므로 운영자 샘플로 쓰지 마라")
+    ap.add_argument("--cuts", default="", metavar="A-B",
+                    help="시퀀스 대신 컷 번호 범위로 자른다(예: 1-8 = 전반부). --keep 과 같이 쓰면 편 전체 렌더가 물려받는다")
     ap.add_argument("--stills", action="store_true", help="그림만 만든다(영상 생성 0)")
     ap.add_argument("--reuse", default="", metavar="폴더",
                     help="그 폴더의 PNG 를 그림으로 **재사용**한다(생성 호출 0·비용 0). "
@@ -327,9 +393,17 @@ def main() -> None:
         kind = "report"
     if not directive:
         raise SystemExit(f"지시서 없음(논문·리포트 양쪽에서 못 찾음): {args.directive_id}")
-    seq_id = pick_sequence(directive, args.sequence)
-    slicer = slice_keep if args.keep else slice_directive
-    mini = slicer(directive, seq_id, args.stages, want_video=not args.stills)
+    if args.cuts:
+        wanted = parse_cuts(args.cuts)
+        if not args.allow_gap and wanted != set(range(min(wanted), max(wanted) + 1)):
+            # ★ 2026-10-09 운영자: 컷1 + 컷7~8 샘플이 "할 수 있을까요? → 그 결과…"로 말이 안 됐다. 중간 문장이 빠져서다.
+            raise SystemExit("떨어진 컷은 나레이션이 끊긴다 — 이어진 범위로 고르거나 --allow-gap 을 붙여라")
+        seq_id = f"cuts_{args.cuts}"
+        mini = slice_cuts(directive, wanted, want_video=not args.stills)
+    else:
+        seq_id = pick_sequence(directive, args.sequence)
+        slicer = slice_keep if args.keep else slice_directive
+        mini = slicer(directive, seq_id, args.stages, want_video=not args.stills)
     describe(mini)
 
     est, est_lines = ((Decimal("0"), []) if (args.free or args.reuse) else estimate_plan(mini))
@@ -357,7 +431,7 @@ def main() -> None:
     #   목록 파일이 있는 디렉터리 기준으로 다시 푼다 — 상대 경로를 주면 `docs/…/_work/docs/…/_work/`
     #   처럼 두 번 이어 붙여 "Impossible to open" 으로 죽는다(2026-09-18 실측).
     out_dir = (pathlib.Path("docs") / f"preview-{dt.date.today().isoformat()}"
-               / args.directive_id[:8]).resolve()
+               / (args.directive_id[:8] + (f"-cuts{args.cuts}" if args.cuts else ""))).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     work = out_dir / "_work"
     shutil.rmtree(work, ignore_errors=True)
@@ -386,8 +460,9 @@ def main() -> None:
         # ★ 본 렌더와 같게 — 리포트 면책 줄은 마지막 컷에만(2026-09-28, report_render._footer_start).
         footer_from=(report_render._footer_start(cut_map, total) if kind == "report" else 0.0))
     mp4 = str(out_dir / "preview_ko.mp4")
+    from engine import stage_render
     assemble.assemble_full(cut_files, str(work), mp4, ass_text=ass, total_sec=total,
-                           duck_spans=duck)
+                           duck_spans=duck, transitions=stage_render.transitions(mini.get("cuts") or []))
 
     for p in (sorted(work.glob("stage_*_start.png")) + sorted(work.glob("stage_*_split.png"))
               + sorted(work.glob("cut_*.png"))):

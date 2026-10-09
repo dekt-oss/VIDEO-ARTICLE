@@ -20,6 +20,7 @@ from . import (
     narrative_planner,
     prerequisite_resolver,
     spoken_narration,
+    spoken_numbers,
 )
 from .llm import call_json, set_text_purpose
 
@@ -28,9 +29,25 @@ CONTRACT_VERSION = "semantic-fidelity-v1"
 QA_STATUSES = frozenset({
     "PASSED", "REJECTED", "BLOCKED_UPSTREAM", "REJECTED_UPSTREAM", "CRITIC_ERROR",
 })
+#: 이해용 비교 절의 표지 — "마치 ~처럼", "~같은", "~듯". 숫자가 들어간 비교는 면제하지 않는다.
+_COMPARISON_MARKER = re.compile(r"처럼|마치|같은|같이|듯")
+
 VERDICTS = frozenset({
     "ENTAILED", "CONTRADICTED", "UNSUPPORTED", "UNVERIFIABLE", "RHETORICAL",
 })
+#: 검증관이 정의 밖 이름으로 적는 같은 뜻의 지적(2026-10-06 실측: scope_overextension·unjustified_causal_link).
+#  뜻이 같으면 정의된 이름으로 옮긴다 — 지적을 버리지 않는다. 모르는 이름은 종전대로 형식 오류다.
+_FINDING_ALIASES = {
+    "scope_overextension": "scope_expansion", "overgeneralization": "scope_expansion",
+    "overgeneralisation": "scope_expansion", "overclaim": "scope_expansion", "scope_overreach": "scope_expansion",
+    "unjustified_causal_link": "causal_upgrade", "causal_overreach": "causal_upgrade",
+    "causal_inference": "causal_upgrade", "unsupported_causal_claim": "causal_upgrade",
+    "dropped_qualifier": "missing_qualifier", "missing_hedge": "missing_qualifier",
+    "qualifier_dropped": "missing_qualifier", "misattribution": "attribution_loss",
+    "contradicted": "contradiction", "unsupported_claim": "unsupported_background",
+    "unsupported": "unsupported_background", "unverifiable": "unsupported_background",
+}
+
 FINDING_CODES = frozenset({
     "contradiction", "scope_expansion", "causal_upgrade", "missing_qualifier",
     "unsupported_background", "attribution_loss", "unsupported_factual_hook",
@@ -45,10 +62,17 @@ SYSTEM_PROMPT = """너는 작성 모델과 분리된 의미 충실도 검증관�
 Explanation IR만 사용해 절별 판정을 내려라. source quote의 존재는 claim 전체의 의미 보증이
 아니다. 범위 확대, 인과 강화, 수식어 누락, 모순, 근거 없는 배경, 귀속 손실을 각각 표시하라.
 HOOK도 사실 주장이면 근거가 필요하다. 순수한 핵심 질문만 RHETORICAL로 분류할 수 있다.
+출처(기관·증권사) 귀속은 대본 전체에서 한 번 이상 밝히면 된다 — 매 문장에 출처가 없다고 attribution_loss 로 보지 마라.
+다른 출처의 주장을 이 출처의 것으로 바꿔 말한 경우만 attribution_loss 다.
+용어·개념을 풀어 주는 **쉬운 일반 배경 설명**(예: "물리적인 힘이 세포 안 신호로 바뀌기도 합니다")은 BACKGROUND
+(verdict RHETORICAL)로 분류하라 — 근거가 필요 없다. 단 이번 연구·리포트의 결과·숫자·주장을 말하면 FACTUAL 이다.
+"마치 ~처럼" 같은 이해용 비교 절은 COMPARISON(verdict RHETORICAL)으로 분류하라 — 비교 자체는 근거가 필요 없다.
+단 그 비교가 새 사실·숫자·인과를 주장하면 FACTUAL 로 보고 근거와 대조하라.
 절 텍스트는 원문 문장의 연속된 글자를 그대로 복사하며 어떤 내용도 생략하거나 추가하지 마라.
-evidence_id는 해당 beat에 제공된 값만 사용하라. reasoning/raw ref/aggregate status는 만들지 마라.
+evidence_id는 해당 beat에 제공된 값만 사용하라. 단 HOOK(첫 질문)과 PAYOFF(정리) beat 는 대본 전체 beat 의 근거를
+댈 수 있다 — 본문 내용을 미리 당기거나 묶어 말하기 때문이다. reasoning/raw ref/aggregate status는 만들지 마라.
 JSON only: {"clauses":[{"narration_id":"SN01","sentence_index":1,
-"clause_text":"...","clause_kind":"FACTUAL|RHETORICAL",
+"clause_text":"...","clause_kind":"FACTUAL|RHETORICAL|COMPARISON|BACKGROUND",
 "verdict":"ENTAILED|CONTRADICTED|UNSUPPORTED|UNVERIFIABLE|RHETORICAL",
 "evidence_ids":[],"finding_codes":[],"rationale":"..."}]}
 """
@@ -139,6 +163,12 @@ def _eligible_support(item: dict[str, Any], section: str) -> bool:
         for ref in item.get("source_refs") or []
     )
     if has_source_span or scope.get("semantic_entailment") is True:
+        return True
+    # 논문 Fact Sheet 의 수치·발견 요약 칸은 운영 대본이 쓰는 바로 그 사실 원천이다(불변식 "Fact Sheet 만").
+    # 이 칸에는 원문 인용 칸이 아예 없어서, 맞는 문장도 영영 근거로 인정받지 못했다
+    # (2026-10-07 실측: "피질 억제 뉴런의 1% 미만" — 검증관 ENTAILED, 그런데 차단). 뜻 대조는 검증관 판정이 맡는다.
+    if (_text(item.get("evidence_id")).startswith("paper:") and section in {"numbers", "background_context"}
+            and item.get("verification_state") == "NOT_CHECKED"):
         return True
     if section != "numbers" or scope.get("numeric_value") is not True:
         return False
@@ -256,14 +286,44 @@ def _semantic_findings(
         verdict = row.get("verdict")
         evidence_ids = _strings(row.get("evidence_ids"))
         findings = _strings(row.get("finding_codes"))
+        if kind == "BACKGROUND":
+            # 쉬운 배경 설명 — 근거 불필요. 숫자가 있거나 다른 지적이 붙으면 배경이 아니다.
+            text = _text(row.get("clause_text"))
+            if verdict != "RHETORICAL" or findings or spoken_numbers.value_tokens(text):
+                failed = True
+                errors.append(f"background_exemption_invalid:{clause_id}")
+            continue
+        if kind == "COMPARISON":
+            # 이해용 비교(작업지시서 §8 목표 문체 "지렛대처럼"). 비교 표지가 있고, 근거·지적 사항이 없을 때만 면제.
+            text = _text(row.get("clause_text"))
+            valid = (verdict == "RHETORICAL" and not evidence_ids and not findings
+                     and bool(_COMPARISON_MARKER.search(text))
+                     and not spoken_numbers.value_tokens(text))
+            if not valid:
+                failed = True
+                errors.append(f"comparison_exemption_invalid:{clause_id}")
+            continue
+        if kind == "RHETORICAL" and beat.get("stage") != "HOOK":
+            # 본문 중간의 순수 질문("그렇다면 왜 지금일까요?")은 이야기 장치다 — 숫자·근거·지적이 없을 때만 면제.
+            text = _text(row.get("clause_text"))
+            valid = (verdict == "RHETORICAL" and not evidence_ids and not findings
+                     and text.endswith(("?", "？")) and not spoken_numbers.value_tokens(text))
+            if not valid:
+                failed = True
+                errors.append(f"rhetorical_exemption_invalid:{clause_id}")
+            continue
         if kind == "RHETORICAL":
             valid = (
                 beat.get("stage") == "HOOK"
                 and verdict == "RHETORICAL"
                 and not evidence_ids
                 and not findings
-                and spoken_narration.hook_matches_core_question(
-                    row.get("clause_text"), core_question
+                and (
+                    spoken_narration.hook_matches_core_question(row.get("clause_text"), core_question)
+                    # 작성기가 지은 첫 질문(2026-10-07 기존 작성기 경로) — 숫자 없는 순수 질문만 수사로 인정한다.
+                    # 숫자·사실을 담은 질문("1%만 건드렸는데…")은 FACTUAL 로 근거와 대조된다.
+                    or (_text(row.get("clause_text")).endswith(("?", "？"))
+                        and not spoken_numbers.value_tokens(_text(row.get("clause_text"))))
                 )
             )
             if not valid:
@@ -285,10 +345,41 @@ def _semantic_findings(
             item = evidence_index.get(evidence_id)
             if item is None:
                 continue
-            if not _eligible_support(item, evidence_sections.get(evidence_id, "")):
+            # 한계·리스크 비트의 문장은 주장을 약하게 할 뿐이다 — 인용이 없는 리스크·한계 근거도 받친다
+            # (설명 설계 IR 이 제약 역할에 같은 예외를 둔다. 2026-10-06 실측: "레이저는 날씨에 민감" 이 막혔다).
+            # 기준은 근거가 놓인 칸이 아니라 **문장의 역할**이다(IR 과 같다) — 리포트의 한계 근거는 claims 칸에도 있다.
+            boundary_ok = (beat.get("stage") == "BOUNDARY"
+                           and item.get("verification_state") in {"NOT_CHECKED", "UNVERIFIABLE_AT_CURRENT_DEPTH"})
+            if not boundary_ok and not _eligible_support(item, evidence_sections.get(evidence_id, "")):
                 failed = True
                 errors.append(f"support_surface_ineligible:{clause_id}:{evidence_id}")
     return failed, sorted(set(errors))
+
+
+def _citable(beat: dict[str, Any], beats: list[dict[str, Any]]) -> set[str]:
+    """이 비트 문장이 댈 수 있는 근거. 정리(PAYOFF) 비트는 앞 내용을 묶어 말하므로 **이 대본 전체**의 근거를 댈 수 있다
+    (2026-10-06 실측: 리포트 정리 문장이 앞 비트 근거로 받쳐졌는데 '빌려 온 근거'로 막혔다). 대본 밖 근거는 여전히 안 된다."""
+    own = set(beat.get("evidence_ids") or [])
+    # 첫 질문(HOOK)도 본문 내용을 미리 당겨 말한다("피질의 1% 뉴런이라고요?") — 2026-10-07 실측: 작성기가 첫 장면에
+    # 주장 하나만 달아 두어, 3장면에 있는 1% 수치를 첫 질문이 못 댔다.
+    if beat.get("stage") in {"PAYOFF", "HOOK"}:
+        own |= {e for b in beats for e in (b.get("evidence_ids") or [])}
+    return own
+
+
+def fix_feedback(fidelity: dict[str, Any]) -> list[str]:
+    """검증관이 걸러낸 절 → 대본 모델에게 줄 쉬운 지시(비트별). 근거로 확인 안 된 문장은 빼거나 근거에 맞춘다."""
+    out: list[str] = []
+    for clause in fidelity.get("clauses") or []:
+        if clause.get("verdict") in {"ENTAILED", "RHETORICAL"} and not clause.get("finding_codes"):
+            continue
+        why = ", ".join(clause.get("finding_codes") or []) or clause.get("verdict") or ""
+        out.append(f"{clause.get('beat_id')}: \"{_text(clause.get('clause_text'))}\" — 근거로 확인되지 않음({why}). "
+                   f"{_text(clause.get('rationale'))[:80]} → 이 내용을 빼거나 그 비트 근거에 맞게 고쳐라")
+    for error in (fidelity.get("qa") or {}).get("errors") or []:
+        if error.startswith("factual_evidence_missing") or error.startswith("support_surface_ineligible"):
+            out.append("근거가 없는 사실 문장을 쓰지 마라 — 각 문장은 그 비트 content_points 에 있는 사실만 말한다")
+    return list(dict.fromkeys(out))
 
 
 def normalize_review(
@@ -304,9 +395,26 @@ def normalize_review(
     if narration.get("generation_status") != "DRAFT_ACCEPTED":
         raise ValueError("spoken_narration_not_accepted")
     rows = payload.get("clauses") if isinstance(payload, dict) else None
+    if rows is None and isinstance(payload, dict) and isinstance(payload.get("items"), list):
+        # 검증관이 절 목록을 감싸지 않고 냈다(llm._extract_json 참조). 비트마다 {"clauses": [...]} 묶음으로 낸
+        # 경우(2026-10-06 실측, 11묶음)는 순서대로 펼친다.
+        rows = []
+        for item in payload["items"]:
+            if isinstance(item, dict) and isinstance(item.get("clauses"), list):
+                rows.extend(item["clauses"])
+            else:
+                rows.append(item)
     if not isinstance(rows, list):
         return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
 
+    return _judge(rows, narration, pack)
+
+
+def _judge(rows: list[Any], narration: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]:
+    """검증관이 낸 절 목록 → 정규화·판정. V2 비트(normalize_review)와 기존 작성기 장면(review_scenes)이 같이 쓴다.
+
+    narration 은 domain·content_id·core_question·narration_beats 만 있으면 된다.
+    """
     beats = narration["narration_beats"]
     beat_by_narration = {beat["narration_id"]: beat for beat in beats}
     evidence_index = explanation_ir.build_index(pack)
@@ -318,6 +426,7 @@ def normalize_review(
     ]
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
+    critic_notes: list[str] = []
     cursor = 0
 
     for beat, sentence_index, sentence in expected:
@@ -354,8 +463,36 @@ def normalize_review(
             ):
                 errors.append(f"finding_codes_invalid:{key[0]}:{sentence_index}")
             evidence_ids = _strings(row.get("evidence_ids"))
-            finding_codes = _strings(row.get("finding_codes"))
-            if clause_kind not in {"FACTUAL", "RHETORICAL"}:
+            cited_nothing = not evidence_ids               # 다른 비트를 댄 뒤 빠진 것과 구별한다(세탁 방지)
+            finding_codes = [_FINDING_ALIASES.get(code.lower(), code) for code in _strings(row.get("finding_codes"))]
+            # 다른 비트의 근거를 댄 것은 검증관의 인용 실수다 — 그 id 만 빼고 경고로 남긴다. 빼고 나서 근거가 하나도
+            # 없으면 아래 판정(factual_evidence_missing)이 그대로 거절한다(2026-10-06 실측: 세 편 모두 이걸로 멈췄다).
+            # 순수 질문(수사)은 근거를 댈 일이 없다 — 첫 질문의 '대본 전체 근거' 확장은 사실을 말하는 첫 문장에만 준다.
+            citable = (set(beat.get("evidence_ids") or []) if clause_kind == "RHETORICAL"
+                       else _citable(beat, beats))
+            outside_dropped = [e for e in evidence_ids if e in evidence_index and e not in citable]
+            if outside_dropped:
+                critic_notes.append(f"critic_cited_other_beat:{key[0]}:{outside_dropped[0]}")
+                evidence_ids = [e for e in evidence_ids if e not in outside_dropped]
+                if not evidence_ids and clause_kind == "FACTUAL":
+                    # 빌려 온 근거밖에 없었다 — 그 비트 근거로는 받쳐지지 않는 문장이다. 바로 '근거 없음'으로 적어 둔다
+                    # (그래야 저장본을 다시 정규화해도 같은 판정이 나온다 — 빈 인용을 비트 근거로 채우지 않는다).
+                    verdict = "UNSUPPORTED"
+                    row = {**row, "rationale": _text(row.get("rationale")) or "다른 비트의 근거로만 받쳐졌다"}
+            # ★ 쉬운 배경 설명은 통과(2026-10-06 운영자 "쉬운 배경설명은 당연히 통과") — 단 **검증관이 BACKGROUND 로
+            #   분류한 것만**이다. 'unsupported_background' 지적을 배경으로 바꿔 주지 않는다: 그 지적은 골드셋에서 지어낸
+            #   연구 주장("청각→시각 전이")을 잡는 바로 그 신호다.
+            if clause_kind == "BACKGROUND" and verdict == "ENTAILED" and evidence_ids:
+                clause_kind = "FACTUAL"            # 배경이라 했지만 근거로 맞다고 확인했다 — 그냥 근거 있는 사실이다
+            if clause_kind == "BACKGROUND":
+                critic_notes.append(f"background_accepted:{key[0]}:{sentence_index}")
+            # 검증관이 "맞다"(ENTAILED)고 하고 근거 번호를 빠뜨린 경우 — 검증관은 그 비트 근거만 보고 판정했으므로 그 근거를
+            # 붙인다(2026-10-06 실측 11절). 붙인 근거가 인용 없는 것이면 아래 지지면 검사가 그대로 거절한다.
+            if (clause_kind == "FACTUAL" and verdict == "ENTAILED" and cited_nothing
+                    and beat.get("evidence_ids")):
+                evidence_ids = list(beat["evidence_ids"])
+                critic_notes.append(f"critic_omitted_citation:{key[0]}:{sentence_index}")
+            if clause_kind not in {"FACTUAL", "RHETORICAL", "COMPARISON", "BACKGROUND"}:
                 errors.append(f"clause_kind_invalid:{key[0]}:{sentence_index}")
             if verdict not in VERDICTS:
                 errors.append(f"verdict_invalid:{key[0]}:{sentence_index}")
@@ -371,8 +508,7 @@ def normalize_review(
                        if evidence_id not in evidence_index]
             if unknown:
                 errors.append(f"evidence_ref_unknown:{key[0]}:{unknown[0]}")
-            outside = [evidence_id for evidence_id in evidence_ids
-                       if evidence_id not in beat.get("evidence_ids", [])]
+            outside = [evidence_id for evidence_id in evidence_ids if evidence_id not in citable]
             if outside:
                 errors.append(f"evidence_ref_outside_beat:{key[0]}:{outside[0]}")
             if (
@@ -431,7 +567,7 @@ def normalize_review(
         "clauses": normalized,
         "qa": {
             "errors": semantic_errors,
-            "warnings": [],
+            "warnings": sorted(set(critic_notes)),
             "metrics": _metrics(normalized, sentence_count),
         },
     }
@@ -527,7 +663,7 @@ def validate(
             for evidence_id in unknown
         )
         outside = [evidence_id for evidence_id in evidence_ids
-                   if evidence_id not in beat.get("evidence_ids", [])]
+                   if evidence_id not in _citable(beat, narration["narration_beats"])]
         errors.extend(
             f"evidence_ref_outside_beat:{row.get('clause_id')}:{evidence_id}"
             for evidence_id in outside
@@ -592,7 +728,16 @@ def validate(
     canonical = normalize_review(
         critic_payload, narration, plan, ir, resolution, pack
     )
-    if result != canonical:
+    # 저장된 절은 이미 다른 비트 인용을 뺀 뒤라 다시 정규화하면 그 경고(critic_cited_other_beat)는 안 생긴다 —
+    # 그 경고만 빼고 대조한다(판정·절·오류·다른 경고는 그대로 같아야 한다 — 위조는 계속 잡는다).
+    def _without_notes(row: dict[str, Any]) -> dict[str, Any]:
+        qa = row.get("qa") if isinstance(row.get("qa"), dict) else {}
+        kept = [w for w in qa.get("warnings") or []
+                if not str(w).startswith(("critic_cited_other_beat:", "background_accepted:",
+                                          "critic_omitted_citation:"))]
+        return {**row, "qa": {**qa, "warnings": kept}}
+
+    if _without_notes(result) != _without_notes(canonical):
         errors.append("fidelity_not_canonical")
     return sorted(set(errors))
 
@@ -621,10 +766,13 @@ def review(
     invoke = caller or call_json
     try:
         payload = invoke(
-            model=config.MODEL_SELFCHECK,
+            model=config.MODEL_V2_CRITIC,
             system=SYSTEM_PROMPT,
             user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
-            max_tokens=config.LLM_SELFCHECK_MAX_TOKENS,
+            # 생각하는 모델(gemini-*-pro·deepseek)은 답 전에 생각을 쓴다 — 작은 상한이면 JSON 이 잘린다(실측 2회).
+            max_tokens=(config.LLM_DIRECTIVE_MAX_TOKENS
+                        if ("pro" in config.MODEL_V2_CRITIC or config.MODEL_V2_CRITIC.startswith("deepseek"))
+                        else config.LLM_SELFCHECK_MAX_TOKENS),
         )
     except Exception as exc:
         return _empty_result(
@@ -633,3 +781,138 @@ def review(
             errors=[f"critic_call_failed:{type(exc).__name__}"],
         )
     return normalize_review(payload, narration, plan, ir, resolution, pack)
+
+
+# ─────────────────────────────────────────────────────────────
+# 기존 작성기 장면 검증(2026-10-07 운영자 결정: V2 는 설계·검사·화면, 말은 기존 작성기가 쓴다)
+# ─────────────────────────────────────────────────────────────
+_BEAT_FIELDS = ("narration_id", "beat_id", "stage", "sentences", "reasoning_ids", "evidence_ids", "concept_ids",
+                "knowledge_refs", "causal_levels", "uncertainties", "attributions")
+
+
+def _critic_max_tokens() -> int:
+    return (config.LLM_DIRECTIVE_MAX_TOKENS
+            if ("pro" in config.MODEL_V2_CRITIC or config.MODEL_V2_CRITIC.startswith("deepseek"))
+            else config.LLM_SELFCHECK_MAX_TOKENS)
+
+
+def _rows(payload: Any) -> list[Any] | None:
+    rows = payload.get("clauses") if isinstance(payload, dict) else None
+    if rows is None and isinstance(payload, dict) and isinstance(payload.get("items"), list):
+        rows = []
+        for item in payload["items"]:
+            if isinstance(item, dict) and isinstance(item.get("clauses"), list):
+                rows.extend(item["clauses"])
+            else:
+                rows.append(item)
+    return rows if isinstance(rows, list) else None
+
+
+def review_scenes(beats: list[dict[str, Any]], pack: dict[str, Any], *, domain: str, content_id: str,
+                  core_question: str, caller: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
+    """기존 작성기가 쓴 장면(비트 모양으로 바꾼 것)을 같은 검증관·같은 판정 규칙으로 본다.
+
+    비트마다 그 장면이 가리킨 근거(evidence_ids)만 근거로 쓸 수 있다 — V2 비트와 똑같다.
+    """
+    narration = {"domain": domain, "content_id": content_id, "core_question": core_question,
+                 "narration_beats": [{f: deepcopy(b.get(f)) if b.get(f) is not None else ([] if f not in
+                                      ("narration_id", "beat_id", "stage") else "") for f in _BEAT_FIELDS}
+                                     for b in beats]}
+    wanted = {e for b in narration["narration_beats"] for e in b["evidence_ids"]}
+    visible = {"domain": domain, "content_id": content_id, "core_question": core_question,
+               "narration_beats": narration["narration_beats"], "reasoning_units": [], "concepts": [],
+               "evidence": _evidence_rows(pack, wanted)}
+    set_text_purpose("v2_writer_critic")
+    try:
+        payload = (caller or call_json)(model=config.MODEL_V2_CRITIC, system=SYSTEM_PROMPT,
+                                        user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
+                                        max_tokens=_critic_max_tokens())
+    except Exception as exc:  # noqa: BLE001
+        return _empty_result(narration, "CRITIC_ERROR", errors=[f"critic_call_failed:{type(exc).__name__}"])
+    rows = _rows(payload)
+    if rows is None:
+        return _empty_result(narration, "CRITIC_ERROR", errors=["critic_clauses_not_list"])
+    return _judge(rows, narration, pack)
+
+
+# ★ 작성기에게 **미리** 주는 검사 기준(2026-10-08 운영자 "검사 기준을 주고 그 기준에 맞춰 쓰라고 하면 되잖아").
+#   아래 판정(_semantic_findings·_jev_rows)이 실제로 보는 것만 적는다 — 여기와 판정이 어긋나면 작성기는 모르는 기준에
+#   걸린다(게이트·프롬프트·되먹임 셋이 같은 말을 해야 한다). tests/test_v2_writer.py 가 문구를 확인한다.
+WRITER_CHECK_CRITERIA: tuple[str, ...] = (
+    "사실을 말하는 모든 문장은 Fact Sheet 항목 하나 이상으로 확인돼야 한다 — 문장마다 Fact Sheet(+출처 정보)와 대조해 "
+    "근거를 넘으면 그 대본은 차단된다.",
+    "장면마다 source_facts·claim_ids 에 그 장면 문장이 기대는 항목을 **빠짐없이** 달아라. 첫 장면(질문)도 숫자나 "
+    "사실을 말하면 그 항목을 단다(예: 1% 를 말하면 그 수치가 있는 numbers[i]).",
+    "Fact Sheet 의 source 에 없는 기관·저자·연도·지명을 쓰지 마라.",
+    "말의 세기를 올리지 마라: 연관 → 원인, 일부 → 전체, 동물 → 사람, '늘었다' → '두 배' 같은 강화·확대 금지.",
+    "숫자 없는 순수 질문(첫 질문·중간 질문)은 검사 대상이 아니다 — 질문은 자유롭게, 단 질문 안에 사실을 단정하지 마라.",
+    "연구 한계는 한계 장면(evidence_role=caveat) 하나에 묶어라 — 한계 근거는 그 장면에서만 쓸 수 있다.",
+)
+
+
+def _jev_source(pack: dict[str, Any], fact_sheet: dict[str, Any]) -> str:
+    """Jev 판정 근거 = 출처 메타(제목·기관/증권사) + Fact Sheet 전체. 운영 근거 경고(engine/grounding.py)와 같은 모양."""
+    from . import grounding
+    attribution = ((pack.get("source") or {}).get("attribution") or {})
+    meta = " | ".join(f"{k}: {v if isinstance(v, str) else ', '.join(map(str, v))}"
+                      for k, v in attribution.items() if v and k != "url")
+    return f"SOURCE META: {meta}\nFACT SHEET:\n{grounding.facts_text(fact_sheet or {})}"
+
+
+def _jev_rows(narration: dict[str, Any], pack: dict[str, Any], source: str,
+              judge: Callable[[str, str], float | None]) -> list[dict[str, Any]] | None:
+    """문장 하나 = 절 하나. 숫자 없는 순수 질문은 수사(RHETORICAL), 나머지는 Jev 가 근거를 넘었나 본다.
+
+    근거 id 는 그 비트가 댈 수 있는 근거(HOOK·PAYOFF 는 대본 전체)를 그대로 단다 — Jev 는 Fact Sheet 전체와 대조하므로
+    '어느 항목'을 고르지 않는다. 한 문장이라도 Jev 가 답을 못 하면 None(검증 못 함 → CRITIC_ERROR).
+    """
+    beats = narration["narration_beats"]
+    index = explanation_ir.build_index(pack)
+    sections = _evidence_sections(pack)
+    rows: list[dict[str, Any]] = []
+    for beat in beats:
+        # 그 자리에서 쓸 수 있는 근거만 단다 — 한계 근거는 한계 장면(BOUNDARY)에서만 받친다(아래 판정과 같은 기준).
+        cite = [e for e in sorted(_citable(beat, beats)) if e in index
+                and (beat.get("stage") == "BOUNDARY" or _eligible_support(index[e], sections.get(e, "")))]
+        for n, sentence in enumerate(beat["sentences"], 1):
+            text = _text(sentence)
+            base = {"narration_id": beat["narration_id"], "sentence_index": n, "clause_text": text,
+                    "finding_codes": []}
+            if text.endswith(("?", "？")) and not spoken_numbers.value_tokens(text):
+                rows.append({**base, "clause_kind": "RHETORICAL", "verdict": "RHETORICAL", "evidence_ids": [],
+                             "rationale": "숫자 없는 순수 질문"})
+                continue
+            p = judge(text, source)
+            if p is None:
+                return None
+            bad = p >= config.V2_JEV_UNSUPPORTED_MIN
+            if not bad and not cite and not spoken_numbers.value_tokens(text):
+                # 근거 칸이 빈 장면의 숫자 없는 문장 — 통념("흔히 소리는 기분만 바꾼다고 생각하죠")·출처("○○ 연구진이")다.
+                # Jev 가 Fact Sheet+출처 정보와 대조해 넘지 않았다고 봤으니 배경으로 둔다(2026-10-08 조화 음파 편: 이 둘이
+                # '근거 없음'으로 막혔다 — 작성기는 source.authors 를 달았는데 그 칸은 근거 묶음에 없다). 숫자가 있으면 종전대로 근거 필수.
+                rows.append({**base, "clause_kind": "BACKGROUND", "verdict": "RHETORICAL", "evidence_ids": [],
+                             "rationale": f"근거 칸 없는 배경·출처 문장 — Jev p(근거 넘음)={p:.2f}"})
+                continue
+            rows.append({**base, "clause_kind": "FACTUAL", "verdict": "UNSUPPORTED" if bad else "ENTAILED",
+                         "evidence_ids": cite, "finding_codes": ["unsupported_background"] if bad else [],
+                         "rationale": f"Jev 근거 판정 p(근거 넘음)={p:.2f} (문턱 {config.V2_JEV_UNSUPPORTED_MIN})"})
+    return rows
+
+
+def review_scenes_jev(beats: list[dict[str, Any]], pack: dict[str, Any], fact_sheet: dict[str, Any], *,
+                      domain: str, content_id: str, core_question: str,
+                      judge: Callable[[str, str], float | None] | None = None) -> dict[str, Any]:
+    """`review_scenes` 의 Jev 판. 같은 판정 규칙(_judge)을 탄다 — 바뀌는 것은 절 판정을 누가 하느냐뿐이다."""
+    from . import decide
+    narration = {"domain": domain, "content_id": content_id, "core_question": core_question,
+                 "narration_beats": [{f: deepcopy(b.get(f)) if b.get(f) is not None else ([] if f not in
+                                      ("narration_id", "beat_id", "stage") else "") for f in _BEAT_FIELDS}
+                                     for b in beats]}
+    if judge is None:
+        if not decide.enabled():
+            return _empty_result(narration, "CRITIC_ERROR", errors=["critic_jev_disabled"])
+        judge = decide.unsupported_claim_p
+    rows = _jev_rows(narration, pack, _jev_source(pack, fact_sheet), judge)
+    if rows is None:
+        return _empty_result(narration, "CRITIC_ERROR", errors=["critic_jev_no_answer"])
+    return _judge(rows, narration, pack)

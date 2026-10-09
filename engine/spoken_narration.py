@@ -34,9 +34,36 @@ _SCOPE_QUALIFIERS = frozenset({"평균", "일부", "약", "가량", "정도", "�
 _NON_HEDGE_YAK = re.compile(r"약(?!\s*[\d.])")
 # 한자어 부정("불필요·불가능·무관…")도 부정이다. 원문 "허가도 불필요"를 모델이 "허가도 필요 없어"로 풀자 "없"만
 # 부정으로 세져 뜻이 바뀐 것으로 거절됐다(2026-10-05 위성 레이저 광통신 실측). 양쪽 모두 이 낱말을 부정으로 센다.
-_SINO_NEGATION = re.compile(r"불(?:필요|가능|가|충분|충족|명확|분명|일치)|무(?:관|의미|효)|미(?:달|흡|확인|정)")
+_SINO_NEGATION = re.compile(r"불(?:필요|가능|가|충분|충족|명확|분명|일치)|무(?:관|의미|효)|미(?:달|흡|확인|정|처리|투여|처치)"
+                            r"|비(?:처리|투여|노출|처치)")
+# "원인을 단정할 수 없다 / 일반화하기 어렵다" 같은 **조심 표현**은 주장을 약하게 할 뿐이다 — 부정·인과로 세지 않고
+# 불확실성(uncertain)으로 센다(2026-10-06 실측: 조심 문장을 덧붙였다고 "부정 추가·인과 추가"로 거절됐다).
+_HEDGE_PHRASE = re.compile(r"(?:원인(?:이라고|으로|을|이)?\s*)?(?:단정|확정|장담|단언)(?:할|하기|하긴|하기는|하기엔)?\s*"
+                           r"(?:수\s*(?:는\s*)?없|어렵|어려|힘들|이르|이릅)")
+
+
+# "정도"는 **숫자 바로 뒤**("30% 정도")일 때만 범위 단서다. "메우는 정도로 측정"의 정도는 "얼마나"라는 뜻이라
+# 단서가 아니다 — 그걸 뺐다고 거절됐다(2026-10-06 조화 음파 실측). 운영 다듬기(script_polish)는 그대로 둔다.
+_NUMERIC_JEONGDO = re.compile(r"(\d[\d.,]*\s*[^\s가-힣\d]{0,3}[가-힣]{0,2}\s*)?정도")
+
+
+def _mask_non_numeric_jeongdo(text: str) -> str:
+    return _NUMERIC_JEONGDO.sub(lambda m: m.group(0) if m.group(1) else "□", text)
+
+
+def _strip_hedges(text: str) -> tuple[str, bool]:
+    stripped = _HEDGE_PHRASE.sub("□", text)
+    return stripped, stripped != text
+
+
+def _causal_count(text: str, term: str) -> int:
+    """인과어 개수 — "이야기"의 "야기", 조심 표현 속 "원인"은 세지 않는다(실측 오탐 두 건)."""
+    return _strip_hedges(text.replace("이야기", "□"))[0].count(term)
 # 덧붙이면 주장이 약해질 뿐인 갈래 — **빼는 것만** 막는다. 연관·부정은 양방향 모두 막는다.
-_WEAKENING_CLASSES = frozenset({"hedge", "uncertain"})
+#: 생각 단계 경로에서 검증관에게 넘기는(경고로 내리는) 낱말 세기 검사.
+_CRITIC_JUDGED = frozenset({"protected_meaning_changed", "qualifier_dropped", "scope_intensifier_added",
+                            "causal_language_added", "association_upgraded"})
+_WEAKENING_CLASSES = frozenset({"hedge", "uncertain", "assoc"})   # assoc 를 **덧붙이는** 것도 주장을 약하게 할 뿐이다
 _ABBREVIATION = re.compile(r"(?<![A-Za-z])[A-Z][A-Z0-9+.-]{1,}(?![A-Za-z])")
 _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시사한다", "할 수 있습니다")
 
@@ -46,19 +73,39 @@ _ACADEMIC_REGISTER = ("본 연구", "관찰되었다", "확인되었다", "시�
 _NON_ASSOC_GWANRYEON = re.compile(r"관련(?!\s*(?:이|성|되|된|돼|해|하|있|없|지|을|은|도))")
 
 
+# 부정의 활용형("아닙니다·아닌·아님")과 "~기 어렵다"(= ~할 수 없다). 종전 목록(않·못·없·아니)은 "아닙"을 못 보고,
+# "배제할 수 없다" → "배제하기는 어려워요"를 부정이 빠진 것으로 봤다(2026-10-06 실측 두 건, 뜻은 같았다).
+_NEGATION_FORMS = re.compile(r"아닙|아닌|아님|아니")
+# "~하기 어렵다 / 이르다 / 힘들다" 는 한계를 말하는 다른 표현이다. 혼자서는 부정으로 세지 않고, 반대쪽에 진짜 부정
+# ("~할 수 없다")이 있을 때만 그 부정과 같은 것으로 본다 — "배제할 수 없다" ↔ "배제하기는 어려워요",
+# "일반화하기 어렵다" ↔ "적용하기는 이릅니다"(2026-10-06 실측, 뜻은 같았다).
+_DIFFICULTY = re.compile(r"기(?:는|가|도|엔|에는)?\s*(?:어렵|어려|이르|이릅|힘들|힘드|힘든)|아직(?:은)?\s*이르")
+#: 범위 강화어의 같은 뜻 묶음 — 근거가 "전체"라고 했으면 대본의 "전부·모든·모두"는 강화가 아니다.
+_SCOPE_SYNONYMS = ({"모든", "전부", "모두", "전체"},)
+
+
 def _meaning_classes(text: str) -> set[str]:
     text = _NON_ASSOC_GWANRYEON.sub("□", text)
     classes = script_polish.meaning_classes(text) & _PROTECTED_MEANING_CLASSES
-    return classes | {"negation"} if _SINO_NEGATION.search(text) else classes
+    if _SINO_NEGATION.search(text) or _NEGATION_FORMS.search(text):
+        classes = classes | {"negation"}
+    return classes
 
 
-SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다.
-입력의 비트 순서와 의미를 그대로 유지해 말하기 쉬운 문장으로 바꿔라.
+SYSTEM_PROMPT = """너는 짧은 한국어 설명 영상의 나레이션 작성자다. 논문·리포트를 **읽어 주는 사람**이다 —
+처음 듣는 시청자가 한 번 듣고 따라오도록 말한다. 입력의 비트 순서와 사실은 그대로 두고, 말은 네가 새로 짓는다.
+말하기 규칙(작업지시서 §8 목표 문체):
+- content_points 는 재료다. 원문 문장을 옮기지 말고 평소 말투로 다시 말하라. 한 문장에 한 가지.
+- 전문용어는 꼭 필요할 때만, 처음 한 번 짧게 풀어서. 역할로 말해도 뜻이 같으면 이름을 뺀다.
+- terms_to_gloss 의 용어는 plain 표현으로 **바꿔 부르기만** 하라(그 설명을 사실 주장처럼 덧붙이지 마라).
+- 이해를 돕는 쉬운 비교는 "마치 ~처럼"으로 한 편에 한두 번 써도 된다(예: "다리가 조금 더 긴 지렛대처럼").
+  비교가 새 사실·숫자·인과를 만들면 안 된다.
+- 출처(기관·증권사)는 한두 번이면 된다. 매 문장 "○○에 따르면"으로 시작하지 마라.
 부정, 불확실성, 연관성, 범위 단서(평균·일부·약 등), 출처 귀속을 바꾸거나 빼지 마라.
 숫자: 각 비트의 spoken_numbers 에 있는 수만 값·단위 그대로 말한다. screen_numbers 의 수는 말하지 말고
 크기와 방향을 말로 풀어라(예: "2.4배에서 8.6배 더 넓다" → "훨씬 넓다") — 그 수는 화면 카드로 나간다.
 연도·분기 같은 시점 표현은 그대로 둔다. 입력에 없는 숫자를 만들지 마라.
-새 사실, 비유, 인과, 근거, ID를 추가하지 마라.
+새 사실, 인과, 근거, ID를 추가하지 마라.
 stage 가 HOOK 인 비트는 core_question 을 한 문장 그대로 쓴다. 바꿔도 되는 것은 문장 끝 어미뿐이다
 (예: "…하는가?" → "…하는 걸까요?"). 낱말을 바꾸거나 다른 문장을 덧붙이면 코드가 core_question 으로 되돌린다.
 각 beat_id를 한 번씩 같은 순서로 반환하라.
@@ -121,13 +168,16 @@ def _joined_sentences(beat: dict[str, Any]) -> str:
 
 
 def _draft_guard_findings(
-    narration_beats: list[dict[str, Any]], plan: dict[str, Any]
+    narration_beats: list[dict[str, Any]], plan: dict[str, Any],
+    pack: dict[str, Any] | None = None,
 ) -> tuple[list[str], list[str], dict[str, Any]]:
     errors: list[str] = []
     warnings: list[str] = []
     plan_by_id = {beat["beat_id"]: beat for beat in plan["beats"]}
     question_count = 0
     total_numbers = 0
+    attributions: dict[str, str] = {}
+    evidence_index = narrative_planner.explanation_ir.build_index(pack) if isinstance(pack, dict) else {}
 
     for beat in narration_beats:
         beat_id = _text(beat.get("beat_id"))
@@ -153,13 +203,27 @@ def _draft_guard_findings(
             spoken_screen = [n for n in extra if n in screen_numbers]
             if spoken_screen:
                 errors.append(f"screen_number_spoken:{beat_id}:{spoken_screen[0]}")
-            if missing or len(spoken_screen) != len(extra):
-                errors.append(f"numbers_changed:{beat_id}")
+            if len(spoken_screen) != len(extra):
+                errors.append(f"numbers_changed:{beat_id}")          # 없는 숫자를 만들었거나 바꿨다
+            elif missing:
+                # 말하기로 고른 숫자를 **빠뜨린** 것은 문장을 덜 구체적으로 만들 뿐 거짓을 만들지 않는다(2026-10-06 실측:
+                # "1Tbps급" → "테라비트 수준"). 생각 단계 경로에서는 경고, 옛 경로는 종전대로 오류.
+                if plan.get("origin") == "model_reasoning":
+                    warnings.append(f"spoken_number_omitted:{beat_id}:{missing[0]}")
+                else:
+                    errors.append(f"numbers_changed:{beat_id}")
         if spoken_numbers.period_tokens(before) != spoken_numbers.period_tokens(after):
             errors.append(f"period_changed:{beat_id}")
 
+        # ★ 범위 강화어("모든·전부")는 **원문 근거**에 있으면 허용한다(작업지시서 §9.2 "근거가 명시적으로 있어야").
+        #   생각 단계 경로에서 계획 문장은 모델이 쓴 답이라 원문이 아니다 — 근거 문장까지 본다(2026-10-06 실측:
+        #   "차세대 위성 전부에" 는 근거에 있었는데 계획 문장에 없어 막혔다).
+        grounds = before + " " + " ".join(
+            _text(evidence_index.get(eid, {}).get("text") or evidence_index.get(eid, {}).get("display"))
+            for eid in _strings(source.get("evidence_ids")))
         added_scope = sorted(
-            term for term in _SCOPE_INTENSIFIERS if term in after and term not in before
+            term for term in _SCOPE_INTENSIFIERS if term in after and term not in grounds
+            and not any(term in group and any(other in grounds for other in group) for group in _SCOPE_SYNONYMS)
         )
         if added_scope:
             errors.append(f"scope_intensifier_added:{beat_id}:{added_scope[0]}")
@@ -172,10 +236,18 @@ def _draft_guard_findings(
             # "평균 26.8" 도 같다(2026-10-05 조화 음파 논문 실측 — 숫자와 함께 '평균'이 빠져 거절됐다).
             before_meaning = re.sub(rf"(?:약|평균)\s*{escaped}", number, before_meaning)
             before_meaning = re.sub(rf"{escaped}\s*(?:가량|정도)", number, before_meaning)
-        before_meaning = _NON_HEDGE_YAK.sub("□", before_meaning)
-        after_meaning = _NON_HEDGE_YAK.sub("□", after)
-        before_classes = _meaning_classes(before_meaning)
-        after_classes = _meaning_classes(after_meaning)
+        before_meaning = _mask_non_numeric_jeongdo(_NON_HEDGE_YAK.sub("□", before_meaning))
+        after_meaning = _mask_non_numeric_jeongdo(_NON_HEDGE_YAK.sub("□", after))
+        before_meaning, before_hedged = _strip_hedges(before_meaning)
+        after_meaning, after_hedged = _strip_hedges(after_meaning)
+        before_classes = _meaning_classes(before_meaning) | ({"uncertain"} if before_hedged else set())
+        after_classes = _meaning_classes(after_meaning) | ({"uncertain"} if after_hedged else set())
+        # 부정 쪽 뜻(진짜 부정 또는 "~기 어렵다·이르다")이 양쪽에 같이 있는지로 본다 — 표현이 달라도 같은 뜻이면 통과,
+        # 한쪽에만 생기거나 사라지면("효과가 있다" → "효과를 보기는 어렵다") 뜻이 바뀐 것이다.
+        negative_before = "negation" in before_classes or bool(_DIFFICULTY.search(before_meaning))
+        negative_after = "negation" in after_classes or bool(_DIFFICULTY.search(after_meaning))
+        before_classes = (before_classes - {"negation"}) | ({"negation"} if negative_before else set())
+        after_classes = (after_classes - {"negation"}) | ({"negation"} if negative_after else set())
         changed_classes = (before_classes - after_classes) | (
             (after_classes - before_classes) - _WEAKENING_CLASSES
         )
@@ -199,14 +271,14 @@ def _draft_guard_findings(
             errors.append(f"association_upgraded:{beat_id}")
         added_causal = sorted(
             term for term in _DETERMINATION_TERMS
-            if after.count(term) > before.count(term)
+            if _causal_count(after, term) > _causal_count(before, term)
         )
         if added_causal and source.get("stage") != "HOOK":
             errors.append(f"causal_language_added:{beat_id}:{added_causal[0]}")
 
         for attribution in source.get("attributions") or []:
-            if attribution and attribution not in after:
-                errors.append(f"attribution_dropped:{beat_id}:{attribution}")
+            if attribution:
+                attributions.setdefault(attribution, beat_id)
 
         if source.get("stage") == "HOOK":
             question_count += after.count(plan["core_question"])
@@ -234,9 +306,22 @@ def _draft_guard_findings(
             warnings.append(f"unexplained_abbreviation:{beat_id}:{abbreviation}")
 
     full_text = " ".join(_joined_sentences(beat) for beat in narration_beats)
+    # ★ 출처 귀속은 **대본 전체에서 한 번 이상**이면 된다(작업지시서 §8·운영 4막 규칙 "출처는 한두 번").
+    #   종전에는 비트마다 증권사 이름을 요구해 "유진투자증권에 따르면"이 매 문장 반복될 수밖에 없었다(2026-10-06 실측).
+    for attribution, first_beat in attributions.items():
+        if attribution not in full_text:
+            errors.append(f"attribution_dropped:{first_beat}:{attribution}")
     question_count = max(question_count, full_text.count(plan["core_question"]))
     if question_count > 1:
         warnings.append("core_question_repeated")
+    # ★ 생각 단계 경로에서는 낱말 세기 뜻 검사를 **경고**로 내린다(2026-10-06). 그 검사는 문장이 거의 안 바뀌는
+    #   운영 다듬기용이라, 모델이 쉬운 말로 다시 쓰면 문장마다 다른 낱말에서 걸렸다(실측 세 차례, 매번 새 오탐).
+    #   뜻이 보존됐는지는 작업지시서 §9.1·9.4 대로 **독립 검증관이 절 단위로** 판정한다(바로 다음 단계).
+    #   숫자·시점·출처·근거 연결은 낱말이 아니라 구조라 그대로 오류다.
+    if plan.get("origin") == "model_reasoning":
+        soft = [e for e in errors if e.split(":", 1)[0] in _CRITIC_JUDGED]
+        errors = [e for e in errors if e not in soft]
+        warnings.extend(f"critic_judges:{e}" for e in soft)
     return (
         sorted(set(errors)),
         sorted(set(warnings)),
@@ -375,7 +460,7 @@ def normalize_draft(payload: Any, plan: dict[str, Any], ir: dict[str, Any],
             "number_delivery": deepcopy(beat["number_delivery"]),
         })
 
-    guard_errors, guard_warnings, metrics = _draft_guard_findings(normalized, plan)
+    guard_errors, guard_warnings, metrics = _draft_guard_findings(normalized, plan, pack)
     errors.extend(guard_errors)
     result = {
         "contract_version": CONTRACT_VERSION,
@@ -460,7 +545,7 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
             row.get("reasoning_ids"), row.get("evidence_ids"), row.get("knowledge_refs"),
         )):
             errors.append(f"factual_trace_missing:{source['beat_id']}")
-    guard_errors, guard_warnings, guard_metrics = _draft_guard_findings(beats, plan)
+    guard_errors, guard_warnings, guard_metrics = _draft_guard_findings(beats, plan, pack)
     stored_errors = _strings(qa.get("errors")) if isinstance(qa, dict) else []
     stored_warnings = _strings(qa.get("warnings")) if isinstance(qa, dict) else []
     if not set(guard_errors).issubset(stored_errors):
@@ -479,9 +564,41 @@ def validate(result: Any, plan: dict[str, Any], ir: dict[str, Any],
     return sorted(set(errors))
 
 
+def _max_tokens(model: str) -> int:
+    # 추론형 모델(deepseek-v4-pro)은 답 전에 긴 생각을 쓴다 — 절단 방지(쓴 만큼만 과금).
+    return config.LLM_DIRECTIVE_MAX_TOKENS if model.startswith("deepseek") else MAX_TOKENS
+
+
+_FIX_HINTS = {
+    "numbers_changed": "이 비트의 spoken_numbers 숫자만 값·단위 그대로 말하고, 없는 숫자를 만들거나 빼지 마라",
+    "screen_number_spoken": "screen_numbers 의 숫자는 말하지 말고 크기·방향만 말로 풀어라",
+    "period_changed": "연도·분기 같은 시점 표현을 바꾸거나 빼지 마라",
+    "protected_meaning_changed": "재료의 부정(~없었다·~않았다)·불확실성·연관 표현을 빼거나 뒤집지 마라 — 재료의 사실을 빠뜨리지 마라",
+    "qualifier_dropped": "평균·일부·약 같은 범위 단서를 빼지 마라",
+    "causal_language_added": "재료에 없는 인과 표현(원인·때문·결정·초래)을 덧붙이지 마라",
+    "scope_intensifier_added": "근거에 없는 '모든·전부·유일' 같은 강화어를 쓰지 마라",
+    "attribution_dropped": "출처(기관·증권사)를 대본에서 한 번은 밝혀라",
+    "association_upgraded": "연관을 인과로 바꿔 말하지 마라",
+}
+
+
+def fix_feedback(errors: list[str]) -> list[str]:
+    """거절 사유 → 모델에게 줄 쉬운 지시(비트별). 같은 지시는 한 번만."""
+    out: list[str] = []
+    for error in errors:
+        code, _, rest = error.partition(":")
+        beat = rest.split(":", 1)[0] if rest else ""
+        hint = _FIX_HINTS.get(code)
+        line = f"{beat}: {hint}" if hint and beat.startswith("NB") else (hint or error)
+        if line not in out:
+            out.append(line)
+    return out
+
+
 def generate(plan: dict[str, Any], ir: dict[str, Any], resolution: dict[str, Any],
-             pack: dict[str, Any], *, caller: Callable[..., dict[str, Any]] | None = None
-             ) -> dict[str, Any]:
+             pack: dict[str, Any], *, caller: Callable[..., dict[str, Any]] | None = None,
+             gloss_terms: list[dict[str, str]] | None = None,
+             fix_these: list[str] | None = None) -> dict[str, Any]:
     """Generate a shadow draft; blocked upstream plans never resolve the caller."""
     _require_valid_upstream(plan, ir, resolution, pack)
     if plan["planning_status"] != "READY":
@@ -491,15 +608,46 @@ def generate(plan: dict[str, Any], ir: dict[str, Any], resolution: dict[str, Any
             warnings=[f"upstream_{plan['planning_status'].lower()}"] + list(plan["warnings"]),
         )
     visible = prompt_payload(plan, ir, resolution, pack)
+    if gloss_terms:
+        visible["terms_to_gloss"] = deepcopy(gloss_terms)
+    if fix_these:
+        # 재생성(작업지시서 §10 "Narration regenerate") — 지난 시도가 걸린 이유를 고쳐서 다시 쓴다.
+        visible["fix_these_from_previous_attempt"] = list(fix_these)
     set_text_purpose("spoken_narration_shadow")
     invoke = caller or call_json
     payload = invoke(
-        model=config.MODEL_SCRIPT,
+        model=config.MODEL_V2_NARRATION,
         system=SYSTEM_PROMPT,
         user=json.dumps(visible, ensure_ascii=False, sort_keys=True),
-        max_tokens=MAX_TOKENS,
+        max_tokens=_max_tokens(config.MODEL_V2_NARRATION),
     )
     return normalize_draft(payload, plan, ir, resolution, pack)
+
+
+POLISH_PROMPT = """너는 짧은 한국어 설명 영상 나레이션의 **2차 다듬기** 담당이다(작업지시서 §8 Spoken Polish).
+이미 사실 검사를 통과한 대본이다. 사실·숫자·순서·비트 수는 그대로 두고 **말로 들을 때**만 고쳐라.
+보는 것: 한 호흡이 너무 긴가(한 문장 40자 안팎) · 명사형 표현("~의 증가") · 논문/리포트 문체("~함", "본 연구는") ·
+앞 문장과 이어지는가("그래서·그런데·즉") · 같은 질문을 두 번 하는가 · 전문용어를 풀기 전에 쓰는가 · 숫자를 너무 많이 읽는가 ·
+TTS 로 읽었을 때 어색한 곳.
+금지: 숫자·부정·범위 단서(평균·일부·약)·출처 귀속·불확실성 표현을 바꾸거나 빼지 마라. 새 사실·인과를 더하지 마라.
+HOOK 비트는 그대로 둔다. 고칠 것이 없으면 그대로 돌려줘라.
+JSON only: {"beats":[{"beat_id":"NB01","sentences":["..."]}]}
+"""
+
+
+def polish(narration: dict[str, Any], plan: dict[str, Any], ir: dict[str, Any],
+           resolution: dict[str, Any], pack: dict[str, Any], *,
+           caller: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any]:
+    """2차 다듬기 — 모델 1회 + `apply_polish`(사실 검사를 깨는 수정은 비트별로 버린다)."""
+    beats = [{"beat_id": b["beat_id"], "stage": b["stage"], "sentences": b["sentences"]}
+             for b in narration["narration_beats"]]
+    set_text_purpose("spoken_polish_shadow")
+    payload = (caller or call_json)(
+        model=config.MODEL_V2_NARRATION, system=POLISH_PROMPT,
+        user=json.dumps({"beats": beats}, ensure_ascii=False),
+        max_tokens=_max_tokens(config.MODEL_V2_NARRATION),
+    )
+    return apply_polish(narration, payload, plan, ir, resolution, pack)
 
 
 def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],
@@ -543,7 +691,9 @@ def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],
         polish_reason = script_polish.rejection_reason(before, after)
         candidate = deepcopy(result)
         candidate["narration_beats"][position]["sentences"] = sentences
-        guard_errors, _, _ = _draft_guard_findings(candidate["narration_beats"], plan)
+        guard_errors, guard_warnings, _ = _draft_guard_findings(candidate["narration_beats"], plan, pack)
+        # 다듬기는 **말투만** 바꾸는 단계다 — 생각 단계 경로에서 경고로 내린 뜻 낱말 검사도 다듬기에서는 거절 사유다.
+        guard_errors = guard_errors + [w.split(":", 1)[1] for w in guard_warnings if w.startswith("critic_judges:")]
         relevant_guards = [error for error in guard_errors if f":{beat_id}" in error]
         attribution_error = next(
             (error for error in relevant_guards if error.startswith("attribution_dropped:")), ""
@@ -559,7 +709,7 @@ def apply_polish(narration: dict[str, Any], payload: Any, plan: dict[str, Any],
         target["sentences"] = sentences
         applied.append(beat_id)
 
-    _, warnings, metrics = _draft_guard_findings(result["narration_beats"], plan)
+    _, warnings, metrics = _draft_guard_findings(result["narration_beats"], plan, pack)
     result["qa"]["warnings"] = warnings
     result["qa"]["metrics"] = metrics
     result["polish"] = {

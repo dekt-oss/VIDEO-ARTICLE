@@ -86,6 +86,11 @@ def _source(result: dict[str, Any]) -> dict[str, Any]:
 
 def _reasoning(result: dict[str, Any]) -> dict[str, Any]:
     shadow, phases = _dict(result.get("shadow")), _dict(result.get("phase_status"))
+    if shadow.get("writer"):
+        # 기존 작성기 경로(2026-10-07): 논리는 생각 단계가 설계했다 — 그 근거 연결 검사가 이 단계다.
+        qa = _dict(_dict(shadow.get("reasoning")).get("qa"))
+        return _stage([], [f"생각 단계 근거 연결: {e}" for e in _list(qa.get("errors"))]
+                      + [f"생각 단계 참고: {w}" for w in _list(qa.get("warnings"))])
     fails = _error_in(result, {"phase3", "phase4", "phase5"})
     if not fails and shadow.get("narrative_plan") is None:
         return _stage([], [], not_run="서사 계획(Phase 5)까지 가지 못했다")
@@ -103,6 +108,21 @@ def _reasoning(result: dict[str, Any]) -> dict[str, Any]:
 
 def _narration(result: dict[str, Any]) -> dict[str, Any]:
     shadow, phases = _dict(result.get("shadow")), _dict(result.get("phase_status"))
+    writer = _dict(shadow.get("writer"))
+    if writer:
+        qa = _dict(_dict(writer.get("fidelity")).get("qa"))
+        fails = [] if writer.get("status") == "PASSED" else (
+            [f"사실 검증 판정 {writer.get('status')}"] + [str(e) for e in _list(qa.get("errors"))])
+        warns = [str(w) for w in _list(qa.get("warnings"))]
+        first = _dict(writer.get("first_attempt"))
+        if first:
+            why = [n for n, hit in (("사실 검증", _dict(first.get("fidelity")).get("qa_status") == "REJECTED"),
+                                    ("쉬운 말 검사", bool(_dict(first.get("plain")).get("findings")))) if hit]
+            warns.append(f"{'·'.join(why) or '검사'} 지적으로 한 번 다시 썼다")
+        plain = _dict(writer.get("plain"))
+        if plain.get("findings"):
+            warns.append("쉬운 말 검사 남은 지적: " + ", ".join(str(x) for x in _list(plain.get("findings"))))
+        return _stage(fails, warns)
     fails = _error_in(result, {"phase6", "phase7"})
     if not fails and shadow.get("narration") is None:
         note = ("외부 모델 호출 전 중단(--with-model 필요)"
@@ -160,6 +180,16 @@ def motion_plan_warnings(directive: dict[str, Any]) -> list[str]:
 
 def _visual(result: dict[str, Any]) -> dict[str, Any]:
     shadow, phases = _dict(result.get("shadow")), _dict(result.get("phase_status"))
+    if shadow.get("writer"):
+        generated = _dict(shadow.get("generated"))
+        if phases.get("production_generator") == "ERROR":
+            error = _dict(shadow.get("generated_error"))
+            return _stage([f"지시서 생성 오류: {error.get('type')}: {error.get('message')}"], [])
+        if not generated:
+            return _stage([], [], not_run="지시서를 아직 만들지 않았다(--with-directive)")
+        fails = ([f"지시서 승인 차단: {r}" for r in _list(generated.get("block_reasons"))] or ["지시서 승인 차단"]
+                 if generated.get("approval_blocked") else [])
+        return _stage(fails, motion_plan_warnings(_dict(generated.get("directive"))))
     fails = _error_in(result, {"phase8", "phase9", "phase10"})
     if not fails and shadow.get("gate") is None:
         return _stage([], [], not_run="복잡도 게이트(Phase 8)까지 가지 못했다")

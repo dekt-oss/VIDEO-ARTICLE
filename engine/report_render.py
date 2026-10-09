@@ -153,7 +153,8 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
                               footer_from=_footer_start(cut_map, total), **band_margins)
     with sm.stage(metrics, "assemble"):
         assemble.assemble_full(cut_files, work_dir, out_path, ass_text=ass, total_sec=total,
-                               duck_spans=duck_spans)
+                               duck_spans=duck_spans,
+                               transitions=render.stage_render.transitions(directive.get("cuts") or []))
 
     # ★ 리포트 라인은 지금까지 **아무 검사도 받지 않고** 나갔다 — 논문 라인은 run_qa 로
     #   mp4 를 실검하는데(끝 검은프레임·무음·클리핑·길이) 여기엔 호출도, 저장할 컬럼도 없었다.
@@ -185,6 +186,7 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     status, reasons = render_manifest.terminal_status(board_qa)
     # ★ 빈 화면(placeholder 컷)은 failed — QA 가 mp4 신호만 봐서 놓쳤던 자리(2026-09-24, render 미러).
     status, reasons = render.fail_if_placeholders(status, reasons, qa)
+    status, reasons = render.flag_video_fallbacks(status, reasons, qa)   # 영상→스틸 대체를 드러낸다(render 미러)
     report_db.update_report_render_job(job_id, status=status, progress=100,
                                        output_url=url, cost_estimate=spent["cost"],
                                        qa=qa, error_log="; ".join(reasons)[:1000] or None,

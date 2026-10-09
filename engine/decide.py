@@ -529,3 +529,93 @@ def cross_modal_conflict(narration: str, scene: str, structure: str, claim: str,
                 f"SOURCE CLAIM: {claim or '(none)'}",
                 CROSS_MODAL_CONFLICT_Q[0], CROSS_MODAL_CONFLICT_Q[1],
                 site="shadow_cross_modal", subject=subject)
+
+
+# ─── 쉬운 말 검사(2026-10-08, docs/연구_Jev배치확대_2026-10-08.md §3) ─────────────────────────────
+#  문턱(config.V2_HOOK_*_MIN·V2_TERM_UNEXPLAINED_MIN)이 아래 문구·상태 모양에 묶여 있다 — 바꾸면 다시 잰다.
+HOOK_JARGON_Q = (
+    "Would a typical adult viewer with no science background stumble on a word or term in this opening line "
+    "of a short video (a technical term, gene/cell/brand name, or jargon they would not know)?",
+    {"true": "the line contains at least one term an ordinary viewer would not understand without explanation "
+             "(e.g. 'cortex', 'long-range inhibitory neuron', 'Sst-Chodl', 'delta waves', 'GABAergic')",
+     "false": "every word is everyday language an ordinary viewer understands immediately"},
+)
+HOOK_SPOILER_Q = (
+    "Does this opening question of a short video already give away the answer it is asking about, instead of "
+    "leaving the viewer curious?",
+    {"true": "the question states the finding itself (e.g. 'X is caused by Y, right?'), so there is nothing "
+             "left to wonder about",
+     "false": "the question creates curiosity without revealing the finding"},
+)
+TERM_UNEXPLAINED_Q = (
+    "Does SENTENCE use a technical term (scientific/financial jargon, gene/cell/compound name, abbreviation) "
+    "that an ordinary viewer would not understand AND that is not explained in plain words in SENTENCE or in "
+    "EARLIER?",
+    {"true": "at least one such term is used without a plain-language explanation so far",
+     "false": "every term is everyday language, or each technical term has already been explained in plain words"},
+)
+
+
+def hook_plainness(line: str) -> dict[str, float] | None:
+    """첫 질문 → {jargon, spoiler} 확률(한 호출). 못 물었으면 None."""
+    if not str(line or "").strip():
+        return None
+    return ask(f"OPENING LINE (Korean): {line}", {"jargon": HOOK_JARGON_Q, "spoiler": HOOK_SPOILER_Q},
+               site="v2_hook_plain")
+
+
+def term_unexplained(sentence: str, earlier: str, subject: str = "") -> float | None:
+    """앞 문장까지 풀지 않은 전문용어가 이 문장에 있을 확률. 못 물었으면 None."""
+    if not str(sentence or "").strip():
+        return None
+    return noul(f"EARLIER: {earlier or '(none)'}\nSENTENCE: {sentence}", TERM_UNEXPLAINED_Q[0],
+                TERM_UNEXPLAINED_Q[1], site="v2_term_plain", subject=subject)
+
+SCENE_CROWDED_Q = (
+    "Is SCENE (one short-video narration scene) crowded — does it make the listener hold more than one proper name "
+    "(company, organization, product, program, person) or more than one number/quantity at once?",
+    {"true": "two or more distinct proper names, or two or more numbers/quantities, are packed into this one scene",
+     "false": "at most one proper name and at most one number — a listener can follow it in one hearing"},
+)
+
+
+def scene_crowded(scene: str, subject: str = "") -> float | None:
+    """한 장면에 이름·숫자가 몰렸을 확률(2026-10-08). 못 물었으면 None."""
+    if not str(scene or "").strip():
+        return None
+    return noul(f"SCENE: {scene}", SCENE_CROWDED_Q[0], SCENE_CROWDED_Q[1], site="v2_scene_crowded", subject=subject)
+
+
+# ─── 화면 품질(2026-10-08 운영자 "구체적인 화면 구현도 jev 검증받으면서 이해도·흥미도·호감도 높은 장면으로") ─────────
+#  문턱은 config.JEV_SCREEN_* — 실측: 운영자가 나쁘다고 한 음파 V2 지시서 실사 컷 흥미 0.14~0.44 /
+#  좋다고 한 9/24 리포트 지시서 0.40~0.78. 카메라만: 컷1·마지막 컷(줌만) 0.93, 행동이 있는 컷 0.03~0.40.
+SCREEN_QUALITY_Q = {
+    "understand": (
+        "Seeing SCENE while hearing NARRATION, would a general viewer with no background understand what the "
+        "narration means better than from the words alone?",
+        {"true": "the scene shows the very thing the narration talks about, in a way that makes it clearer",
+         "false": "the scene is generic, decorative or unrelated, so it adds no understanding"}),
+    "engaging": (
+        "Would a general viewer find SCENE visually interesting and pleasant to watch in a short video — a clear, "
+        "recognizable subject with something happening — rather than dull, static, cluttered or confusing?",
+        {"true": "an appealing, clear scene where something visibly happens",
+         "false": "a dull, static, cluttered, unrecognizable or confusing scene"}),
+}
+CAMERA_ONLY_Q = (
+    "Does MOTION only move the camera (zoom, pan, dolly, orbit, push-in) while nothing in the scene itself happens "
+    "or changes?",
+    {"true": "only the camera moves; subjects stay still",
+     "false": "something in the scene acts, moves or changes state"},
+)
+
+
+def screen_quality(narration: str, scene: str, motion: str = "", subject: str = "") -> dict[str, float] | None:
+    """{understand, engaging[, camera_only]} 확률(한 호출). motion 이 없으면 camera_only 는 묻지 않는다. 못 물으면 None."""
+    if not str(narration or "").strip() or not str(scene or "").strip():
+        return None
+    qs = dict(SCREEN_QUALITY_Q)
+    state = f"NARRATION: {narration}\nSCENE: {scene}"
+    if str(motion or "").strip():
+        qs["camera_only"] = CAMERA_ONLY_Q
+        state += f"\nMOTION: {motion}"
+    return noul_many(state, qs, site="screen_quality", subject=subject)

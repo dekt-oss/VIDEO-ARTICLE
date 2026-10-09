@@ -18,6 +18,15 @@ import pytest
 from engine import config, llm
 
 
+@pytest.fixture(autouse=True)
+def _real_low_level_calls(monkeypatch):
+    """이 파일은 저수준 호출 함수 자체를 **가짜 클라이언트로** 검사한다(네트워크 없음) — conftest 의 차단을 푼다."""
+    from conftest import REAL_MODEL_CALLS
+
+    for name, fn in REAL_MODEL_CALLS.items():
+        monkeypatch.setattr(llm, name, fn)
+
+
 class _Resp:
     def __init__(self, text: str, stop_reason: str):
         self.stop_reason = stop_reason
@@ -84,7 +93,8 @@ def test_script_callers_use_the_config_cap():
 
     for fn in (report_scriptgen.generate, report_directive._generate_once):
         src = inspect.getsource(fn)
-        assert "LLM_SCRIPT_MAX_TOKENS" in src, f"{fn.__qualname__}: 상한이 하드코딩돼 있다"
+        # 리포트 대본은 2026-10-08 부터 전용 상한(LLM_REPORT_SCRIPT_MAX_TOKENS)을 쓴다 — 어느 쪽이든 config 상수여야 한다.
+        assert ("LLM_SCRIPT_MAX_TOKENS" in src or "LLM_REPORT_SCRIPT_MAX_TOKENS" in src),             f"{fn.__qualname__}: 상한이 하드코딩돼 있다"
         assert "6144" not in src
 
 
@@ -1042,3 +1052,11 @@ def test_parse_retry_does_not_restart_gemini_after_falling_back():
     # gemini 는 **한 번의 예산만** 쓴다. 두 번째 파싱 시도는 곧장 anthropic 으로 간다.
     assert calls == ["gemini", f"anthropic:{fb}", f"anthropic:{fb}"], calls
     assert calls.count("gemini") == 1, "폴백 뒤에도 gemini 를 처음부터 다시 기다렸다"
+
+
+def test_extract_json_reads_bare_lists():
+    """2026-10-06 실측: 검증관이 [{…},{…}] 로 답해 'Extra data' 로 죽었다."""
+    assert llm._extract_json('[{"a": 1}]') == {"a": 1}
+    assert llm._extract_json('[{"a": 1}, {"b": 2}]') == {"items": [{"a": 1}, {"b": 2}]}
+    assert llm._extract_json('```json\n{"clauses": []}\n```') == {"clauses": []}
+    assert llm._extract_json('앞말 {"a": 1} 뒷말') == {"a": 1}

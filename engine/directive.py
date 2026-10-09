@@ -1754,8 +1754,13 @@ def normalize_directive(
         stage_by_cut = visual_sequence.cut_to_stage(sequences)
         min_beats = int(config.tier_profile("invest").get("min_beats") or 2)
         beats_filled: list[int] = []
+        # ★ 2026-10-08: 여러 컷을 묶은 stage 의 **첫 컷**도 채운다 — stage 하나가 영상 하나라 그 영상의 움직임이 이 컷에서 나온다.
+        #   실측(음파 1/4 렌더 컷 4~6): 첫 컷이 스틸로 분류돼 비트가 비었고, 세 문장 내내 같은 구도였다.
+        #   모델에게 되먹여도 안 고쳐졌다(재생성 뒤에도 같은 경고) — 코드가 채운다(카메라는 비트마다 다르다).
+        stage_leads = {int((st.get("cut_refs") or [0])[0]) for seq in sequences
+                       for st in (seq.get("stages") or []) if isinstance(st, dict) and len(st.get("cut_refs") or []) >= 2}
         for c in cuts:
-            if str(c.get("motion_source") or "") != "video":
+            if str(c.get("motion_source") or "") != "video" and int(c.get("cut_no") or 0) not in stage_leads:
                 continue
             if len(c.get("temporal_plan") or []) >= min_beats:
                 continue
@@ -1877,6 +1882,11 @@ def normalize_directive(
                 "photo_color_code_assigned:" + ", ".join(color_fixed[:6])]))
         # ★ 카드가 이미 그리는 퍼센트 수치는 이미지 프롬프트에서 코드가 지운다(2026-09-14 —
         #   같은 논문 세 편 연속 같은 차단, 세 번 다 손으로 숫자만 지웠다. 함수 주석).
+        labels_fixed = photo_contract.normalize_prompt_labels(cuts)
+        if labels_fixed:
+            header["mode_warnings"] = sorted(set([
+                *header.get("mode_warnings", []),
+                "photo_prompt_label_removed:" + ", ".join(labels_fixed[:6])]))
         numbers_fixed = photo_contract.normalize_prompt_numbers(cuts)
         if numbers_fixed:
             header["mode_warnings"] = sorted(set([

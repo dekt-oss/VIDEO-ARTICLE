@@ -107,3 +107,73 @@ def test_gwanryeon_as_a_claim_is_still_association():
     for text in ("수면 시간은 기억력과 관련이 있다.", "두 변수는 관련된다.", "관련성이 보고됐다.",
                  "운동과 관련해 차이가 컸다.", "우울증과 연관된다."):
         assert "assoc" in spoken_narration._meaning_classes(text), text
+
+
+# ── 2026-10-06 실측 대본으로 잡은 오탐 · 그리고 진짜 뒤집힘은 여전히 잡는다 ─────────────
+def _guard(before: str, after: str, evidence: str = "") -> list[str]:
+    plan = {"core_question": "질문?", "beats": [{
+        "beat_id": "NB02", "stage": "EVIDENCE", "content_points": [before], "causal_levels": [],
+        "evidence_ids": ["paper:C01"],
+        "number_delivery": {"spoken_numbers": spoken_narration.spoken_numbers.value_tokens(before),
+                            "screen_facts": []}}]}
+    pack = {"claims": [{"evidence_id": "paper:C01", "text": evidence}]} if evidence else None
+    return spoken_narration._draft_guard_findings(
+        [{"beat_id": "NB02", "sentences": [after], "evidence_ids": ["paper:C01"]}], plan, pack)[0]
+
+
+def test_same_meaning_negation_rewordings_pass():
+    for before, after in (("직접 증명하지는 않았다.", "직접 증명한 것은 아닙니다."),
+                          ("기여를 완전히 배제할 수 없다.", "기여를 완전히 배제하기는 어려워요."),
+                          ("생체에 바로 일반화하기 어렵다.", "몸속에 그대로 적용하기는 이릅니다."),
+                          ("아직은 이르다.", "실제 치유로 보기는 어렵습니다.")):
+        assert not [e for e in _guard(before, after) if "negation" in e], (before, after)
+
+
+def test_real_meaning_flips_are_still_caught():
+    assert "protected_meaning_changed:NB02:negation" in _guard("효과가 있다.", "효과를 보기는 어렵다.")
+    assert "protected_meaning_changed:NB02:negation" in _guard("허가가 불필요하다.", "허가가 필요하다.")
+
+
+def test_spoken_hertz_matches_written_hz():
+    assert not [e for e in _guard("델타파(1~4 Hz)가 커진다.", "1~4헤르츠 뇌파가 커져요.") if "numbers" in e]
+
+
+def test_scope_word_backed_by_evidence_synonym_passes():
+    errs = _guard("광링크 탑재를 의무화했다.", "차세대 위성 전부에 광링크를 싣게 했습니다.",
+                  evidence="트랜치 위성 전체에 광링크 탑재를 의무화했다.")
+    assert not [e for e in errs if e.startswith("scope_intensifier_added")]
+    assert "scope_intensifier_added:NB02:전부" in _guard("광링크를 실었다.", "위성 전부에 실었다.")
+
+
+def test_more_real_false_alarms_from_2026_10_06():
+    # 조심 표현을 덧붙인 것은 인과·부정 추가가 아니다
+    assert not _guard("깊은 수면에서 활동한다.", "깊은 수면에서 활동해요. 다만 원인을 단정할 수는 없습니다.")
+    # "이야기"의 "야기"는 인과어가 아니다
+    assert not _guard("수면을 유도한다.", "수면을 유도한다는 이야기입니다.")
+    # "비처리 대조군" = "아무 처치도 하지 않은 쪽"
+    assert not [e for e in _guard("비처리 대조군보다 더 메웠다.", "아무 처치도 하지 않은 쪽보다 더 메웠어요.")
+                if "negation" in e]
+    # 500 µm = 500마이크로미터
+    assert not [e for e in _guard("500 µm 빈틈을 냈다.", "500마이크로미터 빈틈을 냈어요.") if "numbers" in e]
+
+
+def test_dropping_a_negative_fact_is_still_caught():
+    errs = _guard("1회 노출은 개선이 없었으나 3회에서는 좋아졌다.", "노출 횟수가 늘수록 좋아졌어요.")
+    assert "protected_meaning_changed:NB02:negation" in errs
+
+
+def test_jeongdo_is_a_qualifier_only_after_a_number():
+    assert not _guard("세포가 틈을 메우는 정도로 재생을 측정했다.", "세포가 틈을 얼마나 채우는지 관찰했어요.")
+    assert "qualifier_dropped:NB02:정도" in _guard("세포가 30% 정도 늘었다.", "세포가 30% 늘었어요.")
+
+
+def test_omitted_number_is_a_warning_on_the_reasoning_path_but_invented_is_an_error():
+    plan = {"core_question": "질문?", "origin": "model_reasoning", "beats": [{
+        "beat_id": "NB02", "stage": "EVIDENCE", "content_points": ["1Tbps급 다운링크를 검증했다."],
+        "causal_levels": [], "evidence_ids": ["paper:C01"],
+        "number_delivery": {"spoken_numbers": ["1Tbps"], "screen_facts": []}}]}
+    beat = lambda text: [{"beat_id": "NB02", "sentences": [text], "evidence_ids": ["paper:C01"]}]
+    errors, warnings, _ = spoken_narration._draft_guard_findings(beat("테라비트 수준 다운링크를 검증했어요."), plan)
+    assert not errors and "spoken_number_omitted:NB02:1Tbps" in warnings
+    errors, _, _ = spoken_narration._draft_guard_findings(beat("3Tbps급 다운링크를 검증했어요."), plan)
+    assert "numbers_changed:NB02" in errors

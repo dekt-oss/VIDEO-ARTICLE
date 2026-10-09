@@ -284,6 +284,37 @@ def _default_generator(domain: str, report: dict[str, Any] | None) -> Generator:
     return lambda draft: report_directive.generate(draft, "photo", report)
 
 
+def generate_from_script(domain: str, script: dict[str, Any], legacy_draft: dict[str, Any], *,
+                         report: dict[str, Any] | None = None,
+                         generator: Generator | None = None) -> dict[str, Any]:
+    """기존 작성기가 쓴 V2 대본(기존 초안과 같은 모양) → 기존 지시서 생성기. **대사는 글자 그대로 고정한다.**
+
+    ★ 왜(2026-10-08 리뷰): 고정을 안 하면 지시서 생성기가 장면을 "나레이션 초안"으로 받아 다듬는다
+      (`directive.directive_user_prompt`). 사실·쉬운 말 검사를 통과한 V2 대사가 렌더 직전에 검사 없이 바뀐다 —
+      실측(리포트, 2026-10-05): 14컷 중 V2 문장 0개. 그래서 V2 전용 경로가 쓰던 대사 고정을 여기서도 쓴다.
+    ★ 고정 기준 대본은 장면 나레이션을 이어 붙인 것이다 — 검사가 본 바로 그 글이다. 작성기의 script_md 는
+      "[장면 1]"·"**Scene 1 (problem / HOOK)**" 같은 머리표가 섞여 있어 그대로 고정하면 머리표가 대사가 된다.
+    원리 장면(evidence_role=mechanism)은 화면 제안(MECHANISM)으로 넘긴다 — 실사형 게이트가 도해 컷을 요구한다.
+    """
+    scenes = [s for s in script.get("scenes") or [] if isinstance(s, dict)]
+    spoken = [_text(s.get("narration_ko")) for s in scenes if _text(s.get("narration_ko"))]
+    hints = [{"text": _text(s.get("narration_ko")), "hint": "MECHANISM"} for s in scenes
+             if _text(s.get("evidence_role")) == "mechanism" and _text(s.get("narration_ko"))]
+    draft = {**legacy_draft, "script_md": "\n\n".join(spoken) or (script.get("script_md") or ""),
+             "video_flow": script.get("video_flow") or {},
+             cut_skeleton.NARRATION_LOCK_KEY: {"visual_hints": hints, "source": "v2_writer"}}
+    draft["video_prompts" if domain == "paper" else "scenes"] = scenes
+    set_text_purpose("v2_directive_bridge")
+    directive = (generator or _default_generator(domain, report))(draft)
+    header = directive.get("header") if isinstance(directive.get("header"), dict) else {}
+    if domain == "report" and report:
+        header.setdefault("broker", report.get("broker"))
+    return {"contract_version": CONTRACT_VERSION, "input_draft": draft, "directive": directive,
+            "trace": {"cuts": len(directive.get("cuts") or []), "writer": "production"},
+            "narration_lock": header.get("narration_lock"), "approval_blocked": bool(header.get("approval_blocked")),
+            "block_reasons": list(header.get("block_reasons") or [])}
+
+
 def generate(domain: str, shadow: dict[str, Any], legacy_draft: dict[str, Any], *,
              financial_reasoning: dict[str, Any] | None = None,
              report: dict[str, Any] | None = None,

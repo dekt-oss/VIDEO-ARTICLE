@@ -96,6 +96,15 @@ def _load(domain: str, content_id: str,
     return draft, directive, "이 콘텐츠의 가장 최근 지시서(version_type·상태 무관)"
 
 
+def paper_title(paper_id: str) -> str:
+    """한글 제목(scores.title_ko) + 원제(papers.title) — 생각 단계가 이 편의 요점을 잡는 단서다(읽기만)."""
+    rows = db.client().table("scores").select("title_ko").eq("paper_id", paper_id).limit(1).execute().data
+    title_ko = (rows[0].get("title_ko") if rows else "") or ""
+    paper = db.client().table("papers").select("title").eq("id", paper_id).limit(1).execute().data
+    title = (paper[0].get("title") if paper else "") or ""
+    return f"{title_ko} ({title})" if title_ko and title else (title_ko or title)
+
+
 def _load_concepts(path: str | None) -> list[dict[str, Any]] | None:
     if not path:
         return None
@@ -157,6 +166,55 @@ def _save_directive(result: dict[str, Any]) -> dict[str, Any]:
     return {"id": v2_directive_bridge.save(result), "refused": ""}
 
 
+def _from_saved_script(args, content_id, draft, directive, selection, report_row) -> int:
+    """저장된 통과본 대본 → 지시서(+저장). 대본은 한 글자도 다시 쓰지 않는다."""
+    saved = json.loads(Path(args.reuse_script).read_text(encoding="utf-8"))
+    if saved.get("domain") != args.domain or saved.get("content_id") != content_id:
+        raise SystemExit(f"--reuse-script: 다른 편의 결과입니다 ({saved.get('domain')}/{saved.get('content_id')})")
+    if saved.get("run_status") != "READY" or not (saved.get("shadow") or {}).get("writer"):
+        raise SystemExit(f"--reuse-script: 통과한 V2 대본이 아닙니다(run_status={saved.get('run_status')})")
+    result = saved
+    result["reused_script_from"] = str(args.reuse_script)
+    result["shadow"].pop("generated", None)
+    result["shadow"].pop("generated_error", None)
+    with count_ledger_writes() as writes:
+        explanation_shadow_pipeline.bridge_saved_writer(result, draft, report_row)
+    result["legacy_selection"] = selection
+    result["legacy"] = result.get("legacy") or {}
+    result["publish_gate"] = publish_gate_v2.evaluate(result, None)
+    saved_row = _save_directive(result) if args.save_directive else {}
+    result["saved_directive"] = saved_row
+    result["side_effects"] = {"database_writes": {**dict(writes), "directive_inserts": 1 if saved_row.get("id") else 0},
+                              "approvals": 0, "queue_inserts": 0, "render_calls": 0}
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path, md_path = _output_paths(output_dir, args.domain, content_id, True)
+    json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    md_path.write_text(explanation_shadow_pipeline.render_markdown(result), encoding="utf-8")
+    generated = (result["shadow"].get("generated") or {})
+    print(json.dumps({"production_generator": result["phase_status"].get("production_generator"),
+                      "generated_error": result["shadow"].get("generated_error"),
+                      "cuts": (generated.get("trace") or {}).get("cuts"),
+                      "narration_lock": generated.get("narration_lock"),
+                      "block_reasons": generated.get("block_reasons"),
+                      "saved_directive": saved_row or None, "json": str(json_path), "markdown": str(md_path),
+                      **result["side_effects"]}, ensure_ascii=False, default=str))
+    return 0
+
+
+def _saved_reasoning(path: str | None, domain: str, content_id: str):
+    """저장된 결과의 생각 단계 결과를 돌려주는 가짜 호출. 다른 편의 설계를 실수로 쓰지 않게 id 를 대조한다."""
+    if not path:
+        return None
+    saved = json.loads(Path(path).read_text(encoding="utf-8"))
+    if saved.get("domain") != domain or saved.get("content_id") != content_id:
+        raise SystemExit(f"--reuse-reasoning: 다른 편의 결과입니다 ({saved.get('domain')}/{saved.get('content_id')})")
+    reasoning = ((saved.get("shadow") or {}).get("reasoning") or {}).get("reasoning")
+    if not isinstance(reasoning, dict) or not reasoning:
+        raise SystemExit("--reuse-reasoning: 저장된 생각 단계 결과가 없습니다")
+    return lambda **_: reasoning
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="정확한 콘텐츠 ID 한 건을 읽어 V2 Shadow 비교 자료를 로컬에 저장합니다."
@@ -179,6 +237,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--render-job-id", default=None,
                         help="최종 렌더 작업 id — 저장된 렌더 QA(render_jobs.qa)를 읽어 렌더 단계를 판정한다(읽기 전용)")
     parser.add_argument("--output-dir", default="artifacts/explanation-v2-phase11")
+    parser.add_argument("--reuse-script", default=None, metavar="JSON",
+                        help="저장된 결과 JSON 의 V2 대본(통과본)으로 지시서만 만든다 — 대본 모델 호출 0. --with-directive 와 함께")
+    parser.add_argument("--reuse-reasoning", default=None, metavar="JSON",
+                        help="저장된 결과 JSON 의 생각 단계 설계를 다시 쓴다(생각 단계 모델 호출 0 — 2026-10-08)")
     args = parser.parse_args(argv)
 
     if args.with_directive and not args.with_model:
@@ -189,8 +251,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     directive_id = canonical_content_id(args.directive_id) if args.directive_id else None
     requested_concepts = _load_concepts(args.concepts_file)
     draft, directive, selection = _load(args.domain, content_id, directive_id)
+    # 리포트 메타(증권사·제목)는 생각 단계(모델 실행)와 지시서 생성 둘 다 쓴다.
     report_row = (report_db.get_report(content_id)
-                  if args.domain == "report" and args.with_directive else None)
+                  if args.domain == "report" and args.with_model else None)
+    title = (paper_title(content_id) if args.domain == "paper" and args.with_model
+             else f"{(report_row or {}).get('broker') or ''} · {(report_row or {}).get('title') or ''}"
+             if report_row else "")
+    if args.reuse_script:
+        if not args.with_directive:
+            parser.error("--reuse-script 는 --with-model --with-directive 와 함께만 쓸 수 있습니다")
+        return _from_saved_script(args, content_id, draft, directive, selection, report_row)
     with count_ledger_writes() as writes:
         result = explanation_shadow_pipeline.run(
             domain=args.domain,
@@ -205,6 +275,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             allow_model_calls=args.with_model,
             with_directive=args.with_directive,
             report=report_row,
+            title=title,
+            reasoning_caller=_saved_reasoning(args.reuse_reasoning, args.domain, content_id),
         )
     result["legacy_selection"] = selection
     render_qa = _render_qa(args.domain, args.render_qa, args.render_job_id)

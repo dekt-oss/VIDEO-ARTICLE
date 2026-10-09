@@ -183,11 +183,56 @@ MODEL_SCORING: str = os.getenv("MODEL_SCORING", "gemini-2.5-flash")       # 5축
 #   채점은 하루 수백 편이라 5배가 곧바로 돈이고, 자기검증은 판정(문장 생성 아님)이라 싼 모델로 충분하다.
 MODEL_FACTSHEET: str = os.getenv("MODEL_FACTSHEET", "gemini-3.8-flash")    # Fact Sheet 추출
 MODEL_SELFCHECK: str = os.getenv("MODEL_SELFCHECK", "gemini-2.5-flash")    # 자기검증
+# ★ Explanation Engine v2 Phase 3 "생각하는 단계"(작업지시서 §5, §17 "Explanation Reasoning → quality-tier model").
+#   2026-10-05 전체 재검토: 종전 Phase 3 은 Fact Sheet 주장에 이름표만 붙였다(생각이 없었다). 콘텐츠마다 한 번
+#   모델이 질문·관심 이유·반전·이야기 틀·단계별 질문과 답을 짠다. 기본은 deepseek-v4-pro — 운영자가 2026-09-19 지시서용으로
+#   승인한 품질 모델이다. Anthropic 은 ANTHROPIC_DISABLED(운영자 결정)로 막혀 있어 쓰지 않는다. Gold Set 비교 뒤
+#   다른 후보와 A/B 한다(§17 "현재 기본 모델을 즉시 교체하지 말고 비교한다").
+MODEL_EXPLANATION_REASONING: str = os.getenv("MODEL_EXPLANATION_REASONING", "deepseek-v4-pro")
+#   V2 생각 단계를 켜고 끈다. 끄면 옛 경로(Fact Sheet 주장 재분류)로 돈다. 모델을 안 부르는 실행(dry)은 늘 옛 경로다.
+V2_EXPLANATION_REASONING: bool = _get_bool("V2_EXPLANATION_REASONING", True)
+#   V2 영상 길이 범위(2026-10-06 운영자: "완성도와 이해를 위해서라면 100초에서 120초까지도 갈 수 있다. 억지로 늘릴
+#   필요는 없다"). 생각 단계에 알려 주는 범위이지 강제 하한이 아니다 — 이해에 필요한 만큼만.
+V2_TARGET_MIN_SEC: int = _get_int("V2_TARGET_MIN_SEC", 45)
+#   V2 말 쓰기를 누가 하나(2026-10-07 운영자 "추천대로"): "production" = 기존 작성기(scriptgen·report_scriptgen)가 생각 단계
+#   설계를 받아 쓰고 V2 검증관이 본다(engine/v2_writer.py). "v2" = V2 전용 작성기(Phase 5·6, 후킹이 퇴화했던 경로).
+V2_WRITER: str = os.getenv("V2_WRITER", "production")
+V2_TARGET_MAX_SEC: int = _get_int("V2_TARGET_MAX_SEC", 120)
+#   V2 대본 2차 다듬기(§8 "별도 pass")를 실제로 돌린다. 함수(apply_polish)는 있었으나 부르는 곳이 없었다(2026-10-05 재검토).
+V2_SPOKEN_POLISH: bool = _get_bool("V2_SPOKEN_POLISH", True)
+#   대본 검사에 걸리면 걸린 이유를 되먹여 한 번 다시 쓴다(§10). 끄면 종전처럼 거절로 멈춘다.
+V2_NARRATION_RETRY: bool = _get_bool("V2_NARRATION_RETRY", True)
 # ★ 기본을 flash 로 내렸다(2026-08-29). pro/opus 는 flash 의 25~30배이고, 어제 실측에서
 #   대본 합성이 그날 텍스트 비용의 큰 몫을 먹었다(논문 16편 × 3안 = 48벌).
 #   품질이 필요한 편은 MODEL_SCRIPT 를 **명시로** 올려 쓴다 — 비싼 것이 기본값이면
 #   아무도 모르는 사이에 돈이 나간다.
 MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", "gemini-3.8-flash")            # 대본 합성 (2026-09-28 ↑, 위 주석)
+#   V2 대본·다듬기·검증관 모델. 기본은 운영 대본·자기검증과 같은 모델(바꾸지 않는다). 검증관은 작성 모델과 달라야 한다(§9.4).
+MODEL_V2_NARRATION: str = os.getenv("MODEL_V2_NARRATION", MODEL_SCRIPT)
+MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
+#   Gemini 가 402(결제 필요)로 거절하면 텍스트 호출을 이 모델로 대신한다(2026-10-08 운영자 지시). 비우면 대체 없음.
+#   그림·영상 생성은 대체가 없다(deepseek 는 텍스트 전용) — 그쪽 402 는 그대로 실패한다.
+LLM_PAYMENT_FALLBACK_MODEL: str = os.getenv("LLM_PAYMENT_FALLBACK_MODEL", "deepseek-v4-pro")
+LLM_PAYMENT_FALLBACK_TOKEN_SCALE: float = _get_float("LLM_PAYMENT_FALLBACK_TOKEN_SCALE", 2.4)
+#   V2 검증관 백엔드(2026-10-07 운영자 "검증을 더 저렴한 모델로 — jev 쓰면 되잖아"). jev = 문장마다 Jev 근거 판정
+#   (Fact Sheet + 논문/리포트 메타와 대조, 한 편 1센트 안팎). llm = MODEL_V2_CRITIC(Gemini 2.5 Pro 한 편 약 $0.1).
+#   Jev 는 절 나누기·위반 종류(인과 강화·범위 확대)를 따로 이름 붙이지 못한다 — "근거를 넘었나" 하나만 본다.
+V2_CRITIC_BACKEND: str = os.getenv("V2_CRITIC_BACKEND", "jev")
+#   첫 질문만 다시 쓰는 모델(engine/hook_rewrite.py, 2026-10-08). 짧은 후보 5개라 대본 작성기와 같은 모델을 써도 싸다.
+MODEL_V2_HOOK: str = os.getenv("MODEL_V2_HOOK", MODEL_SCRIPT)
+#   V2 대본 첫 장면을 운영 대본 첫 문장으로(사실 어긋남만 고침). 2026-10-08 운영자 판정 — 신피질 편 후보 7개 중 운영 첫 질문이 최선.
+V2_KEEP_LEGACY_HOOK: bool = _get_bool("V2_KEEP_LEGACY_HOOK", True)
+#   Jev 판정 문턱. 운영 경고(JEV_UNSUPPORTED_CLAIM_MIN, 원문 대조 31건)와 같은 값에서 시작한다.
+V2_JEV_UNSUPPORTED_MIN: float = _get_float("V2_JEV_UNSUPPORTED_MIN", 0.6)
+#   쉬운 말 검사(2026-10-08 연구 §3, 표본 10·14문장 — 운영 표본으로 재감사할 것). 걸리면 작성기에 되먹여 한 번 다시 쓴다.
+#   첫 질문: 쉬운 것 최고 0.38 · 어려운 것 최저 0.89 사이가 비어 있었다 → 0.6. 본문 용어: 0.6~0.7 이 애매해 0.8.
+V2_PLAIN_CHECK: bool = _get_bool("V2_PLAIN_CHECK", True)
+V2_HOOK_JARGON_MIN: float = _get_float("V2_HOOK_JARGON_MIN", 0.6)
+V2_HOOK_SPOILER_MIN: float = _get_float("V2_HOOK_SPOILER_MIN", 0.6)
+V2_TERM_UNEXPLAINED_MIN: float = _get_float("V2_TERM_UNEXPLAINED_MIN", 0.8)
+#   한 장면 이름·숫자 과밀(2026-10-08, 세 편 24장면 실측). 진짜 과밀(케플러·10기·40기·SDA·KSAT 한 장면 / 기관 셋)은 0.97~0.98,
+#   운영자가 좋다고 한 장면("한 번, 두 번, 세 번")도 0.82~0.93 이 나왔다 → 진짜만 고치게 0.95.
+V2_SCENE_CROWDED_MIN: float = _get_float("V2_SCENE_CROWDED_MIN", 0.95)
 # 한국어 채점/추출 JSON(긴 rationale·red_flag 포함)이 잘리지 않도록 넉넉히.
 # ★ 2048 은 한글 출력에 부족해 JSON 이 잘려 파싱 실패→전 축 0점이 되던 원인이었다.
 LLM_MAX_TOKENS: int = 8192
@@ -211,6 +256,9 @@ LLM_SCRIPT_MAX_TOKENS: int = _get_int("LLM_SCRIPT_MAX_TOKENS", 16384)
 #     deepseek-flash 가 지시서에서 3/3 절단(32,768 정각), Fact Sheet 에서 8,192 정각.
 #     천장이 공급자를 떨어뜨린 것을 그 공급자의 실력으로 읽으면 측정이 거짓말을 한다.
 LLM_PAPER_SCRIPT_MAX_TOKENS: int = _get_int("LLM_PAPER_SCRIPT_MAX_TOKENS", 32768)
+#   리포트 대본도 같은 이유로 따로 둔다(2026-10-08 실측: deepseek 리포트 대본 1회차 16,338, 2회차 16,384 정각 절단 —
+#   옛 LLM_SCRIPT_MAX_TOKENS 16384 는 제미나이 기준이었다). 상한은 사고 방지용이고 쓴 만큼만 과금된다.
+LLM_REPORT_SCRIPT_MAX_TOKENS: int = _get_int("LLM_REPORT_SCRIPT_MAX_TOKENS", 32768)
 # 자기검증 전용 출력 상한. ★ `selfcheck.py:239` 에 **6144 로 박혀 있던 것**을 꺼낸다.
 #   실측: gemini-2.5-flash 최대 3,016(상한의 49%). × 2.4 ≈ 7,240 — 옛 상한을 넘는다.
 #   2026-09-10 에 `korean_natural`·`awkward_spans`·`fluency_issues` 축이 같은 호출에
@@ -1062,13 +1110,19 @@ MECHANISM_START_SHARE_WARN: float = _get_float("MECHANISM_START_SHARE_WARN", 0.4
 #   ★ 언제 올리나: 지시서 **내용**을 바꾸는 변경(프롬프트·정규화·게이트·영상 배정)을 머지할 때. 날짜 문자열이고
 #     문자열 비교를 한다. web/lib/work/decision.ts 의 같은 이름 상수와 **같아야** 한다(tests/test_prompt_sync.py).
 #     프롬프트 문자열이 바뀌었는데 이 값을 안 올리면 tests/test_directive_engine_version.py 가 실패한다.
-DIRECTIVE_ENGINE_VERSION: str = "2026-09-29"
+DIRECTIVE_ENGINE_VERSION: str = "2026-10-09"
 
 # ★ 경고 요약 — 승인 화면 위에 크게 보이는 개수(engine/warning_triage.py). 실측 중앙값 56개 중 진짜
 #   고칠 것은 5~8개였다(docs/규칙통합_분석_2026-09-28.md §1-2). 나머지는 접는다.
 WARNING_SUMMARY_TOP_N: int = 3
 
 RETRYABLE_QUALITY_WARNINGS: tuple[str, ...] = (
+    # ★ 2026-10-08 운영자: 화면을 Jev 로 검증해 이해도·흥미·호감 높은 장면으로. 카메라만 움직이는 컷·잘게 쪼갠 stage 금지.
+    "photo_scene_dull",
+    "photo_scene_unclear",
+    "photo_motion_camera_only",
+    "photo_stages_fragmented",
+    "photo_consecutive_same_view",
     "photo_subject_dominates",
     "photo_narrative_no_mechanism",
     "photo_hook_visual_repeated",
@@ -1805,7 +1859,10 @@ RENDER_QA_MAX_SILENCE_MS: int = _get_int("RENDER_QA_MAX_SILENCE_MS", 250)  # 이
 RENDER_QA_END_BLACK_MAX_SEC: float = float(os.getenv("RENDER_QA_END_BLACK_MAX_SEC", "0.3"))  # 끝 검은프레임 허용
 RENDER_QA_PEAK_CEILING_DB: float = float(os.getenv("RENDER_QA_PEAK_CEILING_DB", "-0.5"))  # 이보다 크면 클리핑 위험
 RENDER_QA_MIN_SEC: int = 20          # 이보다 짧으면 렌더 이상(길이 게이트)
-RENDER_QA_MAX_SEC: int = 100         # 이보다 길면 렌더 이상
+# ★ 2026-10-08 운영자: "최대길이는 안 바꿉니다. 100초 넘으면 오류라고 보는 룰을 수정하세요." V2 대본은 120초까지
+#   허용(V2_TARGET_MAX_SEC)인데 렌더 검사가 100초에서 실패로 처리했다. 오류 경계는 **유튜브 쇼츠 상한(180초)** 이다 —
+#   그보다 길면 쇼츠로 올라가지 않으니 진짜 이상이다. 그 안쪽 길이는 대본 단계가 정한다.
+RENDER_QA_MAX_SEC: int = _get_int("RENDER_QA_MAX_SEC", 180)
 # ── Q1 정지 화면(지시서 v3 §9 "3초 동일 프레임 검사" · §14-1 "3초 연속 빈 콘텐츠 0") ──
 # ★ 최종 mp4 에는 이 검사가 없었다(2026-09-03). 컷 후보에는 freezedetect 가 있는데
 #   (CANDIDATE_FREEZE_*) 조립된 영상에는 없어서, 화면이 멈춘 채로 나가도 QA 가 통과시켰다.
@@ -1835,7 +1892,9 @@ HEADER_HOOK_SIZE: int = 46          # 상단 후킹(부제) 폰트
 # 헤드 부제(후킹) 강조색 — 노랑(#FFE000). ASS 인라인 색 &HBBGGRR&. 제목(흰색)과 대비로 특징↑.
 HEADER_HOOK_COLOR_ASS: str = "&H00E0FF&"
 # BGM(무드 라이브러리 트랙 or 플레이스홀더 톤) + 나레이션 구간 자동 더킹(sidechain).
-BGM_ENABLED: bool = _get_bool("BGM_ENABLED", True)
+# ★ 2026-10-08 운영자 지시로 기본 꺼짐: 지금 "BGM"은 220Hz 사인 톤 플레이스홀더라(assemble.build_bgm_tone_command)
+#   "웅" 하는 단음이 영상 내내 깔렸다. 저작권 없는 실제 트랙이 생기면 그때 켠다.
+BGM_ENABLED: bool = _get_bool("BGM_ENABLED", False)
 BGM_VOLUME: float = 0.18            # 기본 BGM 볼륨(나레이션 대비 낮게)
 BGM_DUCK_THRESHOLD: float = 0.05    # sidechaincompress threshold
 BGM_DUCK_RATIO: int = 8             # 나레이션 구간 감쇠 비율
@@ -2217,6 +2276,20 @@ VISUAL_ROLE_STYLE: dict[str, str] = {
         "amber only on the part being explained, neutral studio backdrop"
     ),
 }
+# 실사형 영상 실패를 사진+카메라 이동으로 메울지(2026-10-09 운영자: "사진으로 영상 구성하지 말라" → 기본 False = 1회 재시도 후 렌더 중단).
+PHOTO_STILL_FALLBACK: bool = _get_bool("PHOTO_STILL_FALLBACK", False)
+# 같은 세계(world_id)를 이미 그렸으면 새 시퀀스의 NEW_WORLD 도 그 그림을 참조한다(2026-10-09, sequence_render 주석).
+SAME_WORLD_REFERENCE: bool = _get_bool("SAME_WORLD_REFERENCE", True)
+# 실사형 이미지 구도 — 한 장면·한 시점(2026-10-08, providers/image.py 주석). 비우면 붙이지 않는다.
+PHOTO_SINGLE_FRAME_CLAUSE: str = os.getenv(
+    "PHOTO_SINGLE_FRAME_CLAUSE",
+    "one single continuous scene seen from one camera position filling the whole frame, "
+    "no panels, no split layout, no storyboard, no inset frames")
+# 세포를 말하는 도해 컷에 코드가 붙이는 세포 생김새(2026-10-09, providers/image.py 주석). 비우면 붙이지 않는다.
+PHOTO_CELL_ANATOMY_CLAUSE: str = os.getenv(
+    "PHOTO_CELL_ANATOMY_CLAUSE",
+    "every cell drawn as a recognizable living cell: a soft rounded body with a translucent membrane and one round "
+    "nucleus visible inside, cells keep the same colour throughout")
 # 역할별 부정어. 3D 도해는 사진처럼 되면 단면이 안 보이고, 실사는 일러스트가 섞이면 신뢰를 잃는다.
 # ★★ 2026-09-07 재작성. 두 역할이 **같은 것을 금지한다** — 화풍을 하나로 통일했으므로
 #   부정어도 하나여야 한다. 앞 버전은 정반대를 금지하고 있었다(MECHANISM 은 사진을,
@@ -2290,13 +2363,20 @@ I2V_CHAIN_VERSIONS: tuple[str, ...] = tuple(
 #   나레이션에 8초 클립 → 4.7초 정지. 근거·설계는 docs/설계안_시퀀스단위_렌더_v1.md.
 # ★ 끄면 즉시 옛 컷 경로로 돌아간다 — 새 경로가 실패했을 때 되돌리는 스위치다.
 STAGE_RENDER_ENABLED: bool = _get_bool("STAGE_RENDER_ENABLED", True)
+# 장면(stage)이 바뀌는 경계의 크로스페이드 길이(초). 0 이면 종전처럼 하드컷(2026-10-09, stage_render.transitions).
+#   앞 컷 마지막 프레임을 그만큼 늘려 겹치므로 전체 길이·음성 타이밍은 바뀌지 않는다.
+STAGE_TRANSITION_SEC: float = _get_float("STAGE_TRANSITION_SEC", 0.5)
+ASSEMBLE_FPS: int = _get_int("ASSEMBLE_FPS", 30)   # 크로스페이드 전 컷 영상을 맞추는 프레임 수(xfade 는 같은 fps·시간축이 필요)
 
 # ★★ 전·후 분할 스틸(2026-09-18, 연구 T2). 상태가 **바뀌는** stage(TRANSFORM·GROW·SHRINK 등)를
 #   I2V 에 맡기면 카메라만 돌고 대상은 안 바뀐다 — 영상 모델은 의미 변화를 못 만든다(연구 §3-2,
 #   실측: 뇌가 "재배선"되는 8초 동안 조명만 흔들렸다). 그런 stage 는 앞 stage 의 그림(전)과
 #   이 stage 의 그림(후)을 **위·아래로 붙인 한 장**으로 만들고 켄번스로 잡는다. 영상비 0.
 #   MOVE·ROTATE·IMPACT 같은 **운동**은 I2V 가 할 수 있는 일이라 그대로 둔다.
-MECHANISM_SPLIT_BEFORE_AFTER: bool = _get_bool("MECHANISM_SPLIT_BEFORE_AFTER", True)
+# ★★★ 2026-10-09 운영자 지시로 기본 꺼짐: "사진 띄우고 화면 떨리는 표현 하지 말라 — 사진으로 영상 구성하지 말라".
+#   분할 스틸은 정의상 사진 + 켄번스다(음파 전반부 컷 9~10 이 '변화 전/변화 후' 두 칸 사진으로 나갔다).
+#   상태 변화는 영상 움직임(motion_prompt·temporal_plan)으로 보여 준다. 되돌리려면 환경변수로만 켠다.
+MECHANISM_SPLIT_BEFORE_AFTER: bool = _get_bool("MECHANISM_SPLIT_BEFORE_AFTER", False)
 MECHANISM_SPLIT_OPERATIONS: tuple[str, ...] = (
     "TRANSFORM", "GROW", "SHRINK", "SPLIT_OFF", "MERGE_INTO", "DISAPPEAR",
 )
@@ -2854,6 +2934,12 @@ JEV_WORLD_MULTI_PLACE_MIN: float = _get_float("JEV_WORLD_MULTI_PLACE_MIN", 0.7)
 #   0.6 이상 → O 9 · △ 5 · X 1. 리포트 컷은 걸린 것이 전부 O(0.6 이상 3/3). 0.7 로 올리면 X 0 이지만
 #   O 가 7 로 준다. 경고(사람이 원문 대조)라서 재현율을 조금 더 샀다. 숫자 3배 합성 양성: 0.6 이상 22/22.
 #   ★ 판정은 Claude 의 원문 대조다(운영자 판정 아님). 걸린 것만 봤으니 재현율은 상대값이다.
+# 화면 품질 Jev 문턱(2026-10-08 실측 — decide.SCREEN_QUALITY_Q 주석). 경고 → 재생성 1회 되먹임(차단 아님).
+JEV_SCREEN_ENGAGING_BELOW: float = _get_float("JEV_SCREEN_ENGAGING_BELOW", 0.35)
+JEV_SCREEN_UNDERSTAND_BELOW: float = _get_float("JEV_SCREEN_UNDERSTAND_BELOW", 0.35)
+JEV_SCREEN_CAMERA_ONLY_MIN: float = _get_float("JEV_SCREEN_CAMERA_ONLY_MIN", 0.8)
+# stage 당 평균 컷 수가 이보다 적으면 "잘게 쪼갰다"(문장마다 새 영상 → 뚝뚝 끊김).
+PHOTO_STAGE_MIN_AVG_CUTS: float = _get_float("PHOTO_STAGE_MIN_AVG_CUTS", 1.6)
 JEV_UNSUPPORTED_CLAIM_MIN: float = _get_float("JEV_UNSUPPORTED_CLAIM_MIN", 0.6)
 JEV_GROUNDING_REPORT_ENABLED: bool = _get_bool("JEV_GROUNDING_REPORT_ENABLED", True)
 JEV_GROUNDING_PAPER_ENABLED: bool = _get_bool("JEV_GROUNDING_PAPER_ENABLED", True)   # 2026-09-30 운영자 "논문에도"

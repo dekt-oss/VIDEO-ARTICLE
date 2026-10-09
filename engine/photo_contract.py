@@ -54,6 +54,11 @@ BLOCK_REASONS: tuple[str, ...] = (
     "photo_hook_copied_example",         # 컷1 이 프롬프트의 형식 예시를 그대로 베꼈다(2026-09-29 "피일까요?")
 )
 WARNING_REASONS: tuple[str, ...] = (
+    "photo_scene_dull",                # 화면이 밋밋·정적·혼란 — 흥미·호감 낮음(Jev, 2026-10-08)
+    "photo_scene_unclear",             # 화면이 나레이션 이해를 돕지 않음(Jev, 2026-10-08)
+    "photo_motion_camera_only",        # 영상 컷인데 카메라만 움직인다(Jev, 2026-10-08)
+    "photo_stages_fragmented",         # stage 를 문장마다 새로 열어 화면이 뚝뚝 끊긴다(2026-10-08)
+    "photo_consecutive_same_view",     # 여러 컷 stage 의 영상에 문장별 비트·카메라 변화가 없다 — 같은 구도 반복(2026-10-08)
     "photo_side_by_side_layout",       # 한 장면 안에서 좌·우로 갈라 견준다(분할은 아니다)
     "photo_role_balance_off",          # 도해/실사 비율이 권장에서 벗어남
     "photo_video_cut_count_off",       # 영상 컷 수가 권장 범위 밖
@@ -132,7 +137,10 @@ _FORBIDDEN_SCREEN = re.compile(
     #   "a digital timer overlay next to it displays a consistent rotation period" 가
     #   통과했고 화면에 `3.456 s` 가 그대로 박혔다. Phase 0 의 `35°` 번인과 같은 계열이다.
     #   차트·라벨은 잡으면서 계기판·타이머는 못 잡고 있었다.
-    r"timers?|counters?|stopwatch(?:es)?|readouts?|gauges?|dials?|"
+    # ★ `counter` 를 맨몸으로 두지 않는다(2026-10-08 실측, `meters`·`axis` 와 같은 계열). "the steel counter"(실험실
+    #   작업대)가 걸려 승인이 막혔다 — 계수기를 요구한 적이 없다. 계수기는 앞뒤 말이 붙을 때만 잡는다.
+    r"timers?|(?:digital|electronic|numeric|lcd|led|cell|tally|geiger|frame|step)\s+counters?|counters?\s+(?:display|reading|readout|shows?|showing|ticks?)|"
+    r"stopwatch(?:es)?|readouts?|gauges?|dials?|"
     # ★ `meters?` 를 **맨몸으로 두지 않는다**(2026-09-02 실측). 계기판을 잡으라고 넣은
     #   단어인데 영어에서 meter 는 압도적으로 **길이 단위**다. 실측: 실사형 컷 12 의
     #   "a large, circular crater, approximately 40 meters in diameter" 가 걸려
@@ -1030,6 +1038,37 @@ def normalize_prompt_numbers(cuts: list[dict[str, Any]]) -> list[str]:
     return sorted(set(touched))
 
 
+# "a vial labeled L-929" · "a box marked 'XR-7'" — 식별자(숫자가 섞이거나 따옴표거나 대문자 약어)를 **그려 달라는** 구절.
+_PROMPT_LABEL_ID = re.compile(
+    r",?\s*\b(?i:labell?ed|marked|printed|stamped|inscribed)\s+(?:(?i:with)\s+)?(?:(?i:the)\s+)?"
+    r"(?:['\"“‘][^'\"”’]{1,40}['\"”’]"
+    r"|(?=[A-Za-z0-9\-./]*[0-9])[A-Za-z0-9][A-Za-z0-9\-./]*"
+    r"|[A-Z]{2,}[A-Za-z0-9\-./]*\b)")
+
+
+def normalize_prompt_labels(cuts: list[dict[str, Any]]) -> list[str]:
+    """이미지 프롬프트에서 "labeled L-929" 같은 **식별자 라벨 요구**를 지운다(2026-10-08).
+
+    ★ 실측(조화 음파 V2 첫 실전 지시서): 컷 16 "a frosted plastic cell culture vial labeled L-929" 하나로
+      `photo_forbidden_screen_request` 가 승인을 막았다. 그림 모델에 라벨을 요구하면 지어낸 글자가 박힌다 —
+      막는 것은 옳다. 그런데 고치는 법은 늘 같다(그 구절만 지운다): 숫자 수치(`normalize_prompt_numbers`)와 같은
+      이유로 코드가 한다 — 같은 일로 지시서를 통째로 다시 사지 않게.
+    ★ 식별자(숫자 섞임·따옴표·대문자 약어)만 지운다. "with labels" 같은 일반 요구는 남겨 게이트가 그대로 막는다 —
+      문장 구조를 모르고 지우면 뜻이 깨진다.
+    """
+    touched: list[str] = []
+    for c in cuts:
+        if not isinstance(c, dict):
+            continue
+        for k in ("visual_prompt", "motion_prompt"):
+            before = str(c.get(k) or "")
+            after = re.sub(r"\s{2,}", " ", _PROMPT_LABEL_ID.sub("", before)).replace(" .", ".").strip()
+            if after != before.strip() and after != before:
+                c[k] = after
+                touched.append(f"컷{c.get('cut_no')}")
+    return sorted(set(touched))
+
+
 def strip_optics(text: str, rewrites: tuple = _OPTICS_REWRITES) -> str:
     """렌즈·광학 어휘 → 배치 표현. **정보는 남기고 렌즈 지시만 뺀다.**
 
@@ -1558,6 +1597,59 @@ def evaluate(header: dict[str, Any], cuts: list[dict[str, Any]],
                 weak.append(str(c.get("cut_no")))
         if weak:
             warns.append("photo_scene_not_answering:" + ",".join(weak[:6]))
+
+    # ★ [화면 품질 — 이해도·흥미·카메라만] 2026-10-08 운영자: "구체적인 화면 구현도 jev 검증받으면서 이해도와 흥미도
+    #   호감도가 높은 장면으로" · "의미없이 카메라만 이동하는 장면은 최대한 지양". 컷마다 한 호출(질문 2~3개).
+    #   경고 → 재생성 1회 되먹임(RETRYABLE_QUALITY_WARNINGS). 차단하지 않는다 — 취향 판정은 오탐이 있다.
+    #   컷1 은 '이해도'에서 뺀다(훅은 일부러 궁금증만 남긴다 — 좋다고 한 9/24 편 컷1 이 0.12).
+    if decide.enabled():
+        dull, unclear, cam_only = [], [], []
+        for c in cuts:
+            scene = f"{c.get('staging_ko') or ''} / {c.get('visual_prompt') or ''}".strip(" /")
+            with decide.about(f"cut{c.get('cut_no')}"):
+                q = decide.screen_quality(str(c.get("narration_ko") or ""), scene, str(c.get("motion_prompt") or ""))
+            if not q:
+                continue
+            if q.get("engaging", 1.0) < config.JEV_SCREEN_ENGAGING_BELOW:
+                dull.append(str(c.get("cut_no")))
+            if c is not cuts[0] and q.get("understand", 1.0) < config.JEV_SCREEN_UNDERSTAND_BELOW:
+                unclear.append(str(c.get("cut_no")))
+            if q.get("camera_only", 0.0) >= config.JEV_SCREEN_CAMERA_ONLY_MIN:
+                cam_only.append(str(c.get("cut_no")))
+        for code, nos in (("photo_scene_dull", dull), ("photo_scene_unclear", unclear),
+                          ("photo_motion_camera_only", cam_only)):
+            if nos:
+                warns.append(f"{code}:" + ",".join(nos[:8]))
+
+    # ★ [stage 를 잘게 쪼갰다] 2026-10-08 실측: 20컷에 stage 가 거의 컷마다 하나 → 3초마다 새 영상이 시작돼 뚝뚝 끊겼다.
+    #   렌더가 컷을 묶는 **같은 함수**(stage_render.group_cuts)로 잰다 — stage 를 모르는 컷은 앞 묶음을 물려받으므로
+    #   지시서에 적힌 stage 수가 아니라 실제로 새 영상이 시작되는 횟수가 기준이다.
+    if n >= 6:
+        from . import stage_render
+        _groups = stage_render.group_cuts(cuts)
+        _avg = n / max(1, len(_groups))
+        if _groups and _avg < config.PHOTO_STAGE_MIN_AVG_CUTS:
+            warns.append(f"photo_stages_fragmented:{_avg:.1f}")
+
+    # ★ [같은 구도 반복] 2026-10-08 실측(음파 1/4 렌더 컷 4~6): 세 문장이 한 stage 영상의 구간으로 나갔는데 그 stage 첫 컷에
+    #   motion·temporal_plan 이 비어 있어(종전 규칙은 도해·첫·끝 컷에만 적게 했다) 같은 구도가 세 번 이어졌다.
+    #   stage 하나가 영상 하나이므로 여러 컷 stage 의 첫 컷은 문장 수만큼(최대 3) 비트와 서로 다른 카메라를 가져야 한다.
+    from . import stage_render
+    if n >= 2 and stage_render.enabled({**header, "version_type": header.get("version_type") or "photo"}):
+        flat_view = []
+        by_no = {int(c.get("cut_no") or 0): c for c in cuts}
+        for st in [st for seq in (header.get("visual_sequences") or []) if isinstance(seq, dict)
+                   for st in (seq.get("stages") or []) if isinstance(st, dict)]:
+            idx = [int(x) for x in st.get("cut_refs") or [] if int(x) in by_no]
+            if len(idx) < 2:                  # 지시서가 **여러 컷을 한 stage 로 선언한** 경우만 본다(실측 컷 4~6)
+                continue
+            lead = by_no[idx[0]]
+            beats = [b for b in (lead.get("temporal_plan") or []) if isinstance(b, dict)]
+            cams = {str(b.get("camera") or "").upper() for b in beats}
+            if len(beats) < 2 or len(cams) < 2:      # 코드 채움(beats_from_stage)과 같은 기준 — 비트 2+·카메라 2종+
+                flat_view.append(str(lead.get("cut_no")))
+        if flat_view:
+            warns.append("photo_consecutive_same_view:" + ",".join(flat_view[:6]))
 
     # ★ [수치를 사물 개수·높이로 옮겼다] 2026-09-27. 운영자 판정(09-24): "4GW" 를 엔진 네 대로,
     #   13.7조 원을 블록 막대로 그리면 억지 비교다 — 수치는 카드가 쓴다. 어휘로는 못 잡아서
@@ -2334,6 +2426,29 @@ def feedback_prompt(block_reasons: list[str], warnings: list[str] | None = None)
                 f" 한마디, **{config.HOOK_CUT_MAX_CHARS_KO}자 이내**로 줄여라 — **이 대본의 첫 문장**에서 틀('A인데 B?' ·"
                 " '왜 A일까?')만 빌려 쓴다. 지운 설명·출처·수치는 **컷2 로 옮겨라** — 사실을 버리지 말고 자리만 바꾼다."
                 " 컷1 화면은 그 말의 물건 자체를 가까이서.")
+        if "photo_scene_dull" in wcodes:
+            wfix.append(
+                "- **밋밋하거나 정적인 화면이다(흥미·호감 낮음).** 실험대·책상·서류를 정지된 채 보여 주는 컷은 시청자가 넘긴다."
+                " 그 컷에서 **주인공이 무언가를 하게** 다시 써라 — 세포가 돌기를 뻗어 빈틈으로 기어 들어간다, 섬유가 파동에"
+                " 휜다, 손이 실물을 들어 올린다. 주인공이 세포·조직이면 실험대가 아니라 **세포 단면**으로 들어가라.")
+        if "photo_scene_unclear" in wcodes:
+            wfix.append(
+                "- **화면이 나레이션 이해를 돕지 않는다.** 그 컷의 answers_ko(나레이션이 던진 질문)를 다시 읽고, 그 답이"
+                " **눈에 보이는** 장면으로 staging_ko 를 다시 써라. 장식·주변 소품·전경은 답이 아니다.")
+        if "photo_motion_camera_only" in wcodes:
+            wfix.append(
+                "- **카메라만 움직이는 영상 컷이다.** motion_prompt 에 줌·팬·푸시인만 있고 화면 속 주인공은 가만히 있다 —"
+                " 컷마다 줌이 되풀이돼 끊기는 슬라이드쇼가 된다(운영자 지적). motion_prompt 를 **주인공의 행동·상태 변화**로"
+                " 다시 써라(세포가 이동해 빈틈이 좁아진다, 파동이 세포층을 지나며 막이 출렁인다). 카메라는 그 행동을 따라갈 때만.")
+        if "photo_consecutive_same_view" in wcodes:
+            wfix.append(
+                "- **여러 문장이 한 영상인데 구도가 그대로다.** 표시된 stage 첫 컷에 temporal_plan 을 **그 stage 문장 수만큼**"
+                " 비트로 적고, 비트마다 다른 카메라(PAN·TRACK·DOLLY_IN…)와 변화를 줘라 — 전체 → 가까이 → 세포 속으로."
+                " motion_prompt 도 주인공의 행동으로 적는다.")
+        if "photo_stages_fragmented" in wcodes:
+            wfix.append(
+                "- **stage 를 문장마다 새로 열었다 — 화면이 3초마다 끊긴다.** 같은 주인공이 이어지는 문장 2~4개를 **한 stage 의"
+                " cut_refs** 로 묶어라. stage 하나가 이어지는 영상 하나로 렌더되고, 컷은 그 영상의 구간이 된다.")
         if "photo_scene_not_answering" in wcodes:
             wfix.append(
                 "- **실사 컷이 나레이션에 답하지 않는다(주제 사진).** '밸류에이션이 최저'에 설계 사무실 책상,"

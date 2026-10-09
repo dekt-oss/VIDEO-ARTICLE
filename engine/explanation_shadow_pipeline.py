@@ -14,6 +14,10 @@ from . import (
     content_complexity_gate,
     evidence_pack,
     explanation_directive,
+    explanation_ir,
+    explanation_reasoning,
+    report_source,
+    v2_writer,
     narrative_planner,
     paper_reasoning_adapter,
     prerequisite_resolver,
@@ -105,8 +109,9 @@ def _empty_result(
         "run": {
             "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "model_calls_allowed": allow_model_calls,
-            "narration_model": config.MODEL_SCRIPT if allow_model_calls else "",
-            "critic_model": config.MODEL_SELFCHECK if allow_model_calls else "",
+            "narration_model": config.MODEL_V2_NARRATION if allow_model_calls else "",
+            "critic_model": ((f"jev:{config.JEV_MODEL}" if config.V2_CRITIC_BACKEND == "jev" and config.V2_WRITER == "production"
+                               else config.MODEL_V2_CRITIC) if allow_model_calls else ""),
             "fact_sheet_snapshot_sha256": snapshot,
             "content_plan_source": "",
             "prerequisite_requests": {
@@ -117,6 +122,7 @@ def _empty_result(
         "legacy": legacy,
         "phase_status": {phase: "NOT_RUN" for phase in _PHASES},
         "shadow": {
+            "reasoning": None,
             "evidence_pack": None,
             "ir": None,
             "resolution": None,
@@ -162,6 +168,10 @@ def _run(
     with_directive: bool = False,
     directive_generator: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     report: dict[str, Any] | None = None,
+    title: str = "",
+    writer_caller: Callable[[dict[str, Any], str], dict[str, Any]] | None = None,
+    reasoning_caller: Callable[..., dict[str, Any]] | None = None,
+    polish_caller: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build shadow artifacts without any database write or render side effect.
 
@@ -214,6 +224,50 @@ def _run(
             if domain == "paper"
             else report_reasoning_adapter.build(pack, financial_reasoning)
         )
+        gloss: list[dict[str, str]] = []
+        # ★ Phase 3 생각 단계(2026-10-06 재구현, docs/전체재검토_ExplanationEngine_v2_2026-10-05.md). 모델이 설명을
+        #   설계하고 그 결과가 IR 이 된다. 위 어댑터 IR 은 모델을 부르기 전 원문 검사(깊이·모드 기록이 서로 맞는가)에만
+        #   쓴다 — 어차피 그 검사에서 죽을 입력에 돈을 쓰지 않는다. 원문이 **얕은** 것은 여기서 막지 않는다: 생각 단계의
+        #   단계 수 범위(STEP_RANGE_BY_MODE)와 Phase 8 길이 판정이 줄인다. 모델을 안 부르는 실행(dry)은 옛 경로 그대로다.
+        if allow_model_calls and config.V2_EXPLANATION_REASONING:
+            phase = "phase3_preflight"
+            preflight = content_complexity_gate.source_errors(pack, ir)
+            if preflight:
+                raise ValueError("preflight_failed_before_model_call:" + ",".join(preflight))
+            phase = "phase3_reasoning"
+            thought = explanation_reasoning.think(
+                pack, title=title, financial_reasoning=financial_reasoning if domain == "report" else None,
+                report_meta=report if isinstance(report, dict) else None, caller=reasoning_caller)
+            shadow["reasoning"] = thought
+            ir = explanation_ir.normalize(
+                explanation_reasoning.to_ir_candidate(thought["reasoning"], pack), pack)
+            ir_errors = explanation_ir.validate(ir, pack)
+            if ir_errors:
+                raise ValueError("reasoning_ir_invalid:" + ",".join(ir_errors))
+            gloss = explanation_reasoning.gloss_terms(thought["reasoning"])
+            if config.V2_WRITER == "production":
+                # ★ 말은 기존 작성기가 쓴다(2026-10-07 운영자 결정). V2 는 설계(위 생각 단계)와 검사(검증관)만.
+                shadow["ir"] = ir
+                phase = "phase6_writer"
+                packet = None
+                if domain == "report" and isinstance(report, dict):
+                    try:
+                        packet = report_source.resolve(report, store=False)
+                    except Exception as exc:  # noqa: BLE001 — 원문이 없어도 Fact Sheet 로 쓴다
+                        shadow["writer_packet_error"] = str(exc)[:200]
+                writer = writer_caller or v2_writer.default_writer(
+                    domain, packet=packet, financial_reasoning=financial_reasoning if domain == "report" else None)
+                out = v2_writer.write_and_check(writer, fact_sheet or {}, thought["reasoning"], pack,
+                                                domain=domain, content_id=content_id, critic_caller=critic_caller,
+                                                legacy_hook=(v2_writer.legacy_hook(legacy_draft)
+                                                             if config.V2_KEEP_LEGACY_HOOK else ""))
+                shadow["writer"] = out
+                phases["phase6"] = "WRITER_SCRIPT"
+                phases["phase7"] = out["status"]
+                result["run_status"] = "READY" if out["status"] == "PASSED" else "BLOCKED"
+                if with_directive and result["run_status"] == "READY":
+                    _bridge_writer(result, legacy_draft, report, directive_generator)
+                return result
         shadow["ir"] = ir
         phases["phase3"] = "READY" if ir.get("reasoning_units") else "EMPTY"
 
@@ -241,7 +295,25 @@ def _run(
         narration = spoken_narration.generate(
             plan, ir, resolution, pack,
             caller=narration_caller if allow_model_calls else None,
+            gloss_terms=gloss,
         )
+        # ★ 대본 검사에 걸리면 **한 번** 다시 쓴다 — 걸린 이유를 쉬운 지시로 되먹인다(작업지시서 §10 "경고했으니 됐다" 금지,
+        #   "too_many_spoken_numbers → Narration regenerate"). 첫 시도는 기록으로 남긴다.
+        if (allow_model_calls and config.V2_NARRATION_RETRY
+                and narration.get("generation_status") == "REJECTED_DRAFT"
+                and (narration.get("qa") or {}).get("errors")):
+            shadow["narration_first_attempt"] = narration
+            narration = spoken_narration.generate(
+                plan, ir, resolution, pack, caller=narration_caller, gloss_terms=gloss,
+                fix_these=spoken_narration.fix_feedback(narration["qa"]["errors"]))
+        # 2차 다듬기(§8 "별도 pass"). 실패해도 사실 검사를 통과한 초안을 그대로 쓴다 — 다듬기는 덤이다.
+        if (allow_model_calls and config.V2_SPOKEN_POLISH
+                and narration.get("generation_status") == "DRAFT_ACCEPTED"):
+            try:
+                narration = spoken_narration.polish(narration, plan, ir, resolution, pack,
+                                                    caller=polish_caller)
+            except Exception as exc:  # noqa: BLE001 — 덤이 본문을 망치지 않게
+                shadow["polish_error"] = {"type": type(exc).__name__, "message": str(exc)[:300]}
         shadow["narration"] = narration
         phases["phase6"] = narration.get("generation_status")
 
@@ -250,6 +322,36 @@ def _run(
             narration, plan, ir, resolution, pack,
             caller=critic_caller if allow_model_calls else None,
         )
+        # 검증관 자신의 형식 실수(다른 비트 근거 인용 등 CRITIC_ERROR)는 대본 탓이 아니다 — 검증만 한 번 다시 한다.
+        if allow_model_calls and fidelity.get("qa_status") == "CRITIC_ERROR":
+            shadow["fidelity_first_attempt"] = fidelity
+            fidelity = semantic_fidelity.review(
+                narration, plan, ir, resolution, pack, caller=critic_caller)
+        # ★ 검증관이 **진짜** 문제를 찾으면(REJECTED) 그 지적을 되먹여 대본을 한 번 다시 쓰고 다시 검증한다
+        #   (작업지시서 §10 "경고했으니 됐다" 금지 — 실측: 모델이 근거로 확인 안 되는 메타 문장을 덧붙였다).
+        if (allow_model_calls and config.V2_NARRATION_RETRY and fidelity.get("qa_status") == "REJECTED"
+                and narration.get("generation_status") == "DRAFT_ACCEPTED"):
+            rewrite = spoken_narration.generate(
+                plan, ir, resolution, pack, caller=narration_caller, gloss_terms=gloss,
+                fix_these=semantic_fidelity.fix_feedback(fidelity))
+            shadow["critic_rewrite_attempt"] = rewrite            # 성공·실패 모두 기록(실패 이유를 볼 수 있게)
+            if rewrite.get("generation_status") == "DRAFT_ACCEPTED":
+                if config.V2_SPOKEN_POLISH:
+                    try:
+                        rewrite = spoken_narration.polish(rewrite, plan, ir, resolution, pack,
+                                                          caller=polish_caller)
+                    except Exception as exc:  # noqa: BLE001
+                        shadow["polish_error_rewrite"] = {"type": type(exc).__name__, "message": str(exc)[:300]}
+                shadow["narration_before_critic_rewrite"] = narration
+                shadow["fidelity_before_critic_rewrite"] = fidelity
+                narration = rewrite
+                shadow["narration"] = narration
+                phases["phase6"] = narration.get("generation_status")
+                fidelity = semantic_fidelity.review(
+                    narration, plan, ir, resolution, pack, caller=critic_caller)
+                if fidelity.get("qa_status") == "CRITIC_ERROR":
+                    fidelity = semantic_fidelity.review(
+                        narration, plan, ir, resolution, pack, caller=critic_caller)
         shadow["fidelity"] = fidelity
         phases["phase7"] = fidelity.get("qa_status")
 
@@ -282,7 +384,7 @@ def _run(
         phases["phase10"] = "READY" if directive else "BLOCKED"
     except Exception as exc:  # noqa: BLE001 — 실패를 성공처럼 숨기지 않고 결과에 남긴다
         shadow["directive"] = None
-        phases["phase6" if phase == "phase6_preflight" else phase] = "ERROR"
+        phases[phase.split("_")[0]] = "ERROR"
         result["error"] = {
             "phase": phase,
             "type": type(exc).__name__,
@@ -294,6 +396,28 @@ def _run(
     if with_directive and allow_model_calls:
         _bridge(result, legacy_draft, financial_reasoning, report, directive_generator)
     return result
+
+
+def bridge_saved_writer(result: dict[str, Any], legacy_draft: Any, report: Any = None, generator: Any = None) -> None:
+    """저장된 V2 결과(대본 확정본)에서 지시서만 만든다 — 대본을 다시 쓰지 않는다(2026-10-08, 운영자가 고른 대본 그대로)."""
+    _bridge_writer(result, legacy_draft, report, generator)
+
+
+def _bridge_writer(result: dict[str, Any], legacy_draft: Any, report: Any, generator: Any) -> None:
+    """기존 작성기가 쓴 V2 대본 → 기존 지시서 생성기(대사 글자 그대로 고정 — v2_directive_bridge.generate_from_script)."""
+    shadow = result["shadow"]
+    try:
+        shadow["generated"] = v2_directive_bridge.generate_from_script(
+            result["domain"], shadow["writer"]["script"],
+            legacy_draft if isinstance(legacy_draft, dict) else {},
+            report=report if isinstance(report, dict) else None, generator=generator)
+    except Exception as exc:  # noqa: BLE001
+        shadow["generated"] = None
+        shadow["generated_error"] = {"type": type(exc).__name__, "message": str(exc)[:500]}
+        result["phase_status"]["production_generator"] = "ERROR"
+        return
+    result["phase_status"]["production_generator"] = (
+        "APPROVAL_BLOCKED" if shadow["generated"]["approval_blocked"] else "READY")
 
 
 def _bridge(result: dict[str, Any], legacy_draft: Any, financial_reasoning: Any,
@@ -556,14 +680,39 @@ def render_markdown(result: dict[str, Any]) -> str:
         *_legacy_cut_lines(legacy.get("cuts")), "",
     ])
 
+    writer = _dict(shadow.get("writer"))
+    if writer:
+        script = _dict(writer.get("script"))
+        lines.extend([f"## V2 대본 (설계: 생각 단계 · 말: 기존 작성기 · 사실 검증: {writer.get('status')}"
+                      f"{' · 한 번 다시 씀' if writer.get('first_attempt') else ''})", "",
+                      str(script.get("script_md") or "(대본 없음)"), ""])
+        plain = _dict(writer.get("plain"))
+        if plain:
+            found = plain.get("findings") or []
+            lines.append(f"- 쉬운 말 검사(Jev): {'지적 없음' if not found else ', '.join(found)}"
+                         f"{' · 검사 못 한 문장 ' + str(plain.get('unchecked')) if plain.get('unchecked') else ''}"
+                         f" · {writer.get('attempts')}회 중 {writer.get('chosen_attempt')}회차를 골랐다")
+            for row in plain.get("scores") or []:
+                vals = " ".join(f"{k} {v}" for k, v in row.items() if k != "sentence")
+                lines.append(f"  - {vals} | {str(row.get('sentence'))[:70]}")
+            lines.append("")
+        first = _dict(writer.get("first_attempt"))
+        if first:
+            lines.extend(["<details><summary>1회차 대본(다시 쓰기 전)</summary>", "",
+                          str(_dict(first.get("script")).get("script_md") or ""), "</details>", ""])
+        lines.extend(["<details><summary>기존 작성기에 준 설계 지시</summary>", "", "```",
+                      str(writer.get("instruction") or ""), "```", "</details>", ""])
     narration = _dict(shadow.get("narration"))
     status = narration.get("generation_status") or result["phase_status"].get("phase6")
-    lines.extend([f"## V2 Shadow 대본 (phase6: {status})", ""])
     narration_lines = _narration_lines(narration)
+    if not writer:
+        lines.extend([f"## V2 Shadow 대본 (phase6: {status})", ""])
     if narration_lines and status != "DRAFT_ACCEPTED":
         lines.append("> ⚠ 엔진이 **거절한** 대본이다. V2 결과물로 쓰이지 않는다 — 사유는 아래 '차단·경고'.")
         lines.append("")
-    if narration_lines:
+    if writer:
+        pass
+    elif narration_lines:
         lines.extend(narration_lines)
     elif run_status == "MODEL_CALL_REQUIRED":
         lines.append("- 외부 모델 호출 전 중단: `--with-model`이 필요합니다.")
