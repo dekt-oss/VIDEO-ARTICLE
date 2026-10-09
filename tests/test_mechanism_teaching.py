@@ -241,7 +241,9 @@ def test_mechanism_sequence_without_legend_warns_on_its_first_cut(monkeypatch):
 
 
 # ── T2 전·후 분할 스틸 ────────────────────────────────────────────────────
-def test_split_applies_only_to_state_changing_stages_with_a_before_image():
+def test_split_applies_only_to_state_changing_stages_with_a_before_image(monkeypatch):
+    # 2026-10-09 부터 기본 꺼짐(운영자: 사진으로 영상 구성 금지) — 기능 자체는 스위치로 남아 있어 켜고 검사한다.
+    monkeypatch.setattr(config, "MECHANISM_SPLIT_BEFORE_AFTER", True)
     header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1"),
                       _stage("S3", 5, ops=("MOVE",), cont="S2")])
     assert render.split_before_after_applies(_cut(4), header) is True
@@ -250,7 +252,9 @@ def test_split_applies_only_to_state_changing_stages_with_a_before_image():
     assert render.split_before_after_applies(_cut(4, visual_role="REALITY"), header) is False
 
 
-def test_split_changes_the_stage_video_cache_key():
+def test_split_changes_the_stage_video_cache_key(monkeypatch):
+    # 2026-10-09 부터 기본 꺼짐(운영자: 사진으로 영상 구성 금지) — 기능 자체는 스위치로 남아 있어 켜고 검사한다.
+    monkeypatch.setattr(config, "MECHANISM_SPLIT_BEFORE_AFTER", True)
     """스위치를 켠 뒤 옛 Veo 영상이 캐시에서 되살아나면 안 된다."""
     header = _header([_stage("S1", 3), _stage("S2", 4, ops=("TRANSFORM",), cont="S1")])
     cuts = [_cut(3), _cut(4)]
@@ -791,7 +795,9 @@ def test_the_split_caption_lasts_the_whole_cut():
             assert (start, end) == (expect, 6.0), (style, start, end)
 
 
-def test_captions_are_asked_only_where_a_split_actually_happens():
+def test_captions_are_asked_only_where_a_split_actually_happens(monkeypatch):
+    # 2026-10-09 부터 분할 스틸 기본 꺼짐(운영자: 사진으로 영상 구성 금지) — 기능은 스위치로 남아 켜고 검사한다.
+    monkeypatch.setattr(config, "MECHANISM_SPLIT_BEFORE_AFTER", True)
     """★ 2026-09-19 리포트 리뷰에서 잡은 **오탐**: 상태가 바뀌어도 이어받을 앞 stage 가 없으면
     (NEW_WORLD) 분할이 일어나지 않는다. 그런 컷에 "위/아래가 무엇인지 적어라"고 요구하면
     있지도 않은 화면을 설명하라는 말이 된다 — 조건을 split_before_after_applies 와 맞춘다."""

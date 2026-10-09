@@ -2369,7 +2369,10 @@ STAGE_RENDER_ENABLED: bool = _get_bool("STAGE_RENDER_ENABLED", True)
 #   실측: 뇌가 "재배선"되는 8초 동안 조명만 흔들렸다). 그런 stage 는 앞 stage 의 그림(전)과
 #   이 stage 의 그림(후)을 **위·아래로 붙인 한 장**으로 만들고 켄번스로 잡는다. 영상비 0.
 #   MOVE·ROTATE·IMPACT 같은 **운동**은 I2V 가 할 수 있는 일이라 그대로 둔다.
-MECHANISM_SPLIT_BEFORE_AFTER: bool = _get_bool("MECHANISM_SPLIT_BEFORE_AFTER", True)
+# ★★★ 2026-10-09 운영자 지시로 기본 꺼짐: "사진 띄우고 화면 떨리는 표현 하지 말라 — 사진으로 영상 구성하지 말라".
+#   분할 스틸은 정의상 사진 + 켄번스다(음파 전반부 컷 9~10 이 '변화 전/변화 후' 두 칸 사진으로 나갔다).
+#   상태 변화는 영상 움직임(motion_prompt·temporal_plan)으로 보여 준다. 되돌리려면 환경변수로만 켠다.
+MECHANISM_SPLIT_BEFORE_AFTER: bool = _get_bool("MECHANISM_SPLIT_BEFORE_AFTER", False)
 MECHANISM_SPLIT_OPERATIONS: tuple[str, ...] = (
     "TRANSFORM", "GROW", "SHRINK", "SPLIT_OFF", "MERGE_INTO", "DISAPPEAR",
 )

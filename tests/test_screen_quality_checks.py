@@ -102,3 +102,9 @@ def test_a_new_sequence_in_an_already_drawn_world_references_that_picture(tmp_pa
     assert got["kind"] == "reference" and got["ref_stage"] == "S0" and got.get("same_world")
     lab = sequence_render.reference_decision({"cut_no": 2}, header, {"S0": str(pic)})
     assert lab["kind"] == "new_world"                      # 다른 세계는 새로 그린다
+
+
+def test_photo_never_builds_shots_from_stills_by_default():
+    """운영자 2026-10-09: 사진으로 영상 구성 금지 — 분할 스틸·영상 실패 사진 대체 둘 다 기본 꺼짐."""
+    assert config.MECHANISM_SPLIT_BEFORE_AFTER is False
+    assert config.PHOTO_STILL_FALLBACK is False
