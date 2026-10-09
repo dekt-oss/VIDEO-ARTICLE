@@ -110,6 +110,11 @@ def test_photo_never_builds_shots_from_stills_by_default():
     assert config.PHOTO_STILL_FALLBACK is False
 
 
+import shutil as _shutil
+import pytest as _pytest
+
+
+@_pytest.mark.skipif(_shutil.which("ffmpeg") is None, reason="ffmpeg 없음(CI)")
 def test_clip_frames_are_checked_and_failures_downgrade_the_render(tmp_path):
     import subprocess
     from engine import render, still_check
