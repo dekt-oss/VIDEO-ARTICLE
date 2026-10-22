@@ -56,6 +56,12 @@ export const DEPTH_LABEL = {
   full_text: "원문 전문 직접 입력",
 } as const;
 
+/** 수집 문서(B단계)는 "직접 입력"이 아니다 — 같은 깊이라도 출처에 맞게 부른다. */
+export function depthLabel(depth: keyof typeof DEPTH_LABEL, capture?: "manual" | "collected"): string {
+  if (capture !== "collected") return DEPTH_LABEL[depth];
+  return depth === "metadata_only" ? "제목·요약만 — 본문 미확보(근거로 쓸 수 없음)" : "수집한 본문";
+}
+
 export const RIGHTS_LABEL = {
   unknown: "사용 조건 미확인",
   quote_ok: "인용 가능",

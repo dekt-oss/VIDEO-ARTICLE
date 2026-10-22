@@ -4269,3 +4269,30 @@ class Secrets:
 
 
 SECRETS = Secrets()
+
+
+# ─────────────────────────────────────────────────────────────
+# 주류 공장 B단계 — 수집(2026-10-22). docs/deviation-drinks-phase-b.md
+#   DB 상한(supabase/migrations/0051 drinks_collect_limits)과 같은 값이어야 한다 — tests/test_drinks_phase_b.py 가 대조.
+#   수집원별 상한은 등록부(drink_sources)에 있고, 여기 값은 그 **천장**과 요청기 안전 한도다.
+# ─────────────────────────────────────────────────────────────
+DRINKS_MAX_ACTIVE_SOURCES: int = 12
+DRINKS_MAX_ITEMS_PER_RUN: int = 100        # 실행 1회 문서(메타데이터) 천장
+DRINKS_MAX_BODIES_PER_RUN: int = 20        # 실행 1회 본문 수집 천장
+DRINKS_RUNS_PER_DAY: int = 4               # 수집원 하나의 24시간 실행 수
+DRINKS_RUN_LEASE_SEC: int = 900
+DRINKS_MIN_INTERVAL_SEC: int = 3           # 요청 간 최소 간격(수집원 설정의 하한)
+# 아래는 요청기(engine/drinks_fetch.py) 전용 — DB 에는 없다.
+DRINKS_RUN_TIME_BUDGET_SEC: int = _get_int("DRINKS_RUN_TIME_BUDGET_SEC", 600)   # 임대(900초)보다 짧게
+DRINKS_MAX_RUNS_PER_INVOCATION: int = _get_int("DRINKS_MAX_RUNS_PER_INVOCATION", 12)
+DRINKS_FETCH_RETRIES: int = 1              # 5xx·시간 초과 재시도 횟수(요청당). 무한 재시도 없음
+DRINKS_MAX_REDIRECTS: int = 3
+DRINKS_MAX_RESPONSE_BYTES: int = 2_000_000
+DRINKS_CONNECT_TIMEOUT_SEC: float = 10.0
+DRINKS_READ_TIMEOUT_SEC: float = 15.0
+DRINKS_TOTAL_TIMEOUT_SEC: float = 30.0
+DRINKS_MIN_BODY_CHARS: int = 200           # 이보다 짧으면 본문이 아니라 제목·요약만(metadata_only)
+DRINKS_MAX_BODY_CHARS: int = 200_000       # drink_source_snapshots.body_text 상한과 같다
+DRINKS_VALIDATE_ITEMS: int = 3             # 검증 실행이 본문 추출을 시험하는 문서 수
+DRINKS_FEED_OVERLAP_DAYS: int = 3          # 피드 워처마크 겹침(늦게 올라온 글 대비)
+DRINKS_USER_AGENT_TOKEN: str = "video-article-drinks"

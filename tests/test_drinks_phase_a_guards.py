@@ -10,6 +10,7 @@ import re
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
 MIG = ROOT / "supabase" / "migrations" / "0050_drinks_factory_phase_a.sql"
+MIG_B = ROOT / "supabase" / "migrations" / "0051_drinks_factory_phase_b.sql"
 
 
 def _drinks_web_files():
@@ -28,14 +29,20 @@ def test_drinks_route_is_operator_gated_first_and_uses_service_client():
 
 
 def test_drinks_code_never_reaches_render_or_publish_paths():
-    banned = ["trigger-render", "trigger-publish", "render_jobs", "upload_requests", "report_render_jobs",
+    # B단계: 라우트가 수집 워커(drinks-collect.yml) 하나만 깨운다 — 그 호출 한 줄 외의 디스패치·큐는 금지.
+    banned = ["trigger-publish", "render_jobs", "upload_requests", "report_render_jobs",
               "report_upload_requests", "functions/v1/", "workflow_dispatch", "GITHUB_DISPATCH_TOKEN",
-              "draft_requests", "directive_requests", "image_batch_jobs"]
+              "draft_requests", "directive_requests", "image_batch_jobs", "triggerRender", "triggerDraft",
+              "triggerReportDraft", "triggerReportRender"]
     def code(f):  # 주석 줄은 뺀다 — "이 경로를 쓰지 않는다"는 설명까지 걸리면 안 된다
         return "\n".join(l for l in f.read_text(encoding="utf-8").splitlines()
                          if not l.strip().startswith(("//", "*", "/*")))
     hits = [f"{f.relative_to(WEB)}: {b}" for f in _drinks_web_files() for b in banned if b in code(f)]
-    assert not hits, "주류 A단계 코드가 유료 생성·발행 경로를 참조한다:\n" + "\n".join(hits)
+    assert not hits, "주류 코드가 유료 생성·발행 경로를 참조한다:\n" + "\n".join(hits)
+    users = [f for f in _drinks_web_files() if "trigger-render" in code(f)]
+    assert [f.relative_to(WEB).as_posix() for f in users] == ["app/api/drinks/route.ts"]
+    calls = re.findall(r"triggerWorkflow\(([^)]*)\)", code(users[0]))
+    assert calls == ['"drinks-collect.yml", null'], f"주류 라우트가 깨우는 워크플로는 수집 워커 하나: {calls}"
 
 
 def test_drinks_queries_are_server_only():
@@ -58,6 +65,21 @@ def test_migration_grants_nothing_to_anon_and_adds_no_job_or_publish_tables():
     # 기존 paper/report 표를 건드리지 않는다
     altered = set(re.findall(r"alter table (\w+)", sql))
     assert altered <= set(tables), f"주류 외 표 변경: {altered - set(tables)}"
+
+
+def test_phase_b_migration_grants_nothing_to_anon_and_touches_only_drinks():
+    sql = MIG_B.read_text(encoding="utf-8").lower()
+    assert not re.search(r"grant[^;]*to[^;]*\b(anon|authenticated|public)\b", sql)
+    assert "create policy" not in sql
+    tables = re.findall(r"create table if not exists (\w+)", sql)
+    assert sorted(tables) == ["drink_collection_items", "drink_collection_runs", "drink_sources"]
+    for t in tables:
+        assert f"alter table {t} enable row level security" in sql, t
+    altered = set(re.findall(r"alter table (\w+)", sql))
+    assert altered <= set(tables) | {"drink_source_snapshots", "drink_topics", "drink_workflow_events"}, altered
+    # 렌더·발행·LLM 큐는 B단계에도 없다
+    for bad in ["render", "publish", "upload", "llm"]:
+        assert not any(bad in t for t in tables), bad
 
 
 def test_factory_branch_is_explicit_for_drinks():

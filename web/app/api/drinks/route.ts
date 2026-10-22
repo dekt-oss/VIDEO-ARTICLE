@@ -1,14 +1,16 @@
-// POST /api/drinks — 주류 공장 A단계의 모든 쓰기. body: { action, payload }
+// POST /api/drinks — 주류 공장의 모든 쓰기. body: { action, payload }
 //
 // 동작 목록·URL 정규화·오류 변환은 lib/drinks/actions.ts, 상태 전이·소유 관계·동시 수정 검사는
 // DB 함수(0050)가 한다. 이 라우트는 운영자 게이트 → service key rpc 연결만 한다.
-// ★ 렌더·업로드·발행 큐(trigger-render / trigger-publish)를 import 하지 않는다 — 주류는 A단계에서
-//   유료 생성·외부 발행 경로로 이어질 길이 없어야 한다(tests/test_drinks_phase_a_guards.py 가 감시).
+// ★ 렌더·업로드·발행 큐(triggerRender·triggerDraft·trigger-publish)를 쓰지 않는다 — 주류는 유료 생성·외부 발행
+//   경로로 이어질 길이 없어야 한다. 깨우는 워크플로는 수집 워커(drinks-collect.yml) 하나뿐이다
+//   (tests/test_drinks_phase_a_guards.py 가 감시).
 import { NextResponse } from "next/server";
 
 import { requireOperator } from "@/lib/apiGuard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runDrinksAction } from "@/lib/drinks/actions";
+import { triggerWorkflow } from "@/lib/trigger-render";
 
 export async function POST(request: Request) {
   const denied = await requireOperator();
@@ -23,5 +25,9 @@ export async function POST(request: Request) {
   }
   const body = await request.json().catch(() => null);
   const res = await runDrinksAction((fn, p) => admin.rpc(fn, { p }), body);
+  if (res.status === 200 && (body as { action?: unknown } | null)?.action === "request_run") {
+    // 실행은 큐에 들어갔다. 토큰이 없으면 다음 일일 실행(KST 06:30)이 가져간다 — 화면이 그 사실을 보여준다.
+    res.body.dispatch = await triggerWorkflow("drinks-collect.yml", null);
+  }
   return NextResponse.json(res.body, { status: res.status });
 }

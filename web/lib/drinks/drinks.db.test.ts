@@ -15,12 +15,14 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction, PHASE_A_EXCLUDED } from "./actions.ts";
 import { planCoverage, weightedScore } from "./model.ts";
 
-const MIG = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations/0050_drinks_factory_phase_a.sql");
+// A단계 동작이 B단계 마이그레이션(0051) 위에서도 그대로인지 함께 본다 — 운영에는 둘이 순서대로 적용된다.
+const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql"]
+  .map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
 
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);
-await db.exec(readFileSync(MIG, "utf8"));
+for (const m of MIGS) await db.exec(readFileSync(m, "utf8"));
 
 const exec = async (fn: string, p: Record<string, unknown>) => {
   try {
@@ -449,7 +451,7 @@ test("신호→근거 승격은 한 번, 근거→신호 강등·연결 삭제�
   await assert.rejects(db.query("delete from drink_topic_sources where snapshot_id = $1", [d.snapshot_id]), /immutable/);
 });
 
-test("제외 기능: 수집·LLM·렌더·발행 동작은 서버가 거부하고, 그런 큐·표가 DB 에 없다", async () => {
+test("제외 기능: 임의 URL·LLM·렌더·발행 동작은 서버가 거부하고, 그런 큐·표가 DB 에 없다", async () => {
   for (const a of PHASE_A_EXCLUDED) {
     const r = await act(a, {});
     assert.equal(r.status, 403, a);
@@ -460,8 +462,10 @@ test("제외 기능: 수집·LLM·렌더·발행 동작은 서버가 거부하�
   const views = (await db.query<{ table_name: string }>(`select table_name from information_schema.views where table_schema='public'
     and table_name like 'drink%' order by 1`)).rows.map((r) => r.table_name);
   assert.deepEqual(views, ["drink_review_validity"], "읽기 전용 판정 뷰 하나뿐");
-  assert.deepEqual(tables, ["drink_deliverables", "drink_plan_revisions", "drink_snapshot_attestations", "drink_source_snapshots",
-    "drink_topic_reviews", "drink_topic_sources", "drink_topics", "drink_workflow_events"]);
+  // B단계(0051)가 더한 것은 수집원·수집 실행·실행 문서 3개뿐 — 렌더·발행 큐는 없다.
+  assert.deepEqual(tables, ["drink_collection_items", "drink_collection_runs", "drink_deliverables", "drink_plan_revisions",
+    "drink_snapshot_attestations", "drink_source_snapshots", "drink_sources", "drink_topic_reviews", "drink_topic_sources",
+    "drink_topics", "drink_workflow_events"]);
 });
 
 test("감사 이력은 추가만 된다", async () => {

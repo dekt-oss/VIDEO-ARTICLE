@@ -23,6 +23,8 @@ export default function TopicPanel({
   const [code, setCode] = useState("insufficient_evidence");
   const [holdUntil, setHoldUntil] = useState("");
   const [canonId, setCanonId] = useState("");
+  const [triageReason, setTriageReason] = useState(topic.triage_reason ?? "");
+  const [needs, setNeeds] = useState(topic.research_needs ?? "");
   const base = { topic_id: topic.id, expected_version: topic.version };
   const act = (action: string, extra: Record<string, unknown>, msg: string) =>
     run("topic_action", { ...base, action, ...extra }, msg, "소재 상태 변경");
@@ -37,9 +39,18 @@ export default function TopicPanel({
           <h3 style={{ margin: "0 0 6px" }}>경량 평가 (provisional)</h3>
           <p className="muted">조사 후보로 고를지 정하는 임시 점수입니다. 높아도 근거 확인·편성을 대신하지 않습니다.</p>
           <ScoreInputs value={scores} onChange={setScores} disabled={busy} />
+          <label className="dk-field">임시 점수 사유
+            <input value={triageReason} onChange={(e) => setTriageReason(e.target.value)} maxLength={1000}
+              placeholder="왜 이 점수인지 한 줄" />
+          </label>
+          <label className="dk-field">조사 필요 사항
+            <textarea value={needs} onChange={(e) => setNeeds(e.target.value)} maxLength={2000} rows={2}
+              placeholder="확인해야 할 사실·찾아야 할 원출처" />
+          </label>
           <div className="actions">
             <button className="btn" disabled={busy}
-              onClick={() => run("triage", { ...base, scores }, "경량 평가를 저장했습니다", "경량 평가 저장")}>
+              onClick={() => run("triage", { ...base, scores, reason: triageReason, research_needs: needs },
+                "경량 평가를 저장했습니다", "경량 평가 저장")}>
               경량 평가 저장
             </button>
             {topic.status === "triaged" && (

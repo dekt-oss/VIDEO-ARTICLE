@@ -27,6 +27,9 @@ export interface TopicRow {
   decision_reason: string | null;
   hold_until: string | null;
   canonical_topic_id: string | null;
+  /** 경량 평가 사유·조사 필요 사항(B단계, 0051). provisional 점수와 별도 칸 */
+  triage_reason?: string | null;
+  research_needs?: string | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -51,6 +54,10 @@ export interface SnapshotRow {
   origin_group: string | null;
   supersedes_id?: string | null;
   created_at?: string;
+  /** manual = 사람이 등록 / collected = 수집 실행이 저장(B단계, 0051) */
+  capture_method?: "manual" | "collected";
+  collected_source_id?: string | null;
+  collected_run_id?: string | null;
   /** loadBoard 가 붙이는 연결 역할 */
   role?: "discovery" | "evidence";
 }
@@ -224,5 +231,94 @@ export interface EventRow {
   version_ref: string | null;
   reason: string | null;
   detail: Record<string, unknown>;
+  created_at: string;
+}
+
+// ── B단계: 수집원·수집 실행 (0051) ──
+
+export type SourceState = "proposed" | "validated" | "active" | "paused" | "retired";
+export type SourceMethod = "manual_url" | "approved_page" | "listing" | "feed";
+export type RunStatus = "queued" | "running" | "succeeded" | "empty" | "partial" | "failed" | "aborted";
+
+export interface SourceRow {
+  id: string;
+  name: string;
+  home_url: string;
+  publisher: string | null;
+  language: string;
+  categories: Category[];
+  source_kind: string;
+  method: SourceMethod;
+  entry_urls: string[];
+  allowed_hosts: string[];
+  parser_config: Record<string, unknown>;
+  parser_version: string;
+  terms_status: "unverified" | "verified" | "restricted";
+  terms_note: string | null;
+  terms_url: string | null;
+  terms_checked_at: string | null;
+  robots_note: string | null;
+  rights_default: string;
+  request_interval_sec: number;
+  max_items_per_run: number;
+  max_bodies_per_run: number;
+  state: SourceState;
+  state_reason: string | null;
+  watermark_at: string | null;
+  last_success_run_id: string | null;
+  last_validation_run_id: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RunRow {
+  id: string;
+  source_id: string;
+  mode: "collect" | "validate" | "retry";
+  retry_of: string | null;
+  retry_urls: string[];
+  requested_by: "operator" | "schedule";
+  scheduled_for: string | null;
+  status: RunStatus;
+  lease_expires_at: string | null;
+  heartbeat_at: string | null;
+  worker_id: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  limits: Record<string, number> | null;
+  cursor_from: string | null;
+  cursor_to: string | null;
+  listed_count: number;
+  item_count: number;
+  body_count: number;
+  new_count: number;
+  changed_count: number;
+  unchanged_count: number;
+  metadata_count: number;
+  skipped_count: number;
+  failed_count: number;
+  request_count: number;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface ItemRow {
+  id: number;
+  run_id: string;
+  source_id: string;
+  canonical_url: string;
+  status: "new" | "changed" | "unchanged" | "metadata_only" | "skipped" | "failed" | "checked";
+  http_status: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  title: string | null;
+  summary: string | null;
+  published_at: string | null;
+  body_chars: number | null;
+  snapshot_id: string | null;
+  same_body_count: number;
+  attempt: number;
   created_at: string;
 }

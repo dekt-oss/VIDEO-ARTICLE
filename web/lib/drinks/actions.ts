@@ -1,4 +1,4 @@
-// 주류 공장 A단계 쓰기 동작 — POST /api/drinks 의 본체 (2026-10-22).
+// 주류 공장 쓰기 동작 — POST /api/drinks 의 본체 (A단계 2026-10-22, B단계 수집원·실행 추가 2026-10-22).
 //
 // ★ 라우트는 이 파일의 runDrinksAction 에 Supabase rpc 실행기만 넘긴다. 실행기를 바꿔 끼울 수 있어서
 //   supabase/tests/drinks_phase_a.test.mjs 가 **실제 Postgres(PGlite) 위에서** 같은 코드 경로를 돈다.
@@ -21,17 +21,25 @@ export const DRINKS_ACTIONS = {
   select: "drinks_select",
   save_plan: "drinks_save_plan",
   plan_action: "drinks_plan_action",
+  // B단계(0051): 수집원 등록부·실행 요청·수집 문서 연결. 워커 전용 함수(start/collect/finish)는 여기 없다.
+  register_source: "drinks_register_source",
+  source_action: "drinks_source_action",
+  request_run: "drinks_request_run",
+  link_snapshot: "drinks_link_snapshot",
+  create_topic_from_snapshot: "drinks_create_topic_from_snapshot",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
 
 /**
- * B~D단계 기능 이름. 누가 이 이름으로 요청해도 "아직 연결되지 않음"으로 거부한다(명세 §13).
+ * 아직 연결하지 않은 기능 이름(C·D단계, 그리고 B단계에서 일부러 뺀 LLM·OCR·번역·크롤링).
+ * 누가 이 이름으로 요청해도 "아직 연결되지 않음"으로 거부한다(명세 §13).
+ * B단계 수집은 request_run(승인된 수집원의 실행 요청)으로만 들어온다 — 임의 URL 을 여는 동작은 없다.
  * 목록에 없더라도 DRINKS_ACTIONS 밖이면 거부되지만, 이 이름들은 **의도적으로 닫았다**는 것을
  * 응답 코드(not_in_phase_a)로 구별해 보여준다.
  */
 export const PHASE_A_EXCLUDED = [
-  "collect", "fetch_url", "crawl", "ocr", "translate",
+  "fetch_url", "crawl", "ocr", "translate",
   "research_llm", "auto_score", "generate_plan", "generate_script",
   "render", "request_render", "generate_media", "tts",
   "approve_output", "mark_rendered",
@@ -92,6 +100,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   review_blocked: 422, review_not_approved: 422, below_threshold: 422,
   format_not_selected: 422, format_in_use: 422, plan_blocked: 422, plan_claim_not_core: 422,
   ref_not_owned: 403, ref_not_evidence: 422,
+  // B단계
+  duplicate_source: 409, run_in_progress: 409, run_limit: 429, source_not_active: 422, terms_unverified: 422,
+  terms_restricted: 422, not_validated: 422, active_limit: 422, nothing_to_retry: 422, host_not_allowed: 422,
   format_fit_low: 422, required_claims_missing: 422, plan_coverage: 422, plan_claim_unknown: 422,
 };
 
@@ -133,7 +144,7 @@ export function mapDbError(err: DbError): ActionResponse {
   if (err.code === "42883" || err.code === "42P01" || err.code === "PGRST202") {
     return {
       status: 503,
-      body: { error: "주류 공장 DB 가 준비되지 않았습니다(0050 마이그레이션 미적용)", code: "schema_missing" },
+      body: { error: "주류 공장 DB 가 준비되지 않았습니다(0050·0051 마이그레이션 미적용)", code: "schema_missing" },
     };
   }
   return { status: 500, body: { error: "저장하지 못했습니다. 잠시 후 다시 시도하세요.", code: "db_error", detail: err.message } };
@@ -169,6 +180,30 @@ function prepareSource(src: unknown): { ok: true; source: Record<string, unknown
   return { ok: true, source: out };
 }
 
+/** 수집원 주소 정리: 공개 https 만, 추적 파라미터 제거. 허용 호스트는 DB 가 수집 주소에서 만든다(입력 무시). */
+function prepareRegistry(p: Record<string, unknown>): { ok: true } | { ok: false; error: string } {
+  const one = (raw: unknown, what: string): string | { error: string } => {
+    const n = normalizeUrl(typeof raw === "string" ? raw : "");
+    if (!n.ok) return { error: `${what}: ${n.error}` };
+    if (!n.url.startsWith("https://")) return { error: `${what}: https 주소만 수집원으로 등록합니다` };
+    return n.url;
+  };
+  const home = one(p.home_url, "대표 주소");
+  if (typeof home !== "string") return { ok: false, error: home.error };
+  p.home_url = home;
+  const raw = Array.isArray(p.entry_urls) ? p.entry_urls : [];
+  const urls: string[] = [];
+  for (const u of raw) {
+    if (typeof u !== "string" || !u.trim()) continue;
+    const n = one(u, "수집 주소");
+    if (typeof n !== "string") return { ok: false, error: n.error };
+    if (!urls.includes(n)) urls.push(n);
+  }
+  p.entry_urls = urls;
+  delete p.allowed_hosts;
+  return { ok: true };
+}
+
 export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<ActionResponse> {
   if (!isRecord(body) || typeof body.action !== "string") {
     return { status: 400, body: { error: "action 이 필요합니다", code: "invalid_input" } };
@@ -178,7 +213,7 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     return {
       status: 403,
       body: {
-        error: "이 기능은 주류 공장 A단계에 연결되지 않았습니다(자동 수집·LLM·렌더·발행은 꺼져 있음)",
+        error: "이 기능은 주류 공장에 연결되지 않았습니다(임의 URL 열기·LLM·렌더·발행은 꺼져 있음)",
         code: "not_in_phase_a",
       },
     };
@@ -197,6 +232,16 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     } else if (action === "add_source") {
       return { status: 400, body: { error: "출처를 입력하세요", code: "invalid_input" } };
     }
+  }
+
+  if (action === "register_source") {
+    const s = prepareRegistry(p);
+    if (!s.ok) return { status: 400, body: { error: s.error, code: "invalid_input" } };
+  }
+  if (action === "request_run") {
+    // 화면에서는 운영자 요청만 만든다. 예약 실행은 워커(--schedule)만 만든다.
+    p.requested_by = "operator";
+    delete p.scheduled_for;
   }
 
   const { data, error } = await exec(fn, p);

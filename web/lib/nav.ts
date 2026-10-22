@@ -63,6 +63,14 @@ export const GROUPS_FINANCE: NavGroup[] = [
 //   제작 화면은 형식별 제작안 승인 상태와 "실제 제작 미연결"만 보여준다. 설정은 지원 범위를 정직하게 보여준다.
 export const GROUPS_DRINKS: NavGroup[] = [
   { title: "선별", items: [{ href: "/drinks", label: "선별", match: "exact" }] },
+  {
+    title: "수집",
+    items: [
+      { href: "/drinks/collected", label: "수집 문서", match: "prefix" },
+      { href: "/drinks/sources", label: "수집원", match: "prefix" },
+      { href: "/drinks/runs", label: "실행 기록", match: "prefix" },
+    ],
+  },
   { title: "작업함", items: [{ href: "/drinks/review", label: "작업함", match: "prefix" }] },
   { title: "제작", items: [{ href: "/drinks/production", label: "제작", match: "prefix" }] },
   { title: "설정", items: [{ href: "/drinks/settings", label: "설정·지원 범위", match: "prefix" }] },
