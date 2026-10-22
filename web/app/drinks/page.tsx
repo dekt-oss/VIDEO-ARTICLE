@@ -1,5 +1,6 @@
 // 주류 공장 선별 (/drinks) — 수동 등록, 후보 목록·필터, 조사·편성 상태와 다음 행동, 편성함.
-// 명세 docs/주류공장_구조명세_v1_2026-10-21.md §9.1. A단계라 자동 수집이 없다 — 수집 시각·건수는 만들어 보여주지 않는다.
+// 명세 docs/주류공장_구조명세_v1_2026-10-21.md §9.1. B단계부터 승인한 수집원만 수집한다 — 수집 문서는 /drinks/collected 에서
+// 사람이 소재 후보로 올린다(자동 후보·자동 편성 없음). 상단 수집 상태는 최근 24시간 실행 기록에서 센다.
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
@@ -10,6 +11,7 @@ import {
   deriveTopic, fitOk, originSummary, type Format, type TopicDerived,
 } from "@/lib/drinks/model";
 import { loadBoard, TOPIC_LIST_LIMIT, type DrinksBoard } from "@/lib/drinks/queries";
+import { loadRunHealth } from "@/lib/drinks/collectQueries";
 import type { TopicRow } from "@/lib/drinks/types";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +34,7 @@ export default async function DrinksHomePage(props: { searchParams: Promise<SP> 
   const sp = await props.searchParams;
   const tab: TabKey = sp.tab && sp.tab in TABS ? (sp.tab as TabKey) : "all";
   const limit = Math.min(5000, Math.max(TOPIC_LIST_LIMIT, Number(sp.limit) || TOPIC_LIST_LIMIT));
-  const board = await loadBoard(limit);
+  const [board, health] = await Promise.all([loadBoard(limit), loadRunHealth()]);
 
   return (
     <main className="container">
@@ -40,21 +42,50 @@ export default async function DrinksHomePage(props: { searchParams: Promise<SP> 
         <h1>🍶 주류 공장 — 선별</h1>
         <span className="muted">사케·전통주·위스키</span>
       </div>
-      <p className="banner-info" style={{ marginTop: 12 }}>
-        <b>자동 수집 미연결.</b> 소재는 직접 등록한 것만 있습니다(마지막 수집 기록 없음). URL 을 등록해도 서버가 페이지를
-        가져오지 않습니다.
-      </p>
+      <CollectHealth health={health} />
       <RegisterForm />
       {board.state !== "ok" ? (
         <LoadProblem state={board.state} error={board.state === "failed" ? board.error : undefined} />
       ) : (
-        <Board board={board.data} truncated={Boolean(board.truncated)} tab={tab} sp={sp} limit={limit} />
+        <Board board={board.data} truncated={Boolean(board.truncated)} tab={tab} sp={sp} limit={limit} health={health} />
       )}
     </main>
   );
 }
 
-function Board({ board, truncated, tab, sp, limit }: { board: DrinksBoard; truncated: boolean; tab: TabKey; sp: SP; limit: number }) {
+type Health = Awaited<ReturnType<typeof loadRunHealth>>;
+
+/** 수집 상태 한 줄. 실패·부분 성공·중단은 정상 0건과 다른 색으로, 조회 실패는 "0건"이 아니라 실패로. */
+function CollectHealth({ health }: { health: Health }) {
+  if (health.state !== "ok") {
+    return (
+      <p className="banner-warn" style={{ marginTop: 12 }}>
+        수집 상태를 읽지 못했습니다{health.state === "failed" ? ` — ${health.error}` : ""} (0건이 아니라 조회 실패).
+      </p>
+    );
+  }
+  const h = health.data;
+  if (h.active === 0) {
+    return (
+      <p className="banner-info" style={{ marginTop: 12 }}>
+        <b>활성 수집원 없음.</b> 소재는 직접 등록한 것만 들어옵니다. <Link href="/drinks/sources">수집원</Link>에서 검증·활성화하면
+        승인한 출처만 하루 한 번 수집합니다(URL 을 직접 등록해도 서버가 열지 않습니다).
+      </p>
+    );
+  }
+  const bad = h.failed + h.partial + h.aborted + h.stuck;
+  return (
+    <p className={bad > 0 ? "banner-warn" : "banner-info"} style={{ marginTop: 12 }}>
+      활성 수집원 <b>{h.active}</b> · 최근 24시간 실행: 성공 {h.succeeded} · 정상 0건 {h.empty} · 부분 성공 {h.partial} · 실패 {h.failed} ·
+      중단 {h.aborted}{h.stuck > 0 && <> · <b>응답 끊긴 실행 {h.stuck}</b></>} — <Link href={bad > 0 ? "/drinks/runs?status=failed" : "/drinks/runs"}>실행 기록</Link> ·{" "}
+      <Link href="/drinks/collected?linked=no">아직 소재 없는 수집 문서</Link>
+    </p>
+  );
+}
+
+function Board({ board, truncated, tab, sp, limit, health }: {
+  board: DrinksBoard; truncated: boolean; tab: TabKey; sp: SP; limit: number; health: Health;
+}) {
   const derived = new Map<string, TopicDerived>(
     board.topics.map((t) => [t.id, deriveTopic(t, board.reviews, board.deliverables, board.plans)])
   );
@@ -100,7 +131,11 @@ function Board({ board, truncated, tab, sp, limit }: { board: DrinksBoard; trunc
           <span className={readyCount < READY_TARGET ? "pill dk-warn" : "pill"}>
             편성 가능 {readyCount} / 목표 {READY_TARGET}
           </span>
-          <span className="pill">수집 실패: 해당 없음(자동 수집 미연결)</span>
+          {health.state === "ok" && (
+            <span className={health.data.failed + health.data.partial + health.data.aborted + health.data.stuck > 0 ? "pill dk-warn" : "pill"}>
+              수집 실패·부분·중단(24시간) {health.data.failed + health.data.partial + health.data.aborted + health.data.stuck}
+            </span>
+          )}
         </div>
         {readyCount < READY_TARGET && (
           <p className="muted">편성 가능 소재가 목표보다 적습니다. 상시 지식 소재를 조사해 보충하세요(근거 기준을 낮추지 않습니다).</p>

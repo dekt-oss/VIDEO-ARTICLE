@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 
 import {
-  ATTEST_FIELDS, ATTEST_KIND_LABEL, CLAIM_TYPE_LABEL, DEDUP_LABEL, DEPTH_LABEL, QUOTE_LABEL, RIGHTS_LABEL, ROLE_LABEL,
+  ATTEST_FIELDS, ATTEST_KIND_LABEL, CLAIM_TYPE_LABEL, DEDUP_LABEL, depthLabel, QUOTE_LABEL, RIGHTS_LABEL, ROLE_LABEL,
   SOURCE_KIND_LABEL, SUPPORT_LABEL, blockerLabel, effectiveMeta, originSummary, type AttestKind,
 } from "@/lib/drinks/model";
 import type { AttestationRow, Claim, ReviewRow, SnapshotRow, TopicRow, TopicSourceRow } from "@/lib/drinks/types";
@@ -234,12 +234,13 @@ function SourceCard({ topicId, link, attestations, candidates, sharedWith }: {
     <div className="dk-sub">
       <div className="dk-row">
         <span className="pill">{ROLE_LABEL[link.role]}</span>
-        <span className={s.depth === "metadata_only" ? "pill dk-warn" : "pill"}>{DEPTH_LABEL[s.depth]}</span>
+        <span className={s.depth === "metadata_only" ? "pill dk-warn" : "pill"}>{depthLabel(s.depth, s.capture_method)}</span>
         <span className={m.rights_status === "quote_ok" || m.rights_status === "summary_only" ? "pill" : "pill dk-warn"}>
           {RIGHTS_LABEL[(m.rights_status ?? "unknown") as keyof typeof RIGHTS_LABEL]}
         </span>
         <span className="pill">{SOURCE_KIND_LABEL[s.source_kind as keyof typeof SOURCE_KIND_LABEL] ?? s.source_kind}</span>
         {s.supersedes_id && <span className="pill">본문 변경 버전</span>}
+        {s.capture_method === "collected" && <span className="pill">수집 문서(사람 확인 전)</span>}
         {m.attestationCount > 0 && <span className="pill">정정·확인 기록 {m.attestationCount}건</span>}
         {sharedWith > 0 && <span className="pill dk-warn">다른 소재 {sharedWith}개와 공유</span>}
         <span className="pill">{s.origin_group ? `원출처: ${s.origin_group}` : "원출처 묶음 미확인"}</span>

@@ -15,6 +15,8 @@ export interface DrinksResult {
   error?: string;
   code?: string;
   detail?: unknown;
+  /** request_run 뒤 수집 워커를 깨웠는지(토큰 없으면 triggered=false) */
+  dispatch?: { triggered: boolean; reason?: string };
 }
 
 export function useDrinksAction() {
@@ -38,7 +40,7 @@ export function useDrinksAction() {
         }
         toast.show(okMsg, "ok");
         router.refresh();
-        return { ok: true, status: res.status, result: body?.result };
+        return { ok: true, status: res.status, result: body?.result, dispatch: body?.dispatch };
       } catch {
         toast.show(networkErrorText(what), "err");
         return { ok: false, status: 0, error: networkErrorText(what), code: "network" };

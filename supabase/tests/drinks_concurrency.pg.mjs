@@ -30,7 +30,9 @@ await admin.query(`do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
   if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
 end $$; grant usage on schema public to anon, authenticated, service_role;`);
-await admin.query(readFileSync(join(ROOT, "supabase/migrations/0050_drinks_factory_phase_a.sql"), "utf8"));
+for (const f of ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql"]) {
+  await admin.query(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
+}
 
 async function conn() {
   const c = new pg.Client({ connectionString: url });
@@ -260,6 +262,119 @@ await (async () => {
       assert.equal(fin.r, expected);
     });
   }
+})();
+
+// ── B단계(0051) 수집 경합 ──
+const LONG = (t) => `${t} `.repeat(30);
+async function validatedSource(host) {
+  const r = await call(A, "drinks_register_source", { name: `src ${host} ${Math.random()}`, home_url: `https://${host}/${Math.random()}`,
+    language: "ja", categories: ["sake"], method: "approved_page", entry_urls: [`https://${host}/a`], terms_status: "verified",
+    terms_note: "확인", terms_checked_at: "2026-10-22" });
+  const id = r.source_id;
+  await call(A, "drinks_request_run", { source_id: id, mode: "validate" });
+  const got = await call(A, "drinks_start_run", { worker_id: "v" });
+  const lease = { run_id: got.run.run_id, lease_token: got.run.lease_token };
+  await call(A, "drinks_collect_item", { ...lease, item: { canonical_url: `https://${host}/a`, status: "fetched", body_text: LONG("本文") } });
+  await call(A, "drinks_finish_run", lease);
+  const v = (await one("select version from drink_sources where id=$1", [id])).version;
+  await call(A, "drinks_source_action", { source_id: id, expected_version: v, action: "validate" });
+  return id;
+}
+async function activeSource(host) {
+  const r = await call(A, "drinks_register_source", { name: `src ${host} ${Math.random()}`, home_url: `https://${host}/${Math.random()}`,
+    language: "ja", categories: ["sake"], method: "approved_page", entry_urls: [`https://${host}/a`], terms_status: "verified",
+    terms_note: "확인", terms_checked_at: "2026-10-22" });
+  const id = r.source_id;
+  await call(A, "drinks_request_run", { source_id: id, mode: "validate" });
+  const got = await call(A, "drinks_start_run", { worker_id: "v" });
+  const lease = { run_id: got.run.run_id, lease_token: got.run.lease_token };
+  await call(A, "drinks_collect_item", { ...lease, item: { canonical_url: `https://${host}/a`, status: "fetched", body_text: LONG("本文") } });
+  await call(A, "drinks_finish_run", lease);
+  for (const action of ["validate", "activate"]) {
+    const v = (await one("select version from drink_sources where id=$1", [id])).version;
+    await call(A, "drinks_source_action", { source_id: id, expected_version: v, action });
+  }
+  return id;
+}
+
+// ⑧ 두 워커가 동시에 실행을 가져간다 — 하나만 가져가고, 다른 쪽은 기다리지 않고 빈손으로 돌아간다(skip locked)
+await (async () => {
+  const id = await activeSource(`w8.${Date.now()}.example.jp`);
+  await call(A, "drinks_request_run", { source_id: id, mode: "collect" });
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_start_run", { worker_id: "A" }),
+    (c) => call(c, "drinks_start_run", { worker_id: "B" }));
+  const running = await one("select count(*)::int n from drink_collection_runs where source_id=$1 and status='running'", [id]);
+  await check("⑧ 동시 start_run: 실행 하나를 한 워커만 가져간다", async () => {
+    assert.ok(ra.run, "A 가 가져간다");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(rb.v.run, null, "B 는 같은 실행을 받지 않는다");
+    assert.equal(blocked, false, "skip locked — B 는 A 를 기다리지 않는다");
+    assert.equal(running.n, 1);
+  });
+  await call(A, "drinks_finish_run", { run_id: ra.run.run_id, lease_token: ra.run.lease_token });
+})();
+
+// ⑨ 같은 수집원에 실행 요청 두 번이 동시에 — 하나만 생기고 나중 쪽은 run_in_progress
+await (async () => {
+  const id = await activeSource(`w9.${Date.now()}.example.jp`);
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_request_run", { source_id: id, mode: "collect" }),
+    (c) => call(c, "drinks_request_run", { source_id: id, mode: "collect" }));
+  const n = await one("select count(*)::int n from drink_collection_runs where source_id=$1 and status in ('queued','running')", [id]);
+  await check("⑨ 동시 실행 요청: 대기 실행은 하나, 나중 요청은 run_in_progress", async () => {
+    assert.ok(ra.run_id);
+    assert.equal(blocked, true, "수집원 행 잠금으로 나중 요청이 기다린다");
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "run_in_progress");
+    assert.equal(n.n, 1);
+  });
+  const g = await call(A, "drinks_start_run", { worker_id: "cleanup" });  // 다음 시나리오가 이 대기 실행을 집지 않게
+  await call(A, "drinks_finish_run", { run_id: g.run.run_id, lease_token: g.run.lease_token });
+})();
+
+// ⑩ 두 수집원의 실행이 같은 URL·같은 본문을 동시에 기록 — 스냅샷은 하나, 나중 쪽은 '변화 없음'
+await (async () => {
+  const host = `w10.${Date.now()}.example.jp`;
+  const s1 = await activeSource(host);
+  const s2 = await activeSource(host);
+  await call(A, "drinks_request_run", { source_id: s1, mode: "collect" });
+  await call(A, "drinks_request_run", { source_id: s2, mode: "collect" });
+  const g1 = await call(A, "drinks_start_run", { worker_id: "1" });
+  const g2 = await call(A, "drinks_start_run", { worker_id: "2" });
+  const item = { canonical_url: `https://${host}/same`, status: "fetched", title: "same", body_text: LONG("同じ本文") };
+  const { ra, rb, blocked } = await race(
+    (c) => call(c, "drinks_collect_item", { run_id: g1.run.run_id, lease_token: g1.run.lease_token, item }),
+    (c) => call(c, "drinks_collect_item", { run_id: g2.run.run_id, lease_token: g2.run.lease_token, item }));
+  const n = await one("select count(*)::int n from drink_source_snapshots where canonical_url=$1", [item.canonical_url]);
+  await check("⑩ 동시 같은 문서 기록: 스냅샷 하나, 나중 쪽은 기존 스냅샷을 가리킨다", async () => {
+    assert.equal(ra.status, "new");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(blocked, true, "같은 고유 키 입력은 앞 트랜잭션을 기다린다");
+    assert.equal(rb.v.status, "unchanged");
+    assert.equal(rb.v.snapshot_id, ra.snapshot_id);
+    assert.equal(n.n, 1);
+  });
+  for (const g of [g1, g2]) await call(A, "drinks_finish_run", { run_id: g.run.run_id, lease_token: g.run.lease_token });
+})();
+
+// ⑪ 활성 11개에서 두 수집원을 동시에 활성화 — 하나만 12번째가 되고 다른 쪽은 active_limit(13개가 되지 않는다)
+await (async () => {
+  const have = (await one("select count(*)::int n from drink_sources where state='active'")).n;
+  for (let i = have; i < 11; i++) await activeSource(`w11-${i}.${Date.now()}.example.jp`);
+  const x = await validatedSource(`w11x.${Date.now()}.example.jp`);
+  const y = await validatedSource(`w11y.${Date.now()}.example.jp`);
+  const ver = async (id) => (await one("select version from drink_sources where id=$1", [id])).version;
+  const vx = await ver(x);
+  const vy = await ver(y);
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_source_action", { source_id: x, expected_version: vx, action: "activate" }),
+    (c) => call(c, "drinks_source_action", { source_id: y, expected_version: vy, action: "activate" }));
+  const n = await one("select count(*)::int n from drink_sources where state='active'");
+  await check("⑪ 동시 활성화(11개에서 둘): 하나만 성공, 활성 12개를 넘지 않는다", async () => {
+    assert.equal(ra.state, "active");
+    assert.equal(blocked, true, "활성화끼리 줄을 선다(advisory lock)");
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "active_limit");
+    assert.equal(n.n, 12);
+  });
 })();
 
 // 권한: anon 은 표·함수 모두 거부
