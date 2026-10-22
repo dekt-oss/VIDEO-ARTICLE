@@ -103,8 +103,9 @@ jobs:
       #   orderCost·renderError·versions 3개 파일(21개 단언)이 CI 에서 **한 번도 안 돌았다**.
       #   비용 산정·렌더 오류 분류·버전 라우팅이라 tsc·lint 로는 동작이 검사되지 않는다.
       #   새 테스트 파일이 다른 폴더에 생기면 여기도 함께 넓힌다.
+      #   lib/drinks/ 는 주류 공장(2026-10-22) — 다음 행동·점수·URL 정규화·제외 기능 거부.
       - name: node --test
-        run: node --test lib/*.test.ts lib/work/*.test.ts
+        run: node --test lib/*.test.ts lib/work/*.test.ts lib/drinks/*.test.ts
       - name: tsc --noEmit
         run: npx tsc --noEmit
       - name: lint
