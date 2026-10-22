@@ -20,6 +20,12 @@
   --accent-soft: rgba(168, 85, 247, 0.16);
   --accent-faint: rgba(168, 85, 247, 0.09);
 }
+/* 주류 공장: 호박색(앰버). 강조색 토큰만 덮는다 — 나머지 화면 규칙은 그대로. */
+[data-factory="drinks"] {
+  --accent: #d9902f;
+  --accent-soft: rgba(217, 144, 47, 0.16);
+  --accent-faint: rgba(217, 144, 47, 0.09);
+}
 
 * { box-sizing: border-box; }
 
@@ -658,3 +664,27 @@ details.render-group[open] > summary { margin-bottom: 10px; }
 .seq-en > summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 2px 0; }
 .seq-en > summary:hover { color: var(--text); }
 .seq-en textarea { margin-top: 6px; }
+
+/* ── 주류 공장(2026-10-22) — 입력 폼·탭·상태 표시. 기존 .card/.btn/.pill/.banner-* 를 그대로 쓰고 모자란 것만 더한다. ── */
+.dk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 14px; }
+.dk-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; min-width: 0; }
+.dk-field > span { color: var(--muted); }
+.dk-field input, .dk-field select, .dk-field textarea {
+  width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: inherit; }
+.dk-field textarea { min-height: 72px; resize: vertical; }
+.dk-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; align-items: center; }
+.dk-checks label { display: inline-flex; gap: 6px; align-items: center; }
+.dk-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 14px 0; border-bottom: 1px solid var(--border); }
+.dk-tabs a { padding: 8px 12px; text-decoration: none; color: var(--muted); border-bottom: 2px solid transparent; }
+.dk-tabs a[data-active="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.dk-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dk-sub { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.dk-kv { font-size: 13px; color: var(--muted); }
+.dk-kv b { color: var(--text); font-weight: 600; }
+.dk-quote { white-space: pre-wrap; font-size: 13px; background: var(--accent-faint); border-radius: 6px; padding: 6px 8px; }
+.dk-body { white-space: pre-wrap; font-size: 13px; max-height: 220px; overflow-y: auto; }
+.dk-ok { color: #50c878; }
+.dk-bad { color: var(--danger); }
+.dk-warn { color: var(--warn); }
+@media (max-width: 560px) { .dk-grid { grid-template-columns: 1fr; } }

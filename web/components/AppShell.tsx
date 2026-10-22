@@ -2,13 +2,16 @@
 
 // 공장(factory) 인식 셸. 경로로 현재 공장을 판정해 data-factory 를 셸에 부여하고
 // 해당 공장의 사이드바를 렌더한다. data-factory 가 globals.css 의 강조색 토큰을 덮어써
-// 두 공장(논문=파랑 / 리포트=바이올렛)의 화면이 색으로 즉시 구분된다.
+// 세 공장(논문=파랑 / 리포트=바이올렛 / 주류=호박색)의 화면이 색으로 즉시 구분된다.
 import { usePathname } from "next/navigation";
 import TopBar from "@/components/TopBar";
 
-export type Factory = "paper" | "finance";
+export type Factory = "paper" | "finance" | "drinks";
 
+// ★ 주류는 **명시 분기**다(2026-10-22, 주류 명세 §3). "finance 가 아니면 paper" 기본 분기에 흘려보내면
+//   /drinks 화면에 논문 메뉴가 붙는다. 경로 경계까지 본다(`/drinksX` 는 주류가 아니다).
 export function factoryOf(pathname: string): Factory {
+  if (pathname === "/drinks" || pathname.startsWith("/drinks/")) return "drinks";
   return pathname.startsWith("/finance") ? "finance" : "paper";
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-// 상단 고정 바 — 공장 스위처(🎬 논문 / 📈 리포트) + 현재 공장 메뉴. 항상 보인다(데스크톱·모바일).
+// 상단 고정 바 — 공장 스위처(🎬 논문 / 📈 리포트 / 🍶 주류) + 현재 공장 메뉴. 항상 보인다(데스크톱·모바일).
 // 메뉴는 nav.ts 그룹 단위로 렌더한다: 항목 1개 그룹은 직접 탭, 2개 이상은 드롭다운(<details>)으로 접어
 // 한 줄이 길어지지 않게 한다(사용자 요구: 옆으로 쭉 나열 불편).
 import Link from "next/link";
@@ -40,6 +40,9 @@ export default function TopBar({ factory }: { factory: Factory }) {
         </Link>
         <Link href="/finance" data-active={factory === "finance"} aria-current={factory === "finance" ? "true" : undefined}>
           📈 리포트 공장
+        </Link>
+        <Link href="/drinks" data-active={factory === "drinks"} aria-current={factory === "drinks" ? "true" : undefined}>
+          🍶 주류 공장
         </Link>
       </div>
       <nav className="top-tabs" aria-label="주요 메뉴">
