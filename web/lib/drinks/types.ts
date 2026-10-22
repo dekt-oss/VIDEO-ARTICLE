@@ -112,6 +112,8 @@ export interface AttestationRow {
   fields: Record<string, string | null>;
   reason: string | null;
   impact: { topics?: { id: string; title: string }[]; approved_reviews?: unknown[]; plans?: unknown[] };
+  /** 적용 순서(스냅샷 잠금 안에서 매긴 순번) */
+  seq: number | string;
   created_at: string;
 }
 

@@ -173,8 +173,8 @@ await (async () => {
   const url = `https://shared.example/${Date.now()}`;
   const T1 = await topicWithDraft();
   const T2 = await topicWithDraft();
-  const s1 = await call(A, "drinks_add_source", { topic_id: T1.id, source: { url, body_text: BODY } });
-  await call(A, "drinks_add_source", { topic_id: T2.id, source: { url, body_text: BODY } });
+  const s1 = await call(A, "drinks_add_source", { topic_id: T1.id, source: { canonical_url: url, body_text: BODY } });
+  await call(A, "drinks_add_source", { topic_id: T2.id, source: { canonical_url: url, body_text: BODY } });
   const { rb, blocked } = await race(
     (c) => call(c, "drinks_attest_source", { topic_id: T1.id, snapshot_id: s1.snapshot_id, kind: "rights_revoked",
       fields: { rights_status: "restricted" }, reason: "철회", revoke_affected: true }),
@@ -236,6 +236,30 @@ await (async () => {
     assert.equal(after2.plan_status, "approved");
     assert.ok(after2.blocked_at, "차단돼야 한다");
   });
+})();
+
+// ⑦ 같은 출처에 두 연결이 동시에 정정 기록 — 잠금을 먼저 잡은 쪽이 먼저 적용되고, 나중 쪽이 최종 상태가 된다
+await (async () => {
+  for (const [first, second, expected] of [["quote_ok", "restricted", "restricted"], ["restricted", "quote_ok", "quote_ok"]]) {
+    const T = await topicWithDraft();
+    const s = await call(A, "drinks_add_source", { topic_id: T.id, source: { canonical_url: `https://order.example/${Date.now()}${first}`,
+      body_text: BODY } });
+    const kind = (r) => (r === "restricted" ? "rights_revoked" : "rights_confirmed");
+    const { rb, blocked } = await race(
+      (c) => call(c, "drinks_attest_source", { topic_id: T.id, snapshot_id: s.snapshot_id, kind: kind(first),
+        fields: { rights_status: first }, reason: "먼저" }),
+      (c) => call(c, "drinks_attest_source", { topic_id: T.id, snapshot_id: s.snapshot_id, kind: kind(second),
+        fields: { rights_status: second }, reason: "나중" }));
+    const fin = await one("select drinks_snapshot_meta($1) ->> 'rights_status' as r", [s.snapshot_id]);
+    const order = (await admin.query("select reason from drink_snapshot_attestations where snapshot_id=$1 order by seq", [s.snapshot_id]))
+      .rows.map((x) => x.reason);
+    await check(`⑦ 동시 정정 ${first}→${second}: 나중에 잠금을 잡은 기록이 최종(${expected})`, async () => {
+      assert.equal(blocked, true);
+      assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+      assert.deepEqual(order, ["먼저", "나중"]);
+      assert.equal(fin.r, expected);
+    });
+  }
 })();
 
 // 권한: anon 은 표·함수 모두 거부

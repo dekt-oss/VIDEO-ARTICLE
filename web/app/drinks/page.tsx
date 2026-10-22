@@ -71,7 +71,8 @@ function Board({ board, truncated, tab, sp, limit }: { board: DrinksBoard; trunc
   // 승인 기록은 있지만 지금 쓸 수 없는 근거(사용 조건·유효 기한) — 편성 가능·편성함에 숨지 않게 따로 센다.
   const unusable = board.topics.filter((t) => {
     const d = derived.get(t.id)!;
-    return (t.status === "ready" && !d.approvalValid) || (t.status === "selected" && !d.selectedValid);
+    return (t.status === "ready" && !d.approvalValid) || (t.status === "selected" && !d.selectedValid)
+      || (t.status === "selected" && (t.selected_formats ?? []).some((f) => d.plans[f] && !d.plans[f]!.blocked_at && d.planEvidenceValid[f] === false));
   });
 
   const statuses = TABS[tab].statuses as readonly string[];
@@ -237,7 +238,7 @@ function WeekBox({ rows, derived }: { rows: TopicRow[]; derived: Map<string, Top
                 <span className="list-row-meta">
                   {(t.selected_formats ?? []).map((f) => {
                     const p = d.plans[f];
-                    const label = !d.selectedValid ? "근거 사용 불가"
+                    const label = !d.selectedValid || (p && !p.blocked_at && d.planEvidenceValid[f] === false) ? "근거 사용 불가"
                       : !p ? "제작안 없음" : p.blocked_at ? "차단됨" : VERSION_STATUS_LABEL[p.plan_status];
                     return <span key={f} className="pill">{FORMAT_LABEL[f]}: {label}</span>;
                   })}

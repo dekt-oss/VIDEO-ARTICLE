@@ -95,7 +95,7 @@ export default async function DrinksTopicPage(props: {
         {TABS.map(([k, label]) => (
           <Link key={k} href={`/drinks/review/${topic.id}?tab=${k}`} data-active={k === tab}>
             {label}
-            {k === "video" || k === "carousel" ? formatBadge(d.plans[k as Format], (topic.selected_formats ?? []).includes(k as Format) && topic.status === "selected") : ""}
+            {k === "video" || k === "carousel" ? formatBadge(d.plans[k as Format], (topic.selected_formats ?? []).includes(k as Format) && topic.status === "selected", d.planEvidenceValid[k as Format]) : ""}
           </Link>
         ))}
       </nav>
@@ -121,9 +121,11 @@ export default async function DrinksTopicPage(props: {
   );
 }
 
-function formatBadge(p: { plan_status: keyof typeof VERSION_STATUS_LABEL; blocked_at: string | null } | null | undefined, selected: boolean) {
+function formatBadge(p: { plan_status: keyof typeof VERSION_STATUS_LABEL; blocked_at: string | null } | null | undefined, selected: boolean,
+  evidenceValid: boolean | undefined) {
   if (!selected) return "";
   if (!p) return " · 제작안 없음";
+  if (!p.blocked_at && evidenceValid === false) return " · 근거 사용 불가";
   return p.blocked_at ? " · 차단" : ` · ${VERSION_STATUS_LABEL[p.plan_status]}`;
 }
 

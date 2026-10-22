@@ -746,6 +746,53 @@ test("결함2 보완(Fable 3차): 이미 깨진 승인도 체크박스로 철회
   assert.equal(ew.n, 2);
 });
 
+test("최종 보완 결함1: 한 트랜잭션 안의 정정 기록도 기록한 순서대로 적용된다", async () => {
+  const inOneTx = async (topicId: string, snapId: string, kinds: [string, string][]) => {
+    await db.exec("begin");
+    await db.exec("set local role service_role");
+    for (const [kind, rights] of kinds) {
+      await db.query(`select drinks_attest_source($1::jsonb)`, [JSON.stringify({ topic_id: topicId, snapshot_id: snapId, kind,
+        fields: { rights_status: rights }, reason: kind })]);
+    }
+    await db.exec("commit");
+  };
+  // 확인 → 철회 (같은 트랜잭션: created_at 이 같다)
+  const T = await selectedWithApprovedPlan();
+  await inOneTx(T.id, T.snapshotId, [["rights_confirmed", "quote_ok"], ["rights_revoked", "restricted"]]);
+  const rows = (await db.query<Any>("select seq, created_at, kind from drink_snapshot_attestations where snapshot_id=$1 order by seq",
+    [T.snapshotId])).rows;
+  assert.equal(new Set(rows.map((x: Any) => String(x.created_at))).size, 1, "시각이 같아 시각으로는 순서를 못 정한다");
+  assert.deepEqual(rows.map((x: Any) => x.kind), ["rights_confirmed", "rights_revoked"]);
+  assert.equal((await row("select drinks_snapshot_meta($1) ->> 'rights_status' as r", [T.snapshotId])).r, "restricted", "최종 철회");
+  assert.equal((await validity(T.reviewId)).currently_valid, false, "마지막 철회 뒤 지금 사용 불가");
+  assert.ok((await planRow(T.planId)).blocked_at, "제작안 차단도 일관");
+  // 철회 → 재확인
+  const U = await selectedWithApprovedPlan();
+  await inOneTx(U.id, U.snapshotId, [["rights_revoked", "restricted"], ["rights_confirmed", "quote_ok"]]);
+  assert.equal((await row("select drinks_snapshot_meta($1) ->> 'rights_status' as r", [U.snapshotId])).r, "quote_ok", "최종 재확인");
+  assert.equal((await validity(U.reviewId)).currently_valid, true);
+  assert.ok((await planRow(U.planId)).blocked_at, "중간 철회로 차단된 제작안은 재확인만으로 풀리지 않는다");
+});
+
+test("최종 보완 결함2(DB 상태): 옛 근거 R1 무효·새 근거 R2 유효, 제작안 P1 은 R1 참조 유지", async () => {
+  const T = await selectedWithApprovedPlan();                           // R1 으로 편성·P1 승인
+  const s2 = await ok("add_source", { topic_id: T.id, source: { url: `https://r2.example/${uniq()}`, body_text: BODY, rights_status: "quote_ok" } });
+  const nv = await ok("save_review", { topic_id: T.id, expected_topic_version: await topicVersion(T.id),
+    evidence_pack: { claims: claims(s2.snapshot_id) } });
+  await submitApprove(nv.review_id);
+  const r2 = await reviewRow(nv.review_id);
+  assert.equal((await select(T.id, r2.id, ["carousel"], { review_input_hash: r2.approved_hash })).status, 200, "R2 로 재편성");
+  // R1 만 무효(기간 만료를 직접 기록으로 흉내 — 정리 동작은 실행하지 않음)
+  await db.query(`insert into drink_snapshot_attestations (snapshot_id, topic_id, kind, fields, reason)
+    values ($1, $2, 'rights_revoked', '{"rights_status":"restricted"}', '흉내')`, [T.snapshotId, T.id]);
+  assert.equal((await validity(T.reviewId)).currently_valid, false);
+  assert.equal((await validity(r2.id)).currently_valid, true);
+  const p1 = await planRow(T.planId);
+  assert.equal(p1.topic_review_id, T.reviewId, "참조를 새 버전으로 자동 교체하지 않는다");
+  assert.equal(p1.plan_status, "approved");
+  assert.equal(p1.blocked_at, null, "정리 전이라 저장된 차단은 없다 — 화면 판정(model.test)이 이 상태를 '근거 재확인'으로 안내");
+});
+
 test("근거 전달 검사: SQL drinks_plan_coverage 와 TS planCoverage 가 같은 판정을 낸다", async () => {
   const cases: [string, Any[], string[]][] = [
     ["carousel", cardPlan.pages, ["c1", "c2"]],

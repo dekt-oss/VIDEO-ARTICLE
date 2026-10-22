@@ -232,10 +232,11 @@ const META_KEYS = ["title", "publisher", "published_at", "checked_at", "original
 /** 스냅샷 값 위에 정정·재확인 기록을 시간순으로 덮은 유효 정보(SQL drinks_snapshot_meta 와 같은 규칙). */
 export function effectiveMeta(
   snap: Partial<Record<(typeof META_KEYS)[number], string | null | undefined>>,
-  attestations: { fields: Record<string, string | null>; created_at: string; id: string }[]
+  attestations: { fields: Record<string, string | null>; seq: number | string }[]
 ): Record<(typeof META_KEYS)[number], string | null> & { attestationCount: number } {
   const out = Object.fromEntries(META_KEYS.map((k) => [k, snap[k] ?? null])) as Record<(typeof META_KEYS)[number], string | null>;
-  const sorted = [...attestations].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+  // 적용 순서는 기록 순번(seq) — 시각·UUID 는 같은 트랜잭션 안에서 순서를 보장하지 못한다(SQL 과 같은 규칙).
+  const sorted = [...attestations].sort((a, b) => Number(a.seq) - Number(b.seq));
   for (const a of sorted) for (const k of META_KEYS) if (k in a.fields) out[k] = a.fields[k] ?? null;
   return { ...out, attestationCount: sorted.length };
 }
@@ -320,8 +321,11 @@ export interface NextActionInput {
   /** 편성에 쓴 근거 버전을 지금 쓸 수 있는가(편성된 소재만 의미 있음). */
   selectedValid?: boolean;
   selectedFormats: Format[];
-  /** 형식별 현재 제작안 상태. 없으면 null. blocked=근거 철회로 차단됨. */
-  plans: Partial<Record<Format, { status: VersionStatus; blocked: boolean } | null>>;
+  /**
+   * 형식별 현재 제작안 상태. 없으면 null. blocked=근거 철회·사용 불가로 차단됨.
+   * evidenceValid = 그 제작안 **자신이 참조하는** 근거 버전을 지금 쓸 수 있는가(편성 버전과 다를 수 있다 — 정책 ③).
+   */
+  plans: Partial<Record<Format, { status: VersionStatus; blocked: boolean; evidenceValid: boolean } | null>>;
 }
 
 export interface NextAction {
@@ -366,6 +370,8 @@ export function nextAction(v: NextActionInput): NextAction {
         const p = v.plans[f];
         const name = FORMAT_LABEL[f];
         if (!p || p.blocked) return { label: `${name} 제작안 작성`, tab: f, hint: p?.blocked ? "근거 철회로 차단됐습니다 — 유효한 근거로 새 버전을 만드세요." : "대본·장면 또는 페이지 구성을 입력합니다." };
+        // 승인됐더라도 그 제작안이 쓴 근거를 지금 쓸 수 없으면(기간 만료 등) "모두 승인"으로 안내하지 않는다.
+        if (!p.evidenceValid) return { label: `${name} 근거 재확인`, tab: f, hint: "이 제작안이 쓴 근거 버전을 지금은 쓸 수 없습니다(사용 조건·유효 기한) — 유효한 근거로 새 제작안 버전을 만드세요." };
         if (p.status === "draft") return { label: `${name} 제작안 검수`, tab: f, hint: "작성한 제작안을 검토에 올립니다." };
         if (p.status === "in_review") return { label: `${name} 제작안 승인`, tab: f, hint: "근거 버전·필수 주장 전달을 서버가 다시 확인합니다." };
         if (p.status === "changes_requested") return { label: `${name} 새 제작안`, tab: f, hint: "변경 요청을 반영해 새 버전을 만듭니다." };
@@ -383,7 +389,7 @@ export function nextAction(v: NextActionInput): NextAction {
 /** 작업함 정렬: 사람이 지금 할 수 있는 일이 앞, 막힌 일·끝난 일이 뒤. */
 export function actionRank(a: NextAction, status: TopicStatus): number {
   if (a.unavailable) return 6;
-  if (a.label === "근거 재확인") return 0;
+  if (a.label.endsWith("근거 재확인")) return 0;
   if (status === "on_hold" || status === "rejected" || status === "duplicate") return 7;
   if (a.label.endsWith("승인")) return 0;
   if (a.label.endsWith("검수") || a.label === "기획 검토 요청") return 1;
@@ -412,6 +418,8 @@ export interface TopicDerived {
   fitScores: Scores | null;
   /** 포인터는 있는데 조회 결과에 그 행이 없다 — "없음"이 아니라 조회 누락 */
   missingPointers: string[];
+  /** 형식별 현재 제작안이 **자신이 참조하는** 근거를 지금 쓸 수 있는가(제작안 없으면 키 없음). 모든 화면이 이 판정 하나를 쓴다. */
+  planEvidenceValid: Partial<Record<Format, boolean>>;
 }
 
 const num = (v: number | string | null | undefined): number | null =>
@@ -457,7 +465,11 @@ export function deriveTopic(
     plans: Object.fromEntries(
       selectedFormats.map((f) => {
         const p = fmtPlans[f];
-        return [f, p ? { status: p.plan_status, blocked: Boolean(p.blocked_at) } : null];
+        if (!p) return [f, null];
+        // 제작안이 참조하는 근거 행이 없으면 유효하다고 추정하지 않는다 — 조회 누락으로 센다.
+        const pr = reviews.get(p.topic_review_id);
+        if (!pr) missing.push(`${FORMAT_LABEL[f]} 제작안의 근거 버전`);
+        return [f, { status: p.plan_status, blocked: Boolean(p.blocked_at), evidenceValid: nowValid(pr ?? null) }];
       })
     ),
   });
@@ -475,6 +487,9 @@ export function deriveTopic(
     provisionalScore: num(t.provisional_score),
     fitScores: hasScores(scoreSource) ? scoreSource!.scores : hasScores(review) ? review!.scores : t.provisional_scores,
     missingPointers: missing,
+    planEvidenceValid: Object.fromEntries(
+      (Object.keys(fmtPlans) as Format[]).filter((f) => fmtPlans[f]).map((f) => [f, nowValid(reviews.get(fmtPlans[f]!.topic_review_id) ?? null)])
+    ),
   };
 }
 

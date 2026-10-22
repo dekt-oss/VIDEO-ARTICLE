@@ -118,7 +118,8 @@ export async function loadBoard(limit: number = TOPIC_LIST_LIMIT): Promise<Loade
   const va = await attachValidity(db, rv.rows);
   if (!va.ok) return fail(va);
   // 포인터가 가리키는 행이 하나라도 없으면 화면이 "초안 없음·미승인"으로 오판한다 → 실패로 돌려준다.
-  const lostReviews = missingIds(reviewIds, rv.rows.map((r) => r.id));
+  // 포인터 + 각 제작안이 참조하는 근거 버전까지 — 하나라도 없으면 유효성을 추정하지 않는다.
+  const lostReviews = missingIds([...reviewIds, ...pl.rows.map((p) => p.topic_review_id)], rv.rows.map((r) => r.id));
   const lostPlans = missingIds(planIds, pl.rows.map((p) => p.id));
   const lostSnaps = missingIds(ts.rows.map((x) => x.snapshot_id), sn.rows.map((s) => s.id));
   if (lostReviews.length + lostPlans.length + lostSnaps.length > 0) {
@@ -200,7 +201,7 @@ export async function loadTopic(
     fetchAllIn<SnapshotRow>(snapIds, (c, f, to) => db.from("drink_source_snapshots").select("*", { count: "exact" })
       .in("id", c).order("id").range(f, to), "출처"),
     fetchAllIn<AttestationRow>(snapIds, (c, f, to) => db.from("drink_snapshot_attestations").select("*", { count: "exact" })
-      .in("snapshot_id", c).order("created_at").order("id").range(f, to), "출처 정정 기록"),
+      .in("snapshot_id", c).order("seq").range(f, to), "출처 정정 기록"),
     fetchAllIn<Pick<TopicSourceRow, "topic_id" | "snapshot_id">>(snapIds, (c, f, to) => db.from("drink_topic_sources").select("topic_id, snapshot_id", { count: "exact" })
       .in("snapshot_id", c).order("snapshot_id").order("topic_id").range(f, to), "공유 출처"),
   ]);
@@ -213,7 +214,8 @@ export async function loadTopic(
   if (!va.ok) return fail(va);
   const pl = (plans as { ok: true; rows: PlanRow[] }).rows;
   const dl = (deliverables as { ok: true; rows: DeliverableRow[] }).rows;
-  const lostReviews = missingIds([topic.current_review_id, topic.approved_review_id, topic.selected_review_id], rv.map((r) => r.id));
+  const lostReviews = missingIds([topic.current_review_id, topic.approved_review_id, topic.selected_review_id,
+    ...pl.map((p) => p.topic_review_id)], rv.map((r) => r.id));
   const lostPlans = missingIds(dl.map((d) => d.current_revision_id), pl.map((p) => p.id));
   if (lostSnaps.length + lostReviews.length + lostPlans.length > 0) {
     return { state: "failed", error: `조회 누락 — 출처 ${lostSnaps.length}건, 근거·기획 ${lostReviews.length}건, 제작안 ${lostPlans.length}건` };

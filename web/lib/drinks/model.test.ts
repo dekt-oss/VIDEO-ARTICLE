@@ -47,9 +47,9 @@ test("다음 행동: 상태마다 하나", () => {
 test("다음 행동: 편성 후에는 형식별로, 둘 다 승인되면 '제작 요청'은 미연결로 잠긴다", () => {
   const sel = { ...base, status: "selected" as const, reviewStatus: "approved" as const, approvalValid: true, selectedFormats: ["video", "carousel"] as ("video" | "carousel")[] };
   assert.equal(nextAction(sel).label, "영상 제작안 작성");
-  assert.equal(nextAction({ ...sel, plans: { video: { status: "approved", blocked: false } } }).label, "카드뉴스 제작안 작성");
-  assert.equal(nextAction({ ...sel, plans: { video: { status: "approved", blocked: true } } }).label, "영상 제작안 작성");
-  const done = nextAction({ ...sel, plans: { video: { status: "approved", blocked: false }, carousel: { status: "approved", blocked: false } } });
+  assert.equal(nextAction({ ...sel, plans: { video: { status: "approved", blocked: false, evidenceValid: true } } }).label, "카드뉴스 제작안 작성");
+  assert.equal(nextAction({ ...sel, plans: { video: { status: "approved", blocked: true, evidenceValid: true } } }).label, "영상 제작안 작성");
+  const done = nextAction({ ...sel, plans: { video: { status: "approved", blocked: false, evidenceValid: true }, carousel: { status: "approved", blocked: false, evidenceValid: true } } });
   assert.equal(done.label, "제작 요청");
   assert.equal(done.unavailable, true);
   assert.ok(actionRank(done, "selected") > actionRank(nextAction({ ...base, reviewStatus: "in_review" }), "researching"));
@@ -59,6 +59,30 @@ test("차단 사유 이름표: 주장 id 를 앞에 붙인다", () => {
   assert.equal(blockerLabel("claim_quote_unmatched:c2"), "[c2] 발췌가 원문에서 확인되지 않았습니다");
   assert.equal(blockerLabel("no_core_claims"), "핵심 주장을 하나 이상 고르세요");
   assert.equal(blockerLabel("new_code_x"), "new_code_x");
+});
+
+test("최종 보완 결함2: 제작안이 참조하는 근거가 무효면 '모두 승인·제작 요청'으로 안내하지 않는다", () => {
+  const topic = { id: "t1", status: "selected", current_review_id: "r2", approved_review_id: "r2", selected_review_id: "r2",
+    selected_formats: ["carousel"], provisional_score: "70", provisional_scores: null } as never;
+  const rv = (id: string, valid: boolean) => ({ id, status: "approved", revoked_at: null, readiness: { blockers: [], warnings: [] },
+    score: "80", scores: { fit_carousel: 4 }, currently_valid: valid, current_blockers: valid ? [] : ["claim_expired:c1"] });
+  const deliverables = [{ id: "d1", topic_id: "t1", format: "carousel", current_revision_id: "p1" }] as never;
+  // P1 은 정책대로 옛 근거 R1 을 계속 참조한다
+  const plans = new Map([["p1", { id: "p1", plan_status: "approved", blocked_at: null, topic_review_id: "r1" }]]) as never;
+  const bad = deriveTopic(topic, new Map([["r1", rv("r1", false)], ["r2", rv("r2", true)]]) as never, deliverables, plans);
+  assert.equal(bad.selectedValid, true, "편성 버전 R2 는 유효");
+  assert.equal(bad.action.label, "카드뉴스 근거 재확인");
+  assert.equal(bad.planEvidenceValid.carousel, false, "선별 편성함·상세 배지가 쓰는 같은 판정");
+  assert.notEqual(bad.action.label, "제작 요청");
+  const good = deriveTopic(topic, new Map([["r1", rv("r1", true)], ["r2", rv("r2", true)]]) as never, deliverables, plans);
+  assert.equal(good.action.label, "제작 요청", "둘 다 유효면 기존대로");
+  assert.equal(good.planEvidenceValid.carousel, true);
+  const lost = deriveTopic(topic, new Map([["r2", rv("r2", true)]]) as never, deliverables, plans);
+  assert.ok(lost.missingPointers.includes("카드뉴스 제작안의 근거 버전"), "근거 행 누락은 조회 누락");
+  assert.notEqual(lost.action.label, "제작 요청");
+  const blocked = new Map([["p1", { id: "p1", plan_status: "approved", blocked_at: "2026-10-22", topic_review_id: "r1" }]]) as never;
+  assert.equal(deriveTopic(topic, new Map([["r1", rv("r1", true)], ["r2", rv("r2", true)]]) as never, deliverables, blocked).action.label,
+    "카드뉴스 제작안 작성", "재확인으로 근거가 유효해져도 차단된 제작안은 차단 그대로");
 });
 
 test("원출처: 운영자가 묶은 것만 독립 원출처로 센다(같은 본문·같은 URL 자동 묶음 없음)", () => {
@@ -94,10 +118,13 @@ test("제작안 근거 전달: 사실 항목 주장 누락·필수 주장 누락
 });
 
 test("출처 유효 정보: 원문 값 위에 정정·확인 기록을 시간순으로 덮는다", () => {
+  // 같은 트랜잭션이라 시각이 같아도 기록 순번(seq)대로 적용한다 — id(UUID) 순서는 쓰지 않는다
   const m = effectiveMeta({ rights_status: "unknown", publisher: null, checked_at: "2026-10-01" }, [
-    { id: "b", created_at: "2026-10-03T00:00:00Z", fields: { publisher: "OO양조" } },
-    { id: "a", created_at: "2026-10-02T00:00:00Z", fields: { rights_status: "quote_ok", checked_at: "2026-10-02" } },
+    { seq: 12, fields: { publisher: "OO양조" } },
+    { seq: 11, fields: { rights_status: "quote_ok", checked_at: "2026-10-02" } },
   ]);
+  assert.equal(effectiveMeta({ rights_status: "unknown" }, [{ seq: 2, fields: { rights_status: "restricted" } },
+    { seq: 1, fields: { rights_status: "quote_ok" } }]).rights_status, "restricted", "확인→철회면 최종 철회");
   assert.equal(m.rights_status, "quote_ok");
   assert.equal(m.publisher, "OO양조");
   assert.equal(m.checked_at, "2026-10-02");
@@ -129,8 +156,8 @@ test("deriveTopic: 형식별 현재 제작안을 따로 본다", () => {
     { id: "d2", topic_id: "t1", format: "carousel", current_revision_id: "p2" },
   ] as never;
   const plans = new Map([
-    ["p1", { id: "p1", plan_status: "approved", blocked_at: null }],
-    ["p2", { id: "p2", plan_status: "in_review", blocked_at: null }],
+    ["p1", { id: "p1", plan_status: "approved", blocked_at: null, topic_review_id: "r1" }],
+    ["p2", { id: "p2", plan_status: "in_review", blocked_at: null, topic_review_id: "r1" }],
   ]) as never;
   const d = deriveTopic(topic, new Map([["r1", review]]), deliverables, plans);
   assert.equal(d.action.label, "카드뉴스 제작안 승인");

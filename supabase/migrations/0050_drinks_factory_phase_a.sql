@@ -271,10 +271,14 @@ create table if not exists drink_snapshot_attestations (
   fields      jsonb not null default '{}' check (jsonb_typeof(fields) = 'object'),
   reason      text,
   impact      jsonb not null default '{}',          -- 기록 시점의 영향 범위(다른 소재·승인·제작안)
+  -- 적용 순서. created_at(now())은 트랜잭션 시작 시각이라 한 트랜잭션 안의 기록끼리 같아지고, UUID 는 순서가 없다.
+  -- 기록은 스냅샷 잠금(drinks_lock_snapshot_scope)을 잡은 채 넣으므로 같은 스냅샷에서는 이 번호가 실제 순서다.
+  seq         bigint generated always as identity,
   created_at  timestamptz not null default now(),
+  unique (seq),
   check (kind not in ('correction','rights_revoked') or reason is not null)
 );
-create index if not exists drink_attest_snapshot_idx on drink_snapshot_attestations (snapshot_id, created_at);
+create index if not exists drink_attest_snapshot_idx on drink_snapshot_attestations (snapshot_id, seq);
 
 create table if not exists drink_topic_reviews (
   id                 uuid primary key default gen_random_uuid(),
@@ -404,7 +408,7 @@ begin
   out := jsonb_build_object('title', s.title, 'publisher', s.publisher, 'published_at', s.published_at,
     'checked_at', s.checked_at, 'original_language', s.original_language, 'excerpt_locator', s.excerpt_locator,
     'rights_status', s.rights_status, 'usage_terms', s.usage_terms);
-  for a in select * from drink_snapshot_attestations where snapshot_id = p_id order by created_at, id loop
+  for a in select * from drink_snapshot_attestations where snapshot_id = p_id order by seq loop
     n := n + 1; last_id := a.id; last_kind := a.kind;
     foreach k in array meta_keys loop
       if a.fields ? k then out := out || jsonb_build_object(k, a.fields -> k); end if;
@@ -1801,6 +1805,8 @@ grant select, insert, update on table drink_source_snapshots, drink_snapshot_att
   drink_topic_sources, drink_topic_reviews, drink_deliverables, drink_plan_revisions, drink_workflow_events
   to service_role;
 grant usage on sequence drink_workflow_events_id_seq to service_role;
+revoke all on sequence drink_snapshot_attestations_seq_seq from anon, authenticated;
+grant usage on sequence drink_snapshot_attestations_seq_seq to service_role;
 
 do $$
 declare f record;
