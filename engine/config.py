@@ -4258,6 +4258,10 @@ class Secrets:
     # 분리해 쓸 수 있게(운영 자동업로드에 영향 없음).
     youtube_analytics_client_id: str = field(default_factory=lambda: os.getenv("YOUTUBE_ANALYTICS_CLIENT_ID", ""))
     youtube_analytics_client_secret: str = field(default_factory=lambda: os.getenv("YOUTUBE_ANALYTICS_CLIENT_SECRET", ""))
+    # 주류 공장 소재 발견(공개 데이터 읽기 전용). 업로드·성과 토큰과 섞지 않는다 — 비면 그 채널은 "키 필요"로 멈춘다.
+    youtube_data_api_key: str = field(default_factory=lambda: os.getenv("YOUTUBE_DATA_API_KEY", ""))
+    naver_client_id: str = field(default_factory=lambda: os.getenv("NAVER_CLIENT_ID", ""))
+    naver_client_secret: str = field(default_factory=lambda: os.getenv("NAVER_CLIENT_SECRET", ""))
 
     def require(self, *names: str) -> None:
         """필요한 시크릿이 비어 있으면 명확한 에러."""
@@ -4296,3 +4300,10 @@ DRINKS_MAX_BODY_CHARS: int = 200_000       # drink_source_snapshots.body_text �
 DRINKS_VALIDATE_ITEMS: int = 3             # 검증 실행이 본문 추출을 시험하는 문서 수
 DRINKS_FEED_OVERLAP_DAYS: int = 3          # 피드 워처마크 겹침(늦게 올라온 글 대비)
 DRINKS_USER_AGENT_TOKEN: str = "video-article-drinks"
+
+# 소재 발견(B 보완, 2026-10-22). docs/deviation-drinks-discovery.md
+DRINKS_DISCOVERY_RUBRIC: str = "discovery-v1"
+DRINKS_DISCOVERY_SIMILAR_MIN: float = 0.34   # 낱말 Jaccard(흔한 낱말·주종 이름 제외, 겹친 낱말 2개 이상) — 이 이상이면 같은 후보로(판정 아님)
+DRINKS_DISCOVERY_SUMMARY_CHARS: int = 600    # 확보한 요약 보관 길이(원문 전문을 보관하지 않음)
+DRINKS_YT_COMMENTS_PER_VIDEO: int = 20       # commentThreads.list 1회(쿼터 1). 질문 문장만 뽑는다
+DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 — 실행당 검색어 수 상한

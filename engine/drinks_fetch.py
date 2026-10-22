@@ -34,6 +34,7 @@ from . import config
 FEED_TYPES = ("application/rss+xml", "application/atom+xml", "application/xml", "text/xml")
 HTML_TYPES = ("text/html", "application/xhtml+xml")
 TEXT_TYPES = ("text/plain",)
+JSON_TYPES = ("application/json",)
 
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal", ".lan", ".home", ".corp", ".intranet", ".arpa")
 
@@ -184,18 +185,22 @@ class SafeFetcher:
                 self._sleep(gap)
         self._last = self._clock()
 
-    def get(self, url: str, accept: tuple[str, ...] = HTML_TYPES) -> FetchResult:
+    def get(self, url: str, accept: tuple[str, ...] = HTML_TYPES, *, params: Optional[dict] = None,
+            headers: Optional[dict] = None) -> FetchResult:
+        """headers 로 API 키를 보낸다 — URL(쿼리)에 키를 넣지 않는다(오류 문장·로그·실행 기록에 남지 않게)."""
+        if params:
+            url = str(httpx.URL(url, params=params))
         attempt = 0
         while True:
             try:
-                return self._get_once(url, accept)
+                return self._get_once(url, accept, headers or {})
             except FetchError as exc:
                 retryable = exc.code in ("timeout", "transport") or (exc.code == "http_error" and (exc.http_status or 0) >= 500)
                 if not retryable or attempt >= config.DRINKS_FETCH_RETRIES:
                     raise
                 attempt += 1
 
-    def _get_once(self, url: str, accept: tuple[str, ...]) -> FetchResult:
+    def _get_once(self, url: str, accept: tuple[str, ...], headers: dict) -> FetchResult:
         redirects: list[str] = []
         current = url
         for _ in range(config.DRINKS_MAX_REDIRECTS + 1):
@@ -209,7 +214,9 @@ class SafeFetcher:
             self.requests += 1
             started = self._clock()
             try:
-                with self._client.stream("GET", current) as resp:
+                # 리다이렉트로 다른 곳에 가면 키 머리글을 떼어 보낸다(같은 호스트 안에서만 유지).
+                hop_headers = headers if not redirects or check_url(url, self.allowed_hosts)[0] == host else {}
+                with self._client.stream("GET", current, headers=hop_headers) as resp:
                     self._check_peer(resp, ips)
                     if resp.status_code in (301, 302, 303, 307, 308):
                         loc = resp.headers.get("location")

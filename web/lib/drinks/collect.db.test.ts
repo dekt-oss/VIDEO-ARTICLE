@@ -11,7 +11,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 import { DRINKS_ACTIONS, runDrinksAction } from "./actions.ts";
 
-const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql"]
+const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql"]
   .map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
 
 const db = new PGlite();

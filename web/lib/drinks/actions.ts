@@ -27,6 +27,12 @@ export const DRINKS_ACTIONS = {
   request_run: "drinks_request_run",
   link_snapshot: "drinks_link_snapshot",
   create_topic_from_snapshot: "drinks_create_topic_from_snapshot",
+  // B 보완(0052): 소재 발견. 자료 기록·후보 묶기(워커 전용)는 여기 없다.
+  register_discovery_source: "drinks_register_discovery_source",
+  add_discovery: "drinks_add_discovery",
+  promote_candidate: "drinks_promote_candidate",
+  candidate_action: "drinks_candidate_action",
+  set_discovery_origin: "drinks_set_discovery_origin",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -237,6 +243,13 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
   if (action === "register_source") {
     const s = prepareRegistry(p);
     if (!s.ok) return { status: 400, body: { error: s.error, code: "invalid_input" } };
+  }
+  if (action === "add_discovery") {
+    // 수동 발견 자료: 서버는 이 URL 을 열지 않는다. 정규화(추적 파라미터 제거)와 내부망 주소 거부만 한다.
+    const n = normalizeUrl(typeof p.url === "string" ? p.url : "");
+    if (!n.ok) return { status: 400, body: { error: n.error, code: "invalid_input" } };
+    p.canonical_url = n.url;
+    delete p.url;
   }
   if (action === "request_run") {
     // 화면에서는 운영자 요청만 만든다. 예약 실행은 워커(--schedule)만 만든다.

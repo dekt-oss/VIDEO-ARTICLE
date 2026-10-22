@@ -39,7 +39,7 @@ const ERROR_TEXT: Record<string, string> = {
   some_items_failed: "일부 문서 실패", dns_failed: "주소를 찾지 못함", db_error: "기록 실패",
   limit_reached: "상한 때문에 새 글을 다 못 가져옴", no_candidates: "목록에서 글을 하나도 못 찾음(사이트 개편 의심)",
   all_skipped: "전부 건너뜀 — 수집 0건", robots_unavailable: "robots.txt 를 받지 못함", worker_error: "워커 예외",
-  parser_config_invalid: "파서 설정 오류",
+  parser_config_invalid: "파서 설정 오류", api_key_missing: "API 키 없음(키 설정 필요)", api_error: "API 오류 응답",
 };
 export function errorText(code: string | null | undefined): string {
   if (!code) return "";

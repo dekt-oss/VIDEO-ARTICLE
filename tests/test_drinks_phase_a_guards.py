@@ -11,6 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
 MIG = ROOT / "supabase" / "migrations" / "0050_drinks_factory_phase_a.sql"
 MIG_B = ROOT / "supabase" / "migrations" / "0051_drinks_factory_phase_b.sql"
+MIG_DISC = ROOT / "supabase" / "migrations" / "0052_drinks_discovery.sql"
 
 
 def _drinks_web_files():
@@ -80,6 +81,23 @@ def test_phase_b_migration_grants_nothing_to_anon_and_touches_only_drinks():
     # 렌더·발행·LLM 큐는 B단계에도 없다
     for bad in ["render", "publish", "upload", "llm"]:
         assert not any(bad in t for t in tables), bad
+
+
+def test_discovery_migration_grants_nothing_to_anon_and_keeps_discovery_apart_from_evidence():
+    sql = MIG_DISC.read_text(encoding="utf-8").lower()
+    assert not re.search(r"grant[^;]*to[^;]*\b(anon|authenticated|public)\b", sql)
+    assert "create policy" not in sql
+    tables = re.findall(r"create table if not exists (\w+)", sql)
+    assert sorted(tables) == ["drink_candidate_items", "drink_discovery_candidates", "drink_discovery_items",
+                              "drink_discovery_observations"]
+    for t in tables:
+        assert f"alter table {t} enable row level security" in sql, t
+    altered = set(re.findall(r"alter table (\w+)", sql))
+    assert altered <= set(tables) | {"drink_sources", "drink_collection_items"}, altered
+    # 발견 자료를 소재에 붙일 때는 역할 discovery 로만(근거 아님)
+    promote = sql[sql.index("create or replace function drinks_promote_candidate"):]
+    promote = promote[:promote.index("end $$;")]
+    assert "'role', 'discovery'" in promote and "'evidence'" not in promote
 
 
 def test_factory_branch_is_explicit_for_drinks():
