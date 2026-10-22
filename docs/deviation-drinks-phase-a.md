@@ -100,6 +100,15 @@
 | 출처 정정 적용 순서 | `created_at`(=트랜잭션 시작 시각)·UUID 순 → 한 트랜잭션의 확인→철회가 `quote_ok` 로 끝날 수 있었다 | 정정 기록에 기록 순번 `seq`(identity). 스냅샷 잠금 안에서 넣으므로 스냅샷별 실제 순서. SQL `drinks_snapshot_meta`·TS `effectiveMeta`·조회 정렬 모두 `seq`. 0050 미적용이라 기존 데이터·복원 없음 |
 | 작업함이 제작안 자신의 근거를 안 봄 | 편성 버전 R2 가 유효하면, 옛 근거 R1 을 쓰는 제작안 P1 이 있어도 "모두 승인 / 제작 요청" | `deriveTopic` 이 제작안마다 자기 근거의 현재 유효성(`planEvidenceValid`)을 계산해 다음 행동("근거 재확인")·편성함·상세 배지·사용 불가 집계가 같은 판정을 쓴다. 근거 행이 없으면 조회 누락. 참조 교체·차단 해제 없음 |
 
+## A단계 마감 (2026-10-22)
+
+- **마감:** 코드·DB 계약 기준으로 A단계를 닫는다. PR #121(draft) 마지막 커밋 `21dea3c` 의 CI(python·web) 통과, Vercel Preview 통과. 머지·운영 DB 적용·Production 배포는 하지 않았다.
+- **미검증으로 남긴 것(운영 적용 전 확인 단계로 분리):** 실제 Supabase/PostgREST 경로.
+  - Supabase 브랜치는 Pro 플랜 이상만 지원해 만들 수 없었다(비용 발생 없음). 그 시도 중 운영 프로젝트의 브랜치 목록에 기본 `main` 브랜치 기록이 생겼다 — 운영 프로젝트 자신을 가리키며 데이터·스키마 변경은 없다. 필요하면 대시보드 Project Settings → Branching 에서 끈다.
+  - 운영자 결정(2026-10-22): Docker 를 설치하지 않으므로 로컬 Supabase 검증도 하지 않는다.
+  - **0050 을 운영에 적용하기 전에** 격리된 Supabase(로컬 스택 또는 Pro 브랜치)에서 `supabase/tests/drinks_supabase_local.mjs` 를 한 번 돌린다. 확인할 것: Supabase 기본 권한 아래 anon 거부(표·판정 뷰·rpc·쓰기), service_role rpc 흐름, PostgREST 오류 → HTTP 변환, `count: "exact"`·`range`.
+- **알고 넘어가는 한계:** 유효 기한 경과는 자동 정리하지 않는다(판정 뷰·서버 재검사로 막히고, 제작안 차단은 [지금 상태로 정리]). 실제 Postgres 경합 검사는 CI 밖 수동 검사다. 0050 이 한 번이라도 적용되면 이후 수정은 0051 부터 쌓는다.
+
 ## 기존 결정(유지)
 
 물리 표 이름 `drink_*`(paper/report 이관 오해 방지) · A단계 표만(수집원·작업·파일·발행·성과 표 없음 → 렌더 완료·발행 완료로 바꿀 칸 자체가 없다) · 전이는 DB 함수 한 트랜잭션 · 낙관적 잠금(`version`) + 부분 고유 인덱스(작성 중 초안 1개) · 복합 FK 소유 관계 · 승인 불변 트리거 · quote_check 는 서버 계산, support_review 는 사람 · 주관 평가는 귀속만 · 중복 소재는 409 후 사람 선택 · 신호→근거 승격 1회(강등 불가) · anon/authenticated 는 읽기도 없음 · service_role 권한은 마이그레이션이 **명시**(Supabase 기본 권한에 기대지 않는다 — 테스트 하네스가 권한을 따로 주지 않는다) · 삭제 권한 없음 · URL 은 열지 않고 내부망·계정 포함 URL 거부 · locale `ko` 고정.
@@ -110,8 +119,8 @@
 |---|---|---|
 | 순수 로직 | 점수·다음 행동·근거 전달·유효 정보·페이징(행 상한 1000/500, 중간 실패, 청크) | `node --test lib/drinks/*.test.ts` (CI 등록) |
 | PGlite DB 통합 | 마이그레이션 적용, 권한, 전이, 소유 관계, 정책 ①②③, A·B, 추가 결함 1·2 회귀, 순차 중복 요청, TS↔SQL 계산 일치 | `lib/drinks/drinks.db.test.ts` (CI 등록, PGlite 개발 의존성) |
-| 실제 Postgres | 두 독립 연결 경합 7종(권리 철회 vs 제작안 승인 두 순서 포함) + anon 차단 | `supabase/tests/drinks_concurrency.pg.mjs` (수동, 빈 DB 전용) |
-| 실제 Supabase/PostgREST | 실제 rpc·RLS·오류 변환 | **미실행** — 격리된 Supabase 환경이 없다(Docker·CLI 없음, 유료 브랜치 생성 금지) |
+| 실제 Postgres | 두 독립 연결 경합(권리 철회 vs 제작안 승인 두 순서, 같은 출처 동시 정정 두 순서 포함) + anon 차단 | `supabase/tests/drinks_concurrency.pg.mjs` (수동, 빈 DB 전용) — 로컬 Postgres 17.6 에서 통과 |
+| 실제 Supabase/PostgREST | 실제 rpc·RLS·Supabase 기본 권한·오류 변환·count/range | **미실행(미검증)** — `supabase/tests/drinks_supabase_local.mjs` 준비만 함(로컬 Supabase 스택 전용, 한 번도 실행 안 함) |
 
 ## 명세 수용 시나리오 대응
 
