@@ -3135,6 +3135,14 @@ CAPTION_TAIL_HOLD_MAX_SEC: float = 0.5       # 침묵 구간까지만 표시창 
 #   긴 문장을 한 줄로 띄우면 시청자가 그림 대신 글을 읽는다. 너무 짧은 청크는 아래 하드 플로어가 병합한다.
 CAPTION_CHUNK_MAX: dict[str, int] = {"ko": 3, "en": 4}
 CAPTION_CHUNK_FAST: dict[str, int] = {"ko": 2, "en": 3}
+# 한국어 자막을 **뜻 단위**로 끊기(subtitles.phrase_groups). 어절 수만 세면 "그 지역만의 / 특성이"처럼 꾸미는 말과
+#   꾸밈 받는 말이 갈린다(2026-10-24 주류 1단계 운영자 판정: "자막 보여지는것도 어절별로 자연스럽게 끊어내").
+#   쉼표·문장 끝에서 끊고, 조사·어미로 끝나는 어절 뒤를 선호하고, 관형형(된·한·의…)·관형사(그·이·모든…) 뒤에서는 끊지 않는다.
+#   길이 목표는 위 벤치마크(1~2어절)를 그대로 따른다. 기본 꺼짐 — 주류 렌더가 켠다(논문·리포트 자막은 그대로).
+CAPTION_PHRASE_BREAKS: bool = os.getenv("CAPTION_PHRASE_BREAKS", "").lower() in ("1", "true", "yes")
+CAPTION_PHRASE_IDEAL_CHARS: int = 7     # 한 줄 목표 글자 수(공백 제외)
+CAPTION_PHRASE_MAX_CHARS: int = 12      # 이보다 길면 어절 하나짜리가 아닌 한 끊는다
+CAPTION_PHRASE_MAX_TOKENS: int = 4     # "그 지역 술만의 특징이"처럼 꾸밈이 겹친 덩어리를 한 줄에 두려면 4(글자 상한이 길이를 잡는다)
 # 한 줄 최대 글자수(오토핏 근사). EN 은 폭 초과 방지 위해 넉넉히.
 CAPTION_MAX_CHARS: dict[str, int] = {"ko": SUBTITLE_MAX_CHARS, "en": 34}
 CAPTION_AUTOFIT_MAX_WIDTH_PX: int = 900

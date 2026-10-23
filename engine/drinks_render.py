@@ -270,6 +270,8 @@ def _guard_free(tts: str) -> None:
     config.IMAGE_PROVIDER = "reuse"
     config.VIDEO_PROVIDER = "placeholder"
     config.TTS_PROVIDER = tts
+    # 주류 자막은 뜻 단위로 끊는다(2026-10-24 운영자 판정). 논문·리포트 렌더는 이 함수를 지나지 않는다.
+    config.CAPTION_PHRASE_BREAKS = True
     if config.image_is_paid() or config.video_is_paid():
         raise RenderError("paid_disabled", "유료 이미지·영상 공급자가 켜져 있습니다")
 
