@@ -277,11 +277,23 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge") -> Re
         warnings.append("not_vertical_1080x1920")
     if probe["audio_streams"] == 0 or (vol is not None and vol < -60):
         warnings.append("narration_silent")   # TTS 실패는 엔진이 무음으로 넘긴다 — 여기서 드러낸다
+    # 장면 하나만 무음이어도 잡는다(엔진은 실패한 장면만 조용히 무음으로 바꾼다 — 검토 지적).
+    silent = []
+    for i in range(len(scenes)):
+        cut_audio = os.path.join(engine_dir, f"cut_{i}.m4a")
+        if os.path.exists(cut_audio):
+            v = _mean_volume_db(cut_audio)
+            if v is None or v < -60:
+                silent.append(i + 1)
+        else:
+            silent.append(i + 1)
+    if silent and tts != "placeholder":
+        warnings.append("narration_silent_scenes")
     if any(c["truncated"] for c in card_qa) or cover_qa["truncated"]:
         warnings.append("text_truncated")
     if MISSING:
         warnings.append("glyph_missing")
-    qa = {"probe": probe, "mean_volume_db": vol, "missing_glyphs": sorted(set(MISSING)), "scenes": len(scenes), "scene_labels": [c["label"] for c in card_qa],
+    qa = {"probe": probe, "mean_volume_db": vol, "silent_scenes": silent, "missing_glyphs": sorted(set(MISSING)), "scenes": len(scenes), "scene_labels": [c["label"] for c in card_qa],
           "warnings": warnings, "stand_in_visuals": True, "tts": tts, "brand": BRAND["version"],
           "note": "대체 이미지 렌더 — 흐름 검증용. 목표 화풍 품질 검증이 아니다"}
     costs = [{"kind": "tts", "provider": tts, "model": config.EDGE_TTS_VOICE if tts == "edge" else None, "cost_usd": 0,

@@ -21,7 +21,8 @@ import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Callable, Optional
 
 from . import config
@@ -107,6 +108,8 @@ class Batch:
     found: list[Found]
     parsed: int            # API 가 돌려준 결과 수(필터 전)
     incomplete: int = 0    # 상한·백오프 때문에 더 있는데 못 가져온 것
+    # 오래된 것부터 받은 경우 "여기까지는 빠짐없이 봤다"는 시각(상한에 걸려도 워처마크를 거기까지 옮긴다)
+    advance_to: Optional[str] = None
 
 
 def _epoch_iso(v: Any) -> Optional[str]:
@@ -116,7 +119,7 @@ def _epoch_iso(v: Any) -> Optional[str]:
         return None
 
 
-def _metric(d: dict, key: str) -> Optional[int]:
+def _metric(d: dict, key: str, allow_negative: bool = False) -> Optional[int]:
     v = d.get(key)
     if v is None:
         return None
@@ -124,7 +127,7 @@ def _metric(d: dict, key: str) -> Optional[int]:
         n = int(v)
     except (TypeError, ValueError):
         return None
-    return n if n >= 0 else None
+    return n if n >= 0 or allow_negative else None   # 비추천 점수(음수)는 제공된 값이다
 
 
 def _metrics(pairs: dict[str, Optional[int]]) -> dict[str, int]:
@@ -132,36 +135,68 @@ def _metrics(pairs: dict[str, Optional[int]]) -> dict[str, int]:
 
 
 def stackexchange(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> Batch:
+    """오래된 것부터(생성 시각 오름차순) 받는다 — 상한에 걸리면 "빠짐없이 본 데까지"만 워처마크가 전진한다.
+    태그는 따로 묻는다(tagged 는 AND). 더 남은 태그가 있으면, 그 태그가 이번에 받은 마지막 글 시각을 넘어 전진하지 않는다
+    (넘으면 그 태그의 사이 글을 건너뛴다). 첫 실행은 최근 DRINKS_DISCOVERY_BACKFILL_DAYS 일부터."""
     found: list[Found] = []
     parsed = incomplete = 0
-    for tag in cfg.get("queries") or []:
-        if len(found) >= limit:
-            incomplete += 1
-            break
-        params = {"site": cfg.get("site") or "alcohol", "tagged": tag, "order": "desc", "sort": "creation",
-                  "pagesize": min(50, limit - len(found)), "filter": "withbody"}
-        if since:
-            params["fromdate"] = int(since.timestamp())
-        res = f.get("https://api.stackexchange.com/2.3/questions", accept=JSON_TYPES, params=params)
-        data = json.loads(res.body.decode("utf-8"))
-        if "error_id" in data:
-            raise FetchError("api_error", f"Stack Exchange 오류 {data.get('error_id')}: {data.get('error_name')}")
-        items = data.get("items") or []
+    tags = [t for t in (cfg.get("queries") or []) if t]
+    start = since or (datetime.now(timezone.utc) - timedelta(days=config.DRINKS_DISCOVERY_BACKFILL_DAYS))
+    page, has_more, last_ts = 1, True, None
+    safe_ts: Optional[int] = None   # 더 남은 태그들이 이번에 받은 마지막 글 시각 중 가장 이른 것
+    backoff = False
+    while has_more and len(found) < limit and not backoff:
+        # Stack Exchange 의 tagged 는 AND 다 — 태그마다 따로 묻되, 같은 시작 시각에서 오름차순으로.
+        items_all = []
+        more_any = False
+        for tag in tags:
+            params = {"site": cfg.get("site") or "alcohol", "tagged": tag, "order": "asc", "sort": "creation",
+                      "pagesize": min(50, limit), "page": page, "filter": "withbody", "fromdate": int(start.timestamp())}
+            res = f.get("https://api.stackexchange.com/2.3/questions", accept=JSON_TYPES, params=params)
+            data = json.loads(res.body.decode("utf-8"))
+            if "error_id" in data:
+                raise FetchError("api_error", f"Stack Exchange 오류 {data.get('error_id')}: {data.get('error_name')}")
+            got = data.get("items") or []
+            items_all += [(tag, it) for it in got]
+            more_any = more_any or bool(data.get("has_more"))
+            if data.get("has_more") and got:
+                t_last = max(int(it.get("creation_date") or 0) for it in got)
+                safe_ts = t_last if safe_ts is None else min(safe_ts, t_last)
+            if data.get("backoff"):   # API 가 기다리라고 했다 — 이 실행에서는 더 묻지 않는다(쪽 넘김도 멈춤)
+                more_any = True
+                backoff = True
+                break
+        items_all.sort(key=lambda x: x[1].get("creation_date") or 0)
+        seen = {fd.external_id for fd in found}
+        items = []
+        for tag, it in items_all:
+            if str(it.get("question_id") or "") in seen:
+                continue
+            seen.add(str(it.get("question_id") or ""))
+            items.append((tag, it))
         parsed += len(items)
-        for it in items:
+        for tag, it in items:
+            if len(found) >= limit:
+                more_any = True
+                break
+            last_ts = it.get("creation_date")
             found.append(Found(
                 url=it.get("link") or "", platform="stackexchange", title=html_text(it.get("title") or "") or None,
                 summary=html_text(it.get("body") or "")[: config.DRINKS_DISCOVERY_SUMMARY_CHARS] or None,
                 channel_name=f"Beer, Wine & Spirits SE · {tag}", external_id=str(it.get("question_id") or ""),
                 posted_at=_epoch_iso(it.get("creation_date")),
-                metrics=_metrics({"views": _metric(it, "view_count"), "score": _metric(it, "score"),
+                metrics=_metrics({"views": _metric(it, "view_count"), "score": _metric(it, "score", allow_negative=True),
                                   "answers": _metric(it, "answer_count")})))
-        if data.get("has_more"):
-            incomplete += 1
-        if data.get("backoff"):  # API 가 기다리라고 했다 — 이 실행에서는 더 묻지 않는다
-            incomplete += 1
+        has_more = more_any
+        page += 1
+        if page > 5:   # 실행당 쪽 상한(요청 수 상한과 별개 안전장치)
             break
-    return Batch(found, parsed, incomplete)
+    if has_more:
+        incomplete += 1
+    advance = None
+    if has_more and last_ts:
+        advance = _epoch_iso(min(int(last_ts), safe_ts) if safe_ts is not None else int(last_ts))
+    return Batch(found, parsed, incomplete, advance)
 
 
 def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> Batch:
@@ -171,8 +206,7 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
     hdr = {"X-Goog-Api-Key": key}
     found: list[Found] = []
     parsed = incomplete = 0
-    queries = (cfg.get("queries") or [])[: config.DRINKS_YT_SEARCH_MAX_QUERIES]
-    incomplete += max(0, len(cfg.get("queries") or []) - len(queries))
+    queries = (cfg.get("queries") or [])[: config.DRINKS_YT_SEARCH_MAX_QUERIES]   # 등록 때 3개로 막는다(0052)
     for q in queries:
         params = {"part": "snippet", "q": q, "type": "video", "order": "date", "maxResults": min(25, max(1, limit - len(found)))}
         if since:
@@ -180,7 +214,8 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
         s = json.loads(f.get("https://www.googleapis.com/youtube/v3/search", accept=JSON_TYPES, params=params, headers=hdr).body)
         vids = [x for x in s.get("items") or [] if (x.get("id") or {}).get("videoId")]
         parsed += len(vids)
-        if s.get("nextPageToken"):
+        # 최신순이라 상한 밖의 글은 '받은 데까지 전진'을 할 수 없다 — 워처마크 이후 새 영상이 상한을 넘을 때만 다 못 봤다고 센다.
+        if s.get("nextPageToken") and since is not None:
             incomplete += 1
         if not vids:
             continue
@@ -237,7 +272,12 @@ def naver(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> B
             d = json.loads(f.get(base, accept=JSON_TYPES, headers=hdr,
                                  params={"query": q, "display": min(30, limit - len(found)), "sort": "date"}).body)
             items = d.get("items") or []
-            parsed += len(items)  # 검색 결과는 최신순 상위만 본다 — 전체 건수(total)를 미수집으로 세지 않는다
+            parsed += len(items)
+            # 한 쪽을 꽉 채웠고 가장 오래된 글도 워처마크 날짜 이후면 더 있을 수 있다 — 다 못 봤다고 센다(조용히 자르지 않게).
+            if since and len(items) >= min(30, limit) and items:
+                oldest = min((it.get("postdate") or "99999999") for it in items)
+                if oldest >= since.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d"):
+                    incomplete += 1
             for it in items:
                 posted = None
                 pd = it.get("postdate")
@@ -249,7 +289,10 @@ def naver(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> B
                     channel_name=it.get("cafename") or it.get("bloggername"), posted_at=posted,
                     coverage="title_summary"))  # 회원 전용 카페 본문은 받지 않는다 — 검색 결과 요약만
     if since:
-        found = [x for x in found if not x.posted_at or datetime.fromisoformat(x.posted_at) >= since]
+        # 네이버 게시일은 '날짜'뿐이다(시각 없음) — 워처마크와 시각으로 비교하면 같은 날 늦게 올라온 글을 잃는다(검토 지적).
+        # 한국 날짜로 비교하고, 같은 날 글은 다시 받아 URL 로 중복을 거른다.
+        since_day = since.astimezone(ZoneInfo("Asia/Seoul")).date()
+        found = [x for x in found if not x.posted_at or datetime.fromisoformat(x.posted_at).date() >= since_day]
     return Batch(found, parsed, incomplete)
 
 
@@ -315,6 +358,8 @@ class DiscoveryProcessor:
             self.fetcher.close()
         payload: dict[str, Any] = {"listed_count": len(batch.found), "request_count": self.fetcher.requests,
                                    "parsed_count": batch.parsed, "incomplete_count": 0 if validate else batch.incomplete}
+        if batch.advance_to and not validate:
+            payload["advance_to"] = batch.advance_to
         if aborted:
             payload.update(aborted=True, error_code=aborted[0], error_message=aborted[1])
         elif fatal:
@@ -451,14 +496,27 @@ def suggest_candidates(rpc) -> dict[str, int]:
         if not any((it.get("signals") or []) or (it.get("questions") or []) for it in g):
             skipped += len(g)  # 질문·신호가 하나도 없는 자료는 후보로 만들지 않는다(그대로 발견함에 남는다)
             continue
-        card = build_card(g, topics)
-        target = next((c for c in cands if similarity(card["key_question"], c["key_question"]) >= 0.5), None)
+        first = build_card(g, topics)
+        target = next((c for c in cands if similarity(first["key_question"], c["key_question"]) >= 0.5), None)
+        # 열린 후보에 더할 때는 그 후보의 **자료 전체**로 카드를 다시 만든다(새 묶음만으로 점수를 덮지 않게 — 검토 지적).
+        card = build_card((target.get("items") or []) + g, topics) if target else first
+        if target:
+            card["key_question"] = target["key_question"]
         r = rpc("drinks_suggest_candidate", {"item_ids": [it["id"] for it in g], **card,
                                              **({"candidate_id": target["id"]} if target else {})}) or {}
         if r.get("candidate_id"):
             if target:
                 added += 1
+                target["items"] = (target.get("items") or []) + g
             else:
                 made += 1
-                cands.append({"id": r["candidate_id"], "key_question": card["key_question"]})
-    return {"new": made, "added": added, "skipped_items": skipped}
+                cands.append({"id": r["candidate_id"], "key_question": card["key_question"], "items": list(g)})
+    # 합치기(운영자)로 자료가 옮겨진 후보도 다음 묶기 때 자료 전체로 다시 계산한다.
+    refreshed = 0
+    for c in (rpc("drinks_discovery_backlog", {}) or {}).get("candidates") or []:
+        if c.get("items"):
+            card = build_card(c["items"], topics)
+            card.pop("key_question", None)   # 대표 질문은 운영자가 고친 것일 수 있다 — 유지
+            rpc("drinks_suggest_candidate", {"item_ids": [], "candidate_id": c["id"], **card})
+            refreshed += 1
+    return {"new": made, "added": added, "skipped_items": skipped, "refreshed": refreshed}

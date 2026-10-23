@@ -288,3 +288,38 @@ test("권한: 제작 표·뷰·함수는 anon 에 닫혀 있고, 워커 함수�
     assert.ok(!fns.includes(f), f);
   }
 });
+
+// ── 독립 검토 반영(2026-10-23) ──
+
+const clearQueue = () => db.query("update drink_production_jobs set status = 'canceled', finished_at = now(), error_code = 'test' where status = 'queued'");
+
+test("차단·고칠 점 묶음의 파일도 정리 불가(파일 보존) · 워커가 죽은 '렌더 중'은 화면 조회·취소에서 정리된다", async () => {
+  await clearQueue();   // 앞 테스트가 남긴 대기 작업
+  const P = await approvedPlans();
+  await ok("request_render", { plan_revision_id: P.card });
+  const running = await renderOnce("carousel");
+  await ok("attest_source", { topic_id: P.topicId, snapshot_id: P.snapshotId, kind: "rights_revoked",
+    fields: { rights_status: "restricted" }, reason: "철회", revoke_affected: false });
+  await running.fin();
+  await assert.rejects(db.query("update drink_media_assets set state = 'deleting' where id = $1", [running.assets[0].asset_id]),
+    /asset_in_use/, "차단된 묶음도 파일 보존");
+
+  const Q = await approvedPlans();
+  await ok("request_render", { plan_revision_id: Q.video });
+  const r = await renderOnce("video");
+  await db.query("update drink_production_jobs set lease_expires_at = now() - interval '1 minute' where id = $1", [r.job.job_id]);
+  await ok("cancel_render", { job_id: r.job.job_id }).catch(() => null);
+  assert.equal((await jobRow(r.job.job_id)).status, "failed", "취소 요청이 정리를 일으킨다(영원히 '렌더 중'이 아님)");
+  assert.equal((await jobRow(r.job.job_id)).error_code, "lease_expired");
+});
+
+test("화면 상태 조회도 멈춘 작업을 정리한다", async () => {
+  await clearQueue();
+  const P = await approvedPlans();
+  await ok("request_render", { plan_revision_id: P.video });
+  const r = await renderOnce("video");
+  await db.query("update drink_production_jobs set lease_expires_at = now() - interval '1 minute' where id = $1", [r.job.job_id]);
+  const st = await worker("drinks_plan_render_state", { plan_revision_id: P.video });
+  assert.equal(st.block, null);
+  assert.equal((await jobRow(r.job.job_id)).status, "failed");
+});

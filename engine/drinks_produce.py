@@ -78,6 +78,8 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
             ext = ".mp4" if f["mime"] == "video/mp4" else ".png"
             name = f"{f['role']}_{f['position']:02d}{ext}"
             key = f"drinks/{job['job_id']}/{name}"   # 작업마다 새 폴더 — 옛 묶음 파일을 덮지 않는다
+            # ★ 올린 뒤 등록한다. 등록 직전에 임대를 잃으면 비공개 버킷에 DB 행 없는 파일이 남는다(고아) —
+            #   덮어쓰지 않는 새 위치라 다른 묶음을 해치지 않고, 정리 규칙이 생기면 그때 회수한다(docs).
             stored = storage.put(f["path"], key, f["mime"])
             reg = rpc("drinks_register_asset", {**lease, "asset": {
                 "storage_key": stored, "sha256": sha256_file(f["path"]), "mime": f["mime"], "bytes": os.path.getsize(f["path"]),
@@ -92,7 +94,11 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
         if exc.code == "lease_lost":
             log.warning("drinks: 제작 작업 %s 임대를 잃어 결과를 저장하지 않습니다", job["job_id"])
             return {"status": "lease_lost"}
-        raise
+        # 묶음 규칙 위반 등 DB 가 거부한 것도 작업을 '렌더 중'에 남기지 않고 실패로 닫는다(검토 지적).
+        try:
+            return rpc("drinks_finish_render", {**lease, "outcome": "failed", "error_code": exc.code, "error_message": exc.message})
+        except DbError:
+            return {"status": "lease_lost"}
     except RenderError as exc:
         return rpc("drinks_finish_render", {**lease, "outcome": "failed", "error_code": exc.code, "error_message": exc.message})
     except Exception as exc:  # noqa: BLE001 — 어떤 예외도 작업을 running 에 남기지 않는다

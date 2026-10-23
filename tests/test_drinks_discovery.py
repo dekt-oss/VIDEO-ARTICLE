@@ -39,29 +39,52 @@ def test_signals_and_questions_are_rules_not_translation():
     assert dd.extract_questions("質問です。これはどうですか？") == ["これはどうですか？"]
 
 
-def test_stackexchange_connector_keeps_only_provided_metrics_and_reports_more_pages():
+def _se_pages(pages):
+    """쪽 번호별 응답. 마지막 쪽 다음은 빈 쪽."""
     seen = []
 
     def h(req):
         seen.append(req)
-        return js(SE)
+        n = int(req.url.params.get("page", "1"))
+        return js(pages[n - 1] if n <= len(pages) else {"items": [], "has_more": False})
+    return h, seen
+
+
+def test_stackexchange_reads_oldest_first_and_keeps_only_provided_metrics():
+    h, seen = _se_pages([SE, {"items": [], "has_more": False}])
     b = dd.stackexchange(fetcher(h, ["api.stackexchange.com"]), {"queries": ["sake"], "site": "alcohol"}, None, 10)
-    assert b.parsed == 2 and b.incomplete == 1, "has_more → 다 못 봤음"
-    a, w = b.found
+    assert [x.external_id for x in b.found] == ["2", "1"], "생성 시각 오름차순"
+    w, a = b.found
     assert a.metrics == {"views": 147, "score": 0, "answers": 1}
     assert w.metrics == {"views": 11116, "score": 4}, "answer_count 가 없으면 키가 없다 — 0 으로 채우지 않는다"
+    assert b.incomplete == 0 and b.advance_to is None, "다 받았으면 다 못 봤다고 하지 않는다"
     item = a.item()
     assert item["coverage"] == "title_summary" and item["platform"] == "stackexchange"
     assert "storage" in item["signals"] and item["questions"][0].startswith("How long")
-    assert seen[0].url.params["tagged"] == "sake" and seen[0].url.params["filter"] == "withbody"
+    q = seen[0].url.params
+    assert (q["tagged"], q["order"], q["filter"]) == ("sake", "asc", "withbody") and int(q["fromdate"]) > 0, "첫 실행도 시작 시각을 둔다"
 
 
-def test_stackexchange_backoff_stops_further_queries():
+def test_stackexchange_limit_advances_only_to_what_was_seen():
+    h, _ = _se_pages([SE])
+    b = dd.stackexchange(fetcher(h, ["api.stackexchange.com"]), {"queries": ["sake"]}, None, 1)
+    assert len(b.found) == 1 and b.incomplete == 1
+    assert b.advance_to == dd._epoch_iso(1622853616), "받은 마지막 글(가장 오래된 것) 시각까지만 전진"
+
+
+def test_stackexchange_negative_score_is_a_provided_value():
+    neg = {"items": [{**SE["items"][0], "score": -2}], "has_more": False}
+    h, _ = _se_pages([neg])
+    b = dd.stackexchange(fetcher(h, ["api.stackexchange.com"]), {"queries": ["sake"]}, None, 10)
+    assert b.found[0].metrics["score"] == -2
+
+
+def test_stackexchange_backoff_stops_the_run():
     calls = []
 
     def h(req):
         calls.append(1)
-        return js({**SE, "has_more": False, "backoff": 10})
+        return js({**SE, "has_more": True, "backoff": 10})
     b = dd.stackexchange(fetcher(h, ["api.stackexchange.com"]), {"queries": ["sake", "whisky"]}, None, 10)
     assert len(calls) == 1 and b.incomplete == 1
 
@@ -154,8 +177,25 @@ def test_suggest_skips_items_without_any_signal():
                     "candidates": [], "topics": []}
         return {"candidate_id": "c"}
     out = dd.suggest_candidates(rpc)
-    assert out == {"new": 0, "added": 0, "skipped_items": 1}
-    assert [fn for fn, _ in calls] == ["drinks_discovery_backlog"]
+    assert out == {"new": 0, "added": 0, "skipped_items": 1, "refreshed": 0}
+    assert [fn for fn, _ in calls] == ["drinks_discovery_backlog", "drinks_discovery_backlog"], "후보 생성 없음(다시 계산 조회만)"
+
+
+def test_adding_to_an_open_candidate_recomputes_from_all_its_items():
+    old = [{"id": f"o{i}", "platform": "stackexchange", "channel_name": f"ch{i}", "title": "How long does opened sake last?",
+            "summary_hash": f"h{i}", "questions": ["How long does opened sake last?"], "signals": ["question", "storage"]} for i in range(4)]
+    new = {"id": "n1", "platform": "youtube", "channel_name": "Y", "title": "opened sake how long does it last?", "summary_hash": "hn",
+           "questions": ["opened sake how long does it last?"], "signals": ["question", "storage"]}
+    calls = []
+
+    def rpc(fn, p):
+        calls.append((fn, p))
+        if fn == "drinks_discovery_backlog":
+            return {"items": [new], "topics": [], "candidates": [{"id": "c1", "key_question": "How long does opened sake last?", "items": old}]}
+        return {"candidate_id": "c1"}
+    dd.suggest_candidates(rpc)
+    add = next(p for fn, p in calls if fn == "drinks_suggest_candidate" and p["item_ids"])
+    assert add["candidate_id"] == "c1" and add["interest"]["independent_sources"] == 5, "기존 4곳 + 새 1곳 — 새 묶음만으로 덮지 않는다"
 
 
 def test_discovery_processor_records_items_and_api_key_missing_fails_validation(monkeypatch):
@@ -176,3 +216,15 @@ def test_discovery_processor_records_items_and_api_key_missing_fails_validation(
     out = dd.DiscoveryProcessor(run2, rpc, fetcher(lambda r: js(SE), ["api.stackexchange.com"])).process()
     items = [p["item"] for fn, p in calls if fn == "drinks_collect_discovery"]
     assert len(items) == 2 and out["parsed_count"] == 2 and out["incomplete_count"] == 1
+
+
+def test_naver_keeps_same_day_posts_after_the_watermark(monkeypatch):
+    """게시일이 날짜뿐이라 시각 비교로 같은 날 늦은 글을 잃던 것(검토 지적)."""
+    from datetime import datetime, timezone
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
+
+    def h(req):
+        return js({"items": [{"title": "같은 날 글", "link": "https://blog.naver.com/y/9", "description": "d", "postdate": "20261022"}]})
+    since = datetime(2026, 10, 21, 21, 30, tzinfo=timezone.utc)   # = 2026-10-22 06:30 KST
+    b = dd.naver(fetcher(h, ["openapi.naver.com"]), {"queries": ["막걸리"], "kinds": ["blog"]}, since, 10)
+    assert [x.url for x in b.found] == ["https://blog.naver.com/y/9"]

@@ -98,7 +98,8 @@ def test_worker_stops_before_render_when_canceled_or_evidence_invalid(tmp_path):
     assert not any(fn == "drinks_register_asset" for fn, _ in rpc.calls), "비용·파일을 만들기 전에 멈춘다"
 
 
-def test_worker_lease_lost_saves_nothing_and_render_error_is_recorded(tmp_path, monkeypatch):
+def test_worker_lease_lost_does_not_finish_and_render_error_is_recorded(tmp_path, monkeypatch):
+    # ★ 임대를 잃은 순간 이미 올린 파일은 남는다(고아 — 새 위치라 다른 묶음을 해치지 않는다). 여기서 보는 것은 '끝내기 안 함'.
     rpc = FakeRpc(fail={"drinks_register_asset": "lease_lost"})
     assert dp.process_job(JOB, rpc, dp.Storage("local", str(tmp_path))) == {"status": "lease_lost"}
     assert not any(fn == "drinks_finish_render" for fn, _ in rpc.calls)
@@ -108,3 +109,9 @@ def test_worker_lease_lost_saves_nothing_and_render_error_is_recorded(tmp_path, 
     rpc2 = FakeRpc()
     out = dp.process_job(JOB, rpc2, dp.Storage("local", str(tmp_path)))
     assert out["error_code"] == "font_missing" and out["status"] == "failed"
+
+
+def test_worker_closes_the_job_on_any_db_refusal(tmp_path):
+    rpc = FakeRpc(fail={"drinks_record_cost": "invalid_input"})
+    out = dp.process_job(JOB, rpc, dp.Storage("local", str(tmp_path)))
+    assert out["status"] == "failed" and out["error_code"] == "invalid_input", "'렌더 중'에 남기지 않는다"

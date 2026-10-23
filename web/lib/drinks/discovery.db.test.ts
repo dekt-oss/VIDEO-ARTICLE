@@ -225,3 +225,42 @@ test("권한: 발견 표·함수는 anon 에 닫혀 있고, 자료 기록·후�
   const fns = Object.values(DRINKS_ACTIONS) as string[];
   for (const f of ["drinks_collect_discovery", "drinks_suggest_candidate", "drinks_discovery_backlog"]) assert.ok(!fns.includes(f), f);
 });
+
+// ── 독립 검토 반영(2026-10-23) ──
+
+test("발견 실행이 상한에만 걸렸으면 받은 데까지 워처마크 전진(영원히 같은 첫 묶음 방지) · 실패가 있으면 그대로", async () => {
+  const id = await activeSE();
+  await ok("request_run", { source_id: id, mode: "collect" });
+  const r = await runOnce([q(60)], { incomplete_count: 3, parsed_count: 4, advance_to: "2024-01-01T00:00:00Z" });
+  assert.equal(r.fin.status, "partial");
+  assert.equal(r.fin.watermark_advanced, true);
+  assert.equal(new Date((await src(id)).watermark_at).toISOString(), "2024-01-01T00:00:00.000Z");
+  await ok("request_run", { source_id: id, mode: "collect" });
+  const r2 = await runOnce([q(61), { canonical_url: `${SE}/62/q`, status: "failed", error_code: "timeout" }],
+    { incomplete_count: 3, parsed_count: 4, advance_to: "2025-01-01T00:00:00Z" });
+  assert.equal(r2.fin.watermark_advanced, false, "실패 문서가 있으면 옮기지 않는다");
+});
+
+test("유튜브 검색어는 수집원 하나에 3개까지(쓰지 못하는 검색어로 매번 '다 못 봤음'이 되지 않게)", async () => {
+  await fails("register_discovery_source", { platform: "youtube", name: "yt", categories: ["sake"], queries: ["a", "b", "c", "d"] },
+    "invalid_input");
+});
+
+test("후보 카드 다시 계산: 자료 없이 카드만 갱신 · 원출처 묶음은 버전 확인, 안 준 칸은 그대로", async () => {
+  const id = await activeSE();
+  await ok("request_run", { source_id: id, mode: "collect" });
+  const r = await runOnce([q(70)]);
+  const did = r.items[0].discovery_item_id;
+  const c = await worker("drinks_suggest_candidate", { item_ids: [did], key_question: "Q?", provisional_score: 10 });
+  const re = await worker("drinks_suggest_candidate", { item_ids: [], candidate_id: c.candidate_id, provisional_score: 55,
+    interest: { independent_sources: 3 } });
+  assert.equal(re.refreshed, true);
+  const cand = await row("select provisional_score, interest from drink_discovery_candidates where id = $1", [c.candidate_id]);
+  assert.equal(Number(cand.provisional_score), 55);
+  const d = await row("select version from drink_discovery_items where id = $1", [did]);
+  await ok("set_discovery_origin", { discovery_item_id: did, expected_version: d.version, origin_group: "보도자료-1" });
+  const d2 = await row("select version, origin_group from drink_discovery_items where id = $1", [did]);
+  await ok("set_discovery_origin", { discovery_item_id: did, expected_version: d2.version, rights_status: "link_and_summary_ok" });
+  assert.equal((await row("select origin_group from drink_discovery_items where id = $1", [did])).origin_group, "보도자료-1");
+  await fails("set_discovery_origin", { discovery_item_id: did, expected_version: d2.version, origin_group: "x" }, "version_conflict");
+});

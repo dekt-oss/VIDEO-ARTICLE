@@ -42,8 +42,8 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         {renderable ? (
           <p className="banner-block">렌더할 수 없습니다 — {BLOCK_TEXT[renderable] ?? renderable}</p>
         ) : active ? (
-          <p className="dk-kv">진행 중: {JOB_LABEL[active.status]} (시도 {active.attempt_no}) {active.status === "queued" && <CancelRender jobId={active.id} />}
-            {active.status === "running" && <CancelRender jobId={active.id} />}</p>
+          <p className="dk-kv">진행 중: {JOB_LABEL[active.status]} (시도 {active.attempt_no}) <CancelRender jobId={active.id} />
+            {active.cancel_requested && <span className="muted"> · 취소 요청됨(워커가 다음 확인 때 멈춥니다)</span>}</p>
         ) : (
           <div className="actions">
             <RenderRequest planId={plan.id} label={manifests.length ? "다시 렌더" : "렌더 요청"} />
@@ -94,8 +94,12 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
                       ? <video src={file.url} controls style={{ width: "100%" }} />
                       // eslint-disable-next-line @next/next/no-img-element
                       : <img src={file.url} alt={`${file.role} ${file.position}`} style={{ width: "100%" }} />
-                  ) : (
+                  ) : file.state !== "stored" ? (
+                    <p className="dk-bad">파일 상태: {file.state}</p>
+                  ) : file.storage_key.startsWith("local:") ? (
                     <p className="muted">로컬 저장({file.storage_key.replace(/^local:/, "")}) — 브라우저 미리보기 불가</p>
+                  ) : (
+                    <p className="dk-bad">미리보기 링크를 만들지 못했습니다 — {file.urlError}</p>
                   )}
                   {file.url && <a href={file.url} download>다운로드</a>}
                   <div className="muted" style={{ fontSize: 11 }}>sha256 {file.sha256.slice(0, 12)} · {file.state}</div>

@@ -19,7 +19,6 @@
 create or replace function drinks_production_limits() returns jsonb language sql immutable as $$
   select jsonb_build_object(
     'lease_sec', 1800,           -- 렌더 1회 임대. 하트비트가 연장한다
-    'max_auto_attempts', 2,      -- 실패 자동 재시도(명세 §8.3 기본 2회). 넘으면 운영자가 다시 요청
     'max_pages', 12,             -- 카드뉴스 페이지 상한
     'renderer_version', 'drinks-render-v1'
   )
@@ -31,7 +30,7 @@ create table if not exists drink_production_jobs (
   plan_revision_id uuid not null references drink_plan_revisions(id),
   format           text not null check (format in ('video','carousel')),
   status           text not null default 'queued' check (status in ('queued','running','succeeded','failed','canceled')),
-  attempt_no       int not null default 1 check (attempt_no between 1 and 20),
+  attempt_no       int not null default 1 check (attempt_no >= 1),   -- 수동 재시도 차례. 자동 재시도는 없다
   retry_of         uuid references drink_production_jobs(id),
   input_hash       text not null,
   plan_hash        text not null,           -- 요청 시점 제작안 승인 해시
@@ -158,9 +157,10 @@ begin
     if (old.state, new.state) not in (('stored','deleting'), ('deleting','deleted'), ('deleting','stored')) then
       perform drinks_fail('invalid_transition', '파일 상태 ' || old.state || ' → ' || new.state || ' 는 허용되지 않습니다');
     end if;
-    if new.state = 'deleting' and exists (select 1 from drink_manifest_assets ma join drink_output_reviews r
-        on r.manifest_id = ma.manifest_id where ma.asset_id = new.id and r.status in ('approved','pending')) then
-      perform drinks_fail('asset_in_use', '검수 대기·승인된 파일 묶음이 쓰는 파일은 정리할 수 없습니다');
+    -- 묶음에 든 파일은 검수 상태(승인·대기·고칠 점·차단)와 상관없이 정리할 수 없다 — 차단된 묶음도 "파일 보존"이다.
+    -- 정리 규칙(보관 기한·참조 해제)은 아직 없다(명세 §12, 드라이런 검증 후 연결).
+    if new.state = 'deleting' and exists (select 1 from drink_manifest_assets ma where ma.asset_id = new.id) then
+      perform drinks_fail('asset_in_use', '파일 묶음에 든 파일은 정리할 수 없습니다');
     end if;
   end if;
   return new;
@@ -204,7 +204,7 @@ begin
   end if;
   if new.status = 'approved' and (tg_op = 'INSERT' or old.status <> 'approved') then
     select * into pl from drink_plan_revisions where id = new.plan_revision_id;
-    if pl.plan_status <> 'approved' or pl.blocked_at is not null or not drinks_approval_valid(pl.topic_review_id) then
+    if pl.plan_status <> 'approved' or pl.blocked_at is not null or pl.revoked_at is not null or not drinks_approval_valid(pl.topic_review_id) then
       perform drinks_fail('review_blocked', '이 파일 묶음의 제작안·근거가 지금은 유효하지 않아 승인할 수 없습니다');
     end if;
     if exists (select 1 from drink_manifest_assets ma join drink_media_assets a on a.id = ma.asset_id
@@ -228,15 +228,19 @@ create or replace function drinks_plan_renderable(p_plan uuid) returns text lang
     when pl.id is null then 'not_found'
     when pl.plan_status <> 'approved' then 'plan_not_approved'
     when pl.blocked_at is not null then 'plan_blocked'
+    when pl.revoked_at is not null then 'plan_revoked'
     when not drinks_approval_valid(pl.topic_review_id) then 'evidence_invalid'
     else null end
   from (select 1) x left join drink_plan_revisions pl on pl.id = p_plan
 $$;
 
 -- 화면용(PostgREST rpc 는 jsonb 하나로 부른다).
-create or replace function drinks_plan_render_state(p jsonb) returns jsonb language sql stable as $$
-  select jsonb_build_object('block', drinks_plan_renderable(drinks_uuid(p, 'plan_revision_id')))
-$$;
+create or replace function drinks_plan_render_state(p jsonb) returns jsonb language plpgsql as $$
+begin
+  -- 워커가 죽어 '렌더 중'에 남은 작업을 화면을 열 때도 정리한다(그대로 두면 요청 버튼이 영영 숨는다 — 검토 지적).
+  perform drinks_reap_prod_jobs();
+  return jsonb_build_object('block', drinks_plan_renderable(drinks_uuid(p, 'plan_revision_id')));
+end $$;
 
 create or replace function drinks_lock_prod_job(p jsonb) returns drink_production_jobs language plpgsql as $$
 declare j drink_production_jobs;
@@ -301,7 +305,7 @@ begin
   begin
     insert into drink_production_jobs (topic_id, plan_revision_id, format, attempt_no, retry_of, input_hash, plan_hash,
       review_hash, renderer, renderer_version, requested_by)
-    values (pl.topic_id, pl.id, pl.format, least(v_attempt, 20), prev.id, v_input, pl.approved_hash, rv.approved_hash, 'local',
+    values (pl.topic_id, pl.id, pl.format, v_attempt, prev.id, v_input, pl.approved_hash, rv.approved_hash, 'local',
       drinks_production_limits() ->> 'renderer_version', 'operator')
     returning * into j;
   exception when unique_violation then
@@ -317,6 +321,7 @@ end $$;
 create or replace function drinks_cancel_render(p jsonb) returns jsonb language plpgsql as $$
 declare j drink_production_jobs;
 begin
+  perform drinks_reap_prod_jobs();   -- 임대가 끝난 '렌더 중'은 여기서 실패로 닫힌다(취소 표시만 남고 멈추지 않게)
   select * into j from drink_production_jobs where id = drinks_uuid(p, 'job_id') for update;
   if not found then perform drinks_fail('not_found', '제작 작업을 찾지 못했습니다'); end if;
   if j.status = 'queued' then
@@ -325,9 +330,8 @@ begin
   elsif j.status = 'running' then
     -- 진행 중 취소는 최선 노력: 워커가 다음 하트비트에서 멈춘다. 이미 든 비용·파일은 기록된다.
     update drink_production_jobs set cancel_requested = true where id = j.id returning * into j;
-  else
-    perform drinks_fail('invalid_state', '끝난 작업은 취소할 수 없습니다');
   end if;
+  -- 이미 끝난 작업(위 정리로 방금 실패 처리된 것 포함)은 오류 없이 상태만 돌려준다 — 오류를 던지면 정리까지 되돌아간다.
   return jsonb_build_object('job_id', j.id, 'status', j.status, 'cancel_requested', j.cancel_requested);
 end $$;
 
@@ -345,6 +349,9 @@ begin
     perform drinks_fail('invalid_state', '검수 대기 중인 묶음만 판정합니다');
   end if;
   if v_action = 'approve' then
+    -- 권리 철회·근거 무효화는 제작안 행을 바꾼다(blocked_at). 그 행을 먼저 잠가 진행 중인 철회를 기다린 뒤 다시 잰다 —
+    -- 아니면 아직 커밋 안 된 철회를 못 보고 승인이 통과한다(실제 Postgres 경합 ⑭).
+    perform 1 from drink_plan_revisions where id = r.plan_revision_id for share;
     v_block := drinks_plan_renderable(r.plan_revision_id);
     if v_block is not null then
       update drink_output_reviews set status = 'blocked', reason = '승인 시점 재검사: ' || v_block where id = r.id returning * into r;

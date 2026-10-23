@@ -4306,4 +4306,5 @@ DRINKS_DISCOVERY_RUBRIC: str = "discovery-v1"
 DRINKS_DISCOVERY_SIMILAR_MIN: float = 0.34   # 낱말 Jaccard(흔한 낱말·주종 이름 제외, 겹친 낱말 2개 이상) — 이 이상이면 같은 후보로(판정 아님)
 DRINKS_DISCOVERY_SUMMARY_CHARS: int = 600    # 확보한 요약 보관 길이(원문 전문을 보관하지 않음)
 DRINKS_YT_COMMENTS_PER_VIDEO: int = 20       # commentThreads.list 1회(쿼터 1). 질문 문장만 뽑는다
-DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 — 실행당 검색어 수 상한
+DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 — 검색어 수 상한(0052 등록 때도 3개로 막는다)
+DRINKS_DISCOVERY_BACKFILL_DAYS: int = 365    # 발견 첫 실행은 최근 1년부터(오래된 것부터 받아 워처마크를 전진)

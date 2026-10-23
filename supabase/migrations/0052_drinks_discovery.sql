@@ -185,7 +185,7 @@ create or replace function drinks_clean_metrics(m jsonb) returns jsonb language 
   select coalesce(jsonb_object_agg(k, (m ->> k)::bigint), '{}'::jsonb)
   from jsonb_object_keys(coalesce(case when jsonb_typeof(m) = 'object' then m end, '{}'::jsonb)) k
   where k in ('views','likes','comments','answers','score','favorites')
-    and jsonb_typeof(m -> k) = 'number' and (m ->> k) ~ '^[0-9]+$'
+    and jsonb_typeof(m -> k) = 'number' and (m ->> k) ~ case when k = 'score' then '^-?[0-9]+$' else '^[0-9]+$' end
 $$;
 
 create or replace function drinks_discovery_platform_ok(p text) returns boolean language sql immutable as $$
@@ -209,6 +209,10 @@ begin
   end if;
   if cardinality(q) = 0 or cardinality(q) > 10 or exists (select 1 from unnest(q) x where length(x) > 100) then
     perform drinks_fail('invalid_input', '검색어·태그를 1~10개(각 100자 이하) 넣으세요');
+  end if;
+  if drinks_text(p, 'platform') = 'youtube' and cardinality(q) > 3 then
+    -- search.list 1회 = 쿼터 100. 실행마다 쓰지 못하는 검색어가 남으면 매번 '다 못 봤음'이 된다(검토 지적).
+    perform drinks_fail('invalid_input', '유튜브 검색어는 수집원 하나에 3개까지입니다 — 나머지는 다른 수집원으로 등록하세요');
   end if;
   insert into drink_sources (name, home_url, publisher, language, categories, source_kind, method, entry_urls, allowed_hosts,
     parser_config, terms_status, terms_note, terms_url, terms_checked_at, rights_default, request_interval_sec,
@@ -339,7 +343,12 @@ create or replace function drinks_discovery_backlog(p jsonb) returns jsonb langu
         'posted_at', d.posted_at, 'canonical_url', d.canonical_url) order by d.discovered_at)
       from (select * from drink_discovery_items x where not exists (select 1 from drink_candidate_items ci where ci.item_id = x.id)
         order by x.discovered_at limit 500) d), '[]'),
-    'candidates', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'key_question', c.key_question, 'version', c.version))
+    'candidates', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'key_question', c.key_question, 'version', c.version,
+        'items', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'platform', d.platform, 'channel_name', d.channel_name,
+            'title', d.title, 'summary', left(d.summary, 600), 'summary_hash', d.summary_hash, 'origin_group', d.origin_group,
+            'questions', to_jsonb(d.questions), 'signals', to_jsonb(d.signals), 'latest_metrics', d.latest_metrics,
+            'canonical_url', d.canonical_url))
+          from drink_candidate_items ci join drink_discovery_items d on d.id = ci.item_id where ci.candidate_id = c.id), '[]')))
       from drink_discovery_candidates c where c.status = 'suggested'), '[]'),
     'topics', coalesce((select jsonb_agg(jsonb_build_object('id', t.id, 'title', t.title, 'question', t.question))
       from drink_topics t where t.status not in ('duplicate','rejected')), '[]'))
@@ -351,20 +360,26 @@ declare
   ids uuid[] := array(select (x)::uuid from jsonb_array_elements_text(coalesce(p -> 'item_ids', '[]')) x);
   c drink_discovery_candidates; v_target uuid := drinks_uuid(p, 'candidate_id', false); n int;
 begin
-  if cardinality(ids) = 0 then perform drinks_fail('invalid_input', '자료가 없습니다'); end if;
+  if cardinality(ids) = 0 and v_target is null then perform drinks_fail('invalid_input', '자료가 없습니다'); end if;
   perform 1 from drink_discovery_items where id = any(ids) order by id for update;
   get diagnostics n = row_count;
   if n <> cardinality(ids) then perform drinks_fail('not_found', '없는 자료가 섞여 있습니다'); end if;
-  if exists (select 1 from drink_candidate_items where item_id = any(ids)) then
+  if cardinality(ids) > 0 and exists (select 1 from drink_candidate_items where item_id = any(ids)) then
     return jsonb_build_object('skipped', 'already_assigned');
   end if;
   if v_target is not null then
     select * into c from drink_discovery_candidates where id = v_target for update;
     if not found or c.status <> 'suggested' then return jsonb_build_object('skipped', 'candidate_closed'); end if;
+    -- 카드는 후보의 **자료 전체**로 다시 계산한 값이어야 한다(워커가 그렇게 보낸다 — 새 묶음만으로 덮지 않게).
     update drink_discovery_candidates set interest = coalesce(p -> 'interest', interest),
       signals = coalesce(drinks_text_array(p -> 'signals'), signals), provisional_score = coalesce((p ->> 'provisional_score')::numeric, provisional_score),
-      score_reason = coalesce(drinks_text(p, 'score_reason'), score_reason)
+      score_reason = coalesce(drinks_text(p, 'score_reason'), score_reason),
+      facts_to_check = case when p ? 'facts_to_check' then drinks_text_array(p -> 'facts_to_check') else facts_to_check end,
+      fit_video = coalesce(drinks_int(p, 'fit_video', false), fit_video), fit_carousel = coalesce(drinks_int(p, 'fit_carousel', false), fit_carousel),
+      duplicate_topic_ids = case when p ? 'duplicate_topic_ids' then array(select (x)::uuid from jsonb_array_elements_text(p -> 'duplicate_topic_ids') x
+        where exists (select 1 from drink_topics t where t.id = (x)::uuid)) else duplicate_topic_ids end
       where id = c.id returning * into c;
+    if cardinality(ids) = 0 then return jsonb_build_object('candidate_id', c.id, 'added', 0, 'refreshed', true); end if;
   else
     insert into drink_discovery_candidates (key_question, reader_value, discovery_path, signals, interest, first_scene, fit_video,
       fit_carousel, facts_to_check, duplicate_topic_ids, provisional_score, rubric, score_reason)
@@ -428,7 +443,10 @@ begin
       'angle', drinks_text(p, 'angle'), 'confirm_not_duplicate', coalesce(p -> 'confirm_not_duplicate', 'false'::jsonb)));
     v_topic := (r ->> 'topic_id')::uuid;
   else
-    perform drinks_lock_topic(v_topic, null, false);  -- 기존 소재에 신호로 더하기(병합 결정은 운영자)
+    -- 기존 소재에 신호로 더하기(병합 결정은 운영자). 중복·제외 처리된 소재에는 붙이지 않는다.
+    if (drinks_lock_topic(v_topic, null, false)).status in ('duplicate','rejected') then
+      perform drinks_fail('invalid_state', '중복·제외 처리된 소재에는 붙일 수 없습니다');
+    end if;
   end if;
   for it in select d.* from drink_candidate_items ci join drink_discovery_items d on d.id = ci.item_id
       where ci.candidate_id = c.id order by d.discovered_at loop
@@ -482,11 +500,84 @@ end $$;
 create or replace function drinks_set_discovery_origin(p jsonb) returns jsonb language plpgsql as $$
 declare d drink_discovery_items;
 begin
-  update drink_discovery_items set origin_group = drinks_text(p, 'origin_group'),
+  select * into d from drink_discovery_items where id = drinks_uuid(p, 'discovery_item_id') for update;
+  if not found then perform drinks_fail('not_found', '자료를 찾지 못했습니다'); end if;
+  if drinks_int(p, 'expected_version') is distinct from d.version then
+    perform drinks_fail('version_conflict', '다른 곳에서 먼저 바뀌었습니다 — 화면을 새로 불러오세요');
+  end if;
+  update drink_discovery_items set
+    origin_group = case when p ? 'origin_group' then drinks_text(p, 'origin_group') else origin_group end,
     rights_status = coalesce(drinks_text(p, 'rights_status'), rights_status), rights_note = coalesce(drinks_text(p, 'rights_note'), rights_note)
-    where id = drinks_uuid(p, 'discovery_item_id') returning * into d;
-  if d.id is null then perform drinks_fail('not_found', '자료를 찾지 못했습니다'); end if;
+    where id = d.id returning * into d;
   return jsonb_build_object('discovery_item_id', d.id, 'origin_group', d.origin_group, 'version', d.version);
+end $$;
+
+-- 실행 끝(0051 정의 대체): 발견 수집원의 '받은 데까지 전진'만 더했다. 나머지 판정은 0051 과 같다.
+create or replace function drinks_finish_run(p jsonb) returns jsonb language plpgsql as $$
+declare
+  r drink_collection_runs; s drink_sources; v_fatal text := drinks_text(p, 'error_code');
+  v_aborted boolean := coalesce((p ->> 'aborted')::boolean, false); v_ok int; v_status text; v_to timestamptz;
+  -- 워커가 알려 주는 "다 못 본 것": 문서·본문 상한에 걸려 처음 보는 글을 못 가져옴, 승인 밖 호스트로 빠진 글.
+  v_incomplete int := greatest(coalesce(drinks_int(p, 'incomplete_count', false), 0), 0);
+  v_offhost int := greatest(coalesce(drinks_int(p, 'offhost_count', false), 0), 0);
+  v_parsed int := drinks_int(p, 'parsed_count', false);
+  -- 발견 수집원: 오래된 것부터(시간 오름차순) 받은 경우 "여기까지는 빠짐없이 봤다"는 시각. 상한에 걸려도 그만큼은 전진한다.
+  v_advance timestamptz := (drinks_text(p, 'advance_to'))::timestamptz;
+begin
+  r := drinks_lock_run(p);
+  select * into s from drink_sources where id = r.source_id for update;
+  v_ok := r.item_count - r.failed_count - r.skipped_count;
+  if v_aborted then v_status := 'aborted';
+  elsif v_fatal is not null and r.item_count = 0 then v_status := 'failed';
+  -- 목록·피드를 받았는데 링크·글을 하나도 못 찾음 = 사이트 개편 의심. "정상 0건"이 아니다.
+  elsif r.mode <> 'retry' and s.method in ('listing','feed') and v_parsed = 0 then
+    v_status := 'failed'; v_fatal := 'no_candidates';
+  elsif r.item_count = 0 and v_offhost > 0 then v_status := 'failed'; v_fatal := 'host_not_allowed';
+  elsif r.item_count > 0 and v_ok = 0 and r.failed_count = 0 then v_status := 'failed'; v_fatal := 'all_skipped';
+  elsif r.failed_count > 0 and v_ok + r.skipped_count > 0 then v_status := 'partial';
+  elsif r.failed_count > 0 then v_status := 'failed';
+  elsif v_fatal is not null then v_status := 'partial';
+  elsif v_incomplete + v_offhost > 0 then
+    v_status := 'partial'; v_fatal := case when v_incomplete > 0 then 'limit_reached' else 'host_not_allowed' end;
+  elsif r.item_count = 0 then v_status := 'empty';
+  else v_status := 'succeeded';
+  end if;
+  -- 검증 실행은 문서가 하나도 없으면 "검증 성공"이 아니다 — 본문을 실제로 뽑아 봐야 한다.
+  if r.mode = 'validate' and v_status in ('succeeded','empty')
+      and not exists (select 1 from drink_collection_items i where i.run_id = r.id and i.status = 'checked'
+        and coalesce(i.body_chars, 0) > 0) then
+    v_status := 'failed'; v_fatal := coalesce(v_fatal, 'no_body_extracted');
+  end if;
+  if r.mode = 'collect' and v_status in ('succeeded','empty') then v_to := r.started_at; end if;
+  -- 상한(limit_reached)만으로 부분 성공인 발견 실행은 받은 데까지 워처마크를 옮긴다 — 안 옮기면 매번 같은 첫 묶음만 받고
+  -- 영원히 부분 성공이다(검토 지적). 실패 문서가 있으면 옮기지 않는다.
+  if r.mode = 'collect' and s.purpose = 'discovery' and v_status = 'partial' and v_fatal = 'limit_reached'
+      and r.failed_count = 0 and v_advance is not null then
+    v_to := least(v_advance, r.started_at);
+  end if;
+  update drink_collection_runs set status = v_status, finished_at = now(), lease_token = null, cursor_to = v_to,
+    listed_count = greatest(listed_count, coalesce(drinks_int(p, 'listed_count', false), 0)),
+    request_count = greatest(request_count, coalesce(drinks_int(p, 'request_count', false), 0)),
+    error_code = coalesce(v_fatal, case when v_status = 'partial' then 'some_items_failed' end),
+    error_message = left(coalesce(drinks_text(p, 'error_message'),
+      case when v_fatal = 'limit_reached' then '상한에 걸려 처음 보는 글 ' || v_incomplete || '건을 다 가져오지 못했습니다 — 다음 실행이 이어서 가져옵니다(워처마크 그대로)'
+        when v_fatal = 'no_candidates' then '목록·피드에서 글 링크를 하나도 찾지 못했습니다 — 사이트 개편 여부를 확인하세요'
+        when v_fatal = 'all_skipped' then '모든 문서를 건너뛰었습니다(robots.txt 등) — 아무것도 수집하지 못했습니다'
+        when v_fatal = 'host_not_allowed' then '승인 밖 호스트로 이어진 글 ' || v_offhost || '건을 가져오지 않았습니다'
+        when v_status = 'partial' then r.failed_count || '건 실패 — [실패분 재시도]로 다시 가져올 수 있습니다' end), 2000)
+    where id = r.id returning * into r;
+  if r.mode = 'validate' then
+    update drink_sources set last_validation_run_id = r.id where id = s.id;
+  end if;
+  if v_to is not null then
+    -- 워처마크는 앞으로만 간다(늦게 끝난 옛 실행이 되돌리지 못하게).
+    update drink_sources set watermark_at = greatest(coalesce(watermark_at, v_to), v_to), last_success_run_id = r.id
+      where id = s.id;
+  end if;
+  perform drinks_log_source(s.id, 'run', r.id, 'run_finished', 'running', r.status, r.error_code,
+    jsonb_build_object('items', r.item_count, 'failed', r.failed_count, 'new', r.new_count, 'changed', r.changed_count,
+      'watermark_advanced', v_to is not null), 'worker');
+  return jsonb_build_object('run_id', r.id, 'status', r.status, 'watermark_advanced', v_to is not null);
 end $$;
 
 -- ─────────────────────────────────────────────────────────────

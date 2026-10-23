@@ -25,7 +25,7 @@ export interface CostRow { id: number; job_id: string; kind: string; provider: s
 
 export interface ManifestView {
   manifest: ManifestRow;
-  files: (MediaRow & { role: string; position: number; url: string | null })[];
+  files: (MediaRow & { role: string; position: number; url: string | null; urlError: string | null })[];
   review: OutputReviewRow | null;
   currentBlock: string | null;
   currentlyUsable: boolean;
@@ -81,10 +81,12 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
   if (!media.ok) return { state: "failed", error: media.error };
   const mediaById = new Map(media.rows.map((m) => [m.id, m]));
   const urls = new Map<string, string | null>();
+  const urlErrors = new Map<string, string>();
   for (const m of media.rows) {
-    if (m.storage_key.startsWith("local:")) { urls.set(m.id, null); continue; }
+    if (m.storage_key.startsWith("local:") || m.state !== "stored") { urls.set(m.id, null); continue; }
     const s = await db.storage.from("drinks").createSignedUrl(m.storage_key, 3600);
     urls.set(m.id, s.error ? null : s.data?.signedUrl ?? null);
+    if (s.error || !s.data?.signedUrl) urlErrors.set(m.id, s.error?.message ?? "서명 URL 없음");
   }
   const revBy = new Map((reviews as { ok: true; rows: OutputReviewRow[] }).rows.map((r) => [r.manifest_id, r]));
   const valBy = new Map((validity as { ok: true; rows: { manifest_id: string; current_block: string | null; currently_usable: boolean }[] }).rows
@@ -92,7 +94,7 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
   const manifests: ManifestView[] = mans.rows.map((m) => ({
     manifest: m,
     files: linkRows.filter((l) => l.manifest_id === m.id).map((l) => ({ ...mediaById.get(l.asset_id)!, role: l.role, position: l.position,
-      url: urls.get(l.asset_id) ?? null })).sort((a, b) => (a.role === b.role ? a.position - b.position : a.role.localeCompare(b.role))),
+      url: urls.get(l.asset_id) ?? null, urlError: urlErrors.get(l.asset_id) ?? null })).sort((a, b) => (a.role === b.role ? a.position - b.position : a.role.localeCompare(b.role))),
     review: revBy.get(m.id) ?? null,
     currentBlock: valBy.get(m.id)?.current_block ?? null,
     currentlyUsable: valBy.get(m.id)?.currently_usable === true,
