@@ -25,6 +25,57 @@ export function RenderRequest({ planId, retryOf, label }: { planId: string; retr
   );
 }
 
+/** 유료 렌더 요청 — 열린 결재가 있고 예상 금액이 남은 금액 안일 때만. 실제 상한은 DB 가 호출마다 잰다. */
+export function PaidRenderRequest({ planId, approvalId, estimate, remaining, blocked }: {
+  planId: string; approvalId: string; estimate: number; remaining: number; blocked: string | null;
+}) {
+  const { run, busy } = useDrinksAction();
+  const [msg, setMsg] = useState<string | null>(null);
+  const why = blocked ?? (estimate > remaining ? `예상 $${estimate.toFixed(3)} 가 남은 결재 금액 $${remaining.toFixed(3)} 보다 큽니다` : null);
+  return (
+    <span>
+      <button className="btn pick" disabled={busy || Boolean(why)} title={why ?? ""}
+        onClick={async () => {
+          if (!window.confirm(`유료 렌더를 요청합니다. 예상 $${estimate.toFixed(3)} · 남은 결재 금액 $${remaining.toFixed(3)}. 진행할까요?`)) return;
+          setMsg(note(await run("request_render", { plan_revision_id: planId, paid: true, spend_approval_id: approvalId },
+            "유료 렌더를 요청했습니다(결재 금액 안에서만 삽니다)", "유료 렌더 요청")));
+        }}>유료 렌더 요청 (예상 ${estimate.toFixed(3)})</button>
+      {why && <span className="muted"> {why}</span>}
+      {msg && <span className="muted"> {msg}</span>}
+    </span>
+  );
+}
+
+/** 결재 등록 — 결재권자가 승인한 말을 그대로 남긴다. 상한은 $10 을 넘을 수 없다(DB). */
+export function OpenSpendApproval({ planId, suggestedCap }: { planId: string; suggestedCap: number }) {
+  const { run, busy } = useDrinksAction();
+  const [cap, setCap] = useState(suggestedCap.toFixed(2));
+  const [stage, setStage] = useState("");
+  const [words, setWords] = useState("");
+  return (
+    <div className="dk-row">
+      <input placeholder="단계(예: 3단계 한 편 완성)" value={stage} onChange={(e) => setStage(e.target.value)} />
+      <label className="muted">상한 $<input style={{ width: 80 }} value={cap} onChange={(e) => setCap(e.target.value)} /></label>
+      <input placeholder="결재 문장(승인한 말 그대로)" value={words} onChange={(e) => setWords(e.target.value)} />
+      <button className="btn" disabled={busy || !stage || !words || !(Number(cap) > 0)}
+        onClick={() => run("open_spend_approval", { plan_revision_id: planId, stage, purpose: `${stage} — 이 제작안의 그림 생성`,
+          cap_usd: Number(cap), allowed_kinds: ["image"], approver_words: words }, "결재를 등록했습니다", "결재 등록")}>결재 등록</button>
+    </div>
+  );
+}
+
+export function CloseSpendApproval({ approvalId }: { approvalId: string }) {
+  const { run, busy } = useDrinksAction();
+  const [reason, setReason] = useState("");
+  return (
+    <span>
+      <input placeholder="닫는 이유" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <button className="btn" disabled={busy || !reason}
+        onClick={() => run("close_spend_approval", { approval_id: approvalId, reason }, "결재를 닫았습니다", "결재 닫기")}>결재 닫기</button>
+    </span>
+  );
+}
+
 export function CancelRender({ jobId }: { jobId: string }) {
   const { run, busy } = useDrinksAction();
   return <button className="btn" disabled={busy} onClick={() => run("cancel_render", { job_id: jobId }, "취소를 요청했습니다", "취소")}>취소</button>;

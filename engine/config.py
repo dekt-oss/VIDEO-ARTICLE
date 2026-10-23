@@ -4312,3 +4312,15 @@ DRINKS_DISCOVERY_BACKFILL_DAYS: int = 365    # 발견 첫 실행은 최근 1년�
 #   developers.naver.com(openapi.naver.com) 키와는 서로 호환되지 않는다(공식 이관 가이드). 한시 무료,
 #   검색 카테고리 통합 월 775,000건 한도에 닿으면 자동 차단 — 같은 키를 쓰는 서비스끼리 합산된다.
 DRINKS_NAVER_SEARCH_BASE: str = "https://naverapihub.apigw.ntruss.com/search/v1"
+
+# 유료 생성 시험(2026-10-24, 운영자 결재 "승인한다 진행해"). docs/deviation-drinks-paid-pilot.md
+#   단계마다 결재(0054 drink_spend_approvals)를 받고 결재 금액이 상한이다. 아래 단가는 0054 drinks_spend_limits 와
+#   같아야 하고(tests/test_drinks_paid.py 가 대조), 엔진 정가표(PRICING)의 해당 모델 값과도 같아야 한다.
+DRINKS_PAID_PRICES: dict[str, float] = {"image_mechanism": 0.134, "image_reality": 0.039, "video_per_sec": 0.05}
+DRINKS_PILOT_CLIP_SEC: int = 6        # 2단계 움직이는 장면 길이(Veo 3.1 티어 4·6·8 중)
+# 주류 그림에 붙이는 구도 규칙 — 실제 상표·제품으로 오인되지 않게. 화풍(VISUAL_ROLE_STYLE)이 아니라 소품 규칙이다.
+#   글자는 공통 BURN_IN_NEGATIVE_PROMPT 가 막고, 지역 이름 같은 글은 화면 오버레이로 얹는다.
+DRINKS_PRODUCT_CLAUSE: str = (
+    "all bottles, labels and packaging are generic and unbranded: plain blank paper labels with no writing, "
+    "no logos, no brand marks"
+)

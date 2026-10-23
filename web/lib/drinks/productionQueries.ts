@@ -31,6 +31,17 @@ export interface ManifestView {
   currentlyUsable: boolean;
 }
 
+export interface SpendApproval {
+  approval_id: string; stage: string; purpose: string; cap_usd: number | string; allowed_kinds: string[]; status: "open" | "closed";
+  expired: boolean; expires_at: string; remaining_usd: number | string; held_usd: number | string; spent_usd: number | string;
+  holds: number; settled: number; released: number; order_hash: string | null;
+}
+export interface PlanSpend {
+  estimate: { scenes: { position: number; role: string; usd: number | string; bought: boolean; price_usd: number | string }[];
+    images: number; bought: number; total_usd: number | string };
+  approvals: SpendApproval[];
+}
+
 export interface PlanProduction {
   plan: PlanRow;
   topic: Pick<TopicRow, "id" | "title" | "question" | "status">;
@@ -39,6 +50,7 @@ export interface PlanProduction {
   jobs: ProdJobRow[];
   manifests: ManifestView[];
   costs: CostRow[];
+  spend: PlanSpend;
 }
 
 export async function loadPlanProduction(planId: string): Promise<Loaded<PlanProduction> | { state: "not_found" }> {
@@ -49,17 +61,18 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
   if (p.error) return { state: "failed", error: `제작안: ${p.error.message}` };
   if (!p.data) return { state: "not_found" };
   const plan = p.data as PlanRow;
-  const [t, rv, va, ren, jobs, mans] = await Promise.all([
+  const [t, rv, va, ren, spend, jobs, mans] = await Promise.all([
     db.from("drink_topics").select("id, title, question, status").eq("id", plan.topic_id).maybeSingle(),
     db.from("drink_topic_reviews").select("id, revision_no, status, revoked_at").eq("id", plan.topic_review_id).maybeSingle(),
     db.from("drink_review_validity").select("currently_valid").eq("review_id", plan.topic_review_id).maybeSingle(),
     db.rpc("drinks_plan_render_state", { p: { plan_revision_id: planId } }),
+    db.rpc("drinks_plan_spend", { p: { plan_revision_id: planId } }),
     fetchAllPages<ProdJobRow>((f, to) => db.from("drink_production_jobs").select("*", { count: "exact" }).eq("plan_revision_id", planId)
       .order("created_at", { ascending: false }).order("id").range(f, to), "제작 작업"),
     fetchAllPages<ManifestRow>((f, to) => db.from("drink_asset_manifests").select("*", { count: "exact" }).eq("plan_revision_id", planId)
       .order("created_at", { ascending: false }).order("id").range(f, to), "파일 묶음"),
   ]);
-  for (const r of [t, rv, va, ren]) if (r.error) return { state: "failed", error: r.error.message };
+  for (const r of [t, rv, va, ren, spend]) if (r.error) return { state: "failed", error: r.error.message };
   if (!t.data || !rv.data) return { state: "failed", error: "소재·근거 버전 조회 누락" };
   if (!jobs.ok) return { state: "failed", error: jobs.error };
   if (!mans.ok) return { state: "failed", error: mans.error };
@@ -105,6 +118,7 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
       plan, topic: t.data as PlanProduction["topic"],
       review: { ...(rv.data as PlanProduction["review"]), currently_valid: (va.data as { currently_valid?: boolean } | null)?.currently_valid },
       renderable: (ren.data as { block: string | null } | null)?.block ?? null, jobs: jobs.rows, manifests, costs: (costs as { ok: true; rows: CostRow[] }).rows,
+      spend: spend.data as PlanSpend,
     },
   };
 }

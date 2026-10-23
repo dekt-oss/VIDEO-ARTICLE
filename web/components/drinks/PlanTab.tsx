@@ -305,6 +305,13 @@ function SceneEditor({ scenes, onChange, claims, required }: { scenes: VideoScen
               <span>화면 글자·주석</span>
               <input value={s.overlays ?? ""} onChange={(e) => set(i, { overlays: e.target.value || null })} />
             </label>
+            {s.visual_role !== "text_card" && (
+              <label className="dk-field">
+                <span>그림 지시문(영어, 유료 렌더용)</span>
+                <textarea rows={2} value={s.visual_prompt ?? ""} placeholder="예: A small wooden shelf holding five unbranded sake bottles…"
+                  onChange={(e) => set(i, { visual_prompt: e.target.value || null })} />
+              </label>
+            )}
           </div>
           <ClaimChecks value={s.claim_ids} claims={claims} required={required} onChange={(v) => set(i, { claim_ids: v })} />
           <div className="actions">
