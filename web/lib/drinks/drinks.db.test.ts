@@ -16,7 +16,8 @@ import { runDrinksAction, PHASE_A_EXCLUDED } from "./actions.ts";
 import { planCoverage, weightedScore } from "./model.ts";
 
 // A단계 동작이 B단계 마이그레이션(0051) 위에서도 그대로인지 함께 본다 — 운영에는 둘이 순서대로 적용된다.
-const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql"]
+const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
+  "0053_drinks_production.sql"]
   .map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
 
 const db = new PGlite();
@@ -461,10 +462,12 @@ test("제외 기능: 임의 URL·LLM·렌더·발행 동작은 서버가 거부�
     and table_type = 'BASE TABLE' and table_name like 'drink%' order by 1`)).rows.map((r) => r.table_name);
   const views = (await db.query<{ table_name: string }>(`select table_name from information_schema.views where table_schema='public'
     and table_name like 'drink%' order by 1`)).rows.map((r) => r.table_name);
-  assert.deepEqual(views, ["drink_review_validity"], "읽기 전용 판정 뷰 하나뿐");
+  assert.deepEqual(views, ["drink_output_validity", "drink_review_validity"], "읽기 전용 판정 뷰 둘뿐");
   // B단계(0051): 수집원·수집 실행·실행 문서, B 보완(0052): 소재 발견 자료·관측·후보·후보 연결 — 렌더·발행 큐는 없다.
-  assert.deepEqual(tables, ["drink_candidate_items", "drink_collection_items", "drink_collection_runs", "drink_deliverables",
-    "drink_discovery_candidates", "drink_discovery_items", "drink_discovery_observations", "drink_plan_revisions",
+  // C단계(0053): 제작 작업·파일·묶음·검수·비용 — 논문·리포트 렌더 큐(render_jobs)와 별개, 발행 큐는 없다.
+  assert.deepEqual(tables, ["drink_asset_manifests", "drink_candidate_items", "drink_collection_items", "drink_collection_runs",
+    "drink_cost_entries", "drink_deliverables", "drink_discovery_candidates", "drink_discovery_items", "drink_discovery_observations",
+    "drink_manifest_assets", "drink_media_assets", "drink_output_reviews", "drink_plan_revisions", "drink_production_jobs",
     "drink_snapshot_attestations", "drink_source_snapshots", "drink_sources", "drink_topic_reviews", "drink_topic_sources",
     "drink_topics", "drink_workflow_events"]);
 });
