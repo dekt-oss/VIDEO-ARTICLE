@@ -32,6 +32,10 @@ jobs:
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       ARXIV_CONTACT: ${{ secrets.ARXIV_CONTACT }}
       OPENALEX_MAILTO: ${{ secrets.OPENALEX_MAILTO }}
+      # 소재 발견(API) 수집원 키. 비어 있으면 그 수집원만 api_key_missing 으로 멈춘다(다른 수집원은 계속).
+      NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+      NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+      YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
       TIMEZONE: "Asia/Seoul"
       WORKER_ID: ${{ github.run_id }}
     steps:
