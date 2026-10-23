@@ -95,7 +95,7 @@ def test_keyed_connectors_refuse_without_key_and_send_key_only_in_header(monkeyp
         dd.youtube(fetcher(lambda r: js({}), ["www.googleapis.com"]), {"queries": ["sake"]}, None, 5)
     assert e.value.code == "api_key_missing"
     with pytest.raises(FetchError) as e:
-        dd.naver(fetcher(lambda r: js({}), ["openapi.naver.com"]), {"queries": ["막걸리"]}, None, 5)
+        dd.naver(fetcher(lambda r: js({}), ["naverapihub.apigw.ntruss.com"]), {"queries": ["막걸리"]}, None, 5)
     assert e.value.code == "api_key_missing"
 
     monkeypatch.setattr(config, "SECRETS", config.Secrets(youtube_data_api_key="TESTKEY-not-real"))
@@ -125,12 +125,18 @@ def test_naver_returns_search_snippets_only(monkeypatch):
     monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
 
     def h(req):
+        # 술째리고와 같은 API HUB 키 — developers.naver.com 헤더로 보내면 401(2026-10-23 실측)
+        assert req.url.host == "naverapihub.apigw.ntruss.com" and req.url.path.startswith("/search/v1/")
+        assert req.headers.get("x-ncp-apigw-api-key-id") == "id-test" and req.headers.get("x-ncp-apigw-api-key") == "secret-test"
+        assert "secret-test" not in str(req.url), "키를 URL 에 넣지 않는다"
         if "cafearticle" in req.url.path:
-            return js({"total": 900, "items": [{"title": "<b>막걸리</b> 개봉 후 보관?", "link": "https://cafe.naver.com/x/1",
-                                                "description": "냉장고에 며칠까지 괜찮나요?", "cafename": "전통주 카페"}]})
+            # API HUB 실응답은 JSON 본문을 text/plain 으로 보낸다(2026-10-23 실측) — 이걸 거절하면 네이버 발견이 통째로 멈춘다
+            r = js({"total": 900, "items": [{"title": "<b>막걸리</b> 개봉 후 보관?", "link": "https://cafe.naver.com/x/1",
+                                             "description": "냉장고에 며칠까지 괜찮나요?", "cafename": "전통주 카페"}]})
+            return httpx.Response(200, headers={"content-type": "text/plain;charset=UTF-8"}, content=r.content)
         return js({"total": 1, "items": [{"title": "막걸리 추천", "link": "https://blog.naver.com/y/2", "description": "입문용",
                                           "bloggername": "블로거", "postdate": "20261020"}]})
-    b = dd.naver(fetcher(h, ["openapi.naver.com"]), {"queries": ["막걸리"]}, None, 10)
+    b = dd.naver(fetcher(h, ["naverapihub.apigw.ntruss.com"]), {"queries": ["막걸리"]}, None, 10)
     cafe, blog = b.found
     assert cafe.platform == "naver_cafe" and cafe.title == "막걸리 개봉 후 보관?" and cafe.coverage == "title_summary"
     assert cafe.metrics == {} and blog.posted_at.startswith("2026-10-20")
@@ -226,5 +232,5 @@ def test_naver_keeps_same_day_posts_after_the_watermark(monkeypatch):
     def h(req):
         return js({"items": [{"title": "같은 날 글", "link": "https://blog.naver.com/y/9", "description": "d", "postdate": "20261022"}]})
     since = datetime(2026, 10, 21, 21, 30, tzinfo=timezone.utc)   # = 2026-10-22 06:30 KST
-    b = dd.naver(fetcher(h, ["openapi.naver.com"]), {"queries": ["막걸리"], "kinds": ["blog"]}, since, 10)
+    b = dd.naver(fetcher(h, ["naverapihub.apigw.ntruss.com"]), {"queries": ["막걸리"], "kinds": ["blog"]}, since, 10)
     assert [x.url for x in b.found] == ["https://blog.naver.com/y/9"]

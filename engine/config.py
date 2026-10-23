@@ -4308,3 +4308,7 @@ DRINKS_DISCOVERY_SUMMARY_CHARS: int = 600    # 확보한 요약 보관 길이(�
 DRINKS_YT_COMMENTS_PER_VIDEO: int = 20       # commentThreads.list 1회(쿼터 1). 질문 문장만 뽑는다
 DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 — 검색어 수 상한(0052 등록 때도 3개로 막는다)
 DRINKS_DISCOVERY_BACKFILL_DAYS: int = 365    # 발견 첫 실행은 최근 1년부터(오래된 것부터 받아 워처마크를 전진)
+# 네이버 검색은 네이버 클라우드 API HUB 로 부른다(2026-10-23) — 술째리고(k-vivino)와 같은 키를 쓴다.
+#   developers.naver.com(openapi.naver.com) 키와는 서로 호환되지 않는다(공식 이관 가이드). 한시 무료,
+#   검색 카테고리 통합 월 775,000건 한도에 닿으면 자동 차단 — 같은 키를 쓰는 서비스끼리 합산된다.
+DRINKS_NAVER_SEARCH_BASE: str = "https://naverapihub.apigw.ntruss.com/search/v1"

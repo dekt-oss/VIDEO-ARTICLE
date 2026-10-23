@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Callable, Optional
 
 from . import config
-from .drinks_fetch import JSON_TYPES, FetchError, SafeFetcher
+from .drinks_fetch import JSON_TYPES, TEXT_TYPES, FetchError, SafeFetcher
 from .drinks_parse import canonicalize, clean_text
 from .util import log
 
@@ -257,19 +257,22 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
 def naver(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> Batch:
     cid, sec = config.SECRETS.naver_client_id, config.SECRETS.naver_client_secret
     if not (cid and sec):
-        raise FetchError("api_key_missing", "NAVER_CLIENT_ID/SECRET 이 없습니다 — 네이버 발견은 키를 넣기 전까지 멈춰 있습니다")
-    hdr = {"X-Naver-Client-Id": cid, "X-Naver-Client-Secret": sec}
+        raise FetchError("api_key_missing", "NAVER_CLIENT_ID/SECRET(네이버 클라우드 API HUB 키)이 없습니다 — 네이버 발견은 키를 넣기 전까지 멈춰 있습니다")
+    hdr = {"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": sec}
     found: list[Found] = []
     parsed = incomplete = 0
-    for kind, platform, base in [("cafearticle", "naver_cafe", "https://openapi.naver.com/v1/search/cafearticle.json"),
-                                 ("blog", "naver_blog", "https://openapi.naver.com/v1/search/blog.json")]:
+    hub = config.DRINKS_NAVER_SEARCH_BASE
+    for kind, platform, base in [("cafearticle", "naver_cafe", f"{hub}/cafearticle"),
+                                 ("blog", "naver_blog", f"{hub}/blog")]:
         if kind not in (cfg.get("kinds") or ["cafearticle", "blog"]):
             continue
         for q in cfg.get("queries") or []:
             if len(found) >= limit:
                 incomplete += 1
                 break
-            d = json.loads(f.get(base, accept=JSON_TYPES, headers=hdr,
+            # API HUB 는 JSON 본문을 text/plain 으로 내려보낸다(2026-10-23 실측) — 이 커넥터만 그 형식을 받는다.
+            #   본문은 아래 json.loads 가 읽으므로 JSON 이 아니면 그대로 실패한다.
+            d = json.loads(f.get(base, accept=JSON_TYPES + TEXT_TYPES, headers=hdr,
                                  params={"query": q, "display": min(30, limit - len(found)), "sort": "date"}).body)
             items = d.get("items") or []
             parsed += len(items)

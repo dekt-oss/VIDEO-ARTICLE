@@ -26,8 +26,8 @@ create or replace function drinks_discovery_connector(p_platform text) returns j
     when 'youtube' then jsonb_build_object('entry', 'https://www.googleapis.com/youtube/v3/search',
       'api_hosts', jsonb_build_array('www.googleapis.com'), 'item_hosts', jsonb_build_array('www.youtube.com'),
       'needs_key', true, 'coverage', 'title_summary_comments', 'license', 'YouTube API 서비스 약관 — 메타데이터·링크만 보관')
-    when 'naver' then jsonb_build_object('entry', 'https://openapi.naver.com/v1/search/cafearticle.json',
-      'api_hosts', jsonb_build_array('openapi.naver.com'),
+    when 'naver' then jsonb_build_object('entry', 'https://naverapihub.apigw.ntruss.com/search/v1/cafearticle',
+      'api_hosts', jsonb_build_array('naverapihub.apigw.ntruss.com'),
       'item_hosts', jsonb_build_array('cafe.naver.com', 'blog.naver.com', 'm.blog.naver.com'),
       'needs_key', true, 'coverage', 'title_summary', 'license', '네이버 검색 API 약관 — 검색 결과 요약만(회원 전용 본문 아님)')
     else null end
