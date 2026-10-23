@@ -11,6 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
 MIG = ROOT / "supabase" / "migrations" / "0050_drinks_factory_phase_a.sql"
 MIG_B = ROOT / "supabase" / "migrations" / "0051_drinks_factory_phase_b.sql"
+MIG_DISC = ROOT / "supabase" / "migrations" / "0052_drinks_discovery.sql"
 
 
 def _drinks_web_files():
@@ -42,7 +43,8 @@ def test_drinks_code_never_reaches_render_or_publish_paths():
     users = [f for f in _drinks_web_files() if "trigger-render" in code(f)]
     assert [f.relative_to(WEB).as_posix() for f in users] == ["app/api/drinks/route.ts"]
     calls = re.findall(r"triggerWorkflow\(([^)]*)\)", code(users[0]))
-    assert calls == ['"drinks-collect.yml", null'], f"주류 라우트가 깨우는 워크플로는 수집 워커 하나: {calls}"
+    assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null'], \
+        f"주류 라우트가 깨우는 워크플로는 수집 워커와 로컬 제작 워커뿐: {calls}"
 
 
 def test_drinks_queries_are_server_only():
@@ -80,6 +82,46 @@ def test_phase_b_migration_grants_nothing_to_anon_and_touches_only_drinks():
     # 렌더·발행·LLM 큐는 B단계에도 없다
     for bad in ["render", "publish", "upload", "llm"]:
         assert not any(bad in t for t in tables), bad
+
+
+def test_discovery_migration_grants_nothing_to_anon_and_keeps_discovery_apart_from_evidence():
+    sql = MIG_DISC.read_text(encoding="utf-8").lower()
+    assert not re.search(r"grant[^;]*to[^;]*\b(anon|authenticated|public)\b", sql)
+    assert "create policy" not in sql
+    tables = re.findall(r"create table if not exists (\w+)", sql)
+    assert sorted(tables) == ["drink_candidate_items", "drink_discovery_candidates", "drink_discovery_items",
+                              "drink_discovery_observations"]
+    for t in tables:
+        assert f"alter table {t} enable row level security" in sql, t
+    altered = set(re.findall(r"alter table (\w+)", sql))
+    assert altered <= set(tables) | {"drink_sources", "drink_collection_items"}, altered
+    # 발견 자료를 소재에 붙일 때는 역할 discovery 로만(근거 아님)
+    promote = sql[sql.index("create or replace function drinks_promote_candidate"):]
+    promote = promote[:promote.index("end $$;")]
+    assert "'role', 'discovery'" in promote and "'evidence'" not in promote
+
+
+def test_production_migration_and_worker_stay_free_and_apart_from_paper_storage():
+    sql = (ROOT / "supabase" / "migrations" / "0053_drinks_production.sql").read_text(encoding="utf-8").lower()
+    assert not re.search(r"grant[^;]*to[^;]*\b(anon|authenticated|public)\b", sql)
+    assert "create policy" not in sql
+    tables = re.findall(r"create table if not exists (\w+)", sql)
+    assert sorted(tables) == ["drink_asset_manifests", "drink_cost_entries", "drink_manifest_assets", "drink_media_assets",
+                              "drink_output_reviews", "drink_production_jobs"]
+    for t in tables:
+        assert f"alter table {t} enable row level security" in sql, t
+    # 논문·리포트 렌더 표·공개 버킷을 쓰지 않는다(storage_gc 가 걷는 곳). 설명 주석은 뺀다.
+    code = "\n".join(l.split("--", 1)[0] for l in sql.splitlines())
+    for bad in ["render_jobs", "report_render_jobs", "render_assets", "'renders'"]:
+        assert bad not in code, bad
+    assert "'paid_disabled'" in sql, "유료 생성 요청은 예산 미설정으로 거부"
+    wf = (ROOT / ".github" / "workflows" / "drinks-produce.yml").read_text(encoding="utf-8")
+    for key in ["ANTHROPIC", "GEMINI", "DEEPSEEK", "ELEVENLABS", "HIGGSFIELD", "schedule:"]:
+        assert key not in wf, key
+    worker = (ROOT / "engine" / "drinks_produce.py").read_text(encoding="utf-8")
+    assert '"upsert": "false"' in worker and 'key.startswith("drinks/")' in worker
+    gc = (ROOT / "engine" / "storage_gc.py").read_text(encoding="utf-8")
+    assert "drink_" not in gc, "주류 파일을 정리 경로에 연결하지 않았다(정리는 아직 승인되지 않음)"
 
 
 def test_factory_branch_is_explicit_for_drinks():

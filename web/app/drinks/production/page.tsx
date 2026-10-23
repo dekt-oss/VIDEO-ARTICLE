@@ -1,6 +1,6 @@
 // 주류 제작 (/drinks/production) — 편성된 소재의 형식별 제작안 승인 상태.
-// ★ A단계에는 렌더·파일 검수·발행이 없다. "제작안 승인"은 사람이 쓴 대본·페이지 구성을 승인한 것뿐이고,
-//   실제 파일이 만들어졌다는 뜻이 아니다. 렌더 완료·파일 승인·발행 완료로 바꾸는 수동 우회도 없다.
+// ★ "제작안 승인"은 대본·페이지 구성 승인일 뿐이다. 파일은 /drinks/production/[planId] 에서 렌더하고 따로 검수한다(C단계).
+//   발행(Instagram)은 아직 없다(D단계).
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
@@ -14,7 +14,7 @@ const TABS = {
   action: "조치 필요",
   drafting: "작성 중",
   review: "검수 대기",
-  approved: "제작안 승인(제작 미연결)",
+  approved: "제작안 승인 — 렌더·파일 검수",
 } as const;
 type TabKey = keyof typeof TABS;
 
@@ -35,9 +35,9 @@ export default async function DrinksProductionPage(props: { searchParams: Promis
         <h1>🍶 제작</h1>
         <span className="muted">형식별 제작안</span>
       </div>
-      <p className="banner-warn" style={{ marginTop: 12 }}>
-        <b>실제 제작 미연결.</b> 영상 렌더·카드 이미지 생성·파일 검수·Instagram 발행은 아직 연결되지 않았습니다(B~D단계).
-        여기서 보이는 승인은 제작안(대본·장면 / 페이지 구성) 승인입니다.
+      <p className="banner-info" style={{ marginTop: 12 }}>
+        승인된 제작안은 [렌더·검수]에서 <b>로컬·무료 렌더</b>(대체 이미지 + 무료 TTS)로 파일을 만들고 최종 파일을 검수합니다.
+        유료 생성(목표 화풍)은 예산이 정해지지 않아 꺼져 있고, Instagram 발행은 아직 없습니다(D단계).
       </p>
       {board.state !== "ok" ? (
         <LoadProblem state={board.state} error={board.state === "failed" ? board.error : undefined} />
@@ -85,7 +85,7 @@ export default async function DrinksProductionPage(props: { searchParams: Promis
                       )}
                       {unselected && <span className="dk-warn"> · 소재가 편성 해제됨</span>}
                       {evidenceUnusable && <span className="dk-bad"> · 근거 현재 사용 불가</span>}
-                      {bucket(p, unselected, evidenceUnusable) === "approved" && <span className="pill">실제 제작 미연결</span>}
+                      {bucket(p, unselected, evidenceUnusable) === "approved" && p && <Link className="pill" href={`/drinks/production/${p.id}`}>렌더·검수 →</Link>}
                     </span>
                   </div>
                 ))

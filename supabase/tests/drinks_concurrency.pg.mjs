@@ -30,7 +30,8 @@ await admin.query(`do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
   if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
 end $$; grant usage on schema public to anon, authenticated, service_role;`);
-for (const f of ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql"]) {
+for (const f of ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
+  "0053_drinks_production.sql"]) {
   await admin.query(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
 }
 
@@ -374,6 +375,96 @@ await (async () => {
     assert.equal(rb.ok, false);
     assert.equal(codeOf(rb.e), "active_limit");
     assert.equal(n.n, 12);
+  });
+})();
+
+// ── C단계(0053) 제작 경합 ──
+const hex64 = () => Array.from({ length: 64 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+async function approvedVideoPlan() {
+  const SC = { relevance: 4, utility: 4, curiosity: 3, fit_video: 3, fit_carousel: 4, timeliness: 2 };
+  const t = await call(A, "drinks_create_topic", { title: "제작 경합", question: `q ${Math.random()}`, categories: ["sake"], lane: "evergreen" });
+  const id = t.topic_id;
+  const tv = async () => (await one("select version from drink_topics where id=$1", [id])).version;
+  await call(A, "drinks_triage", { topic_id: id, expected_version: await tv(), scores: SC });
+  await call(A, "drinks_topic_action", { topic_id: id, expected_version: await tv(), action: "start_research" });
+  const s = await call(A, "drinks_add_source", { topic_id: id, source: { canonical_url: `https://p.example/${Math.random()}`, body_text: BODY,
+    rights_status: "quote_ok" } });
+  const sv = await call(A, "drinks_save_review", { topic_id: id, expected_topic_version: await tv(), scores: SC,
+    brief: { ...brief, proposed_formats: ["video"], required_claims: { video: ["c1"] } },
+    evidence_pack: { claims: [{ claim_id: "c1", text: "정미율", claim_type: "process", support_review: "supported",
+      source_refs: [{ snapshot_id: s.snapshot_id, original_quote: "정미율 50% 이하의 쌀을 사용한다" }] }] } });
+  for (const action of ["submit", "approve"]) {
+    const r = await one("select version from drink_topic_reviews where id=$1", [sv.review_id]);
+    await call(A, "drinks_review_action", { review_id: sv.review_id, expected_version: r.version, action });
+  }
+  const r = await one("select approved_hash from drink_topic_reviews where id=$1", [sv.review_id]);
+  await call(A, "drinks_select", { topic_id: id, expected_version: await tv(), review_id: sv.review_id, review_input_hash: r.approved_hash,
+    formats: ["video"], editorial_week: "2026-10-26" });
+  const pl = await call(A, "drinks_save_plan", { topic_id: id, format: "video", topic_review_id: sv.review_id,
+    plan_json: { scenes: [{ narration: "왜?", content_kind: "transition" }, { narration: "정미율", claim_ids: ["c1"] }] } });
+  for (const action of ["submit", "approve"]) {
+    const v = (await one("select version from drink_plan_revisions where id=$1", [pl.revision_id])).version;
+    await call(A, "drinks_plan_action", { revision_id: pl.revision_id, expected_version: v, action });
+  }
+  return { topicId: id, planId: pl.revision_id, snapshotId: s.snapshot_id };
+}
+async function renderedPending(P) {
+  await call(A, "drinks_request_render", { plan_revision_id: P.planId });
+  const g = await call(A, "drinks_start_render", { worker_id: "w" });
+  const lease = { job_id: g.job.job_id, lease_token: g.job.lease_token };
+  const reg = async (role) => (await call(A, "drinks_register_asset", { ...lease, asset: { storage_key: `drinks/${g.job.job_id}/${role}`,
+    sha256: hex64(), mime: role === "final" ? "video/mp4" : "image/png", bytes: 10, rights: "generated_local" } })).asset_id;
+  const fin = await call(A, "drinks_finish_render", { ...lease, outcome: "succeeded", assets: [
+    { asset_id: await reg("final"), role: "final_video", position: 1 }, { asset_id: await reg("cover"), role: "cover", position: 1 }] });
+  return one("select * from drink_output_reviews where manifest_id=$1", [fin.manifest_id]);
+}
+const VCK = { scene_types_labeled: true, no_real_product_implied: true, claims_match_evidence: true, audio_subtitles_ok: true, vertical_ok: true };
+
+// ⑫ 두 워커가 동시에 제작 작업을 가져간다 — 하나만, 다른 쪽은 기다리지 않는다
+await (async () => {
+  const P = await approvedVideoPlan();
+  await call(A, "drinks_request_render", { plan_revision_id: P.planId });
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_start_render", { worker_id: "A" }),
+    (c) => call(c, "drinks_start_render", { worker_id: "B" }));
+  await check("⑫ 동시 start_render: 제작 작업 하나를 한 워커만", async () => {
+    assert.ok(ra.job);
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(rb.v.job, null);
+    assert.equal(blocked, false);
+  });
+  await call(A, "drinks_finish_render", { job_id: ra.job.job_id, lease_token: ra.job.lease_token, outcome: "failed", error_code: "t" });
+})();
+
+// ⑬ 같은 제작안에 렌더 요청 두 번이 동시에 — 작업은 하나, 나중 요청은 같은 작업을 돌려받는다
+await (async () => {
+  const P = await approvedVideoPlan();
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_request_render", { plan_revision_id: P.planId }),
+    (c) => call(c, "drinks_request_render", { plan_revision_id: P.planId }));
+  const n = await one("select count(*)::int n from drink_production_jobs where plan_revision_id=$1", [P.planId]);
+  await check("⑬ 동시 렌더 요청: 작업 하나, 나중 요청은 기존 작업", async () => {
+    assert.equal(blocked, true, "제작안 행 잠금으로 기다린다");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(rb.v.existing, true);
+    assert.equal(rb.v.job_id, ra.job_id);
+    assert.equal(n.n, 1);
+  });
+  await call(A, "drinks_cancel_render", { job_id: ra.job_id });
+})();
+
+// ⑭ 권리 철회(진행 중) vs 파일 승인 — 승인은 철회를 기다렸다가 다시 재서 승인되지 않는다
+await (async () => {
+  const P = await approvedVideoPlan();
+  const rev = await renderedPending(P);
+  const { rb, blocked } = await race(
+    (c) => call(c, "drinks_attest_source", { topic_id: P.topicId, snapshot_id: P.snapshotId, kind: "rights_revoked",
+      fields: { rights_status: "restricted" }, reason: "철회", revoke_affected: false }),
+    (c) => call(c, "drinks_output_review_action", { review_id: rev.id, expected_version: rev.version, action: "approve", checklist: VCK }));
+  const after = await one("select status from drink_output_reviews where id=$1", [rev.id]);
+  await check("⑭ 철회 진행 중 승인: 기다린 뒤 다시 재서 승인되지 않는다(blocked)", async () => {
+    assert.equal(blocked, true, "승인이 제작안 행 잠금에서 기다린다");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.notEqual(after.status, "approved");
+    assert.equal(after.status, "blocked");
   });
 })();
 

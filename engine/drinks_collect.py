@@ -288,7 +288,12 @@ def run_queue(rpc: Rpc, *, worker_id: str, fetcher_factory: FetcherFactory = def
             break
         log.info("drinks: 실행 %s 시작 (%s · %s)", run["run_id"], run["source"]["name"], run["mode"])
         try:
-            out = RunProcessor(run, rpc, fetcher_factory(run)).process()
+            if run["source"].get("purpose") == "discovery":
+                from .drinks_discover import DiscoveryProcessor
+
+                out = DiscoveryProcessor(run, rpc, fetcher_factory(run)).process()
+            else:
+                out = RunProcessor(run, rpc, fetcher_factory(run)).process()
         except Exception as exc:  # noqa: BLE001 — 끝내기 기록마저 실패: 임대 만료 뒤 다음 워커가 '중단'으로 닫는다
             log.exception("drinks: 실행 %s 를 끝내지 못했습니다", run["run_id"])
             out = {"status": "failed", "error": type(exc).__name__}
@@ -307,6 +312,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         log.info("drinks: 예약 실행 %d건 생성", schedule_runs(rpc, today_local()))
     results = run_queue(rpc, worker_id=config.WORKER_ID)
+    try:
+        from .drinks_discover import suggest_candidates
+
+        log.info("drinks: 소재 후보 묶기 %s", suggest_candidates(rpc))  # 규칙만(LLM 0회). 승인·편성은 사람이 한다
+    except Exception:  # noqa: BLE001 — 후보 묶기 실패가 수집 결과를 가리지 않게 따로 기록
+        log.exception("drinks: 소재 후보 묶기 실패")
     bad = [r for r in results if r.get("status") in ("failed", "lease_lost")]
     log.info("drinks: 실행 %d건 처리 (실패·임대 상실 %d건)", len(results), len(bad))
     return 1 if bad else 0
