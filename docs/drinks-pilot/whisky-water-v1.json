@@ -1,11 +1,13 @@
 {
   "pilot_id": "whisky-water-v1",
   "written_at": "2026-10-24",
-  "script_rev": "v1 — 운영자 선택 '위스키 물 한방울부터'(2026-10-24). 일상 장면 → 의외의 질문 → 도해로 원인 → 따라 할 팁",
+  "script_rev": "v2 — 2026-10-24 운영자 지적 '물 한두방울 넣는다고 50도짜리가 45도 이하가 되나??' 반영. 한두 방울은 0.1%p 남짓밖에 안 바뀐다(계산 c6) — 논문이 설명하는 건 진한 원액을 묽힐 때다",
   "topic": {
     "title": "위스키에 물 한 방울, 왜 넣을까?",
     "question": "비싼 위스키에 왜 일부러 물을 떨어뜨릴까?",
-    "categories": ["whisky"]
+    "categories": [
+      "whisky"
+    ]
   },
   "source": {
     "publisher": "Scientific Reports (Karlsson & Friedman, 2017)",
@@ -15,49 +17,153 @@
     "fetched_at": "2026-10-24 (Europe PMC PMC5561096 전문)"
   },
   "claims": [
-    {"claim_id": "c1", "text": "위스키는 보통 물을 조금 더 타서 마시면 맛이 좋아진다고 여겨지고, 애호가들은 마시기 전에 물을 몇 방울 넣곤 한다",
-     "original_quote": "often drunk after further slight dilution to enhance its taste"},
-    {"claim_id": "c2", "text": "위스키의 스모키한 향은 페놀, 특히 과이아콜(guaiacol)에서 나온다",
-     "original_quote": "Chemically, the smoky flavour is attributed to phenols, and in particular guaiacol"},
-    {"claim_id": "c3", "text": "컴퓨터 시뮬레이션에서 과이아콜은 알코올 45% 이하에서는 주로 액체 표면에 있고, 59% 이상에서는 알코올에 둘러싸여 안쪽으로 밀려난다",
-     "original_quote": "primarily found at the liquid-air interface in mixtures that contain up to 45 vol-% of ethanol. At ethanol concentrations of 59 vol-% or higher, guaiacol is increasingly surrounded by ethanol molecules and is driven to the bulk"},
-    {"claim_id": "c4", "text": "숙성을 마친 원액(캐스크 스트렝스)은 알코올 55~65%이고, 병에 담기 전 물을 타서 약 40%로 맞춘다",
-     "original_quote": "an alcohol content of 55–65 vol-% of cask-strength whisky. Before bottling, the whisky is diluted to around 40 vol-%"},
-    {"claim_id": "c5", "text": "술은 표면부터 먼저 마시게 되므로, 이 결과가 물을 타면 맛이 사는 이유를 이해하는 데 도움이 된다(컴퓨터 시뮬레이션 결과)",
-     "original_quote": "Because the drink is consumed at the interface first, our findings help to understand why adding water to whisky helps to enhance its taste"}
+    {
+      "claim_id": "c1",
+      "text": "위스키는 보통 물을 조금 더 타서 마시면 맛이 좋아진다고 여겨지고, 애호가들은 마시기 전에 물을 몇 방울 넣곤 한다",
+      "original_quote": "often drunk after further slight dilution to enhance its taste"
+    },
+    {
+      "claim_id": "c2",
+      "text": "위스키의 스모키한 향은 페놀, 특히 과이아콜(guaiacol)에서 나온다",
+      "original_quote": "Chemically, the smoky flavour is attributed to phenols, and in particular guaiacol"
+    },
+    {
+      "claim_id": "c3",
+      "text": "컴퓨터 시뮬레이션에서 과이아콜은 알코올 45% 이하에서는 주로 액체 표면에 있고, 59% 이상에서는 알코올에 둘러싸여 안쪽으로 밀려난다",
+      "original_quote": "primarily found at the liquid-air interface in mixtures that contain up to 45 vol-% of ethanol. At ethanol concentrations of 59 vol-% or higher, guaiacol is increasingly surrounded by ethanol molecules and is driven to the bulk"
+    },
+    {
+      "claim_id": "c4",
+      "text": "숙성을 마친 원액(캐스크 스트렝스)은 알코올 55~65%이고, 병에 담기 전 물을 타서 약 40%로 맞춘다",
+      "original_quote": "an alcohol content of 55–65 vol-% of cask-strength whisky. Before bottling, the whisky is diluted to around 40 vol-%"
+    },
+    {
+      "claim_id": "c5",
+      "text": "술은 표면부터 먼저 마시게 되므로, 이 결과가 물을 타면 맛이 사는 이유를 이해하는 데 도움이 된다(컴퓨터 시뮬레이션 결과)",
+      "original_quote": "Because the drink is consumed at the interface first, our findings help to understand why adding water to whisky helps to enhance its taste"
+    },
+    {
+      "claim_id": "c6",
+      "text": "계산(원문 아님): 30ml 기준 50%에 물 2방울(약 0.1ml)은 49.8%, 물 1티스푼(5ml)은 42.9%. 40%에 물 2방울은 39.9%",
+      "original_quote": "(계산 — 알코올 양 ÷ 전체 양. 한 방울 약 0.05ml 가정)"
+    }
   ],
   "scenes": [
-    {"narration": "위스키 좀 마신다는 사람들, 비싼 위스키에 일부러 물을 떨어뜨려요.",
-     "visual_role": "reality", "content_kind": "fact", "claim_ids": ["c1"], "timing_sec": 4,
-     "explanation": "위스키 잔 하나, 스포이트에서 물 한 방울이 떨어진다",
-     "visual_prompt": "A single tulip-shaped whisky glass with amber whisky standing on a plain table; a small glass dropper held just above the glass releases one clear drop of water toward the surface; nothing else on the table"},
-    {"narration": "아깝게 왜 그럴까요? 물을 조금 타야 맛이 더 산다는 거예요.",
-     "visual_role": "reality", "content_kind": "fact", "claim_ids": ["c1"], "timing_sec": 4, "continuity": "ref:1",
-     "explanation": "같은 잔, 물방울이 떨어져 표면에 잔물결이 퍼진다",
-     "visual_prompt": "The water drop has just landed in the same glass and small circular ripples spread across the whisky surface; the dropper is gone"},
-    {"narration": "위스키의 스모키한 향은, 과이아콜이라는 작은 분자에서 나와요.",
-     "visual_role": "mechanism", "content_kind": "fact", "claim_ids": ["c2"], "timing_sec": 5,
-     "explanation": "잔을 반으로 자른 단면 — 위스키 속에 향 분자 다섯 개가 보인다",
-     "visual_prompt": "Isometric cutaway of one large tulip-shaped whisky glass on a plain table, the front half cut away to show the amber liquid inside; inside the liquid float exactly five large ball-and-stick molecules, the amber part being explained, each one clearly visible and separate; nothing else in the glass or on the table"},
-    {"narration": "그런데 원액처럼 알코올이 60% 가까이 진하면, 이 분자가 알코올에 붙잡혀서 잔 안쪽으로 숨어요.",
-     "visual_role": "mechanism", "content_kind": "fact", "claim_ids": ["c3", "c4"], "timing_sec": 6, "continuity": "ref:3",
-     "explanation": "파란 알코올 분자들이 향 분자를 둘러싸 잔 아래쪽에 붙잡고 있다",
-     "visual_prompt": "Many small muted blue ball-and-stick molecules, the alcohol, crowd tightly around the five amber molecules and hold them down near the bottom of the glass, far from the liquid surface",
-     "motion_prompt": "A single clear drop of water falls into the glass; the muted blue molecules loosen and spread apart, and the five amber molecules drift upward one after another until they reach the liquid surface and stay there"},
-    {"narration": "물을 타서 45% 아래로 내려가면, 향 분자가 잔 표면으로 올라오고요.",
-     "visual_role": "mechanism", "content_kind": "fact", "claim_ids": ["c3"], "timing_sec": 5, "continuity": "ref:4",
-     "explanation": "물이 들어가 액면이 조금 올라가고, 향 분자 다섯 개가 표면에 떠 있다",
-     "visual_prompt": "Clear water has been added and the liquid level is slightly higher; the five amber molecules have risen and now sit right at the top surface of the liquid, while the muted blue molecules stay loosely spread below them"},
-    {"narration": "술은 그 표면부터 먼저 마시게 되니까, 향이 더 잘 느껴지는 거죠.",
-     "visual_role": "reality", "content_kind": "fact", "claim_ids": ["c5"], "timing_sec": 5, "continuity": "ref:2",
-     "explanation": "같은 잔을 손이 들어 올린다 — 표면이 빛을 받는다",
-     "visual_prompt": "A hand lifts the same glass off the table and tilts it slightly toward the viewer, the whisky surface catching the light"},
-    {"narration": "컴퓨터 시뮬레이션으로 밝힌 결과예요. 다음엔 물 한두 방울부터 넣어 보세요.",
-     "visual_role": "text_card", "content_kind": "fact", "claim_ids": ["c1", "c5"], "timing_sec": 5,
-     "explanation": "해 보기: 물 1~2방울부터 · 진할수록 향이 안쪽에 숨는다"}
+    {
+      "narration": "위스키 좀 마신다는 사람들, 비싼 위스키에 일부러 물을 떨어뜨려요.",
+      "visual_role": "reality",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c1"
+      ],
+      "timing_sec": 4,
+      "explanation": "위스키 잔 하나, 스포이트에서 물 한 방울이 떨어진다",
+      "visual_prompt": "A single tulip-shaped whisky glass with amber whisky standing on a plain table; a small glass dropper held just above the glass releases one clear drop of water toward the surface; nothing else on the table"
+    },
+    {
+      "narration": "아깝게 왜 그럴까요? 물을 타야 향이 산다는 건데요.",
+      "visual_role": "reality",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c1"
+      ],
+      "timing_sec": 4,
+      "continuity": "ref:1",
+      "explanation": "같은 잔, 물방울이 떨어져 표면에 잔물결이 퍼진다",
+      "visual_prompt": "The water drop has just landed in the same glass and small circular ripples spread across the whisky surface; the dropper is gone"
+    },
+    {
+      "narration": "위스키의 스모키한 향은, 과이아콜이라는 작은 분자에서 나와요.",
+      "visual_role": "mechanism",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c2"
+      ],
+      "timing_sec": 5,
+      "explanation": "잔을 반으로 자른 단면 — 위스키 속에 향 분자 다섯 개가 보인다",
+      "visual_prompt": "Isometric cutaway of one large tulip-shaped whisky glass on a plain table, the front half cut away to show the amber liquid inside; inside the liquid float exactly five large ball-and-stick molecules, the amber part being explained, each one clearly visible and separate; nothing else in the glass or on the table"
+    },
+    {
+      "narration": "알코올이 60% 가까운 원액에선, 이 분자가 알코올에 붙잡혀서 잔 안쪽으로 숨어요.",
+      "visual_role": "mechanism",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c3",
+        "c4"
+      ],
+      "timing_sec": 6,
+      "continuity": "ref:3",
+      "explanation": "파란 알코올 분자들이 향 분자를 둘러싸 잔 아래쪽에 붙잡고 있다",
+      "visual_prompt": "Many small muted blue ball-and-stick molecules, the alcohol, crowd tightly around the five amber molecules and hold them down near the bottom of the glass, far from the liquid surface",
+      "motion_prompt": "A small spoonful of clear water pours into the glass; the muted blue molecules loosen and spread apart, and the five amber molecules drift upward one after another until they reach the liquid surface and stay there"
+    },
+    {
+      "narration": "그런데 물을 타서 45% 아래로 내려가면, 향 분자가 잔 표면으로 올라와요.",
+      "visual_role": "mechanism",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c3"
+      ],
+      "timing_sec": 5,
+      "continuity": "ref:4",
+      "explanation": "물이 들어가 액면이 조금 올라가고, 향 분자 다섯 개가 표면에 떠 있다",
+      "visual_prompt": "Clear water has been added and the liquid level is slightly higher; the five amber molecules have risen and now sit right at the top surface of the liquid, while the muted blue molecules stay loosely spread below them"
+    },
+    {
+      "narration": "술은 그 표면부터 먼저 마시게 되니까, 향이 더 잘 느껴지는 거죠.",
+      "visual_role": "reality",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c5"
+      ],
+      "timing_sec": 5,
+      "continuity": "ref:2",
+      "explanation": "같은 잔을 손이 들어 올린다 — 표면이 빛을 받는다",
+      "visual_prompt": "A hand lifts the same glass off the table and tilts it slightly toward the viewer, the whisky surface catching the light"
+    },
+    {
+      "narration": "단, 40도 위스키는 이미 45% 아래라서, 물 한두 방울로는 큰 차이가 없어요.",
+      "visual_role": "text_card",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c3",
+        "c6"
+      ],
+      "timing_sec": 5,
+      "explanation": "40도 + 물 2방울 → 39.9% · 이미 표면 쪽"
+    },
+    {
+      "narration": "50도쯤 되는 위스키라면, 30ml 한 잔에 물 한 티스푼쯤 타 보세요. 컴퓨터 시뮬레이션으로 밝힌 결과예요.",
+      "visual_role": "text_card",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c3",
+        "c5",
+        "c6"
+      ],
+      "timing_sec": 6,
+      "explanation": "50도 30ml + 물 1티스푼 → 약 43% · 근거: 컴퓨터 시뮬레이션(2017)"
+    }
   ],
   "stages": {
-    "1": {"what": "이어진 장면 3~5의 3D 도해 3장 — 이 영상의 핵심(향 분자가 숨었다가 표면으로)", "images": [3, 4, 5], "cap_usd": 0.55},
-    "2": {"what": "4번 장면을 6초 움직이는 장면으로(물이 떨어지고 향 분자가 표면으로 떠오른다)", "clips": [{"scene": 4, "sec": 6}], "cap_usd": 0.40}
+    "1": {
+      "what": "이어진 장면 3~5의 3D 도해 3장 — 이 영상의 핵심(향 분자가 숨었다가 표면으로)",
+      "images": [
+        3,
+        4,
+        5
+      ],
+      "cap_usd": 0.55
+    },
+    "2": {
+      "what": "4번 장면을 6초 움직이는 장면으로(물이 떨어지고 향 분자가 표면으로 떠오른다)",
+      "clips": [
+        {
+          "scene": 4,
+          "sec": 6
+        }
+      ],
+      "cap_usd": 0.4
+    }
   }
 }
