@@ -338,6 +338,11 @@ _CLOSERS = ("에서는", "으로는", "에게는", "까지는", "부터는", "�
             "이나", "이든", "라도", "든", "나",
             "은", "는", "이", "가", "을", "를", "에", "로", "와", "과", "도", "만", "고", "면", "서", "게", "다", "랑")
 _PARTICLE_N = ("은", "는", "을", "를", "인")   # 받침 ㄴ·ㄹ 로 끝나도 조사인 것(관형형으로 보지 않는다)
+# '-다는·-라는·-하는…' 은 '는'으로 끝나도 조사가 아니라 뒤 명사를 꾸민다(마신다는 사람들, 과이아콜이라는 분자).
+_ADNOMINAL = ("다는", "라는", "하는", "되는", "있는", "없는", "이라는", "란")
+# '-은'으로 끝나 조사와 헷갈리는 흔한 꾸밈말(형용사 관형형). 목록 밖은 조사로 본다(틀려도 한 줄 더 길어질 뿐이다).
+_ADJ_N = {"작은", "좋은", "많은", "높은", "낮은", "같은", "짧은", "깊은", "얕은", "옅은", "짙은", "적은", "넓은", "좁은", "검은",
+          "붉은", "밝은", "맑은", "묽은", "늙은", "젊은", "얇은", "굵은", "곧은", "괜찮은"}
 # 앞말에 붙어야 뜻이 서는 의존 명사(쓸 수, 고를 때, 먹을 것 …) — 이 앞에서 끊지 않는다.
 #   정확한 꼴만 본다 — 접두 비교를 하면 '적힌'·'수입'·'때문' 같은 다른 말까지 걸린다.
 _BOUND_NOUNS = {b + p for b in ("수", "때", "것", "줄", "적", "뿐", "듯", "만큼", "정도", "채", "척", "편")
@@ -353,7 +358,7 @@ def _is_modifier(tok: str) -> bool:
     b = _bare(tok)
     if not b or _SOFT_END.search(tok) or _HARD_END.search(tok):
         return False
-    if b in _DETERMINERS or b.endswith("의"):
+    if b in _DETERMINERS or b in _ADJ_N or b.endswith("의") or (len(b) >= 3 and b.endswith(_ADNOMINAL)):
         return True
     last = b[-1]
     # 조사·어미로 끝나면(신청하면·지역에서·술은 …) 받침이 ㄴ·ㄹ 이어도 꾸미는 말이 아니다
@@ -402,6 +407,7 @@ def _phrase_groups(text: str) -> list[tuple[str, bool, float]]:
                 continue   # 문장 끝을 넘어 묶지 않는다
             chars = sum(len(_bare(t)) for t in chunk)
             cost = ((chars - ideal) / 3.0) ** 2
+            cost += 5.0 * sum(1 for t in chunk[:-1] if _SOFT_END.search(t))   # 쉼표를 줄 가운데 두지 않는다
             if chars > mx and len(chunk) > 1:
                 cost += 40.0
             cost -= _break_score(chunk[-1], toks[j]) if j < n else 6.0

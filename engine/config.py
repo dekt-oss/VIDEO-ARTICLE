@@ -3141,7 +3141,7 @@ CAPTION_CHUNK_FAST: dict[str, int] = {"ko": 2, "en": 3}
 #   길이 목표는 위 벤치마크(1~2어절)를 그대로 따른다. 기본 꺼짐 — 주류 렌더가 켠다(논문·리포트 자막은 그대로).
 CAPTION_PHRASE_BREAKS: bool = os.getenv("CAPTION_PHRASE_BREAKS", "").lower() in ("1", "true", "yes")
 CAPTION_PHRASE_IDEAL_CHARS: int = 7     # 한 줄 목표 글자 수(공백 제외)
-CAPTION_PHRASE_MAX_CHARS: int = 12      # 이보다 길면 어절 하나짜리가 아닌 한 끊는다
+CAPTION_PHRASE_MAX_CHARS: int = 14      # 이보다 길면 어절 하나짜리가 아닌 한 끊는다(화면 한 줄 상한 SUBTITLE_MAX_CHARS 22 안)
 CAPTION_PHRASE_MAX_TOKENS: int = 4     # "그 지역 술만의 특징이"처럼 꾸밈이 겹친 덩어리를 한 줄에 두려면 4(글자 상한이 길이를 잡는다)
 # 한 줄 최대 글자수(오토핏 근사). EN 은 폭 초과 방지 위해 넉넉히.
 CAPTION_MAX_CHARS: dict[str, int] = {"ko": SUBTITLE_MAX_CHARS, "en": 34}
