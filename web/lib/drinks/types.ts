@@ -181,6 +181,9 @@ export interface VideoScene {
   timing_sec: number | null;
   continuity: string | null;
   overlays: string | null;
+  /** 0054: 유료 그림 주문용 영어 지시문(화면에 나가는 글이 아니다). 없으면 유료 렌더가 사기 전에 멈춘다. */
+  visual_prompt?: string | null;
+  motion_prompt?: string | null;
 }
 
 export interface CarouselPage {

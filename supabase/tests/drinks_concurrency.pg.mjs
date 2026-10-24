@@ -31,7 +31,7 @@ await admin.query(`do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
 end $$; grant usage on schema public to anon, authenticated, service_role;`);
 for (const f of ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
-  "0053_drinks_production.sql"]) {
+  "0053_drinks_production.sql", "0054_drinks_spend.sql"]) {
   await admin.query(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
 }
 
@@ -465,6 +465,40 @@ await (async () => {
     assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
     assert.notEqual(after.status, "approved");
     assert.equal(after.status, "blocked");
+  });
+})();
+
+// ── 유료 결재(0054) 경합 ──
+
+// ⑮ 같은 결재에 두 워커가 동시에 가잡기 — 둘을 합치면 상한을 넘는다. 늦게 온 쪽은 기다린 뒤 거절돼야 한다.
+await (async () => {
+  const ap = await call(A, "drinks_open_spend_approval", { stage: "경합", purpose: "경합", cap_usd: 0.3, allowed_kinds: ["image"],
+    approver_words: "시험" });
+  const h = (key) => (c) => call(c, "drinks_hold_spend", { approval_id: ap.approval_id, item_key: key, kind: "image", est_usd: 0.2 });
+  const { ra, rb, blocked } = await race(h("scene-01"), h("scene-02"));
+  const t = await one("select coalesce(sum(est_usd), 0) as s, count(*) as n from drink_spend_holds where approval_id=$1 and status='held'",
+    [ap.approval_id]);
+  await check("⑮ 동시 가잡기 두 건(합계 상한 초과): 늦은 쪽은 결재 행 잠금에서 기다린 뒤 budget_exceeded", async () => {
+    assert.ok(ra.hold_id);
+    assert.equal(blocked, true, "두 번째 가잡기가 결재 행 잠금에서 기다린다");
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "budget_exceeded");
+    assert.equal(Number(t.s), 0.2);
+    assert.equal(Number(t.n), 1);
+  });
+})();
+
+// ⑯ 같은 항목을 두 워커가 동시에 — 하나만 가잡힌다(중복 구매 없음)
+await (async () => {
+  const ap = await call(A, "drinks_open_spend_approval", { stage: "경합2", purpose: "경합", cap_usd: 1, allowed_kinds: ["image"],
+    approver_words: "시험" });
+  const h = (c) => call(c, "drinks_hold_spend", { approval_id: ap.approval_id, item_key: "scene-01", kind: "image", est_usd: 0.039 });
+  const { ra, rb, blocked } = await race(h, h);
+  await check("⑯ 같은 항목 동시 가잡기: 하나만 통과, 다른 쪽은 hold_in_progress", async () => {
+    assert.ok(ra.hold_id);
+    assert.equal(blocked, true);
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "hold_in_progress");
   });
 })();
 

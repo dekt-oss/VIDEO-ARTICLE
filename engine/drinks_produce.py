@@ -6,7 +6,10 @@
   · 작업은 DB 가 준다(drinks_start_render). 시작할 때 제작안·근거가 지금도 유효한지 DB 가 다시 잰다(무효면 취소).
   · 파일은 새 저장 위치에만 올린다(같은 위치 덮어쓰기 금지 — 재렌더는 새 묶음). 등록 때 sha256 을 남긴다.
   · 끝내기(drinks_finish_render)는 임대 토큰이 있어야 한다. 늦게 끝난 옛 워커의 결과는 저장되지 않는다.
-  · 유료 호출 0: 무료 TTS(edge)·로컬 장면 카드·ffmpeg 만. 비용 원장에는 0 원 기록을 남긴다(공급자·모델별).
+  · 로컬 작업(renderer=local)은 유료 호출 0: 무료 TTS(edge)·로컬 장면 카드·ffmpeg 만. 비용 원장에는 0 원 기록을 남긴다.
+  · 유료 작업(renderer=paid, 0054)은 장면 그림만 결재 안에서 산다(engine/drinks_paid.py — 그림마다 DB 가 상한을 잰다).
+    음성·조립은 그대로 무료. 장면에 영어 그림 지시문이 없으면 아무것도 사기 전에 실패한다.
+    ★ GitHub Actions 의 drinks-produce.yml 에는 그림 생성 키가 없다 — 거기서 집은 유료 작업은 가잡기 전에 api_key_missing 으로 멈춘다.
   · 저장: DRINKS_STORAGE=supabase → 비공개 버킷 'drinks' 의 drinks/{job}/… (논문·리포트 GC 가 걷지 않는 접두어)
           DRINKS_STORAGE=local(기본) → DRINKS_LOCAL_STORAGE_DIR 아래 같은 경로(검증용, 대시보드 미리보기는 안 됨)
 """
@@ -57,6 +60,50 @@ class Storage:
             return key
         raise RenderError("storage_mode", f"알 수 없는 저장 방식: {self.mode}")
 
+    def get(self, key: str, dest: str) -> None:
+        """저장된 파일을 작업 폴더로 꺼낸다(산 그림 재사용)."""
+        os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+        if key.startswith("local:"):
+            shutil.copyfile(os.path.join(self.root, key[len("local:"):].replace("/", os.sep)), dest)
+            return
+        if self.mode == "supabase":
+            from . import db
+
+            with open(dest, "wb") as f:
+                f.write(db.client().storage.from_(BUCKET).download(key))
+            return
+        raise RenderError("storage_mode", f"이 저장 방식으로는 {key} 를 꺼낼 수 없습니다")
+
+
+def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str) -> tuple[dict[int, str], list[dict[str, Any]]]:
+    """유료 작업: 장면마다 그림을 결재 안에서 산다(이미 산 것은 다시 쓴다). 정리 카드 장면은 사지 않는다.
+
+    장면에 영어 그림 지시문(visual_prompt)이 없으면 **아무것도 사기 전에** 멈춘다 — 반쯤 산 채로 실패하지 않게."""
+    from .drinks_paid import PaidError, build_image_items, buy
+
+    lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
+    scenes = (job.get("plan") or {}).get("scenes") or []
+    try:
+        items = build_image_items(scenes)   # 지시문이 빠진 장면이 있으면 여기서(아무것도 사기 전에) 멈춘다
+    except PaidError as exc:
+        raise RenderError(exc.code, exc.message) from exc
+    images: dict[int, str] = {}
+    paths: dict[str, str] = {}
+    costs: list[dict[str, Any]] = []
+    for it in items:
+        rpc("drinks_heartbeat_render", lease)
+        try:
+            b = buy(it, rpc=rpc, storage=storage, approval_id=job["spend_approval_id"], out_dir=os.path.join(work, "bought"),
+                    ref_path=paths.get(it.ref_item) if it.ref_item else None, lease=lease)
+        except PaidError as exc:
+            raise RenderError(exc.code, exc.message) from exc
+        images[it.position] = b.path
+        paths[it.item_key] = b.path
+        costs.append({"kind": "image", "provider": "gemini", "model": it.model, "units": 1, "cost_usd": b.cost_usd,
+                      "estimated": not b.reused,
+                      "note": f"{it.position}번 장면 " + ("— 이미 산 그림 재사용(0원)" if b.reused else "— 정가표 금액(청구서 대조 전)")})
+    return images, costs
+
 
 def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "edge") -> dict[str, Any]:
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
@@ -67,7 +114,12 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
             return rpc("drinks_finish_render", {**lease, "outcome": "failed", "error_code": "canceled_before_render",
                                                 "error_message": "렌더 전에 취소됐거나 근거가 무효가 됐습니다"})
         if job["format"] == "video":
-            rendered = render_video(job, work, tts=tts)
+            images: dict[int, str] = {}
+            paid_costs: list[dict[str, Any]] = []
+            if job.get("renderer") == "paid":
+                images, paid_costs = buy_scene_images(job, rpc, storage, work)
+            rendered = render_video(job, work, tts=tts, images=images)
+            rendered.costs = paid_costs + rendered.costs
         else:
             from .drinks_cards import render_carousel   # 카드뉴스 렌더(정적 이미지)
 
@@ -83,8 +135,11 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
             stored = storage.put(f["path"], key, f["mime"])
             reg = rpc("drinks_register_asset", {**lease, "asset": {
                 "storage_key": stored, "sha256": sha256_file(f["path"]), "mime": f["mime"], "bytes": os.path.getsize(f["path"]),
-                "width": f.get("width"), "height": f.get("height"), "duration_ms": f.get("duration_ms"), "rights": "generated_local",
-                "provenance": {"renderer": job.get("renderer_version"), "images": "local_stand_in_cards",
+                "width": f.get("width"), "height": f.get("height"), "duration_ms": f.get("duration_ms"),
+                "rights": "generated_paid" if rendered.qa.get("generated_scenes") else "generated_local",
+                "provenance": {"renderer": job.get("renderer_version"),
+                               "images": "generated_paid" if rendered.qa.get("generated_scenes") else "local_stand_in_cards",
+                               "spend_approval_id": job.get("spend_approval_id"),
                                "tts": tts if job["format"] == "video" else None, "brand": rendered.qa.get("brand")}}})
             assets.append({"asset_id": reg["asset_id"], "role": f["role"], "position": f["position"]})
         for c in rendered.costs:

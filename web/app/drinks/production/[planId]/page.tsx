@@ -1,8 +1,9 @@
 // 주류 제작안 하나의 제작 (/drinks/production/[planId]) — 렌더 요청·진행·실패·재시도, 파일 묶음 미리보기, 최종 파일 검수.
-// ★ 지금 렌더는 로컬·무료(대체 이미지 + 무료 TTS)다. 흐름 검증용이며 목표 화풍 품질이 아니다. 유료 생성은 예산 미설정으로 꺼져 있다.
+// ★ 렌더 요청은 로컬·무료(대체 이미지 + 무료 TTS)다. 유료 렌더는 이 제작안 전용 결재(0054)가 있을 때만 큐에 들어가고,
+//   그림마다 DB 가 결재 금액 안인지 잰다(drinks_hold_spend). 화면은 결재를 열고 닫고 요청할 뿐 돈을 쓰지 못한다.
 import Link from "next/link";
 
-import { CancelRender, OutputReview, RenderRequest } from "@/components/drinks/ProductionControls";
+import { CancelRender, CloseSpendApproval, OpenSpendApproval, OutputReview, PaidRenderRequest, RenderRequest } from "@/components/drinks/ProductionControls";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { fmtTime } from "@/components/drinks/RunPill";
 import { FORMAT_LABEL, VERSION_STATUS_LABEL, type Format } from "@/lib/drinks/model";
@@ -22,11 +23,16 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
   const v = await loadPlanProduction(planId);
   if (v.state === "not_found") return <main className="container"><p className="banner-warn">제작안을 찾지 못했습니다.</p></main>;
   if (v.state !== "ok") return <main className="container"><LoadProblem state={v.state} error={v.state === "failed" ? v.error : undefined} /></main>;
-  const { plan, topic, review, renderable, jobs, manifests, costs } = v.data;
+  const { plan, topic, review, renderable, jobs, manifests, costs, spend } = v.data;
   const f = plan.format as Format;
   const active = jobs.find((j) => j.status === "queued" || j.status === "running");
   const lastFailed = jobs.find((j) => j.status === "failed" || j.status === "canceled");
   const total = costs.reduce((s, c) => s + Number(c.cost_usd), 0);
+  const estimate = Number(spend.estimate.total_usd);
+  const scenes = ((plan.plan_json as { scenes?: { visual_role?: string; visual_prompt?: string | null }[] }).scenes ?? []);
+  const noPrompt = scenes.map((s, i) => ({ s, i: i + 1 })).filter(({ s }) => (s.visual_role ?? "reality") !== "text_card" && !s.visual_prompt?.trim())
+    .map(({ i }) => i);
+  const openApproval = spend.approvals.find((a) => a.status === "open" && !a.expired);
   return (
     <main className="container">
       <div className="header">
@@ -37,8 +43,8 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         <h2>{topic.title}</h2>
         <p className="dk-kv">제작안 버전 <b>{plan.revision_no}</b> ({VERSION_STATUS_LABEL[plan.plan_status]}) · 근거 버전 <b>{review.revision_no}</b>{" "}
           {review.currently_valid === false ? <span className="dk-bad">· 근거 지금 사용 불가</span> : <span className="dk-ok">· 근거 유효</span>}</p>
-        <p className="banner-info">지금 렌더는 <b>로컬·무료</b>입니다 — 대체 이미지(장면 유형 표기 카드)와 무료 TTS 로 흐름을 확인합니다. 목표 화풍(3D 도해·실사감)은
-          유료 생성이 필요하고, 예산이 정해지지 않아 꺼져 있습니다.</p>
+        <p className="banner-info"><b>렌더 요청</b>은 로컬·무료입니다 — 대체 이미지(장면 유형 표기 카드)와 무료 TTS 로 흐름을 확인합니다. 목표 화풍(3D 도해·무광 CG)
+          그림은 <b>유료 렌더</b>로만 나오고, 결재(아래)가 있어야 하며 결재 금액이 상한입니다.</p>
         {renderable ? (
           <p className="banner-block">렌더할 수 없습니다 — {BLOCK_TEXT[renderable] ?? renderable}</p>
         ) : active ? (
@@ -52,6 +58,39 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         )}
         <p className="muted">비용 합계(이 제작안): ${total.toFixed(4)} — 공급자·모델별 기록 {costs.length}건</p>
       </section>
+
+      {f === "video" && (
+        <section className="section">
+          <h3>유료 그림(결재)</h3>
+          <p className="muted">지금 유료 렌더하면 새로 드는 예상(그림만, 정가표): <b>${estimate.toFixed(3)}</b> — 새로 살 그림 {spend.estimate.images}장
+            {spend.estimate.bought > 0 && <>, 이 제작안으로 이미 산 그림 {spend.estimate.bought}장은 다시 씀(0원)</>}. 정리 카드 장면은 로컬로 그려 0원입니다.</p>
+          <div className="dk-row">
+            {spend.estimate.scenes.map((s) => (
+              <span key={s.position} className={s.bought ? "pill dk-ok" : "pill"}>{s.position}번 · {s.role === "mechanism" ? "3D 도해" : s.role === "text_card" ? "정리 카드" : "실사형"} ·{" "}
+                {s.bought ? "산 그림 다시 씀" : `$${Number(s.usd).toFixed(3)}`}</span>
+            ))}
+          </div>
+          {noPrompt.length > 0 && <p className="banner-warn">영어 그림 지시문(visual_prompt)이 없는 장면: {noPrompt.join(", ")}번 — 유료 렌더는 아무것도 사기 전에 멈춥니다.
+            제작안을 새 버전으로 고쳐 지시문을 넣으세요.</p>}
+          {spend.approvals.length === 0 ? <p className="muted">이 제작안의 결재가 없습니다.</p> : spend.approvals.map((a) => (
+            <div key={a.approval_id} className="list-row">
+              <span>
+                <span className={a.status === "open" && !a.expired ? "pill dk-ok" : "pill"}>{a.status === "open" ? (a.expired ? "기간 지남" : "열림") : "닫힘"}</span>{" "}
+                {a.stage} · 상한 ${Number(a.cap_usd).toFixed(2)} · 확정 ${Number(a.spent_usd).toFixed(3)} · 가잡힘 ${Number(a.held_usd).toFixed(3)} ·
+                남음 <b>${Number(a.remaining_usd).toFixed(3)}</b> · 실패 해제 {a.released}건 · 기한 {fmtTime(a.expires_at)}
+              </span>
+              {a.status === "open" && <CloseSpendApproval approvalId={a.approval_id} />}
+            </div>
+          ))}
+          {openApproval ? (
+            !active && <PaidRenderRequest planId={plan.id} approvalId={openApproval.approval_id} estimate={estimate}
+              remaining={Number(openApproval.remaining_usd)}
+              blocked={renderable ? (BLOCK_TEXT[renderable] ?? renderable) : noPrompt.length ? "그림 지시문이 없는 장면이 있습니다" : null} />
+          ) : (
+            <OpenSpendApproval planId={plan.id} suggestedCap={Math.min(10, Math.max(0.01, Math.ceil(estimate * 1.3 * 100) / 100))} />
+          )}
+        </section>
+      )}
 
       <section className="section">
         <h3>제작 작업</h3>

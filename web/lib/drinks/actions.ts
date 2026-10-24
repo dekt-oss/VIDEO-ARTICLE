@@ -37,6 +37,9 @@ export const DRINKS_ACTIONS = {
   request_render: "drinks_request_render",
   cancel_render: "drinks_cancel_render",
   output_review_action: "drinks_output_review_action",
+  // 유료 생성 결재(0054): 결재 열기·닫기. 가잡기·확정·파일 등록(워커 전용)은 여기 없다 — 화면은 돈을 쓰지 못한다.
+  open_spend_approval: "drinks_open_spend_approval",
+  close_spend_approval: "drinks_close_spend_approval",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -116,6 +119,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   // C단계
   paid_disabled: 422, not_renderable: 422, checklist_incomplete: 422, invalid_manifest: 422, asset_in_use: 409, asset_missing: 422,
   format_fit_low: 422, required_claims_missing: 422, plan_coverage: 422, plan_claim_unknown: 422,
+  // 유료 결재(0054)
+  approval_closed: 422, approval_expired: 422, kind_not_approved: 422, budget_exceeded: 422, budget_insufficient: 422,
+  already_bought: 409, hold_in_progress: 409, retry_limit: 429,
 };
 
 export interface DbError {
@@ -256,6 +262,13 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     if (!n.ok) return { status: 400, body: { error: n.error, code: "invalid_input" } };
     p.canonical_url = n.url;
     delete p.url;
+  }
+  if (action === "open_spend_approval") {
+    // 결재는 화면에서 운영자 키를 가진 사람만 연다. 결재자 이름은 입력값을 믿지 않는다. 결재 문장은 필수(DB 도 검사).
+    p.approved_by = "operator";
+    if (typeof p.approver_words !== "string" || !p.approver_words.trim()) {
+      return { status: 400, body: { error: "결재 문장(승인한 말 그대로)을 적으세요", code: "invalid_input" } };
+    }
   }
   if (action === "request_run") {
     // 화면에서는 운영자 요청만 만든다. 예약 실행은 워커(--schedule)만 만든다.

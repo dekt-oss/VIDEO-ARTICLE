@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from . import config
@@ -325,11 +326,151 @@ def _split_word_events(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+# ── 뜻 단위 끊기(한국어) ── config.CAPTION_PHRASE_BREAKS 가 켜졌을 때만. 규칙은 config 주석.
+_HARD_END = re.compile(r"[.?!…。]$")
+_SOFT_END = re.compile(r"[,，·]$")
+# 꾸미는 말: 뒤 어절과 떨어지면 안 된다.
+_DETERMINERS = {"그", "이", "저", "이런", "그런", "저런", "모든", "한", "두", "세", "네", "몇", "각", "어느", "무슨", "어떤",
+                "아무", "딱", "꼭", "좀", "더", "안", "못", "잘", "다", "또", "약", "총", "첫", "새", "옛", "온", "여러", "같은"}
+# 어절 끝이 이 조사·어미면 뒤에서 끊기 좋다(뜻 덩어리가 닫힌다).
+_CLOSERS = ("에서는", "으로는", "에게는", "까지는", "부터는", "에서", "으로", "에게", "까지", "부터", "처럼", "보다", "하고", "이고",
+            "지만", "는데", "은데", "니까", "려면", "도록", "면서", "거든요", "는데요", "어요", "아요", "해요", "에요", "예요", "죠", "요",
+            "이나", "이든", "라도", "든", "나",
+            "은", "는", "이", "가", "을", "를", "에", "로", "와", "과", "도", "만", "고", "면", "서", "게", "다", "랑")
+_PARTICLE_N = ("은", "는", "을", "를", "인")   # 받침 ㄴ·ㄹ 로 끝나도 조사인 것(관형형으로 보지 않는다)
+# '-다는·-라는·-하는…' 은 '는'으로 끝나도 조사가 아니라 뒤 명사를 꾸민다(마신다는 사람들, 과이아콜이라는 분자).
+_ADNOMINAL = ("다는", "라는", "하는", "되는", "있는", "없는", "이라는", "란")
+# '-은'으로 끝나 조사와 헷갈리는 흔한 꾸밈말(형용사 관형형). 목록 밖은 조사로 본다(틀려도 한 줄 더 길어질 뿐이다).
+_ADJ_N = {"작은", "좋은", "많은", "높은", "낮은", "같은", "짧은", "깊은", "얕은", "옅은", "짙은", "적은", "넓은", "좁은", "검은",
+          "붉은", "밝은", "맑은", "묽은", "늙은", "젊은", "얇은", "굵은", "곧은", "괜찮은"}
+# 앞말에 붙어야 뜻이 서는 의존 명사(쓸 수, 고를 때, 먹을 것 …) — 이 앞에서 끊지 않는다.
+#   정확한 꼴만 본다 — 접두 비교를 하면 '적힌'·'수입'·'때문' 같은 다른 말까지 걸린다.
+_BOUND_NOUNS = {b + p for b in ("수", "때", "것", "줄", "적", "뿐", "듯", "만큼", "정도", "채", "척", "편")
+                for p in ("", "이", "가", "은", "는", "을", "를", "도", "만", "에")} | {"땐", "건", "걸", "게"}
+
+
+def _bare(tok: str) -> str:
+    return re.sub(r"[\"'“”‘’()\[\]{}<>「」『』]+", "", tok).rstrip(".,?!…·，。")
+
+
+def _is_modifier(tok: str) -> bool:
+    """뒤 어절을 꾸미는 말인가 — 관형사, '-의', 관형형 어미(받침 ㄴ·ㄹ: 된·한·할·갈 …)."""
+    b = _bare(tok)
+    if not b or _SOFT_END.search(tok) or _HARD_END.search(tok):
+        return False
+    if b in _DETERMINERS or b in _ADJ_N or b.endswith("의") or (len(b) >= 3 and b.endswith(_ADNOMINAL)):
+        return True
+    last = b[-1]
+    # 조사·어미로 끝나면(신청하면·지역에서·술은 …) 받침이 ㄴ·ㄹ 이어도 꾸미는 말이 아니다
+    if not ("가" <= last <= "힣") or (len(b) >= 2 and b.endswith(_CLOSERS)) or b in _PARTICLE_N or b in _BOUND_NOUNS:
+        return False   # 건(것은)·땐(때는)도 받침 ㄴ 이지만 뜻이 닫히는 자리다
+    jong = (ord(last) - 0xAC00) % 28
+    return jong in (4, 8)   # ㄴ, ㄹ (한 글자도 — 쓸·할·갈. 받침 ㄴ·ㄹ 명사가 뒤에 붙는 것은 복합어라 괜찮다)
+
+
+def _break_score(tok: str, nxt: str | None = None) -> float:
+    """이 어절 뒤에서 끊을 때의 보너스(클수록 좋다). 음수면 끊으면 안 되는 자리."""
+    if _HARD_END.search(tok):
+        return 6.0
+    if nxt is not None and _bare(nxt) in _BOUND_NOUNS:
+        return -8.0
+    if _SOFT_END.search(tok):
+        return 4.0
+    if _bare(tok) in ("수", "것", "줄", "적", "뿐"):
+        return -6.0   # '쓸 수 / 있어요' — 의존 명사 뒤 서술어와도 떨어지지 않게
+    if _bare(tok) in ("건", "걸", "땐", "때는"):
+        return 2.0
+    if _is_modifier(tok):
+        return -8.0
+    # 조사·어미 없이 끝나는 말(지역·사케 …)은 뒤 말과 한 덩어리일 때가 많다 — 끊기를 꺼린다.
+    return 2.0 if _bare(tok).endswith(_CLOSERS) else -3.0
+
+
+def phrase_groups(text: str) -> list[str]:
+    """한 컷 나레이션을 자막 줄로 나눈다(동적 계획 — 길이 목표 + 끊는 자리 점수). 원문 어절 순서·글자는 그대로다."""
+    return [g for g, _, _ in _phrase_groups(text)]
+
+
+def _phrase_groups(text: str) -> list[tuple[str, bool, float]]:
+    """(줄, 문장이 이 줄에서 끝나는가, 이 줄 뒤 끊김의 세기). 짧은 줄을 합칠 때 문장 경계를 넘지 않고 약한 끊김 쪽을 지운다."""
+    toks = str(text or "").split()
+    if not toks:
+        return []
+    ideal, mx, mt = config.CAPTION_PHRASE_IDEAL_CHARS, config.CAPTION_PHRASE_MAX_CHARS, config.CAPTION_PHRASE_MAX_TOKENS
+    n = len(toks)
+    best = [0.0] + [float("inf")] * n
+    back = [0] * (n + 1)
+    for j in range(1, n + 1):
+        for i in range(max(0, j - mt), j):
+            chunk = toks[i:j]
+            if any(_HARD_END.search(t) for t in chunk[:-1]):
+                continue   # 문장 끝을 넘어 묶지 않는다
+            chars = sum(len(_bare(t)) for t in chunk)
+            cost = ((chars - ideal) / 3.0) ** 2
+            cost += 5.0 * sum(1 for t in chunk[:-1] if _SOFT_END.search(t))   # 쉼표를 줄 가운데 두지 않는다
+            if chars > mx and len(chunk) > 1:
+                cost += 40.0
+            cost -= _break_score(chunk[-1], toks[j]) if j < n else 6.0
+            if best[i] + cost < best[j]:
+                best[j], back[j] = best[i] + cost, i
+    out, j = [], n
+    while j > 0:
+        i = back[j]
+        out.append((" ".join(toks[i:j]), bool(_HARD_END.search(toks[j - 1])) or j == n,
+                    _break_score(toks[j - 1], toks[j]) if j < n else 6.0))
+        j = i
+    # 줄 끝 쉼표·마침표는 보이지 않게(물음표는 둔다)
+    return [(re.sub(r"[,，.。]+$", "", g), end, sc) for g, end, sc in reversed(out)]
+
+
+def chunk_text_by_phrase(text: str, start: float, end: float) -> list[Cue]:
+    """뜻 단위 줄로 나누고, 나레이션 구간을 글자 수 비례로 이어 붙여 배분한다(빈틈·겹침 없음).
+
+    너무 짧게 뜨는 줄(하드 플로어 미만)은 이웃과 합치되 **문장 경계를 넘지 않고**, 둘 중 **약한 끊김**을 지운다
+    ("안 돼요."가 다음 문장과 붙거나, 쉼표 뒤 "와인과"가 앞 줄로 넘어가 "와인과 증류주"가 갈리지 않게).
+    한 문장짜리 짧은 줄은 그대로 둔다."""
+    groups = _phrase_groups(text)
+    if not groups:
+        return []
+    dur = max(0.0, float(end) - float(start))
+    total = sum(_chunk_chars(g) for g, _, _ in groups) or 1
+    rows: list[list] = []   # [start, end, text, ends_sentence, break_after]
+    cur = float(start)
+    for g, ends, sc in groups:
+        nxt = cur + dur * (_chunk_chars(g) / total)
+        rows.append([cur, nxt, g, ends, sc])
+        cur = nxt
+    floor = config.CAPTION_MIN_DISPLAY_FLOOR_SEC
+    i = 0
+    while i < len(rows):
+        s, e, t, ends, sc = rows[i]
+        if e - s >= floor or len(rows) == 1:
+            i += 1
+            continue
+        prev_ok = i > 0 and not rows[i - 1][3]        # 앞 줄이 문장 끝이 아니면 앞과 합칠 수 있다
+        next_ok = i + 1 < len(rows) and not ends      # 이 줄이 문장 끝이 아니면 뒤와 합칠 수 있다
+        if prev_ok and (not next_ok or rows[i - 1][4] < sc):   # 앞 끊김이 더 약하면 앞과
+            p = rows[i - 1]
+            rows[i - 1] = [p[0], e, f"{p[2]} {t}", ends, sc]
+            del rows[i]
+            i -= 1
+        elif next_ok:
+            nx = rows[i + 1]
+            rows[i + 1] = [s, nx[1], f"{t} {nx[2]}", nx[3], nx[4]]
+            del rows[i]
+        else:
+            i += 1   # 짧은 한 문장("안 돼요.") — 그대로 둔다
+    return [(s, e, t) for s, e, t, _, _ in rows]
+
+
 def chunk_text_by_rate(text: str, start: float, end: float, lang: str = "ko") -> list[Cue]:
     """워드 타임스탬프가 없을 때(placeholder/실패) 컷 나레이션을 어절로 쪼개 시간 비례 배분 후 청킹.
 
     → 컷 통짜 자막(문장 전체 한 화면) 대신 ①레이트 기반 청크로 나눠 표시한다.
+    ★ 한국어이고 config.CAPTION_PHRASE_BREAKS 가 켜져 있으면 뜻 단위로 끊는다(chunk_text_by_phrase).
     """
+    if lang == "ko" and config.CAPTION_PHRASE_BREAKS:
+        return chunk_text_by_phrase(text, start, end)
     toks = str(text or "").split()
     if not toks:
         return []

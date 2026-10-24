@@ -4,9 +4,10 @@
 (엔진의 TTS → 컷 mp4(Ken Burns) → 자막 ASS → 조립·음량 정규화 경로를 그대로 탄다). 논문 전용 검증·표를 거치지 않는다:
 directive_id 없이 부르므로 자산 캐시·논문 원장·논문 GC 경로에 닿지 않는다.
 
-★ 지금 그림은 **대체 에셋**이다 — `IMAGE_PROVIDER=reuse` 로 이 모듈이 Pillow 로 그린 "장면 카드"를 쓴다(생성 0회·비용 0).
-  목표 화풍(3D 도해·실사감·시네마틱)은 유료 이미지·영상 생성이 있어야 나오고, 예산이 정해지기 전에는 꺼져 있다.
-  이 렌더로 검증되는 것: 제작안 → 장면·음성·자막·합성·세로 영상·커버·파일 묶음 흐름. 검증되지 **않는** 것: 그림 품질.
+★ 기본 그림은 **대체 에셋**이다 — `IMAGE_PROVIDER=reuse` 로 이 모듈이 Pillow 로 그린 "장면 카드"를 쓴다(생성 0회·비용 0).
+  목표 화풍(3D 도해·무광 CG)은 유료 생성으로만 나온다 — 그림은 engine/drinks_paid.py 가 **결재 안에서 미리 사 두고**
+  (0054 drink_spend_holds), 여기는 그 그림을 `images` 로 받아 장면 유형 표기만 얹어 쓴다. 이 모듈 자체는 언제나 무료다.
+  대체 카드 렌더로 검증되는 것: 제작안 → 장면·음성·자막·합성·세로 영상·커버·파일 묶음 흐름. 검증되지 **않는** 것: 그림 품질.
 ★ 장면 카드마다 장면 유형을 박는다(연출 장면·실제 제품 아님 / 설명용 도해). 생성 영상이 실제 촬영·정확한 제조 과정으로
   오해되지 않게 — 유료 그림으로 바꿔도 같은 표기를 오버레이로 유지한다(검수 체크리스트 scene_types_labeled).
 
@@ -199,6 +200,31 @@ def draw_scene_card(scene: dict[str, Any], idx: int, total: int, topic: dict[str
     return {"truncated": cut, "label": tag}
 
 
+def label_image(src: str, scene: dict[str, Any], idx: int, total: int, out_path: str) -> dict[str, Any]:
+    """산 그림(유료 생성) 위에 장면 유형 표기를 얹는다 — 대체 카드와 같은 문구·같은 안전 영역(검수 scene_types_labeled).
+
+    그림은 9:16 으로 꽉 채워 자른다(엔진 조립과 같은 cover-crop). 글자는 그림에 굽지 않고 여기서만 얹는다."""
+    from PIL import Image, ImageDraw, ImageOps
+
+    w, h = config.RENDER_WIDTH, config.RENDER_HEIGHT
+    role = scene.get("visual_role") or "reality"
+    with Image.open(src) as im:
+        img = ImageOps.fit(im.convert("RGB"), (w, h), method=Image.LANCZOS)
+    d = ImageDraw.Draw(img)
+    tag = SCENE_LABEL.get(role, SCENE_LABEL["other"])
+    f_tag, f_small = _font("small", 38), _font("small", 30)
+    m = int(w * 0.14)   # 카메라 움직임이 가장자리를 잘라도 표기가 남는 안쪽
+    tw = d.textlength(tag, font=f_tag)
+    d.rounded_rectangle([m, int(h * 0.15), m + tw + 48, int(h * 0.15) + 64], radius=32,
+                        fill=BRAND["accent"] if role != "reality" else BRAND["warn"])
+    d.text((m + 24, int(h * 0.15) + 10), tag, font=f_tag, fill=BRAND["bg"])
+    d.text((m, int(h * 0.105)), f"{idx} / {total}", font=f_small, fill=BRAND["text"], stroke_width=2, stroke_fill=BRAND["bg"])
+    d.text((w - m - d.textlength(BRAND["name"], font=f_small), int(h * 0.105)), BRAND["name"], font=f_small, fill=BRAND["accent"],
+           stroke_width=2, stroke_fill=BRAND["bg"])
+    img.save(out_path, "PNG")
+    return {"truncated": False, "label": tag}
+
+
 def draw_cover(topic: dict[str, Any], plan: dict[str, Any], out_path: str, size=(1080, 1920)) -> dict[str, Any]:
     from PIL import Image, ImageDraw
 
@@ -244,11 +270,16 @@ def _guard_free(tts: str) -> None:
     config.IMAGE_PROVIDER = "reuse"
     config.VIDEO_PROVIDER = "placeholder"
     config.TTS_PROVIDER = tts
+    # 주류 자막은 뜻 단위로 끊는다(2026-10-24 운영자 판정). 논문·리포트 렌더는 이 함수를 지나지 않는다.
+    config.CAPTION_PHRASE_BREAKS = True
     if config.image_is_paid() or config.video_is_paid():
         raise RenderError("paid_disabled", "유료 이미지·영상 공급자가 켜져 있습니다")
 
 
-def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge") -> Rendered:
+def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", images: Optional[dict[int, str]] = None) -> Rendered:
+    """images = {장면 번호: 산 그림 경로}. 주어진 장면은 그 그림(+장면 유형 표기), 나머지는 로컬 대체 카드.
+
+    ★ 조립 자체는 언제나 무료 경로다 — 그림은 미리 사 두고(engine/drinks_paid.py) 여기서는 재사용(reuse)만 한다."""
     from . import render as engine_render   # 무거운 엔진 import 는 여기서만
 
     _guard_free(tts)
@@ -257,7 +288,11 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge") -> Re
     cards = os.path.join(work_dir, "cards")
     os.makedirs(cards, exist_ok=True)
     MISSING.clear()
-    card_qa = [draw_scene_card(sc, i, len(scenes), topic, os.path.join(cards, f"{i:03d}.png")) for i, sc in enumerate(scenes, 1)]
+    images = images or {}
+    card_qa = [label_image(images[i], sc, i, len(scenes), os.path.join(cards, f"{i:03d}.png")) if i in images
+               else draw_scene_card(sc, i, len(scenes), topic, os.path.join(cards, f"{i:03d}.png"))
+               for i, sc in enumerate(scenes, 1)]
+    generated = sorted(i for i in images if 1 <= i <= len(scenes))
     config.IMAGE_REUSE_DIR = cards
     directive = plan_to_directive(plan, topic)
     engine_render.take_placeholder_fallbacks()  # 앞 작업의 전역 기록을 비운다(엔진 규칙)
@@ -293,12 +328,16 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge") -> Re
         warnings.append("text_truncated")
     if MISSING:
         warnings.append("glyph_missing")
+    stand_in = [i for i, sc in enumerate(scenes, 1) if i not in images and (sc.get("visual_role") or "reality") != "text_card"]
     qa = {"probe": probe, "mean_volume_db": vol, "silent_scenes": silent, "missing_glyphs": sorted(set(MISSING)), "scenes": len(scenes), "scene_labels": [c["label"] for c in card_qa],
-          "warnings": warnings, "stand_in_visuals": True, "tts": tts, "brand": BRAND["version"],
-          "note": "대체 이미지 렌더 — 흐름 검증용. 목표 화풍 품질 검증이 아니다"}
+          "warnings": warnings, "stand_in_visuals": bool(stand_in), "stand_in_scenes": stand_in, "generated_scenes": generated,
+          "tts": tts, "brand": BRAND["version"],
+          "note": ("대체 이미지 렌더 — 흐름 검증용. 목표 화풍 품질 검증이 아니다" if not generated else
+                   "생성 그림 장면 " + ",".join(map(str, generated)) + (" · 대체 카드 장면 " + ",".join(map(str, stand_in)) if stand_in else ""))}
     costs = [{"kind": "tts", "provider": tts, "model": config.EDGE_TTS_VOICE if tts == "edge" else None, "cost_usd": 0,
               "units": len(scenes), "note": "무료 TTS"},
-             {"kind": "render", "provider": "local_ffmpeg", "cost_usd": 0, "note": "장면 카드(Pillow)·조립(ffmpeg)"}]
+             {"kind": "render", "provider": "local_ffmpeg", "cost_usd": 0,
+              "note": "장면 카드(Pillow)·조립(ffmpeg)" + (" — 생성 그림은 미리 산 것을 재사용(비용은 그림 기록에)" if generated else "")}]
     files = [{"path": out, "role": "final_video", "position": 1, "mime": "video/mp4", "width": probe["width"],
               "height": probe["height"], "duration_ms": int(probe["duration_sec"] * 1000)},
              {"path": cover, "role": "cover", "position": 1, "mime": "image/png", "width": 1080, "height": 1920}]
