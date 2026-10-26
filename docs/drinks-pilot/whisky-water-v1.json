@@ -20,7 +20,8 @@
     {
       "claim_id": "c1",
       "text": "위스키는 물을 조금 더 타서 마시면 맛이 좋아진다고 여겨지고, 애호가들은 마시기 전에 물을 몇 방울 넣곤 한다",
-      "original_quote": "Whisky enthusiasts often also add a few drops of water to the spirit before drinking in order to further enhance the taste"
+      "original_quote": "Whisky enthusiasts often also add a few drops of water to the spirit before drinking in order to further enhance the taste",
+      "kind": "practice"
     },
     {
       "claim_id": "c2",
@@ -157,5 +158,12 @@
       ],
       "cap_usd": 0.4
     }
+  },
+  "viewer_conclusion": {
+    "text": "물을 조금 타면 스모키한 향 분자가 술 표면으로 와서 향과 맛이 잘 느껴진다(컴퓨터 시뮬레이션 연구)",
+    "claim_ids": [
+      "c3",
+      "c5"
+    ]
   }
 }

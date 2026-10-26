@@ -81,8 +81,16 @@ def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str)
     장면에 영어 그림 지시문(visual_prompt)이 없으면 **아무것도 사기 전에** 멈춘다 — 반쯤 산 채로 실패하지 않게."""
     from .drinks_paid import PaidError, build_image_items, buy
 
+    from . import drinks_script_check as script_check
+
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     scenes = (job.get("plan") or {}).get("scenes") or []
+    # 대본·화면 계획 코드 검사(0원) — 원문에 없는 숫자·양·권고, 근거 없는 사실 장면이 있으면 아무것도 사지 않는다.
+    rep = script_check.check(script_check.plan_spec(job.get("plan") or {}, job.get("claims") or [],
+                                                    sources=job.get("sources"), brief=job.get("brief")))
+    if not rep.ok:
+        raise RenderError("script_check_failed", "대본 검사에서 막혔습니다(사기 전): " +
+                          "; ".join(f"{f.scene or '-'}번 {f.code}" for f in rep.blocks)[:1500])
     try:
         items = build_image_items(scenes)   # 지시문이 빠진 장면이 있으면 여기서(아무것도 사기 전에) 멈춘다
     except PaidError as exc:

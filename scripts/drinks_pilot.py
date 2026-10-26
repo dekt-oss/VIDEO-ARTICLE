@@ -60,7 +60,19 @@ def _with_refs(scenes: list[dict[str, Any]], pos: int) -> list[int]:
     return need
 
 
+def script_gate(spec: dict[str, Any]) -> Any:
+    """대본·화면 계획 코드 검사(0원). 막힘이 하나라도 있으면 주문서도 만들지 않고 사지도 않는다."""
+    from engine import drinks_script_check as sc
+
+    rep = sc.check(spec)
+    print("대본 검사: " + sc.summary_ko(rep))
+    if not rep.ok:
+        raise PaidError("script_check_failed", "대본 검사에서 막힌 문장이 있습니다 — 고친 뒤 다시 주문하세요: " + ", ".join(rep.codes()))
+    return rep
+
+
 def write_order(spec: dict[str, Any], stage: str, out: str) -> dict[str, Any]:
+    rep = script_gate(spec)
     items = stage_items(spec, stage)
     total = round(sum(i.est_usd for i in items), 4)
     h = order_hash(items)
@@ -80,7 +92,8 @@ def write_order(spec: dict[str, Any], stage: str, out: str) -> dict[str, Any]:
              f"- 무엇을: {data['what']}", f"- 예상 금액: **${total:.3f}** · 결재 상한 ${cap:.2f}(실패 재시도 여유 포함 — 넘는 주문은 DB 가 거절)",
              "- 화풍: 운영자가 2026-09-08 확정한 무광 CG(실사형 장면도 사진이 아니라 같은 질감의 3D 연출이다). 그림에 글자는 넣지 않는다",
              f"- 주문서 해시: `{h}` (결재에 남기고, 살 때 다시 대조한다)",
-             f"- 출처: {spec['source']['publisher']} 「{spec['source']['title']}」 {spec['source']['url']}", ""]
+             f"- 출처: {spec['source']['publisher']} 「{spec['source']['title']}」 {spec['source']['url']}",
+             f"- 대본 검사(코드): 통과 · 알림 {len(rep.warns)}건" + "".join(f"\n  - {w.code}: {w.message}" for w in rep.warns), ""]
     for i in items:
         sc = scenes[i.position - 1]
         what = "그림" if i.kind == "image" else f"{i.clip_sec}초 움직이는 장면"
@@ -109,6 +122,7 @@ def _storage(out: str):
 
 
 def do_buy(spec: dict[str, Any], stage: str, out: str, approval_id: str) -> dict[str, Any]:
+    script_gate(spec)   # 결재 뒤에 대본이 바뀌어 검사를 못 넘으면 사지 않는다
     items = stage_items(spec, stage)
     rpc, storage = _rpc(), _storage(out)
     ap = rpc("drinks_spend_state", {"approval_id": approval_id})
