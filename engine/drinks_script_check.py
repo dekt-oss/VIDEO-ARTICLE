@@ -155,6 +155,14 @@ def check(spec: dict[str, Any]) -> Report:
         _check_visual(sc, i, role, scenes, block, warn)
         _check_subtitles(nar, i, warn)
 
+    # 엔진 실사형 화면 규칙(장면이 답하나·도해 구조·분할 금지·글자 금지·화풍 어휘…) — 코드 판정만(Jev 끔, 0원).
+    from . import drinks_screen
+
+    g = drinks_screen.gate(scenes, jev=False)
+    for code, where in g["blocks"]:
+        block(code, _first_scene(where), drinks_screen.CODE_KO.get(code, code) + (f" (장면 {where})" if where else ""))
+    for code, where in g["warns"]:
+        warn(code, _first_scene(where), drinks_screen.CODE_KO.get(code, code) + (f" ({where})" if where else ""))
     if not any("?" in str(sc.get("narration") or "") for sc in scenes[:2]) and not spec.get("hook_question"):
         warn("hook_missing", None, "처음 두 장면 안에 질문이 없습니다")
     concl = spec.get("viewer_conclusion")
@@ -165,6 +173,12 @@ def check(spec: dict[str, Any]) -> Report:
         if not ccids or any(c not in claims or _is_derived(claims[c]) for c in ccids):
             block("conclusion_unsupported", None, "'시청자가 내릴 결론'에 원문 근거가 없습니다")
     return rep
+
+
+def _first_scene(where: str) -> Optional[int]:
+    # 엔진 코드의 꼬리는 컷 목록("3,4")일 수도, 측정값("28자"·"0<1")일 수도 있다 — 컷 목록일 때만 장면 번호로 읽는다.
+    m = re.fullmatch(r"\s*(\d+)(?:\s*,\s*\d+)*\s*", str(where or ""))
+    return int(m.group(1)) if m else None
 
 
 def _check_visual(sc: dict[str, Any], i: int, role: str, scenes: list[dict[str, Any]], block, warn) -> None:

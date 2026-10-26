@@ -1,7 +1,7 @@
 {
   "pilot_id": "whisky-water-v1",
   "written_at": "2026-10-24",
-  "script_rev": "v5 — 2026-10-26 운영자 '현상만 설명하면 되잖아 … 그 근거로 논문 내용을 넣으면 되고'. 처방·도수 숫자·계산을 빼고, 논문이 스스로 말한 설명(표면부터 마신다 → 물을 타면 맛이 산다)만 쓴다",
+  "script_rev": "v6 — 2026-10-27 엔진 실사형 화면 규칙 도입: 훅 16자 · 장면마다 답하는 질문·연출 · 도해 구조(부품·강조·3색) · 3번은 알아볼 실사(이탄 연기). 대본 뜻은 v5 와 같다",
   "topic": {
     "title": "위스키에 물 한두 방울, 왜 넣을까?",
     "question": "위스키 고수들은 왜 물을 한두 방울 넣을까?",
@@ -52,58 +52,87 @@
       "claim_id": "c8",
       "text": "병에 담기 전 물을 타 약 40%로 맞추는 과정이 맛을 크게 바꾼다",
       "original_quote": "Before bottling, the whisky is diluted to around 40 vol-% by the addition of water 1 , which changes the taste significantly"
+    },
+    {
+      "claim_id": "c9",
+      "text": "스모키한 맛은 맥아 보리를 이탄(피트) 불로 그을릴 때 생긴다",
+      "original_quote": "have a typical smoky taste that develops when malted barley is smoked on peat fire"
     }
   ],
   "scenes": [
     {
-      "narration": "위스키 좀 아는 사람들은, 마시기 전에 물을 한두 방울 떨어뜨려요.",
-      "visual_role": "reality",
-      "content_kind": "fact",
-      "claim_ids": [
-        "c1"
-      ],
-      "timing_sec": 4,
-      "explanation": "위스키 잔 하나, 스포이트에서 물 한 방울이 떨어진다",
-      "visual_prompt": "A single tulip-shaped whisky glass with amber whisky standing on a plain table; a small glass dropper held just above the glass releases one clear drop of water toward the surface; nothing else on the table"
-    },
-    {
-      "narration": "그래야 맛이 더 좋아진다는 건데요, 왜 그럴까요?",
+      "narration": "위스키에 물을 왜 떨어뜨릴까요?",
       "visual_role": "reality",
       "content_kind": "transition",
       "claim_ids": [
         "c1"
       ],
       "timing_sec": 3,
+      "answers_ko": "위스키에 물을 떨어뜨린다는 게 무슨 모습인가",
+      "staging_ko": "스포이트에서 물 한 방울이 위스키 잔으로 막 떨어진다",
+      "explanation": "위스키 잔 하나, 스포이트에서 물 한 방울",
+      "visual_prompt": "A single tulip-shaped whisky glass half filled with amber whisky stands alone on a plain table; a small glass dropper held just above the rim releases one clear drop of water toward the surface"
+    },
+    {
+      "narration": "위스키 좀 아는 사람들은, 마시기 전에 물을 한두 방울 넣어 맛을 살려요.",
+      "visual_role": "reality",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c1"
+      ],
+      "timing_sec": 4,
       "continuity": "ref:1",
-      "explanation": "같은 잔, 물방울이 떨어져 표면에 잔물결이 퍼진다",
+      "answers_ko": "물 한 방울이 들어가면 잔에서 무슨 일이 생기나",
+      "staging_ko": "같은 잔, 물방울이 떨어져 표면에 잔물결이 퍼진다",
+      "explanation": "같은 잔, 물방울이 떨어져 잔물결",
       "visual_prompt": "The water drop has just landed in the same glass and small circular ripples spread across the whisky surface; the dropper is gone"
     },
     {
-      "narration": "위스키의 스모키한 향은, 과이아콜이라는 작은 분자에서 나와요.",
-      "visual_role": "mechanism",
+      "narration": "스모키한 향은, 이탄 불에 그을린 보리에서 나오는 과이아콜이라는 분자 때문이에요.",
+      "visual_role": "reality",
       "content_kind": "fact",
       "claim_ids": [
+        "c9",
         "c2"
       ],
       "timing_sec": 5,
-      "explanation": "잔을 반으로 자른 단면 — 위스키 속에 향 분자 다섯 개가 보인다",
-      "visual_prompt": "Isometric cutaway of one large tulip-shaped whisky glass on a plain table, the front half cut away to show the amber liquid inside; inside the liquid float exactly five large ball-and-stick molecules, the amber part being explained, each one clearly visible and separate; nothing else in the glass or on the table"
+      "answers_ko": "스모키한 향은 어디서 오나",
+      "staging_ko": "이탄 덩어리가 연기를 내고, 그 위 철망의 맥아 보리 사이로 연기가 스민다",
+      "explanation": "이탄(피트) 연기 위 맥아 보리",
+      "visual_prompt": "A small heap of malted barley grains rests on a metal mesh tray above a few smouldering dark peat bricks; thin grey smoke rises up through the barley grains"
     },
     {
-      "narration": "알코올이 진하면, 이 분자는 알코올에 둘러싸여서 술 속으로 들어가 있어요.",
+      "narration": "알코올이 진하면, 이 분자는 알코올에 둘러싸여서 술 속에 머물러요.",
       "visual_role": "mechanism",
       "content_kind": "fact",
       "claim_ids": [
         "c3"
       ],
       "timing_sec": 5,
-      "continuity": "ref:3",
-      "explanation": "파란 알코올 분자들이 향 분자를 둘러싸 잔 아래쪽에 붙잡고 있다",
-      "visual_prompt": "Many small muted blue ball-and-stick molecules, the alcohol, crowd tightly around the five amber molecules and hold them down near the bottom of the glass, far from the liquid surface",
-      "motion_prompt": "A few clear drops of water fall into the glass; the muted blue molecules loosen and spread apart, and the five amber molecules drift upward one after another toward the liquid surface"
+      "answers_ko": "알코올이 진할 때 향 분자는 잔의 어디에 있나",
+      "staging_ko": "잔 앞쪽 절반을 잘라낸 단면 — 앰버 구슬 다섯 개가 파란 구슬 무리에 둘러싸여 술 깊은 곳에",
+      "explanation": "잔 단면, 향 분자(앰버)가 알코올(파랑)에 둘러싸여 아래쪽",
+      "mechanism": {
+        "subject": "cutaway tulip whisky glass",
+        "components": [
+          "tulip whisky glass",
+          "amber aroma beads",
+          "blue alcohol beads"
+        ],
+        "relationship": "blue alcohol beads crowd around the amber aroma beads",
+        "initial_state": "amber aroma beads held deep in the liquid among many blue alcohol beads",
+        "transformation": "added water drops spread the blue alcohol beads apart and the amber aroma beads rise",
+        "final_state": "amber aroma beads float at the liquid surface",
+        "highlighted_element": "amber aroma beads",
+        "claim_ids": [
+          "c3"
+        ]
+      },
+      "visual_prompt": "The front half of one large tulip whisky glass is cut away to show the whisky inside; five large amber aroma beads sit deep in the liquid near the bottom, closely surrounded by many smaller blue alcohol beads",
+      "motion_prompt": "A few clear drops of water fall into the glass; the blue alcohol beads drift apart and the five amber aroma beads float upward one after another until they rest at the liquid surface"
     },
     {
-      "narration": "그런데 물이 들어가서 알코올이 옅어지면, 이 분자가 표면으로 올라와요.",
+      "narration": "물이 들어가 알코올이 옅어지면, 이 분자가 표면으로 올라와요.",
       "visual_role": "mechanism",
       "content_kind": "fact",
       "claim_ids": [
@@ -111,8 +140,26 @@
       ],
       "timing_sec": 5,
       "continuity": "ref:4",
-      "explanation": "물이 들어가 액면이 조금 올라가고, 향 분자 다섯 개가 표면에 떠 있다",
-      "visual_prompt": "Clear water has been added and the liquid level is slightly higher; the five amber molecules have risen and now sit right at the top surface of the liquid, while the muted blue molecules stay loosely spread below them"
+      "answers_ko": "물이 들어가면 향 분자는 어디로 가나",
+      "staging_ko": "같은 단면 — 파란 구슬이 성기게 퍼지고, 앰버 구슬 다섯 개가 술 표면에 떠 있다",
+      "explanation": "같은 단면, 향 분자(앰버)가 표면에",
+      "mechanism": {
+        "subject": "cutaway tulip whisky glass",
+        "components": [
+          "tulip whisky glass",
+          "amber aroma beads",
+          "blue alcohol beads"
+        ],
+        "relationship": "blue alcohol beads crowd around the amber aroma beads",
+        "initial_state": "amber aroma beads held deep in the liquid among many blue alcohol beads",
+        "transformation": "the five amber aroma beads have risen and now float in a row at the liquid surface while the blue alcohol beads spread thinly apart below",
+        "final_state": "amber aroma beads float at the liquid surface",
+        "highlighted_element": "amber aroma beads",
+        "claim_ids": [
+          "c3"
+        ]
+      },
+      "visual_prompt": "A few clear water drops have entered the same cutaway glass; the blue alcohol beads are now spread thinly apart and the five amber aroma beads float in a row right at the liquid surface"
     },
     {
       "narration": "술은 표면부터 입에 닿으니까, 그만큼 향과 맛이 잘 느껴지는 거죠.",
@@ -123,8 +170,10 @@
       ],
       "timing_sec": 5,
       "continuity": "ref:2",
-      "explanation": "같은 잔을 손이 들어 올린다 — 표면이 빛을 받는다",
-      "visual_prompt": "A hand lifts the same glass off the table and tilts it slightly toward the viewer, the whisky surface catching the light"
+      "answers_ko": "표면에 모인 향이 왜 중요한가",
+      "staging_ko": "같은 잔을 손이 들어 입 쪽으로 기울인다 — 술 표면이 먼저 잔 가장자리에 닿는다",
+      "explanation": "손이 같은 잔을 들어 기울인다",
+      "visual_prompt": "A hand lifts the same glass off the table and tilts it toward the viewer so the whisky surface reaches the rim first"
     },
     {
       "narration": "2017년에 발표된, 컴퓨터 시뮬레이션 연구가 밝힌 내용이에요.",
@@ -140,16 +189,16 @@
   ],
   "stages": {
     "1": {
-      "what": "이어진 장면 3~5의 3D 도해 3장 — 이 영상의 핵심(향 분자가 숨었다가 표면으로)",
+      "what": "이어진 장면 3~5 — 이탄 연기(실사형 1) + 향 분자가 숨었다 떠오르는 3D 도해 2",
       "images": [
         3,
         4,
         5
       ],
-      "cap_usd": 0.55
+      "cap_usd": 0.4
     },
     "2": {
-      "what": "4번 장면을 6초 움직이는 장면으로(물 몇 방울이 떨어지고 향 분자가 표면 쪽으로 떠오른다)",
+      "what": "4번 장면을 6초 움직이는 장면으로(물 몇 방울이 떨어지고 향 분자가 표면으로 떠오른다)",
       "clips": [
         {
           "scene": 4,

@@ -62,8 +62,11 @@ def _hash(payload: dict[str, Any]) -> str:
 
 
 def image_item(position: int, role: str, visual_prompt: str, *, ref_item: Optional[str] = None,
-               ref_sha256: Optional[str] = None) -> OrderItem:
-    """그림 1장 주문 항목. 참조 그림이 있으면 그 내용(sha256)까지 해시에 넣는다 — 앞 그림이 바뀌면 다른 그림이다."""
+               ref_sha256: Optional[str] = None, scene: Optional[dict[str, Any]] = None) -> OrderItem:
+    """그림 1장 주문 항목. 참조 그림이 있으면 그 내용(sha256)까지 해시에 넣는다 — 앞 그림이 바뀌면 다른 그림이다.
+
+    scene 을 주면 엔진 컷으로 바꿔(drinks_screen) 엔진 자동 보정과 **도해 구조(mechanism)** 를 그대로 싣는다 —
+    엔진 그림 프롬프트가 부품·강조 부분을 읽어 "A, B, C 가 한 장면에 다 보이고 X 가 설명 대상" 을 붙인다."""
     from .providers import image as image_provider
 
     if role not in ENGINE_ROLE:
@@ -71,7 +74,12 @@ def image_item(position: int, role: str, visual_prompt: str, *, ref_item: Option
     vp = visual_prompt.strip()
     if not vp:
         raise PaidError("visual_prompt_missing", f"{position}번 장면에 영어 그림 지시문(visual_prompt)이 없습니다")
-    cut = {"cut_no": position, "visual_role": ENGINE_ROLE[role], "visual_prompt": f"{vp}, {config.DRINKS_PRODUCT_CLAUSE}"}
+    if scene is not None:
+        from .drinks_screen import engine_cut_for_image
+
+        cut = engine_cut_for_image(dict(scene, visual_prompt=f"{vp}, {config.DRINKS_PRODUCT_CLAUSE}"), position)
+    else:
+        cut = {"cut_no": position, "visual_role": ENGINE_ROLE[role], "visual_prompt": f"{vp}, {config.DRINKS_PRODUCT_CLAUSE}"}
     model = config.image_model_for(cut["visual_role"])
     prompt = image_provider._build_image_prompt(cut, HEADER, referenced=bool(ref_item))
     price = float(config.PRICING.get(model, {}).get("image_standard", 0)) or image_price(role)
@@ -101,7 +109,8 @@ def build_image_items(scenes: list[dict[str, Any]], positions: Optional[list[int
         if ref is not None and (ref >= i or ref not in by_pos):
             raise PaidError("invalid_order", f"{i}번 장면이 이어 그릴 {ref}번 그림이 앞에서 함께 주문되지 않았습니다")
         it = image_item(i, role, sc.get("visual_prompt") or "",
-                        ref_item=by_pos[ref].item_key if ref else None, ref_sha256=by_pos[ref].prompt_hash if ref else None)
+                        ref_item=by_pos[ref].item_key if ref else None, ref_sha256=by_pos[ref].prompt_hash if ref else None,
+                        scene=sc)
         by_pos[i] = it
         out.append(it)
     return out

@@ -4329,6 +4329,7 @@ DRINKS_PILOT_CLIP_SEC: int = 6        # 2단계 움직이는 장면 길이(Veo 3
 # 주류 그림에 붙이는 구도 규칙 — 실제 상표·제품으로 오인되지 않게. 화풍(VISUAL_ROLE_STYLE)이 아니라 소품 규칙이다.
 #   글자는 공통 BURN_IN_NEGATIVE_PROMPT 가 막고, 지역 이름 같은 글은 화면 오버레이로 얹는다.
 DRINKS_PRODUCT_CLAUSE: str = (
-    "all bottles, labels and packaging are generic and unbranded: plain blank paper labels with no writing, "
-    "no logos, no brand marks"
+    # ★ 2026-10-27 고침: 옛 문구("plain blank paper labels with no writing, no logos")가 오히려 라벨·상자를 불렀다
+    #   (위스키 1단계 3장 — 잔에 빈 라벨, 옆에 빈 상자). 엔진 교훈 그대로 부정어 대신 **긍정 묘사**로 쓴다.
+    "every object is plain and unbranded, with smooth clean surfaces"
 )

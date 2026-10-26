@@ -508,7 +508,11 @@ begin
         'timing_sec', case when jsonb_typeof(el -> 'timing_sec') = 'number' then el -> 'timing_sec' end,
         'continuity', drinks_text(el, 'continuity'), 'overlays', drinks_text(el, 'overlays'),
         -- 0054: 유료 그림 주문에 쓰는 영어 지시문(그림·움직임). 화면에 나가는 글이 아니다 — 사실 주장은 나레이션·근거가 진다.
-        'visual_prompt', left(drinks_text(el, 'visual_prompt'), 1500), 'motion_prompt', left(drinks_text(el, 'motion_prompt'), 600)));
+        'visual_prompt', left(drinks_text(el, 'visual_prompt'), 1500), 'motion_prompt', left(drinks_text(el, 'motion_prompt'), 600),
+        -- 엔진 실사형 화면 계약(2026-10-27): 이 장면이 답하는 질문·연출·도해 구조. engine/drinks_screen.py 가 읽는다.
+        'answers_ko', left(drinks_text(el, 'answers_ko'), 300), 'staging_ko', left(drinks_text(el, 'staging_ko'), 600),
+        'mechanism', case when jsonb_typeof(el -> 'mechanism') = 'object' and length((el -> 'mechanism')::text) <= 4000
+                         then el -> 'mechanism' end));
     else
       if el ? 'position' and el -> 'position' <> 'null'::jsonb and el ->> 'position' <> i::text then
         perform drinks_fail('invalid_plan', '페이지 순서는 1부터 빈칸·중복 없이 이어져야 합니다(' || i || '번째)');
