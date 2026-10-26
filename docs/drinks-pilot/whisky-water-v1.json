@@ -1,7 +1,7 @@
 {
   "pilot_id": "whisky-water-v1",
   "written_at": "2026-10-24",
-  "script_rev": "v3 — 2026-10-26 운영자 지적 '도수를 떨어뜨리는거랑 물을 한두방울 넣는거랑은 다른거아니야?' 반영. 질문을 '한두 방울'에서 논문이 직접 답하는 '왜 70도를 물 타서 40도로 파나'로 바꿨다",
+  "script_rev": "v4 — 2026-10-26 자체 점검·Jev 근거 판정 반영: 숙성 단계(55~65%) 빠짐·과이아콜 일반화·'가능성' 누락·원액 도수(50→60도 안팎)와 물 양 재계산",
   "topic": {
     "title": "위스키는 왜 물을 타서 팔까?",
     "question": "70도로 만든 위스키를 왜 굳이 물을 타서 40도로 팔까?",
@@ -24,8 +24,8 @@
     },
     {
       "claim_id": "c2",
-      "text": "위스키의 스모키한 향은 페놀, 특히 과이아콜(guaiacol)에서 나온다",
-      "original_quote": "Chemically, the smoky flavour is attributed to phenols, and in particular guaiacol"
+      "text": "스모키한 향은 페놀, 특히 과이아콜에서 나오며, 과이아콜은 미국·아일랜드보다 스코틀랜드 위스키에 훨씬 흔하다",
+      "original_quote": "Chemically, the smoky flavour is attributed to phenols, and in particular guaiacol, which is much more common in Scottish whiskies than in American or Irish ones"
     },
     {
       "claim_id": "c3",
@@ -39,13 +39,13 @@
     },
     {
       "claim_id": "c5",
-      "text": "술은 표면부터 먼저 마시게 되므로, 이 결과가 물을 타면 맛이 사는 이유를 이해하는 데 도움이 된다(컴퓨터 시뮬레이션 결과)",
-      "original_quote": "Because the drink is consumed at the interface first, our findings help to understand why adding water to whisky helps to enhance its taste"
+      "text": "표면에 모인 과이아콜은 냄새와 맛에 크게 기여하며, 물을 타면 표면에 있을 가능성이 커져 맛과 냄새에 영향을 줄 것으로 보인다",
+      "original_quote": "guaiacol will thus be found near the liquid surface, where it greatly contributes to both smell and taste of the spirit … which likely influences both taste and smell of the whisky"
     },
     {
       "claim_id": "c6",
-      "text": "계산(원문 아님): 30ml 기준 50%에 물 2방울(약 0.1ml)은 49.8%, 물 1티스푼(5ml)은 42.9%. 40%에 물 2방울은 39.9%",
-      "original_quote": "(계산 — 알코올 양 ÷ 전체 양. 한 방울 약 0.05ml 가정)"
+      "text": "계산(원문 아님): 30ml 기준 60% + 물 15ml(세 티스푼) = 40%, + 10ml = 45%. 40% + 물 2방울(0.1ml) = 39.9%",
+      "original_quote": "(계산 — 알코올 양 ÷ 전체 양. 한 티스푼 5ml, 한 방울 약 0.05ml 가정)"
     },
     {
       "claim_id": "c7",
@@ -60,30 +60,31 @@
   ],
   "scenes": [
     {
-      "narration": "사실 위스키는 물 탄 술이라는 거, 아세요?",
+      "narration": "위스키에 물을 탄다고요? 사실 병 위스키는, 이미 물을 탄 거예요.",
       "visual_role": "reality",
       "content_kind": "fact",
       "claim_ids": [
-        "c7"
+        "c7",
+        "c8"
       ],
       "timing_sec": 3,
       "explanation": "위스키 병 옆에 물 주전자 — '물 탄 술?'",
       "visual_prompt": "A whisky bottle and a clear glass jug of water standing side by side on a plain table, with one empty tulip-shaped whisky glass in front of them; nothing else on the table"
     },
     {
-      "narration": "만들 땐 70도 가까운데, 병에 담기 전에 물을 타서 40도로 맞추거든요.",
+      "narration": "갓 증류하면 70도쯤이고, 통에서 숙성하면서 60도 안팎이 되는데, 이걸 물로 40도까지 낮추거든요.",
       "visual_role": "reality",
       "content_kind": "fact",
       "claim_ids": [
         "c7",
         "c4"
       ],
-      "timing_sec": 5,
+      "timing_sec": 6,
       "explanation": "증류기 → 숙성 통 → 병, 왼쪽에서 오른쪽으로",
       "visual_prompt": "A small copper pot still, an oak cask and a whisky bottle standing in one row on a plain table from left to right, the order a whisky is made in; nothing else on the table"
     },
     {
-      "narration": "물을 타면 맛이 꽤 달라지는데, 비밀은 스모키한 향을 내는 과이아콜이라는 분자예요.",
+      "narration": "물을 타면 맛이 꽤 달라지는데요, 그 이유를 스모키한 향을 내는 과이아콜이라는 분자로 살펴볼게요.",
       "visual_role": "mechanism",
       "content_kind": "fact",
       "claim_ids": [
@@ -95,7 +96,7 @@
       "visual_prompt": "Isometric cutaway of one large tulip-shaped whisky glass on a plain table, the front half cut away to show the amber liquid inside; inside the liquid float exactly five large ball-and-stick molecules, the amber part being explained, each one clearly visible and separate; nothing else in the glass or on the table"
     },
     {
-      "narration": "알코올이 60% 가까운 원액에선, 이 분자가 알코올에 붙잡혀서 잔 안쪽으로 숨어요.",
+      "narration": "알코올이 60% 가까울 땐, 이 분자가 알코올에 둘러싸여서 술 속으로 들어가 버려요.",
       "visual_role": "mechanism",
       "content_kind": "fact",
       "claim_ids": [
@@ -109,7 +110,7 @@
       "motion_prompt": "A small spoonful of clear water pours into the glass; the muted blue molecules loosen and spread apart, and the five amber molecules drift upward one after another until they reach the liquid surface and stay there"
     },
     {
-      "narration": "그런데 물을 타서 45% 아래로 내려가면, 향 분자가 잔 표면으로 올라와요.",
+      "narration": "그런데 물을 타서 45% 아래로 내려가면, 이 분자가 술 표면으로 올라와요.",
       "visual_role": "mechanism",
       "content_kind": "fact",
       "claim_ids": [
@@ -121,7 +122,7 @@
       "visual_prompt": "Clear water has been added and the liquid level is slightly higher; the five amber molecules have risen and now sit right at the top surface of the liquid, while the muted blue molecules stay loosely spread below them"
     },
     {
-      "narration": "술은 그 표면부터 마시게 되니까, 향이 더 잘 느껴지는 거죠.",
+      "narration": "우리는 술을 표면부터 마시니까, 향과 맛이 더 살아날 수 있어요.",
       "visual_role": "reality",
       "content_kind": "fact",
       "claim_ids": [
@@ -132,24 +133,24 @@
       "visual_prompt": "A hand lifts a tulip-shaped whisky glass filled with amber whisky off a plain table and tilts it slightly toward the viewer, the whisky surface catching the light"
     },
     {
-      "narration": "그래서 물을 안 타고 원액 그대로 파는 50도쯤 되는 위스키라면, 한 잔에 물 한 티스푼쯤 타 보세요.",
+      "narration": "그래서 60도 안팎으로 파는 위스키라면, 30ml에 물 세 티스푼쯤 타 보세요. 40도 정도가 돼요.",
       "visual_role": "text_card",
       "content_kind": "fact",
       "claim_ids": [
         "c4",
         "c6"
       ],
-      "timing_sec": 6,
-      "explanation": "50도 30ml + 물 1티스푼 → 약 43%"
+      "timing_sec": 7,
+      "explanation": "60도 30ml + 물 15ml(세 티스푼) → 40도"
     },
     {
-      "narration": "컴퓨터 시뮬레이션으로 밝힌 결과니까, 입맛에 맞게 조금씩 조절해 보세요.",
+      "narration": "이건 컴퓨터 시뮬레이션으로 밝힌 결과예요.",
       "visual_role": "text_card",
       "content_kind": "transition",
       "claim_ids": [
         "c5"
       ],
-      "timing_sec": 4,
+      "timing_sec": 3,
       "explanation": "근거: 컴퓨터 시뮬레이션(Scientific Reports, 2017)"
     }
   ],

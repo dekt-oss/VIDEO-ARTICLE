@@ -342,7 +342,9 @@ _PARTICLE_N = ("은", "는", "을", "를", "인")   # 받침 ㄴ·ㄹ 로 끝나
 _ADNOMINAL = ("다는", "라는", "하는", "되는", "있는", "없는", "이라는", "란")
 # '-은'으로 끝나 조사와 헷갈리는 흔한 꾸밈말(형용사 관형형). 목록 밖은 조사로 본다(틀려도 한 줄 더 길어질 뿐이다).
 _ADJ_N = {"작은", "좋은", "많은", "높은", "낮은", "같은", "짧은", "깊은", "얕은", "옅은", "짙은", "적은", "넓은", "좁은", "검은",
-          "붉은", "밝은", "맑은", "묽은", "늙은", "젊은", "얇은", "굵은", "곧은", "괜찮은"}
+          "붉은", "밝은", "맑은", "묽은", "늙은", "젊은", "얇은", "굵은", "곧은", "괜찮은",
+          # 두 글자 '-는' 동사 관형형(향을 내는 분자·병에 파는 술). '저는·나는' 같은 대명사+조사와 헷갈려 목록으로만 본다.
+          "내는", "가는", "오는", "주는", "타는", "파는", "사는", "보는", "쓰는", "먹는", "넣는", "녹는", "뜨는", "드는"}
 # 앞말에 붙어야 뜻이 서는 의존 명사(쓸 수, 고를 때, 먹을 것 …) — 이 앞에서 끊지 않는다.
 #   정확한 꼴만 본다 — 접두 비교를 하면 '적힌'·'수입'·'때문' 같은 다른 말까지 걸린다.
 _BOUND_NOUNS = {b + p for b in ("수", "때", "것", "줄", "적", "뿐", "듯", "만큼", "정도", "채", "척", "편")
@@ -364,7 +366,7 @@ def _is_modifier(tok: str) -> bool:
     b = _bare(tok)
     if not b or _SOFT_END.search(tok) or _HARD_END.search(tok):
         return False
-    if b in _DETERMINERS or b in _ADJ_N or b.endswith("의") or (len(b) >= 3 and b.endswith(_ADNOMINAL)):
+    if b in _DETERMINERS or b in _ADJ_N or b.endswith("의") or (len(b) >= 2 and b.endswith(_ADNOMINAL)):
         return True
     last = b[-1]
     # 조사·어미로 끝나면(신청하면·지역에서·술은 …) 받침이 ㄴ·ㄹ 이어도 꾸미는 말이 아니다
@@ -383,6 +385,8 @@ def _break_score(tok: str, nxt: str | None = None) -> float:
         return -8.0
     if _SOFT_END.search(tok):
         return 4.0
+    if nxt is not None and _bare(tok).endswith(("을", "를")) and _is_modifier(nxt):
+        return -4.0   # '물을 / 탄 거예요'·'향을 / 내는 분자' — 목적어와 그 꾸밈 동사를 가르지 않는다
     if _bare(tok) in ("수", "것", "줄", "적", "뿐"):
         return -6.0   # '쓸 수 / 있어요' — 의존 명사 뒤 서술어와도 떨어지지 않게
     if _bare(tok) in ("건", "걸", "땐", "때는"):
