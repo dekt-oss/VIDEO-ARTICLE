@@ -99,3 +99,22 @@
 - 유료 생성(이미지·영상·고품질 TTS) 연결: 예산·승인 절차를 정하면 `paid_disabled` 를 풀고 엔진의 Gemini/Veo 경로를 쓴다(자산 캐시는 주류 전용 표가 필요).
 - 같은 제작안을 바뀐 것 없이 다시 렌더하면 파일이 똑같아 같은 묶음으로 합쳐진다(새 묶음이 생기지 않는다). 고칠 점은 제작안 새 버전으로.
 - 주류 파일 정리(보관 기한·참조 해제)는 아직 없다 — 명세 §12 대로 드라이런 검증 뒤 연결.
+
+
+## 사진형 카드뉴스 "card-photo-v1" (2026-10-27, 운영자 승인 — 생존주의형)
+
+시제품(Node/sharp, `2026-10-27 위스키 물`)을 엔진(Pillow)으로 옮겼다. 글자 카드(`card-v1`)는 그대로 두고, 제작안이 고르면 사진형으로 그린다.
+
+- **고르는 법**: `plan.layout == "photo"` 또는 `plan.template_version == "card-photo-v1"`. 그 밖은 예전 그대로(바이트 동일). 렌더 qa 의 `template_version` 이 `card-photo-v1`.
+- **쪽 필드**(`plan.pages[]`): 기존 `position`·`role`·`heading`·`body` 에 더해
+  - `image_prompt` — 영어 그림 지시문(유료 구매용). 없으면 그 쪽은 어두운 바탕으로 그리고 qa 경고 `photo_missing`(실패하지 않는다).
+  - `photo_shift` — 사진 세로 자르기 이동(px, 음수 = 사진 위쪽이 더 보임. 시제품 표지 `-110`).
+  - `kicker`·`category`(표지 전용) — 맨 위 작은 줄 / 제목 위 강조색 소제목(좌우 가는 줄).
+  - 제목(`heading`) 안의 `[대괄호]` = 강조색(#F5B840, `BRAND["key"]`). 줄 바꿈은 낱말 단위라 한국어 낱말 가운데서 끊지 않고, 강조 구간이 여러 줄에 걸쳐도 이어진다. 제목 3줄·본문 2줄 상한을 넘으면 `text_truncated`.
+  - 출처 장(`role == "source"`): 본문 줄(없으면 `job.sources`) + 팔로우 안내(`@핸들`, 기본 `sooljjerigo`, `DRINKS_IG_HANDLE`) + 하단 고지. **주류 경고 문구는 출처 장에 항상 둔다.** "생성형 AI 이미지 포함" 줄은 산 그림이 하나라도 있을 때만.
+- **캡션**(`plan.caption`: `title`·`emoji`·`intro`·`points`(3개까지)·`limit`·`share_target`·`cta`·`hashtags`) → `engine/drinks_caption.py: build_caption(plan, topic, handle=, ai_images=)`. 요점은 제작안 문장만 쓴다(비면 설명 쪽 제목). **캡션에는 주류 경고를 넣지 않는다**(2026-10-27 결정). 해시태그는 5개 이하, 마지막은 항상 `#술째리고`(DB 상한은 30, 글자 2200 — 테스트가 0055 와 대조). 아직 DB 에 쓰지 않는다(함수만).
+  - `check_caption` 은 줄머리 번호("1. ")를 숫자 근거 검사에서 뺀다(요점 목록이 항상 막히던 문제).
+- **유료 배경 사진**: 카드 작업이 `renderer == "paid"` 이고 사진형이면 `drinks_produce.buy_card_images` 가 `image_prompt` 가 있는 쪽마다 **4:5** 그림을 결재 안에서 산다(영상과 같은 `_buy_items` — 심장박동·가잡기·재사용·비용 기록). 프롬프트는 장면 지시문 + 승인된 공통 꼬리(`config.DRINKS_CARD_IMAGE_STYLE`: 아래 45% 비움·글자/얼굴 금지)를 그대로 보낸다(영상용 9:16 조립을 타지 않는다 — `cut["raw_prompt"]`). 종횡비는 주문 항목의 속성(`OrderItem.aspect`, 해시에 포함)이라 **기존 영상 주문 항목의 해시는 변하지 않는다**(테스트가 기준 커밋 값과 대조).
+  - ⚠ **DB 가 아직 허용하지 않는다**: `drinks_request_render`(0054)는 `pl.format <> 'video'` 면 유료를 거절하고 `drinks_estimate_render` 도 영상 장면만 센다. 카드 유료 렌더를 실제로 돌리려면 새 마이그레이션이 필요하다(엔진 쪽은 준비됨).
+  - 카드 제작안에는 대본 코드 검사(`script_check`)를 아직 걸지 않는다(장면 기반 검사라 pages 를 모른다).
+- **시각 보정**: 시제품의 Pretendard 빌드는 저장소 글꼴보다 한글이 약 6% 크다 — `DRINKS_CARD_PHOTO_HANGUL_SCALE`(1.06)로 승인본과 같은 폭·높이를 맞췄다(제목체는 늘, 그 밖은 글자의 3할 이상이 한글일 때).

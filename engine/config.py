@@ -4333,3 +4333,36 @@ DRINKS_PRODUCT_CLAUSE: str = (
     #   (위스키 1단계 3장 — 잔에 빈 라벨, 옆에 빈 상자). 엔진 교훈 그대로 부정어 대신 **긍정 묘사**로 쓴다.
     "every object is plain and unbranded, with smooth clean surfaces"
 )
+
+# 카드뉴스 사진형(생존주의형 — 운영자 승인 2026-10-27). docs/deviation-drinks-production.md "사진형 카드"
+#   배치·글자 크기는 engine/drinks_cards_photo.py 상단에, 정책·문구·그림 지시문 꼬리는 여기에 둔다.
+DRINKS_CARD_PHOTO_TEMPLATE: str = "card-photo-v1"     # 제작안 plan.template_version 또는 plan.layout == "photo"
+DRINKS_CARD_ASPECT: str = "4:5"                       # 카드 배경 그림 종횡비(영상 9:16 과 다르다 — 1080×1350)
+# 승인된 시제품(gen.cjs)의 공통 꼬리 문장 — 장면 지시문 뒤에 그대로 붙는다. 글자·얼굴 금지와 아래 45% 비움이 핵심이다.
+DRINKS_CARD_IMAGE_STYLE: str = (
+    "Photorealistic editorial photograph, cinematic low-key lighting, warm amber and deep brown tones, "
+    "shallow depth of field, rich shadows, premium magazine look. Vertical 4:5 composition. "
+    "Keep the lower 45% of the frame calm, dark and uncluttered so text can be placed there. "
+    "Absolutely no text, letters, numbers, labels, logos or brand names anywhere. No human faces."
+)
+DRINKS_IG_HANDLE: str = os.getenv("DRINKS_IG_HANDLE", "sooljjerigo").strip().lstrip("@") or "sooljjerigo"
+DRINKS_CARD_SOURCE_TITLE: str = "참조자료"
+DRINKS_CARD_FOLLOW_LINE1: str = "술 궁금증, 근거로 풀어 드려요"
+DRINKS_CARD_FOLLOW_LINE3: str = "팔로우하고 다음 이야기도 받아 보세요"
+DRINKS_CARD_AI_NOTICE: str = "생성형 AI 이미지 포함"
+# 주류 광고 규제 문구 — 출처 장에는 항상 둔다. 캡션에는 넣지 않는다(운영자 결정 2026-10-27).
+DRINKS_CARD_WARNING: str = ("경고: 지나친 음주는 뇌졸중, 기억력 손상이나 치매를 유발합니다.\n"
+                            "임신 중 음주는 기형아 출생 위험을 높입니다.")
+# 시제품의 Pretendard 빌드는 이 저장소 글꼴(assets/fonts)보다 한글이 약 6% 크게 그려진다 — 승인본과 같은 폭을 내는 보정 배율.
+DRINKS_CARD_PHOTO_HANGUL_SCALE: float = 1.06
+DRINKS_CARD_KICKER_DEFAULT: str = "술째리고"          # 표지 맨 위 작은 줄 기본값(plan 의 kicker 가 우선)
+
+# 인스타 캡션(engine/drinks_caption.py). DB 상한은 0055 drinks_publish_limits — tests/test_drinks_photo_cards.py 가 대조.
+DRINKS_CAPTION_MAX_CHARS: int = 2200
+DRINKS_CAPTION_DB_HASHTAG_MAX: int = 30
+DRINKS_CAPTION_MAX_POINTS: int = 3
+DRINKS_CAPTION_MAX_HASHTAGS: int = 5          # 운영자 취향 — DB 상한(30)보다 훨씬 적게
+DRINKS_CAPTION_BRAND_TAG: str = "술째리고"     # 해시태그의 마지막(항상)
+DRINKS_CAPTION_SOURCE_NOTE: str = "출처는 마지막 장에 있어요."
+DRINKS_CAPTION_SHARE_DEFAULT: str = "술"       # "{share_target} 좋아하는 친구에게" 의 기본 대상
+DRINKS_CAPTION_CTA_DEFAULT: str = DRINKS_CARD_FOLLOW_LINE1

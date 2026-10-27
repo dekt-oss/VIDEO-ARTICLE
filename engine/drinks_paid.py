@@ -50,7 +50,12 @@ class OrderItem:
     prompt_hash: str
     ref_item: Optional[str] = None    # 이어 그릴 앞 그림(같은 세계) / 움직일 시작 그림
     clip_sec: int = 0
+    aspect: str = ""              # 그림 종횡비. 비어 있으면 엔진 전역(config.ASPECT_RATIO, 영상 9:16) — 카드뉴스는 "4:5"
     cut: dict[str, Any] = field(default_factory=dict)
+
+
+def _image_hash(model: str, prompt: str, ref_sha256: Optional[str], aspect: str) -> str:
+    return _hash({"kind": "image", "model": model, "prompt": prompt, "ref": ref_sha256, "aspect": aspect})
 
 
 def image_price(role: str) -> float:
@@ -85,9 +90,35 @@ def image_item(position: int, role: str, visual_prompt: str, *, ref_item: Option
     price = float(config.PRICING.get(model, {}).get("image_standard", 0)) or image_price(role)
     key = f"scene-{position:02d}-{role}"
     return OrderItem(item_key=key, position=position, role=role, kind="image", model=model, est_usd=price, prompt=prompt,
-                     prompt_hash=_hash({"kind": "image", "model": model, "prompt": prompt, "ref": ref_sha256,
-                                        "aspect": config.ASPECT_RATIO}),
+                     prompt_hash=_image_hash(model, prompt, ref_sha256, config.ASPECT_RATIO),   # 영상 항목 해시는 예전 그대로
                      ref_item=ref_item, cut=cut)
+
+
+def card_image_item(position: int, image_prompt: str) -> OrderItem:
+    """카드뉴스 배경 사진 1장(4:5). 시제품(gen.cjs)과 같은 문장 — 장면 지시문 + 공통 꼬리(config.DRINKS_CARD_IMAGE_STYLE).
+
+    엔진의 영상용 프롬프트 조립(9:16·3D 도해 화풍)을 타지 않는다: cut["raw_prompt"] 가 그대로 공급자에 간다.
+    역할은 실사(reality) 단가. 종횡비는 주문 항목의 속성이라 해시에 들어간다(같은 문장도 4:5 와 9:16 은 다른 그림)."""
+    ip = (image_prompt or "").strip()
+    if not ip:
+        raise PaidError("visual_prompt_missing", f"{position}쪽에 영어 그림 지시문(image_prompt)이 없습니다")
+    prompt = f"{ip} {config.DRINKS_CARD_IMAGE_STYLE}"
+    model = config.image_model_for("REALITY")
+    price = float(config.PRICING.get(model, {}).get("image_standard", 0)) or image_price("reality")
+    return OrderItem(item_key=f"page-{position:02d}-photo", position=position, role="reality", kind="image", model=model,
+                     est_usd=price, prompt=prompt, prompt_hash=_image_hash(model, prompt, None, config.DRINKS_CARD_ASPECT),
+                     cut={"cut_no": position, "visual_role": "REALITY", "raw_prompt": prompt}, aspect=config.DRINKS_CARD_ASPECT)
+
+
+def build_card_image_items(pages: list[dict[str, Any]]) -> list[OrderItem]:
+    """카드 제작안 쪽 → 그림 주문 항목. image_prompt 가 있는 쪽만 산다(출처 장·그림 없는 쪽은 로컬로 그린다).
+
+    사진형인데 살 그림이 하나도 없으면 아무것도 사기 전에 멈춘다(결재만 묶이지 않게)."""
+    items = [card_image_item(int(pg["position"]), pg["image_prompt"]) for pg in sorted(pages, key=lambda p: int(p["position"]))
+             if pg.get("role") != "source" and str(pg.get("image_prompt") or "").strip()]
+    if not items:
+        raise PaidError("visual_prompt_missing", "그림 지시문(image_prompt)이 있는 쪽이 없습니다")
+    return items
 
 
 _REF = re.compile(r"^\s*ref:(\d+)\s*$")
@@ -142,17 +173,19 @@ def order_hash(items: list[OrderItem]) -> str:
 
 
 @contextmanager
-def _paid_provider(kind: str) -> Iterator[None]:
-    """그 호출 하나 동안만 공급자를 유료로 켠다. 끝나면(실패해도) 무료로 되돌린다."""
-    prev = (config.IMAGE_PROVIDER, config.VIDEO_PROVIDER)
+def _paid_provider(kind: str, aspect: str = "") -> Iterator[None]:
+    """그 호출 하나 동안만 공급자를 유료로 켠다(aspect 를 주면 종횡비도). 끝나면(실패해도) 되돌린다."""
+    prev = (config.IMAGE_PROVIDER, config.VIDEO_PROVIDER, config.ASPECT_RATIO)
     try:
         if kind == "image":
             config.IMAGE_PROVIDER = "gemini"
         else:
             config.VIDEO_PROVIDER = "veo"
+        if aspect:
+            config.ASPECT_RATIO = aspect
         yield
     finally:
-        config.IMAGE_PROVIDER, config.VIDEO_PROVIDER = prev
+        config.IMAGE_PROVIDER, config.VIDEO_PROVIDER, config.ASPECT_RATIO = prev
 
 
 @dataclass
@@ -226,7 +259,7 @@ def _generate(item: OrderItem, out: str, ref_path: Optional[str]) -> float:
     if item.kind == "image":
         from .providers import image as image_provider
 
-        with _paid_provider("image"):
+        with _paid_provider("image", item.aspect):
             _, cost = image_provider.generate_image(item.cut, HEADER, out, model=item.model, ref_path=ref_path)
         return cost
     from .providers import video as video_provider

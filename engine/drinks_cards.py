@@ -8,8 +8,10 @@
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Optional
 
+from . import config
+from .drinks_cards_photo import draw_photo_page, is_photo_plan
 from .drinks_render import BRAND, MISSING, Rendered, RenderError, _block, _font
 
 CARD_W, CARD_H = 1080, 1350
@@ -64,20 +66,29 @@ def draw_card_page(page: dict[str, Any], total: int, topic: dict[str, Any], sour
     return {"position": pos, "truncated": cut_h or cut_b}
 
 
-def render_carousel(job: dict[str, Any], work_dir: str) -> Rendered:
-    pages = (job["plan"] or {}).get("pages") or []
+def render_carousel(job: dict[str, Any], work_dir: str, images: Optional[dict[int, str]] = None) -> Rendered:
+    """images = {쪽 번호: 배경 사진 경로} — 사진형(layout=photo)에서만 쓴다. card-v1 은 사진 없이 글자 카드(예전 그대로)."""
+    plan = job["plan"] or {}
+    pages = plan.get("pages") or []
     if not pages:
         raise RenderError("invalid_plan", "페이지가 없습니다")
     if len(pages) > 12:
         raise RenderError("invalid_plan", "카드뉴스는 12장까지입니다")
+    photo = is_photo_plan(plan)
     claims = {c["claim_id"]: c for c in job.get("claims") or [] if c.get("claim_id")}
     os.makedirs(work_dir, exist_ok=True)
     MISSING.clear()
+    # 사진형: 실제로 있는 파일만 쓴다(경로만 있고 파일이 없으면 '없는 쪽'으로 — photo_missing 경고)
+    used = {int(k): v for k, v in (images or {}).items() if photo and v and os.path.exists(v)} if images else {}
     files, page_qa = [], []
     for pg in sorted(pages, key=lambda p: int(p["position"])):
-        path = os.path.join(work_dir, f"page_{int(pg['position']):02d}.png")
-        page_qa.append(draw_card_page(pg, len(pages), job["topic"], job.get("sources") or [], claims, path))
-        files.append({"path": path, "role": "page", "position": int(pg["position"]), "mime": "image/png", "width": CARD_W, "height": CARD_H})
+        pos = int(pg["position"])
+        path = os.path.join(work_dir, f"page_{pos:02d}.png")
+        if photo:
+            page_qa.append(draw_photo_page(pg, job.get("sources") or [], used.get(pos), path, ai_images=bool(used)))
+        else:
+            page_qa.append(draw_card_page(pg, len(pages), job["topic"], job.get("sources") or [], claims, path))
+        files.append({"path": path, "role": "page", "position": pos, "mime": "image/png", "width": CARD_W, "height": CARD_H})
     positions = [f["position"] for f in files]
     warnings = []
     if positions != list(range(1, len(files) + 1)):
@@ -86,6 +97,13 @@ def render_carousel(job: dict[str, Any], work_dir: str) -> Rendered:
         warnings.append("text_truncated")
     if MISSING:
         warnings.append("glyph_missing")
+    no_photo = [q["position"] for q in page_qa if q.get("photo_missing")]
+    if no_photo:
+        warnings.append("photo_missing")
     qa = {"pages": len(files), "missing_glyphs": sorted(set(MISSING)), "truncated_pages": [q["position"] for q in page_qa if q["truncated"]], "warnings": warnings,
-          "size": [CARD_W, CARD_H], "brand": BRAND["version"], "template_version": (job["plan"] or {}).get("template_version", "card-v1")}
+          "size": [CARD_W, CARD_H], "brand": BRAND["version"],
+          "template_version": config.DRINKS_CARD_PHOTO_TEMPLATE if photo else plan.get("template_version", "card-v1")}
+    if photo:
+        # ai_images: 소스 장 고지·캡션의 '생성형 AI 이미지 포함' 줄이 이 값을 따른다(호출자가 넘긴 사진 = 생성 그림)
+        qa.update({"photo_missing_pages": no_photo, "generated_pages": sorted(used), "ai_images": bool(used)})
     return Rendered(files, qa, [{"kind": "card", "provider": "local_pillow", "cost_usd": 0, "units": len(files)}])

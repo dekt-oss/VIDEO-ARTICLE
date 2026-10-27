@@ -228,6 +228,7 @@ def plan_spec(plan: dict[str, Any], claims: list[dict[str, Any]], *, sources: Op
 
 
 _HASHTAG = re.compile(r"#[^\s#]+")
+_LIST_MARK = re.compile(r"^[ \t]*\d{1,2}[.)][ \t]+", re.M)   # 줄머리 번호("1. ") — 숫자 근거 검사에서 뺀다(캡션 요점 목록)
 
 
 def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Optional[list[dict[str, Any]]] = None) -> Report:
@@ -236,7 +237,7 @@ def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Option
     캡션은 장면이 아니라서 근거 표시(claim_ids)가 없다 → 승인된 근거 묶음 **전체**의 원문 인용을 허용 범위로 본다.
     해시태그는 검사에서 뺀다(#2026 같은 태그가 숫자로 걸리지 않게)."""
     rep = Report()
-    text = _HASHTAG.sub(" ", caption or "")
+    text = _LIST_MARK.sub("", _HASHTAG.sub(" ", caption or ""))
     usable = [c for c in claims or [] if isinstance(c, dict) and not _is_derived(c)]
     quotes = " ".join(q for c in usable for q in _quotes(c))
     meta = " ".join(" ".join(str(v) for v in (s or {}).values()) for s in (sources or []))
