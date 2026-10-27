@@ -1,7 +1,7 @@
 {
   "pilot_id": "whisky-water-v1",
   "written_at": "2026-10-24",
-  "script_rev": "v6 — 2026-10-27 엔진 실사형 화면 규칙 도입: 훅 16자 · 장면마다 답하는 질문·연출 · 도해 구조(부품·강조·3색) · 3번은 알아볼 실사(이탄 연기). 대본 뜻은 v5 와 같다",
+  "script_rev": "v6.1 — 2026-10-27 도해 부품을 알아볼 물건으로(향 분자=앰버 탁구공, 알코올=작은 파란 고무공). Jev 부품 인식 0.49→0.89. 그 밖은 v6 과 같다",
   "topic": {
     "title": "위스키에 물 한두 방울, 왜 넣을까?",
     "question": "위스키 고수들은 왜 물을 한두 방울 넣을까?",
@@ -110,26 +110,26 @@
       ],
       "timing_sec": 5,
       "answers_ko": "알코올이 진할 때 향 분자는 잔의 어디에 있나",
-      "staging_ko": "잔 앞쪽 절반을 잘라낸 단면 — 앰버 구슬 다섯 개가 파란 구슬 무리에 둘러싸여 술 깊은 곳에",
-      "explanation": "잔 단면, 향 분자(앰버)가 알코올(파랑)에 둘러싸여 아래쪽",
+      "staging_ko": "잔 앞쪽 절반을 잘라낸 단면 — 앰버 탁구공 다섯 개가 작은 파란 고무공 무리에 둘러싸여 술 깊은 곳에",
+      "explanation": "잔 단면, 향 분자(앰버 탁구공)가 알코올(작은 파란 고무공)에 둘러싸여 아래쪽",
       "mechanism": {
         "subject": "cutaway tulip whisky glass",
         "components": [
           "tulip whisky glass",
-          "amber aroma beads",
-          "blue alcohol beads"
+          "amber ping-pong balls",
+          "small blue rubber balls"
         ],
-        "relationship": "blue alcohol beads crowd around the amber aroma beads",
-        "initial_state": "amber aroma beads held deep in the liquid among many blue alcohol beads",
-        "transformation": "added water drops spread the blue alcohol beads apart and the amber aroma beads rise",
-        "final_state": "amber aroma beads float at the liquid surface",
-        "highlighted_element": "amber aroma beads",
+        "relationship": "small blue rubber balls crowd closely around the amber ping-pong balls",
+        "initial_state": "five amber ping-pong balls held deep in the liquid among many small blue rubber balls",
+        "transformation": "added water drops spread the small blue rubber balls apart and the five amber ping-pong balls rise",
+        "final_state": "the five amber ping-pong balls float in a row at the liquid surface",
+        "highlighted_element": "amber ping-pong balls",
         "claim_ids": [
           "c3"
         ]
       },
-      "visual_prompt": "The front half of one large tulip whisky glass is cut away to show the whisky inside; five large amber aroma beads sit deep in the liquid near the bottom, closely surrounded by many smaller blue alcohol beads",
-      "motion_prompt": "A few clear drops of water fall into the glass; the blue alcohol beads drift apart and the five amber aroma beads float upward one after another until they rest at the liquid surface"
+      "visual_prompt": "The front half of one large tulip whisky glass is cut away to show the whisky inside; five amber ping-pong balls sit deep in the liquid near the bottom, closely surrounded by many small blue rubber balls",
+      "motion_prompt": "A few clear drops of water fall into the glass; the small blue rubber balls drift apart and the five amber ping-pong balls float upward one after another until they rest at the liquid surface"
     },
     {
       "narration": "물이 들어가 알코올이 옅어지면, 이 분자가 표면으로 올라와요.",
@@ -141,25 +141,25 @@
       "timing_sec": 5,
       "continuity": "ref:4",
       "answers_ko": "물이 들어가면 향 분자는 어디로 가나",
-      "staging_ko": "같은 단면 — 파란 구슬이 성기게 퍼지고, 앰버 구슬 다섯 개가 술 표면에 떠 있다",
-      "explanation": "같은 단면, 향 분자(앰버)가 표면에",
+      "staging_ko": "같은 단면 — 작은 파란 고무공이 성기게 퍼지고, 앰버 탁구공 다섯 개가 술 표면에 떠 있다",
+      "explanation": "같은 단면, 향 분자(앰버 탁구공)가 표면에",
       "mechanism": {
         "subject": "cutaway tulip whisky glass",
         "components": [
           "tulip whisky glass",
-          "amber aroma beads",
-          "blue alcohol beads"
+          "amber ping-pong balls",
+          "small blue rubber balls"
         ],
-        "relationship": "blue alcohol beads crowd around the amber aroma beads",
-        "initial_state": "amber aroma beads held deep in the liquid among many blue alcohol beads",
-        "transformation": "the five amber aroma beads have risen and now float in a row at the liquid surface while the blue alcohol beads spread thinly apart below",
-        "final_state": "amber aroma beads float at the liquid surface",
-        "highlighted_element": "amber aroma beads",
+        "relationship": "small blue rubber balls crowd closely around the amber ping-pong balls",
+        "initial_state": "five amber ping-pong balls held deep in the liquid among many small blue rubber balls",
+        "transformation": "added water drops spread the small blue rubber balls apart and the five amber ping-pong balls rise",
+        "final_state": "the five amber ping-pong balls float in a row at the liquid surface",
+        "highlighted_element": "amber ping-pong balls",
         "claim_ids": [
           "c3"
         ]
       },
-      "visual_prompt": "A few clear water drops have entered the same cutaway glass; the blue alcohol beads are now spread thinly apart and the five amber aroma beads float in a row right at the liquid surface"
+      "visual_prompt": "A few clear water drops have entered the same cutaway glass; the small blue rubber balls are now spread thinly apart and the five amber ping-pong balls float in a row right at the liquid surface"
     },
     {
       "narration": "술은 표면부터 입에 닿으니까, 그만큼 향과 맛이 잘 느껴지는 거죠.",

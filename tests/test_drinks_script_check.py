@@ -33,8 +33,9 @@ def test_v5_script_passes_but_its_screen_plan_is_blocked_by_engine_rules():
     assert {(f.code, f.scene) for f in rep.blocks} == {("photo_mechanism_spec_missing", n) for n in (3, 4, 5)}
 
 
-def test_v6_engine_screen_plan_passes():
-    rep = sc.check(load("whisky-v6"))
+@pytest.mark.parametrize("name", ["whisky-v6", "whisky-v6_1"])
+def test_v6_engine_screen_plan_passes(name):
+    rep = sc.check(load(name))
     assert rep.ok, sc.summary_ko(rep)
     assert not [w for w in rep.warns if w.code in ("conclusion_missing", "formal_style", "photo_hook_cut_too_long")]
 
@@ -117,11 +118,13 @@ def test_engine_rules_reach_the_image_prompt_and_shorts_skip_length_rules():
     from engine import drinks_paid as dpaid
     from engine import drinks_screen
 
-    s = load("whisky-v6")
+    # v6.1: Jev 부품 인식 'aroma beads' 0.49 → 'ping-pong balls' 0.89 — 추상 부품은 정체불명 그림이 된다(엔진 교훈)
+    s = load("whisky-v6_1")
     items = dpaid.build_image_items(s["scenes"], [3, 4, 5])
     mech = items[1].prompt
-    assert "showing tulip whisky glass, amber aroma beads and blue alcohol beads all visible together" in mech
-    assert "amber aroma beads is the part being explained" in mech
+    assert "showing tulip whisky glass, amber ping-pong balls and small blue rubber balls all visible together" in mech
+    assert "amber ping-pong balls is the part being explained" in mech
+    assert "beads" not in mech
     assert "The change to show:" in items[2].prompt, "이어 그리는 도해 컷은 바뀌는 것만 말한다(엔진 참조 규칙)"
     assert "label" not in config.DRINKS_PRODUCT_CLAUSE, "부정어로 라벨을 부르지 않는다(1단계 실측: 잔에 빈 라벨·빈 상자)"
     g = drinks_screen.gate(s["scenes"])
