@@ -219,3 +219,66 @@ def test_spend_migration_is_service_role_only_and_ci_worker_stays_keyless():
     actions = (ROOT / "web" / "lib" / "drinks" / "actions.ts").read_text(encoding="utf-8")
     for fn in ["drinks_hold_spend", "drinks_settle_spend", "drinks_register_generated"]:
         assert fn not in actions, fn
+
+
+# ─────────────────────────────────────────────────────────────
+# 0056 — 사진형 카드 유료 그림: 엔진과 SQL 이 같은 항목 이름·단가·대상·판정을 쓴다
+# ─────────────────────────────────────────────────────────────
+
+SQL56 = (ROOT / "supabase" / "migrations" / "0056_drinks_card_paid.sql").read_text(encoding="utf-8")
+
+
+def test_card_item_keys_prices_and_targets_match_between_engine_and_0056():
+    # 항목 이름: SQL 의 'page-NN-photo' 와 엔진 card_image_item 이 같은 꼴 (이미 산 쪽을 알아보는 열쇠)
+    assert "'page-' || lpad(pg.position::text, 2, '0') || '-photo'" in SQL56
+    assert [dpaid.card_image_item(n, "x").item_key for n in (1, 9, 12)] == ["page-01-photo", "page-09-photo", "page-12-photo"]
+    # 단가: SQL 은 실사 단가(price_image_reality) — 0054 한도표와 엔진 카드 항목 단가가 같다
+    limits = {k: float(v) for k, v in re.findall(r"'(price_[a-z_]+)', ([0-9.]+)", SQL)}
+    assert dpaid.card_image_item(1, "x").est_usd == limits["price_image_reality"] == config.DRINKS_PAID_PRICES["image_reality"]
+    est_fn = SQL56[SQL56.index("create or replace function drinks_estimate_render"):]
+    est_fn = est_fn[:est_fn.index("$$;")]
+    page_part = est_fn[est_fn.index("pg_priced"):]
+    assert "price_image_reality" in page_part and "price_image_mechanism" not in page_part
+    # 대상: 출처 장은 뺀다 + image_prompt 가 비지 않은 쪽만 — 엔진 build_card_image_items 와 같다
+    assert "coalesce(e.s ->> 'role', '') <> 'source'" in est_fn and "e.s ->> 'image_prompt'" in est_fn
+    pages = [{"position": 1, "role": "cover", "image_prompt": "a"}, {"position": 2, "role": "explain", "image_prompt": " \t\n"},
+             {"position": 3, "role": "source", "image_prompt": "b"}, {"position": 4, "role": "explain"}, {"position": 5, "role": "explain", "image_prompt": "c"}]
+    assert [it.position for it in dpaid.build_card_image_items(pages)] == [1, 5]
+    # 반환 모양: 영상용 scenes 는 그대로, 카드는 pages — 합계는 둘을 합친다(화면은 total_usd·images·bought 를 읽는다)
+    assert "'scenes'," in est_fn and "'pages'," in est_fn
+    for k in ("images", "bought", "total_usd"):
+        assert re.search(rf"'{k}',[^\n]*\+", est_fn), k
+
+
+def test_photo_plan_judgement_and_guard_match_engine():
+    from engine.drinks_cards_photo import is_photo_plan
+    assert config.DRINKS_CARD_PHOTO_TEMPLATE == "card-photo-v1"
+    judge = SQL56[SQL56.index("create or replace function drinks_is_photo_plan"):]
+    judge = judge[:judge.index("$$;")]
+    assert "'layout' = 'photo'" in judge and f"'template_version' = '{config.DRINKS_CARD_PHOTO_TEMPLATE}'" in judge
+    assert is_photo_plan({"layout": "photo"}) and is_photo_plan({"template_version": "card-photo-v1"}) and not is_photo_plan({"template_version": "card-v1"})
+    # 유료 허용 조건: 영상 또는 (카드뉴스 + 사진형). 글자 카드는 계속 거절
+    req = SQL56[SQL56.index("create or replace function drinks_request_render"):]
+    assert "pl.format = 'video' or (pl.format = 'carousel' and drinks_is_photo_plan(pl.plan_json))" in req
+    for keep in ("approval_closed", "kind_not_approved", "'ownership'", "budget_insufficient", "paid_disabled", "drinks_estimate_render(pl.id)"):
+        assert keep in req, keep   # 열린 결재·종류·전용·상한 검사는 그대로
+
+
+def test_validate_plan_keeps_every_field_the_card_engine_reads():
+    val = SQL56[SQL56.index("create or replace function drinks_validate_plan"):]
+    val = val[:val.index("end $$;")]
+    for field in ("image_prompt", "kicker", "category", "photo_shift", "layout", "caption"):
+        assert f"'{field}'" in val, field
+    # 엔진이 읽는 쪽 키(photo_shift·kicker·category·image_prompt)와 제작안 키(layout·caption) 이름이 실제로 엔진 소스에 있다
+    src = (ROOT / "engine" / "drinks_cards_photo.py").read_text(encoding="utf-8") + (ROOT / "engine" / "drinks_caption.py").read_text(encoding="utf-8")
+    for field in ("photo_shift", "kicker", "category", "layout", "caption"):
+        assert field in src, field
+    assert "image_prompt" in (ROOT / "engine" / "drinks_paid.py").read_text(encoding="utf-8")
+
+
+def test_0056_regrants_service_role_only():
+    low = SQL56.lower()
+    assert not re.search(r"grant[^;]*to[^;]*\b(anon|authenticated|public)\b", low)
+    assert "revoke all on function %s from public, anon, authenticated" in SQL56
+    assert "grant execute on function %s to service_role" in SQL56
+    assert "create table" not in low and "create policy" not in low and "alter table" not in low   # 스키마 변경 없음 — 함수만

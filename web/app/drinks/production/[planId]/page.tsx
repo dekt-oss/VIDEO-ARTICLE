@@ -32,6 +32,8 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
   const scenes = ((plan.plan_json as { scenes?: { visual_role?: string; visual_prompt?: string | null }[] }).scenes ?? []);
   const noPrompt = scenes.map((s, i) => ({ s, i: i + 1 })).filter(({ s }) => (s.visual_role ?? "reality") !== "text_card" && !s.visual_prompt?.trim())
     .map(({ i }) => i);
+  const cardPages = spend.estimate.pages ?? [];   // 사진형 카드뉴스의 쪽별 그림 예상(0056)
+  const showPaid = f === "video" || cardPages.length > 0;
   const openApproval = spend.approvals.find((a) => a.status === "open" && !a.expired);
   return (
     <main className="container">
@@ -59,7 +61,7 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         <p className="muted">비용 합계(이 제작안): ${total.toFixed(4)} — 공급자·모델별 기록 {costs.length}건</p>
       </section>
 
-      {f === "video" && (
+      {showPaid && (
         <section className="section">
           <h3>유료 그림(결재)</h3>
           <p className="muted">지금 유료 렌더하면 새로 드는 예상(그림만, 정가표): <b>${estimate.toFixed(3)}</b> — 새로 살 그림 {spend.estimate.images}장
@@ -67,6 +69,10 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
           <div className="dk-row">
             {spend.estimate.scenes.map((s) => (
               <span key={s.position} className={s.bought ? "pill dk-ok" : "pill"}>{s.position}번 · {s.role === "mechanism" ? "3D 도해" : s.role === "text_card" ? "정리 카드" : "실사형"} ·{" "}
+                {s.bought ? "산 그림 다시 씀" : `$${Number(s.usd).toFixed(3)}`}</span>
+            ))}
+            {cardPages.map((s) => (
+              <span key={`p${s.position}`} className={s.bought ? "pill dk-ok" : "pill"}>{s.position}쪽 · 카드 배경 사진 ·{" "}
                 {s.bought ? "산 그림 다시 씀" : `$${Number(s.usd).toFixed(3)}`}</span>
             ))}
           </div>

@@ -38,6 +38,8 @@ export interface SpendApproval {
 }
 export interface PlanSpend {
   estimate: { scenes: { position: number; role: string; usd: number | string; bought: boolean; price_usd: number | string }[];
+    /** 0056: 사진형 카드뉴스의 쪽별 그림(영상 제작안·옛 응답에는 없거나 빈 배열). images·bought·total_usd 는 장면과 쪽을 합친 값. */
+    pages?: { position: number; role: string; kind: string; usd: number | string; bought: boolean; price_usd: number | string }[];
     images: number; bought: number; total_usd: number | string };
   approvals: SpendApproval[];
 }
