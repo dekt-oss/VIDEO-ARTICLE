@@ -35,7 +35,9 @@ from typing import Any, Optional
 from . import config
 
 # 숫자(쉼표·소수 포함). 2017년·45%·70도·30ml 의 숫자 부분.
-_NUM = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)?)")
+# ★ 앞 글자 검사는 영문·숫자만 본다(2026-10-27). 전엔 \w 라 한자·한글 바로 뒤의 숫자(精米歩合50%·약50)를 못 읽어,
+#   원문의 숫자는 빠지고(→ 근거 있는 숫자를 막음) 나레이션의 붙은 숫자는 검사를 빠져나갔다.
+_NUM = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:[.,]\d+)?)")
 # 한국어 양: (수사) + 단위. 단위 → 원문에서 찾을 영어·일본어 낱말.
 _UNITS = {
     "티스푼": ("teaspoon", "spoon", "tsp"), "스푼": ("spoon", "tsp", "tablespoon"), "숟가락": ("spoon",),
@@ -223,6 +225,32 @@ def plan_spec(plan: dict[str, Any], claims: list[dict[str, Any]], *, sources: Op
     return {"scenes": (plan or {}).get("scenes") or [], "claims": claims or [],
             "sources": [" ".join(str(v) for v in (s or {}).values()) for s in (sources or [])],
             "hook_question": (brief or {}).get("audience_question"), "viewer_conclusion": conc}
+
+
+_HASHTAG = re.compile(r"#[^\s#]+")
+
+
+def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Optional[list[dict[str, Any]]] = None) -> Report:
+    """인스타 캡션 검사(발행 워커가 게시 직전에, 0원). 대본과 같은 기계 규칙 셋만 — 원문에 없는 숫자·양·권고.
+
+    캡션은 장면이 아니라서 근거 표시(claim_ids)가 없다 → 승인된 근거 묶음 **전체**의 원문 인용을 허용 범위로 본다.
+    해시태그는 검사에서 뺀다(#2026 같은 태그가 숫자로 걸리지 않게)."""
+    rep = Report()
+    text = _HASHTAG.sub(" ", caption or "")
+    usable = [c for c in claims or [] if isinstance(c, dict) and not _is_derived(c)]
+    quotes = " ".join(q for c in usable for q in _quotes(c))
+    meta = " ".join(" ".join(str(v) for v in (s or {}).values()) for s in (sources or []))
+    missing = sorted(n for n in _nums(text) if n not in (_nums(quotes) | _nums(meta)))
+    if missing:
+        rep.blocks.append(Finding("number_unsupported", None, f"캡션에 원문에 없는 숫자: {', '.join(missing)}"))
+    low = f" {quotes.lower()} "
+    for m in _QUANTITY.finditer(text):
+        if not any(w in low for w in _UNITS.get(m.group(1).lower(), _UNITS.get(m.group(1), ()))):
+            rep.blocks.append(Finding("quantity_unsupported", None, f"캡션의 '{m.group(0)}' — 원문에 이 단위(양)가 없습니다"))
+    lines = [s.strip() for s in re.split(r"[\n]+|(?<=[.?!])\s+", text) if s.strip()]
+    if any(_ADVICE.search(s) for s in lines) and not any(_kind(c) in ADVICE_KINDS for c in usable):
+        rep.blocks.append(Finding("advice_unsupported", None, "캡션에 권고(~해 보세요)가 있는데, 실제 습관·권고를 말한 원문 근거가 없습니다"))
+    return rep
 
 
 def summary_ko(rep: Report) -> str:

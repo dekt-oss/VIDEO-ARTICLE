@@ -74,6 +74,25 @@ class Storage:
             return
         raise RenderError("storage_mode", f"이 저장 방식으로는 {key} 를 꺼낼 수 없습니다")
 
+    def signed_url(self, key: str, expires_sec: int = 3600) -> str:
+        """공급자(인스타)가 파일을 가져갈 임시 주소(발행 워커). 로그에 남기지 않는다.
+
+        로컬 저장은 file:// 주소 — 가짜 공급자 전용이다(실제 공급자는 https 만 받아 거부한다)."""
+        if key.startswith("local:"):
+            path = os.path.join(self.root, key[len("local:"):].replace("/", os.sep))
+            if not os.path.exists(path):
+                raise RenderError("file_missing", f"저장된 파일이 없습니다: {key}")
+            return "file:///" + os.path.abspath(path).replace(os.sep, "/").lstrip("/")
+        if self.mode == "supabase":
+            from . import db
+
+            res = db.client().storage.from_(BUCKET).create_signed_url(key, expires_sec)
+            url = (res or {}).get("signedURL") or (res or {}).get("signedUrl")
+            if not url:
+                raise RenderError("signed_url_failed", f"임시 주소를 만들지 못했습니다: {key}")
+            return url
+        raise RenderError("storage_mode", f"이 저장 방식으로는 {key} 의 주소를 만들 수 없습니다")
+
 
 def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str) -> tuple[dict[int, str], list[dict[str, Any]]]:
     """유료 작업: 장면마다 그림을 결재 안에서 산다(이미 산 것은 다시 쓴다). 정리 카드 장면은 사지 않는다.
