@@ -950,6 +950,77 @@ create or replace function drinks_strategy_rank(p jsonb) returns jsonb language 
 $$;
 
 -- ─────────────────────────────────────────────────────────────
+-- 화면 조회 (서버 컴포넌트가 service key 로 한 번에 읽는다). 상한을 넘으면 truncated=true — 조용히 자르지 않는다.
+-- ─────────────────────────────────────────────────────────────
+
+create or replace function drinks_publish_board(p jsonb) returns jsonb language plpgsql as $$
+declare v_lim int := 300;
+begin
+  perform drinks_reap_publications();   -- 끊긴 '게시 중'을 화면을 열 때도 unknown 으로 정리한다(버튼이 옛 상태를 보지 않게)
+  return jsonb_build_object(
+    'limits', drinks_publish_limits(),
+    'accounts', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'platform', a.platform, 'external_account_id',
+        a.external_account_id, 'display_name', a.display_name, 'account_type', a.account_type, 'connection', a.connection,
+        'capabilities', a.capabilities, 'status', a.status, 'status_reason', a.status_reason, 'publish_enabled', a.publish_enabled,
+        'credential_ref', a.credential_ref, 'verified_at', a.verified_at, 'verified_username', a.verified_username,
+        'version', a.version) order by a.created_at) from drink_social_accounts a), '[]'),
+    'requests', coalesce((select jsonb_agg(x order by x ->> 'updated_at' desc) from (
+        select jsonb_build_object('id', r.id, 'topic_id', r.topic_id, 'topic_title', t.title, 'categories', to_jsonb(t.categories),
+          'plan_revision_id', r.plan_revision_id, 'post_type', r.post_type, 'account_id', r.account_id,
+          'target_external_account_id', r.target_external_account_id, 'caption', r.caption, 'publish_at', r.publish_at,
+          'display_timezone', r.display_timezone, 'status', r.status, 'approval_digest', r.approval_digest,
+          'current_digest', drinks_pub_digest(r), 'block', case when r.status in ('approved','scheduled','paused','awaiting_approval')
+            then drinks_pub_block(r.id) end, 'approved_at', r.approved_at, 'pause_code', r.pause_code, 'pause_reason', r.pause_reason,
+          'cancel_requested', r.cancel_requested, 'external_post_id', r.external_post_id, 'external_url', r.external_url,
+          'reconcile_state', r.reconcile_state, 'attempt_count', r.attempt_count, 'error_code', r.error_code,
+          'error_message', r.error_message, 'published_at', r.published_at, 'version', r.version, 'updated_at', r.updated_at,
+          'files', (select jsonb_agg(jsonb_build_object('role', ma.role, 'position', ma.position, 'storage_key', a.storage_key,
+              'width', a.width, 'height', a.height, 'state', a.state) order by ma.role, ma.position)
+            from drink_manifest_assets ma join drink_media_assets a on a.id = ma.asset_id where ma.manifest_id = r.manifest_id)) x
+        from drink_publication_requests r join drink_topics t on t.id = r.topic_id
+        order by r.updated_at desc limit v_lim) q), '[]'),
+    'requests_truncated', (select count(*) > v_lim from drink_publication_requests),
+    -- 발행안을 만들 수 있는 것: 지금도 쓸 수 있는 검수 승인 묶음 중 살아 있는 요청이 없는 것
+    'ready_outputs', coalesce((select jsonb_agg(jsonb_build_object('output_review_id', v.review_id, 'manifest_id', v.manifest_id,
+        'plan_revision_id', v.plan_revision_id, 'format', m.format, 'topic_title', t.title, 'reviewed_at', o.reviewed_at,
+        'pages', (select count(*) from drink_manifest_assets ma where ma.manifest_id = v.manifest_id and ma.role = 'page'))
+        order by o.reviewed_at desc)
+      from drink_output_validity v join drink_output_reviews o on o.id = v.review_id
+      join drink_asset_manifests m on m.id = v.manifest_id join drink_plan_revisions pl on pl.id = v.plan_revision_id
+      join drink_topics t on t.id = pl.topic_id
+      where v.currently_usable and not exists (select 1 from drink_publication_requests r where r.output_review_id = v.review_id
+        and r.status not in ('canceled','failed'))), '[]'),
+    -- 추천 게시 시간대: 지금 전략의 slot 가중치(자동으로 넣지 않는다 — 발행안 작성 때 참고로만)
+    'slot_weights', (select weights -> 'slot' from drink_strategy_versions where status = 'active'));
+end $$;
+
+create or replace function drinks_analytics_board(p jsonb) returns jsonb language sql stable as $$
+  select jsonb_build_object(
+    'limits', drinks_publish_limits(),
+    'accounts', (select count(*) from drink_social_accounts),
+    'active_accounts', (select count(*) from drink_social_accounts where status = 'active'),
+    -- 실제(가짜 아님) 연결 확인 계정 수 — 0 이면 화면이 '미연결'을 띄운다(시험 계정 숫자를 실제 성과로 보이지 않게)
+    'real_active_accounts', (select count(*) from drink_social_accounts where status = 'active' and connection <> 'fake'),
+    'posts', coalesce((select jsonb_agg(x order by x ->> 'published_at' desc) from (
+        select jsonb_build_object('request_id', r.id, 'topic_title', t.title, 'categories', to_jsonb(t.categories), 'lane', t.lane,
+          'post_type', r.post_type, 'account', a.display_name, 'is_test', a.connection = 'fake', 'external_url', r.external_url, 'published_at', r.published_at,
+          'slot', drinks_time_slot(r.published_at),
+          'snapshots', coalesce((select jsonb_agg(jsonb_build_object('bucket', s.age_bucket, 'hours', s.hours_since_publish,
+              'values', s.metric_values, 'unavailable', s.unavailable, 'status', s.fetch_status, 'error_code', s.error_code,
+              'observed_at', s.observed_at) order by s.observed_at) from drink_post_metric_snapshots s where s.request_id = r.id), '[]')) x
+        from drink_publication_requests r join drink_topics t on t.id = r.topic_id join drink_social_accounts a on a.id = r.account_id
+        where r.status = 'published' order by r.published_at desc limit 300) q), '[]'),
+    'posts_truncated', (select count(*) > 300 from drink_publication_requests where status = 'published'),
+    'active_strategy', (select jsonb_build_object('id', v.id, 'label', v.label, 'weights', v.weights, 'created_at', v.created_at)
+      from drink_strategy_versions v where v.status = 'active'),
+    'proposals', coalesce((select jsonb_agg(jsonb_build_object('id', x.id, 'status', x.status, 'weights', x.weights, 'basis', x.basis,
+        'sample_total', x.sample_total, 'sufficient', x.sufficient, 'summary_ko', x.summary_ko, 'created_at', x.created_at,
+        'decided_at', x.decided_at, 'reason', x.reason, 'base_version_id', x.base_version_id) order by x.created_at desc)
+      from (select * from drink_strategy_proposals order by created_at desc limit 10) x), '[]'),
+    'rank', drinks_strategy_rank(jsonb_build_object('limit', 200)))
+$$;
+
+-- ─────────────────────────────────────────────────────────────
 -- 권한 — 0049·0053 방향 그대로: 공개 직접 접근 차단, 쓰기는 Next 라우트(service key) 경유
 -- ─────────────────────────────────────────────────────────────
 

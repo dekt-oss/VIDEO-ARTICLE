@@ -79,8 +79,9 @@ jobs:
         run: |
           skipped=$(grep -oE '[0-9]+ skipped' /tmp/pytest.out | grep -oE '^[0-9]+' | tail -1)
           echo "건너뛴 테스트: ${skipped:-0}건"
-          if [ "${skipped:-0}" -gt 12 ]; then
-            echo "::error::건너뛴 테스트가 ${skipped}건이다(기준 12). 폰트·의존성 누락으로 검사가 헐거워졌다."
+          # 13 = 기존 11 + 여유 1 + 주류 순환 e2e(이 잡엔 web 의존성이 없어 모듈째 1건 건너뜀 — web 잡이 따로 돌린다)
+          if [ "${skipped:-0}" -gt 13 ]; then
+            echo "::error::건너뛴 테스트가 ${skipped}건이다(기준 13). 폰트·의존성 누락으로 검사가 헐거워졌다."
             exit 1
           fi
 
@@ -106,6 +107,17 @@ jobs:
       #   lib/drinks/ 는 주류 공장(2026-10-22) — 다음 행동·점수·URL 정규화·제외 기능 거부.
       - name: node --test
         run: node --test lib/*.test.ts lib/work/*.test.ts lib/drinks/*.test.ts
+      # 주류 순환 한 바퀴(2026-10-27): PGlite 다리 위에서 Python 워커가 수집→카드→발행(가짜 인스타)→성과→전략까지 돈다.
+      # 웹 의존성(PGlite)과 엔진 의존성이 둘 다 있어야 해서 이 잡에서 돌린다. 외부 호출·시크릿 0.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: drinks loop e2e
+        working-directory: .
+        run: |
+          pip install -r engine/requirements.txt
+          python -m pytest -q tests/test_drinks_loop_e2e.py
       - name: tsc --noEmit
         run: npx tsc --noEmit
       - name: lint

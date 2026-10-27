@@ -74,6 +74,14 @@ export const GROUPS_DRINKS: NavGroup[] = [
   },
   { title: "작업함", items: [{ href: "/drinks/review", label: "작업함", match: "prefix" }] },
   { title: "제작", items: [{ href: "/drinks/production", label: "제작", match: "prefix" }] },
+  // D단계 순환(2026-10-27): 발행(인스타 예약·게시 여부 확인)·성과(스냅샷 + 전략 제안)
+  {
+    title: "발행·성과",
+    items: [
+      { href: "/drinks/publish", label: "발행", match: "prefix" },
+      { href: "/drinks/analytics", label: "성과·전략", match: "prefix" },
+    ],
+  },
   { title: "설정", items: [{ href: "/drinks/settings", label: "설정·지원 범위", match: "prefix" }] },
 ];
 

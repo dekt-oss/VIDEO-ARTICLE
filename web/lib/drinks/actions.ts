@@ -40,6 +40,14 @@ export const DRINKS_ACTIONS = {
   // 유료 생성 결재(0054): 결재 열기·닫기. 가잡기·확정·파일 등록(워커 전용)은 여기 없다 — 화면은 돈을 쓰지 못한다.
   open_spend_approval: "drinks_open_spend_approval",
   close_spend_approval: "drinks_close_spend_approval",
+  // D단계 순환(0055): 계정 등록·발행 스위치, 발행안 작성·고치기·승인·예약·멈춤·취소, 전략 제안 반영·기각.
+  // 점유·게시·대조·성과 기록·전략 계산(워커 전용)은 여기 없다 — 화면은 인스타에 직접 올리지 못한다.
+  register_account: "drinks_register_account",
+  account_action: "drinks_account_action",
+  create_publication: "drinks_create_publication",
+  update_publication: "drinks_update_publication",
+  publication_action: "drinks_publication_action",
+  strategy_action: "drinks_strategy_action",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -122,6 +130,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   // 유료 결재(0054)
   approval_closed: 422, approval_expired: 422, kind_not_approved: 422, budget_exceeded: 422, budget_insufficient: 422,
   already_bought: 409, hold_in_progress: 409, retry_limit: 429,
+  // 순환(0055)
+  duplicate_account: 409, output_not_usable: 422, capability_missing: 422, duplicate_publication: 409,
+  digest_mismatch: 409, not_publishable: 422, too_late: 422, stale_strategy: 409, insufficient_sample: 422,
 };
 
 export interface DbError {
@@ -268,6 +279,15 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     p.approved_by = "operator";
     if (typeof p.approver_words !== "string" || !p.approver_words.trim()) {
       return { status: 400, body: { error: "결재 문장(승인한 말 그대로)을 적으세요", code: "invalid_input" } };
+    }
+  }
+  if (action === "publication_action" || action === "strategy_action") {
+    p.actor = "operator"; // 승인·반영한 사람 이름은 입력값을 믿지 않는다(운영자 키 게이트를 통과한 사람)
+  }
+  if (action === "register_account") {
+    // 토큰 원문은 받지 않는다 — 비밀 이름(credential_ref)만. 토큰처럼 보이는 칸이 오면 저장 전에 거부한다.
+    for (const k of ["access_token", "token", "refresh_token", "app_secret"]) {
+      if (k in p) return { status: 400, body: { error: "토큰 원문은 넣지 않습니다 — 서버 비밀 이름만 적으세요", code: "invalid_input" } };
     }
   }
   if (action === "request_run") {

@@ -1,0 +1,50 @@
+# 주류 공장 순환 워커 — ③ 인스타 발행 · ④ 성과 수집 · ⑤ 전략 제안 (2026-10-27). docs/deviation-drinks-publish-loop.md
+#
+# ★ 수동 실행만 있다(workflow_dispatch). 예약 실행(cron)은 운영자 승인 뒤에 켠다 — 무인 게시가 되기 때문이다.
+# ★ 실제 인스타 게시는 꺼져 있다: DRINKS_IG_LIVE 를 주지 않으므로 실제 연결 계정의 예약은 게시 직전에
+#   'provider_disabled' 로 멈춘다(paused). 시험용 가짜 계정(fake_)만 끝까지 돈다. 계정 토큰 비밀도 아직 주지 않는다.
+# ★ 유료 호출 없음: LLM·이미지·영상 키를 주지 않는다. 전략 제안은 코드 계산(0원)이다.
+name: drinks-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "돌릴 단계"
+        type: choice
+        default: publish
+        options: [publish, metrics, strategy]
+
+concurrency:
+  group: drinks-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      TIMEZONE: "Asia/Seoul"
+      WORKER_ID: ${{ github.run_id }}
+      DRINKS_STORAGE: supabase
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -r engine/requirements.txt
+      - name: publish
+        if: inputs.step == 'publish'
+        run: python -m engine.drinks_publish
+      - name: metrics
+        if: inputs.step == 'metrics'
+        run: python -m engine.drinks_metrics
+      - name: strategy
+        if: inputs.step == 'strategy'
+        run: python -m engine.drinks_strategy

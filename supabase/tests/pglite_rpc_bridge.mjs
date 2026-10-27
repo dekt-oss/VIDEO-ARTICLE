@@ -5,6 +5,8 @@
 // ★ POST /sql 은 시험 전용(시간 되돌리기·가짜 지표 확인). 운영 경로에는 이런 문이 없다.
 //
 //   node supabase/tests/pglite_rpc_bridge.mjs   → 첫 줄에 "READY <port>" 를 찍는다
+// ★ 화면 확인용: DRINKS_BRIDGE_PORT 로 포트를 고정하면 supabase-js 의 rpc 모양(POST /rest/v1/rpc/<함수> {p})도 받는다 —
+//   로컬 개발 서버(web)를 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:<포트> 로 띄워 이 시험 DB 를 읽게 할 수 있다.
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
@@ -37,6 +39,19 @@ const server = createServer((rq, res) => {
   rq.on("end", () => serial(async () => {
     try {
       const body = raw ? JSON.parse(raw) : {};
+      const pg = /^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(rq.url ?? "");
+      if (rq.method === "POST" && pg) {   // supabase-js 모양: 성공은 값 그대로, 실패는 PostgREST 오류 모양
+        try {
+          await db.exec("set role service_role");
+          const r = await db.query(`select ${pg[1]}($1::jsonb) as r`, [JSON.stringify(body.p ?? {})]);
+          send(res, 200, r.rows[0].r);
+        } catch (e) {
+          send(res, 400, { message: e.message, code: e.code ?? "P0001", details: e.detail ?? null, hint: null });
+        } finally {
+          await db.exec("reset role");
+        }
+        return;
+      }
       const m = /^\/rpc\/([a-z_]+)$/.exec(rq.url ?? "");
       if (rq.method === "POST" && m) {
         try {
@@ -65,4 +80,4 @@ const server = createServer((rq, res) => {
     }
   }));
 });
-server.listen(0, "127.0.0.1", () => console.log(`READY ${server.address().port}`));
+server.listen(Number(process.env.DRINKS_BRIDGE_PORT ?? 0), "127.0.0.1", () => console.log(`READY ${server.address().port}`));
