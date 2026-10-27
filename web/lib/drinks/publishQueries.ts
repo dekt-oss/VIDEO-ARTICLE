@@ -1,7 +1,7 @@
 // 주류 발행·성과(0055) 읽기 — 서버 컴포넌트 전용(service key). 실패를 빈 목록으로 바꾸지 않는다.
 // 두 화면이 각각 DB 함수 하나(drinks_publish_board / drinks_analytics_board)로 읽는다 — 상한을 넘으면 truncated.
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fromQuery, type Loaded } from "@/lib/drinks/model";
+import { attachCaptionDrafts, fromQuery, type DraftRow, type Loaded } from "@/lib/drinks/model";
 
 export type PubStatus = "draft" | "awaiting_approval" | "approved" | "scheduled" | "publishing" | "published" | "failed"
   | "unknown" | "paused" | "canceled";
@@ -38,6 +38,8 @@ export interface RequestView {
 export interface ReadyOutput {
   output_review_id: string; manifest_id: string; plan_revision_id: string; format: "video" | "carousel"; topic_title: string;
   reviewed_at: string | null; pages: number;
+  /** 렌더 워커가 qa_summary 에 남긴 캡션 초안(사진형 카드뉴스만). 없으면 null — 캡션 칸은 빈 채로 둔다. */
+  caption_draft?: string | null;
 }
 
 export interface PublishBoard {
@@ -83,8 +85,15 @@ export interface AnalyticsBoard {
 export async function loadPublishBoard(): Promise<Loaded<PublishBoard>> {
   const db = createAdminClient();
   if (!db) return { state: "unconfigured" };
-  return fromQuery(await db.rpc("drinks_publish_board", { p: {} }), "발행 화면") as Loaded<PublishBoard>;
+  const board = fromQuery(await db.rpc("drinks_publish_board", { p: {} }), "발행 화면") as Loaded<PublishBoard>;
+  if (board.state !== "ok" || board.data.ready_outputs.length === 0) return board;
+  // 캡션 초안은 편의일 뿐이라 못 읽어도 화면은 그대로 연다(스키마·SQL 함수 변경 없이 qa_summary jsonb 를 직접 읽는다).
+  const ids = board.data.ready_outputs.map((o) => o.output_review_id);
+  const drafts = await db.from("drink_output_reviews").select("id, caption_draft:qa_summary->>caption_draft").in("id", ids);
+  if (!drafts.error) board.data.ready_outputs = attachCaptionDrafts(board.data.ready_outputs, (drafts.data ?? []) as unknown as DraftRow[]);
+  return board;
 }
+
 
 export async function loadAnalyticsBoard(): Promise<Loaded<AnalyticsBoard>> {
   const db = createAdminClient();

@@ -41,6 +41,26 @@ def hashtags(raw: Any) -> list[str]:
     return [f"#{t}" for t in seen[:config.DRINKS_CAPTION_MAX_HASHTAGS - 1]] + [f"#{brand}"]
 
 
+_END = ("." , "!", "?", "…", "。", "~")
+
+
+def _sentence(text: str) -> str:
+    return text if text.endswith(_END) else text + "."
+
+
+def _body(cap: dict[str, Any], pages: list[dict[str, Any]], points: list[str]) -> str:
+    """본문. 기본은 문단(운영자 결정 2026-10-27 — 번호 목록은 행동·체크리스트 글에만 쓴다).
+    · caption.body(완성된 문단 글)가 있으면 그대로.
+    · caption.style == "list" 이거나 쪽 역할에 checklist 가 있으면 번호 목록.
+    · 그 밖에는 요점을 문장으로 만들어(끝 문장부호만 보충) 공백으로 이어 한 문단으로."""
+    ready = str(cap.get("body") or "").strip()
+    if ready:
+        return ready
+    if str(cap.get("style") or "").strip().lower() == "list" or any(p.get("role") == "checklist" for p in pages):
+        return "\n".join(f"{i}. {p}" for i, p in enumerate(points, 1))
+    return " ".join(_sentence(p) for p in points)
+
+
 def build_caption(plan: dict[str, Any], topic: dict[str, Any], *, handle: str, ai_images: bool) -> str:
     """승인된 제작안 → 인스타 캡션.
 
@@ -61,7 +81,8 @@ def build_caption(plan: dict[str, Any], topic: dict[str, Any], *, handle: str, a
     points = [p for p in points if p]
     if not points:   # 제작안에 요점이 없으면 설명 쪽 제목(승인된 글)을 그대로
         points = [h for h in (_flat(p.get("heading") or "") for p in inner) if h]
-    point_lines = [f"{i}. {p}" for i, p in enumerate(points[:config.DRINKS_CAPTION_MAX_POINTS], 1)]
+    points = points[:config.DRINKS_CAPTION_MAX_POINTS]
+    body_text = _body(cap, pages, points)
 
     limit = _flat(cap.get("limit") or "")
     note = f"※ {limit} {config.DRINKS_CAPTION_SOURCE_NOTE}" if limit else f"※ {config.DRINKS_CAPTION_SOURCE_NOTE}"
@@ -72,7 +93,7 @@ def build_caption(plan: dict[str, Any], topic: dict[str, Any], *, handle: str, a
     ask = f"📌 저장해 두고, {share} 좋아하는 친구에게 공유해 주세요\n🥃 {cta} → @{at} 팔로우"
 
     sections: list[Optional[str]] = [
-        head, intro or None, "\n".join(point_lines) or None, note, ask,
+        head, intro or None, body_text or None, note, ask,
         f"*{config.DRINKS_CARD_AI_NOTICE}" if ai_images else None,
         " ".join(hashtags(cap.get("hashtags"))),
     ]

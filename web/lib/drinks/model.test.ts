@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   weightedScore, fitOk, nextAction, actionRank, blockerLabel, fromQuery, nextMonday, deriveTopic, originSummary,
-  planCoverage, effectiveMeta,
+  planCoverage, effectiveMeta, attachCaptionDrafts,
   type NextActionInput,
 } from "./model.ts";
 
@@ -177,4 +177,11 @@ test("deriveTopic: 형식별 현재 제작안을 따로 본다", () => {
   assert.notEqual(ready.action.label, "편성", "지금 쓸 수 없는 승인으로 편성을 권하지 않는다");
   const unknown = { ...(review as object), currently_valid: undefined } as never;
   assert.equal(deriveTopic(topic, new Map([["r1", unknown]]), deliverables, plans).approvalValid, false, "판정이 없으면 유효로 보지 않는다");
+});
+
+test("발행 화면 캡션 초안: 결과물에 맞는 초안만 붙고, 없거나 공백뿐이면 null(칸은 빈 채로)", () => {
+  const outs = [{ output_review_id: "a" }, { output_review_id: "b" }, { output_review_id: "c" }];
+  const got = attachCaptionDrafts(outs, [{ id: "a", caption_draft: "제목\n\n본문" }, { id: "b", caption_draft: "   " }]);
+  assert.deepEqual(got.map((o) => o.caption_draft), ["제목\n\n본문", null, null]);
+  assert.deepEqual(attachCaptionDrafts([], []), []);
 });

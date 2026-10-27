@@ -155,6 +155,19 @@ def _buy_items(job: dict[str, Any], items: list[Any], rpc: Rpc, storage: Storage
     return images, costs
 
 
+def add_caption_draft(job: dict[str, Any], qa: dict[str, Any]) -> None:
+    """사진형 카드의 캡션 초안을 렌더 qa["caption_draft"] 에 싣는다(스키마 변경 없이 qa_summary jsonb 로 화면에 간다).
+    발행 화면이 비어 있는 캡션 칸을 이 글로 채워 주고, 운영자가 고쳐 올린다 — 자동 게시는 없다.
+    조립이 실패해도(예: 글자 수 초과) 렌더 결과는 그대로 둔다."""
+    from .drinks_caption import build_caption
+
+    try:
+        qa["caption_draft"] = build_caption(job.get("plan") or {}, job.get("topic") or {}, handle=config.DRINKS_IG_HANDLE,
+                                            ai_images=bool(qa.get("ai_images")))
+    except ValueError as exc:
+        log.warning("drinks: 캡션 초안을 만들지 못했습니다(%s) — 발행 화면에서 직접 적습니다", exc)
+
+
 def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "edge") -> dict[str, Any]:
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     work = tempfile.mkdtemp(prefix=f"drinks_{job['job_id'][:8]}_")
@@ -181,6 +194,8 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
                 rendered.costs = paid_costs + rendered.costs
             else:
                 rendered = render_carousel(job, os.path.join(work, "pages"))
+            if is_photo_plan(job.get("plan")):
+                add_caption_draft(job, rendered.qa)
         rpc("drinks_heartbeat_render", lease)
         assets = []
         generated = rendered.qa.get("generated_scenes") or rendered.qa.get("generated_pages")   # 영상 장면·카드 쪽의 산 그림

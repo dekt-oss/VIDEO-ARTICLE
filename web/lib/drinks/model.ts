@@ -507,3 +507,11 @@ export function nextMonday(today: string): string {
   dt.setUTCDate(dt.getUTCDate() + (8 - dow));
   return dt.toISOString().slice(0, 10);
 }
+
+/** 발행 화면: 결과물마다 렌더가 남긴 캡션 초안(qa_summary.caption_draft)을 붙인다. 공백뿐인 초안은 없는 것으로 본다. */
+export interface DraftRow { id: string; caption_draft: string | null }
+
+export function attachCaptionDrafts<T extends { output_review_id: string }>(outputs: T[], rows: DraftRow[]): (T & { caption_draft: string | null })[] {
+  const byId = new Map(rows.map((r) => [r.id, r.caption_draft?.trim() ? r.caption_draft : null]));
+  return outputs.map((o) => ({ ...o, caption_draft: byId.get(o.output_review_id) ?? null }));
+}

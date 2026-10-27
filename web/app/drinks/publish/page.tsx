@@ -71,7 +71,7 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
                     <span className="muted"> · 검수 {kst(o.reviewed_at)}</span>
                   </span>
                   <CreatePublication outputReviewId={o.output_review_id} accounts={publishable}
-                    postType={o.format === "carousel" ? "carousel" : "reel"} slotHint={slotHint} />
+                    captionDraft={o.caption_draft ?? null} postType={o.format === "carousel" ? "carousel" : "reel"} slotHint={slotHint} />
                 </div>
               ))}
 

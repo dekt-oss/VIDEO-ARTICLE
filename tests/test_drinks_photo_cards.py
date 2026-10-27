@@ -168,20 +168,45 @@ def test_handle_env_default_is_sooljjerigo():
 CLAIMS = [{"claim_id": "c1", "kind": "fact", "source_refs": [{"original_quote": "In 2017 a study found that adding a few drops of water to whisky"}]}]
 
 
+BODY = ("스모키한 향을 내는 분자(과이아콜)는 알코올이 진하면 술 속에 숨어 있다가, 물이 들어가면 표면으로 올라와요. "
+        "술은 표면부터 입에 닿으니 향과 맛이 더 잘 느껴진다는 거예요.")
+PLAN_BODY = {**PLAN, "caption": {**PLAN["caption"], "body": BODY}}
+
+
 def test_caption_has_the_approved_shape_without_warning_line():
-    out = cap.build_caption(PLAN, {"title": "t"}, handle="sooljjerigo", ai_images=True)
+    out = cap.build_caption(PLAN_BODY, {"title": "t"}, handle="sooljjerigo", ai_images=True)
     blocks = out.split("\n\n")
     assert blocks[0] == "위스키에 물 몇 방울, 왜 맛이 더 좋아질까? 💧"
     assert blocks[1].startswith("위스키 고수들이 잔에 물 한두 방울")
-    assert blocks[2].splitlines() == ["1. 스모키한 향 분자(과이아콜)는 알코올이 진하면 술 속에 숨어요",
-                                      "2. 물이 들어가면 이 분자가 표면으로 올라와요",
-                                      "3. 술은 표면부터 입에 닿아서 향과 맛이 더 잘 느껴져요"], "요점은 3개까지, 제작안 문장 그대로"
+    assert blocks[2] == BODY, "caption.body 는 그대로"
     assert blocks[3] == "※ 사람이 맛본 실험이 아닌 컴퓨터 시뮬레이션 연구예요. 출처는 마지막 장에 있어요."
     assert blocks[4].splitlines() == ["📌 저장해 두고, 위스키 좋아하는 친구에게 공유해 주세요",
                                       "🥃 술 궁금증, 근거로 풀어 드려요 → @sooljjerigo 팔로우"]
     assert blocks[5] == "*생성형 AI 이미지 포함"
     assert blocks[6] == "#위스키 #위스키상식 #싱글몰트 #술상식 #술째리고"
     assert "경고" not in out and "뇌졸중" not in out and "임신" not in out and "DM" not in out
+
+
+def test_caption_body_is_a_paragraph_by_default_from_points():
+    blocks = cap.build_caption(PLAN, {}, handle="h", ai_images=False).split("\n\n")
+    assert blocks[2] == ("스모키한 향 분자(과이아콜)는 알코올이 진하면 술 속에 숨어요. 물이 들어가면 이 분자가 표면으로 올라와요. "
+                         "술은 표면부터 입에 닿아서 향과 맛이 더 잘 느껴져요."), "요점 3개까지, 문장으로 이어 한 문단"
+    assert "\n" not in blocks[2] and not re.match(r"\d\.", blocks[2])
+    done = {**PLAN, "caption": {**PLAN["caption"], "points": ["이미 끝나요.", "정말요?"]}}
+    assert cap.build_caption(done, {}, handle="h", ai_images=False).split("\n\n")[2] == "이미 끝나요. 정말요?"
+
+
+def test_caption_numbered_list_only_for_list_style_or_checklist_pages():
+    want = ["1. 스모키한 향 분자(과이아콜)는 알코올이 진하면 술 속에 숨어요",
+            "2. 물이 들어가면 이 분자가 표면으로 올라와요",
+            "3. 술은 표면부터 입에 닿아서 향과 맛이 더 잘 느껴져요"]
+    styled = {**PLAN, "caption": {**PLAN["caption"], "style": "list"}}
+    assert cap.build_caption(styled, {}, handle="h", ai_images=False).split("\n\n")[2].splitlines() == want
+    chk = {**PLAN, "pages": PAGES[:2] + [{**PAGES[2], "role": "checklist"}, PAGES[3]]}
+    assert cap.build_caption(chk, {}, handle="h", ai_images=False).split("\n\n")[2].splitlines() == want
+    # 완성된 본문이 있으면 list 여도 그대로
+    both = {**PLAN_BODY, "caption": {**PLAN_BODY["caption"], "style": "list"}}
+    assert cap.build_caption(both, {}, handle="h", ai_images=False).split("\n\n")[2] == BODY
 
 
 def test_caption_ai_line_toggles_and_hashtags_are_capped_with_brand_last():
@@ -197,7 +222,7 @@ def test_caption_ai_line_toggles_and_hashtags_are_capped_with_brand_last():
 def test_caption_fallbacks_come_only_from_the_plan():
     bare = {"pages": PAGES}   # caption 칸이 없다
     out = cap.build_caption(bare, {"title": "주제"}, handle="sooljjerigo", ai_images=False)
-    assert out.startswith("위스키에 물 몇 방울, 왜 맛이 더 좋아질까?\n\n2017년 과학 논문이 밝힌 이유\n\n1. 위스키 고수들은 마시기 전에 물 한두 방울을 떨어뜨려요")
+    assert out.startswith("위스키에 물 몇 방울, 왜 맛이 더 좋아질까?\n\n2017년 과학 논문이 밝힌 이유\n\n위스키 고수들은 마시기 전에 물 한두 방울을 떨어뜨려요.")
     assert "※ 출처는 마지막 장에 있어요." in out and "[" not in out and out.endswith("#술째리고")
     assert cap.build_caption({"pages": []}, {"title": "주제"}, handle="h", ai_images=False).startswith("주제\n\n※")
     with pytest.raises(ValueError):
@@ -205,7 +230,7 @@ def test_caption_fallbacks_come_only_from_the_plan():
 
 
 def test_caption_passes_publish_check_and_respects_db_limits():
-    out = cap.build_caption(PLAN, {}, handle="sooljjerigo", ai_images=True)
+    out = cap.build_caption(PLAN_BODY, {}, handle="sooljjerigo", ai_images=True)
     rep = sc.check_caption(out, CLAIMS)
     assert rep.ok, sc.summary_ko(rep)
     assert re.search(r"'caption_max',\s*(\d+)", PUBLISH_SQL).group(1) == str(config.DRINKS_CAPTION_MAX_CHARS)
@@ -334,6 +359,10 @@ def test_paid_card_job_buys_one_4x5_image_per_prompted_page_and_renders_them(tmp
     fin = rpc.of("drinks_finish_render")[-1]
     assert fin["qa"]["template_version"] == "card-photo-v1" and "photo_missing" not in fin["qa"]["warnings"]
     assert fin["qa"]["generated_pages"] == [1, 2, 3] and fin["qa"]["ai_images"] is True
+    # 발행 화면 캡션 칸을 채울 초안 — 스키마 변경 없이 qa(→ qa_summary)로 간다. 산 그림이 있으니 AI 고지 줄이 붙는다
+    draft = fin["qa"]["caption_draft"]
+    assert draft.startswith("위스키에 물 몇 방울, 왜 맛이 더 좋아질까? 💧") and "*생성형 AI 이미지 포함" in draft
+    assert draft == cap.build_caption(PLAN, {"title": "t"}, handle=config.DRINKS_IG_HANDLE, ai_images=True)
     reg = rpc.of("drinks_register_asset")
     assert len(reg) == 4 and all(r["asset"]["rights"] == "generated_paid" for r in reg)
     # 그림은 재사용 목록에 4:5 크기 그대로 올라간다
@@ -379,5 +408,13 @@ def test_local_card_job_and_text_card_plan_never_buy(tmp_path, monkeypatch):
     rpc = _Rpc()
     local = dp.process_job(_paid_job(renderer="local", spend_approval_id=None), rpc, dp.Storage("local", str(tmp_path / "a")))
     assert local["status"] == "succeeded" and "photo_missing" in rpc.of("drinks_finish_render")[-1]["qa"]["warnings"]
+    assert "생성형 AI" not in rpc.of("drinks_finish_render")[-1]["qa"]["caption_draft"], "산 그림이 없으면 AI 고지 줄도 없다"
     plain = _paid_job(plan={"pages": [{"position": 1, "role": "cover", "heading": "표지"}]})
-    assert dp.process_job(plain, _Rpc(), dp.Storage("local", str(tmp_path / "b")))["status"] == "succeeded"
+    rpc3 = _Rpc()
+    assert dp.process_job(plain, rpc3, dp.Storage("local", str(tmp_path / "b")))["status"] == "succeeded"
+    assert "caption_draft" not in rpc3.of("drinks_finish_render")[-1]["qa"], "글자 카드(card-v1)는 초안을 만들지 않는다"
+    # 초안 조립이 실패(글자 수 초과)해도 렌더는 끝난다
+    long = {**PLAN, "caption": {**PLAN["caption"], "body": "가" * 3000}}
+    rpc4 = _Rpc()
+    assert dp.process_job(_paid_job(renderer="local", spend_approval_id=None, plan=long), rpc4, dp.Storage("local", str(tmp_path / "c")))["status"] == "succeeded"
+    assert "caption_draft" not in rpc4.of("drinks_finish_render")[-1]["qa"]

@@ -67,13 +67,15 @@ export function AccountActions({ id, version, status, publishEnabled }: { id: st
 }
 
 /** 발행안 작성: 계정을 고르고(기본 계정 없음) 캡션·게시 시각(한국 시각)을 적는다. */
-export function CreatePublication({ outputReviewId, accounts, postType, slotHint }: {
+export function CreatePublication({ outputReviewId, accounts, postType, slotHint, captionDraft = null }: {
   outputReviewId: string; accounts: { id: string; label: string; postTypes: string[] }[]; postType: "carousel" | "reel"; slotHint: string | null;
+  captionDraft?: string | null;
 }) {
   const { run, busy } = useDrinksAction();
   const usable = accounts.filter((a) => a.postTypes.includes(postType));
   const [acc, setAcc] = useState("");
-  const [caption, setCaption] = useState("");
+  // 렌더가 남긴 초안으로 빈 칸을 채워 둔다(운영자가 고칠 수 있고, 초안이 있어도 승인·예약 없이는 게시되지 않는다)
+  const [caption, setCaption] = useState(captionDraft ?? "");
   const [when, setWhen] = useState("");
   if (usable.length === 0) return <span className="muted">이 형식({postType === "carousel" ? "카드뉴스" : "릴스"})을 올릴 수 있는 계정이 없습니다 — 위에서 계정을 등록하세요.</span>;
   return (
@@ -82,7 +84,7 @@ export function CreatePublication({ outputReviewId, accounts, postType, slotHint
         <option value="">계정 고르기</option>
         {usable.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
       </select>
-      <textarea rows={3} style={{ minWidth: 320 }} placeholder="캡션(원문에 없는 숫자·양·권고는 게시 직전 검사에서 막힙니다)" value={caption}
+      <textarea rows={captionDraft ? 14 : 3} style={{ minWidth: 320 }} placeholder="캡션(원문에 없는 숫자·양·권고는 게시 직전 검사에서 막힙니다)" value={caption}
         onChange={(e) => setCaption(e.target.value)} />
       <label className="muted">게시 시각(한국) <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
       {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
