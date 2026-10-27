@@ -23,9 +23,9 @@ def test_graph_token_goes_in_header_never_in_url(monkeypatch):
         seen.append(req)
         if req.url.path.endswith("/media"):
             return httpx.Response(200, json={"id": "c1"})
-        return httpx.Response(200, json={"user_id": "1784", "username": "suljjaerigo"})
+        return httpx.Response(200, json={"user_id": "1784", "username": "sooljjerigo"})
     g = graph(handler, monkeypatch)
-    assert g.verify(ACC) == {"id": "1784", "username": "suljjaerigo"}
+    assert g.verify(ACC) == {"id": "1784", "username": "sooljjerigo"}
     g.create_container(ACC, kind="image", url="https://x.supabase.co/storage/v1/object/sign/drinks/a.png?token=t")
     for r in seen:
         assert SECRET not in str(r.url), "토큰을 URL 에 넣지 않는다"

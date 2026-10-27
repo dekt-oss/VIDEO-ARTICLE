@@ -26,7 +26,7 @@ export function RegisterAccount() {
       <select value={f.account_type} onChange={(e) => set("account_type", e.target.value)}>
         <option value="business">비즈니스</option><option value="creator">크리에이터</option><option value="test">시험</option>
       </select>
-      {!fake && <input placeholder="토큰을 둔 서버 비밀 이름(예: DRINKS_IG_TOKEN)" value={f.credential_ref}
+      {!fake && <input placeholder="토큰을 둔 서버 비밀 이름(예: SOOLJJERIGO_IG_TOKEN)" value={f.credential_ref}
         onChange={(e) => set("credential_ref", e.target.value.toUpperCase())} />}
       <label className="muted"><input type="checkbox" checked={f.carousel} onChange={(e) => set("carousel", e.target.checked)} /> 카드뉴스</label>
       <label className="muted"><input type="checkbox" checked={f.reel} onChange={(e) => set("reel", e.target.checked)} /> 릴스</label>

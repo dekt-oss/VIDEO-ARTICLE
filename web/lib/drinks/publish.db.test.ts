@@ -135,7 +135,7 @@ test("계정: 가짜·실제 ID 접두어가 섞이지 않는다 · 토큰 원�
   await fails("register_account", { external_account_id: "17841400000", display_name: "x", connection: "instagram_login",
     credential_ref: "IG_TOKEN", access_token: "EAAB..." }, "invalid_input");
   const a = await ok("register_account", { external_account_id: "17841400001", display_name: "술째리고", connection: "instagram_login",
-    credential_ref: "DRINKS_IG_TOKEN_SULJJAERIGO", capabilities: { post_types: ["carousel"] } });
+    credential_ref: "SOOLJJERIGO_IG_TOKEN", capabilities: { post_types: ["carousel"] } });
   assert.equal(a.status, "pending_verification");
   await fails("account_action", { account_id: a.account_id, expected_version: await ver("drink_social_accounts", a.account_id),
     action: "enable_publish" }, "invalid_state");

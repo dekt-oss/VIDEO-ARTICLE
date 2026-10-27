@@ -182,12 +182,12 @@ def render_and_approve(env, plan_id: str) -> str:
     return rev["id"]
 
 
-def fake_account(env, ext="fake_suljjaerigo") -> str:
+def fake_account(env, ext="fake_sooljjerigo") -> str:
     rpc, b = env["rpc"], env["b"]
     found = b.sql("select id from drink_social_accounts where external_account_id = $1", [ext])
     if found:
         return found[0]["id"]
-    env["fake"].add_account(ext, "suljjaerigo_test")
+    env["fake"].add_account(ext, "sooljjerigo_test")
     a = rpc("drinks_register_account", {"external_account_id": ext, "display_name": "술째리고(시험)", "account_type": "test",
                                         "connection": "fake", "capabilities": {"post_types": ["carousel", "reel"]}})
     drinks_publish.verify_accounts(rpc, env["providers"])
