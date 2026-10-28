@@ -6,7 +6,9 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { CATEGORY_LABEL, CATEGORIES, LANE_LABEL, TOPIC_STATUS_LABEL, type Category, type Lane } from "@/lib/drinks/model";
+import {
+  CATEGORY_LABEL, CATEGORIES, LANE_LABEL, QUESTION_KIND_LABEL, TOPIC_STATUS_LABEL, type Category, type Lane, type QuestionKind,
+} from "@/lib/drinks/model";
 import SourceFields, { EMPTY_SOURCE, hasSource, sourcePayload, type SourceInput } from "./SourceFields";
 import { useDrinksAction } from "./useDrinksAction";
 
@@ -25,6 +27,7 @@ export default function RegisterForm() {
   const [f, setF] = useState(EMPTY);
   const [cats, setCats] = useState<Category[]>([]);
   const [lane, setLane] = useState<Lane>("evergreen");
+  const [kind, setKind] = useState<QuestionKind>("general");
   const [withSource, setWithSource] = useState(false);
   const [src, setSrc] = useState<SourceInput>(EMPTY_SOURCE);
   const [dups, setDups] = useState<Dup[] | null>(null);
@@ -33,6 +36,7 @@ export default function RegisterForm() {
   const reset = () => {
     setF(EMPTY);
     setCats([]);
+    setKind("general");
     setSrc(EMPTY_SOURCE);
     setWithSource(false);
     setDups(null);
@@ -41,7 +45,7 @@ export default function RegisterForm() {
   const submit = async (confirm: boolean) => {
     setNote(null);
     const payload: Record<string, unknown> = {
-      ...f, categories: cats, lane, confirm_not_duplicate: confirm,
+      ...f, categories: cats, lane, question_kind: kind, confirm_not_duplicate: confirm,
       source: withSource && hasSource(src) ? sourcePayload(src) : null,
     };
     const r = await run("create_topic", payload, "소재를 등록했습니다", "소재 등록");
@@ -82,6 +86,14 @@ export default function RegisterForm() {
           <span>공급 경로 *</span>
           <select value={lane} onChange={(e) => setLane(e.target.value as Lane)}>
             {Object.entries(LANE_LABEL).map(([k, l]) => (
+              <option key={k} value={k}>{l}</option>
+            ))}
+          </select>
+        </label>
+        <label className="dk-field">
+          <span>질문 유형</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value as QuestionKind)}>
+            {Object.entries(QUESTION_KIND_LABEL).map(([k, l]) => (
               <option key={k} value={k}>{l}</option>
             ))}
           </select>

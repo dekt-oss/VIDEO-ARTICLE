@@ -7,7 +7,7 @@ import LoadProblem from "@/components/drinks/LoadProblem";
 import RegisterForm from "@/components/drinks/RegisterForm";
 import { todayInSeoul } from "@/lib/date";
 import {
-  CATEGORIES, CATEGORY_LABEL, FORMAT_LABEL, LANE_LABEL, SELECT_THRESHOLD, TOPIC_STATUS_LABEL, VERSION_STATUS_LABEL,
+  CATEGORIES, CATEGORY_LABEL, FORMAT_LABEL, LANE_LABEL, QUESTION_KIND_LABEL, SELECT_THRESHOLD, TOPIC_STATUS_LABEL, VERSION_STATUS_LABEL,
   deriveTopic, fitOk, originSummary, type Format, type TopicDerived,
 } from "@/lib/drinks/model";
 import { loadBoard, TOPIC_LIST_LIMIT, type DrinksBoard } from "@/lib/drinks/queries";
@@ -213,6 +213,7 @@ function TopicCard({ t, d, board, dup }: { t: TopicRow; d: TopicDerived; board: 
         <span className="status-pill">{TOPIC_STATUS_LABEL[t.status]}</span>
         {t.categories.map((c) => <span key={c} className="pill">{CATEGORY_LABEL[c]}</span>)}
         <span className="pill">{LANE_LABEL[t.lane]}</span>
+        {t.question_kind && t.question_kind !== "general" && <span className="pill">질문 · {QUESTION_KIND_LABEL[t.question_kind]}</span>}
         {dup && <span className="pill dk-warn">중복 의심</span>}
       </div>
       <h2 style={{ marginTop: 8 }}>

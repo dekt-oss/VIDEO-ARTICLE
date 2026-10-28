@@ -4,7 +4,7 @@
 // ★ 후보는 규칙이 묶은 제안일 뿐이다. 소재로 올려도 경량 평가·조사·근거 승인·편성은 A단계 흐름에서 사람이 한다.
 import { useState } from "react";
 
-import { CATEGORIES, CATEGORY_LABEL } from "@/lib/drinks/model";
+import { CATEGORIES, CATEGORY_LABEL, QUESTION_KIND_LABEL } from "@/lib/drinks/model";
 import { PLATFORM_LABEL } from "@/lib/drinks/discovery";
 import { useDrinksAction } from "./useDrinksAction";
 
@@ -37,7 +37,9 @@ export function DiscoverySourceForm() {
   const [platform, setPlatform] = useState("stackexchange");
   const [name, setName] = useState("");
   const [queries, setQueries] = useState("");
+  const [lookback, setLookback] = useState("");
   const [cats, setCats] = useState<string[]>([]);
+  const lookbackOk = lookback === "" || (/^[0-9]{1,4}$/.test(lookback) && Number(lookback) >= 1 && Number(lookback) <= 3650);
   return (
     <details className="card">
       <summary><b>발견 채널 등록</b> <span className="muted">— 공식 API 만. 등록 후 검증 실행 → 이용 조건 확인 → 활성화(수집원 화면)</span></summary>
@@ -50,6 +52,10 @@ export function DiscoverySourceForm() {
         <label className="dk-field">이름<input value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label className="dk-field">{platform === "stackexchange" ? "태그(쉼표로)" : "검색어(쉼표로)"}
           <input value={queries} onChange={(e) => setQueries(e.target.value)} placeholder={platform === "stackexchange" ? "sake, whisky" : "사케 보관, 막걸리 추천"} /></label>
+        {platform === "stackexchange" && (
+          <label className="dk-field">첫 실행 소급 일수(비우면 365일)
+            <input value={lookback} onChange={(e) => setLookback(e.target.value)} inputMode="numeric" placeholder="예: 3000 (1~3650)" /></label>
+        )}
       </div>
       <div className="dk-row">
         {CATEGORIES.map((c) => (
@@ -57,8 +63,9 @@ export function DiscoverySourceForm() {
             onChange={(e) => setCats(e.target.checked ? [...cats, c] : cats.filter((x) => x !== c))} /> {CATEGORY_LABEL[c]}</label>
         ))}
       </div>
-      <button className="btn pick" disabled={busy || !name || !queries.trim() || cats.length === 0} onClick={() =>
-        run("register_discovery_source", { platform, name, categories: cats, queries: queries.split(",").map((x) => x.trim()).filter(Boolean) },
+      <button className="btn pick" disabled={busy || !name || !queries.trim() || cats.length === 0 || !lookbackOk} onClick={() =>
+        run("register_discovery_source", { platform, name, categories: cats, queries: queries.split(",").map((x) => x.trim()).filter(Boolean),
+          ...(platform === "stackexchange" && lookback ? { lookback_days: Number(lookback) } : {}) },
           "발견 채널을 제안 상태로 등록했습니다 — 수집원 화면에서 검증·활성화하세요", "발견 채널 등록")}>등록</button>
     </details>
   );
@@ -74,11 +81,12 @@ export function CandidateActions({ c, others }: {
   const [question, setQuestion] = useState("");
   const [value, setValue] = useState(c.reader_value ?? "");
   const [cats, setCats] = useState<string[]>([]);
+  const [kind, setKind] = useState("");   // 비우면 후보 신호에서 서버가 정한다
   const [reason, setReason] = useState("");
   const [into, setInto] = useState("");
   const promote = async (confirm = false) => {
     const r = await run("promote_candidate", { candidate_id: c.id, expected_version: c.version, title, question, reader_value: value,
-      categories: cats, lane: "reader_question", confirm_not_duplicate: confirm }, "소재로 올렸습니다(발견 자료는 질문·인기 신호로 연결)", "소재로 올리기");
+      categories: cats, lane: "reader_question", confirm_not_duplicate: confirm, ...(kind ? { question_kind: kind } : {}) }, "소재로 올렸습니다(발견 자료는 질문·인기 신호로 연결)", "소재로 올리기");
     if (!r.ok && r.code === "duplicate_suggested" && window.confirm("같은 질문의 소재가 이미 있습니다. 그래도 새로 만들까요?")) await promote(true);
   };
   return (
@@ -94,6 +102,10 @@ export function CandidateActions({ c, others }: {
           <label className="dk-field">소재 제목<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} /></label>
           <label className="dk-field">독자 질문(한국어)<input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={1000} /></label>
           <label className="dk-field">독자 효용<input value={value} onChange={(e) => setValue(e.target.value)} /></label>
+          <label className="dk-field">질문 유형<select value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="">자동(후보 신호에서)</option>
+            {Object.entries(QUESTION_KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select></label>
           <div className="dk-row">
             {CATEGORIES.map((k) => (
               <label key={k}><input type="checkbox" checked={cats.includes(k)}

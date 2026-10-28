@@ -3,15 +3,15 @@
 // ★ 전략은 제안만 한다. 운영자가 [반영]해야 새 전략 버전이 되고, 그때 다음 편성 후보 순서가 바뀐다.
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { StrategyDecision } from "@/components/drinks/PublishControls";
-import { CATEGORY_LABEL, LANE_LABEL } from "@/lib/drinks/model";
+import { CATEGORY_LABEL, LANE_LABEL, QUESTION_KIND_LABEL } from "@/lib/drinks/model";
 import { kst, loadAnalyticsBoard, type SnapshotView } from "@/lib/drinks/publishQueries";
 
 export const dynamic = "force-dynamic";
 
 const METRICS = [["reach", "도달"], ["saved", "저장"], ["shares", "공유"], ["likes", "좋아요"], ["comments", "댓글"], ["views", "조회(릴스)"]] as const;
 const BUCKETS = ["24h", "72h", "7d"] as const;
-const DIM_LABEL: Record<string, string> = { category: "주종", post_type: "형식", lane: "소재 갈래", slot: "게시 시간대" };
-const VALUE_LABEL: Record<string, string> = { ...CATEGORY_LABEL, ...LANE_LABEL, carousel: "카드뉴스", reel: "릴스", morning: "아침",
+const DIM_LABEL: Record<string, string> = { category: "주종", post_type: "형식", lane: "소재 갈래", slot: "게시 시간대", question_kind: "질문 유형" };
+const VALUE_LABEL: Record<string, string> = { ...CATEGORY_LABEL, ...LANE_LABEL, ...QUESTION_KIND_LABEL, carousel: "카드뉴스", reel: "릴스", morning: "아침",
   afternoon: "낮", evening: "저녁", night: "밤" };
 const pct = (x: number | null | undefined) => (typeof x === "number" ? `${(x * 100).toFixed(1)}%` : "—");
 

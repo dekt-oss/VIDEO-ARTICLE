@@ -9,7 +9,7 @@ import PlanTab from "@/components/drinks/PlanTab";
 import TopicPanel from "@/components/drinks/TopicPanel";
 import { seoulDateTimeLabel, todayInSeoul } from "@/lib/date";
 import {
-  CATEGORY_LABEL, FORMAT_LABEL, LANE_LABEL, TOPIC_STATUS_LABEL, VERSION_STATUS_LABEL, deriveTopic, type Format,
+  CATEGORY_LABEL, FORMAT_LABEL, LANE_LABEL, QUESTION_KIND_LABEL, TOPIC_STATUS_LABEL, VERSION_STATUS_LABEL, deriveTopic, type Format,
 } from "@/lib/drinks/model";
 import { EVENTS_LIMIT, loadTopic } from "@/lib/drinks/queries";
 import type { EventRow } from "@/lib/drinks/types";
@@ -67,6 +67,7 @@ export default async function DrinksTopicPage(props: {
         <span className="status-pill">{TOPIC_STATUS_LABEL[topic.status]}</span>
         {topic.categories.map((c) => <span key={c} className="pill">{CATEGORY_LABEL[c]}</span>)}
         <span className="pill">{LANE_LABEL[topic.lane]}</span>
+        {topic.question_kind && topic.question_kind !== "general" && <span className="pill">질문 · {QUESTION_KIND_LABEL[topic.question_kind]}</span>}
         {topic.status === "selected" && (
           <span className="pill">
             {topic.editorial_week} 주 · {(topic.selected_formats ?? []).map((f) => FORMAT_LABEL[f]).join("+")}
