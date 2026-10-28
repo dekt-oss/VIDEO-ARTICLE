@@ -190,6 +190,8 @@ export interface VideoScene {
   /** 0054: 유료 그림 주문용 영어 지시문(화면에 나가는 글이 아니다). 없으면 유료 렌더가 사기 전에 멈춘다. */
   visual_prompt?: string | null;
   motion_prompt?: string | null;
+  /** 0057: 슬라이드 릴스에서 이 장면에 깔 카드 페이지 번호(정수). 없으면 대체 카드. 검증은 서버 쪽. */
+  card_page?: number;
 }
 
 export interface CarouselPage {

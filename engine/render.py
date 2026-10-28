@@ -1700,7 +1700,9 @@ def _render_cut_clips(directive: dict[str, Any], work_dir: str,
         # ★ 범례는 기본으로 안 그린다(2026-09-24 운영자 판정, config.OVERLAY_LEGEND_ENABLED 주석).
         if not config.OVERLAY_LEGEND_ENABLED:
             drop_types = drop_types | {"legend"}
-        if drop_types:
+        # 지시서에 범례가 실제로 있어서 빠질 때만 알린다(범례 없는 지시서 — 주류 나열식 등 — 는 소음이다. 2026-10-28).
+        if "legend" in drop_types and any(isinstance(it, dict) and it.get("type") == "legend"
+                                          for c in cuts for it in (c.get("overlay_plan") or [])):
             log.warning("색 코드가 어긋나 범례를 그리지 않는다 — 지시서를 고쳐야 한다")
         # ★ 화살표는 **기본으로 안 그린다**(2026-09-19 운영자 지시, config 주석 참조).
         #   지시서에 남아 있어도 화면에는 안 나간다 — 옛 지시서를 다시 렌더할 때도 같다.

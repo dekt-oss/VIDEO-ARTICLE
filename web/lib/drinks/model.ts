@@ -515,3 +515,107 @@ export function nextMonday(today: string): string {
   dt.setUTCDate(dt.getUTCDate() + (8 - dow));
   return dt.toISOString().slice(0, 10);
 }
+
+// ── 기계 검사(qa_summary) 표시 ────────────────────────────────────────────────
+// 릴스 규격 문턱 — engine/config.py DRINKS_REEL_SPEC 와 같은 값이다(바꾸면 양쪽을 함께 바꾼다).
+export const DRINKS_REEL_SPEC = {
+  audio_sample_rate_max: 48000, min_sec: 3, max_sec: 900, max_width: 1920,
+  fps_range: [23, 60] as readonly [number, number], video_codecs: ["h264", "hevc"] as readonly string[], audio_codec: "aac",
+  cover_mime: "image/jpeg",
+} as const;
+
+/** 기계 검사 경고 코드 → 쉬운 한국어 한 줄. 모르는 코드는 코드 그대로 보인다(qaWarningLabel). */
+export const QA_WARNING_KO: Record<string, string> = {
+  not_vertical_1080x1920: "화면이 세로 1080×1920 이 아님",
+  narration_silent: "나레이션 소리가 거의 없음",
+  narration_silent_scenes: "나레이션이 비어 있는 장면이 있음",
+  text_truncated: "화면 글자가 잘렸음",
+  glyph_missing: "폰트에 없는 글자가 있어 네모(□)로 보일 수 있음",
+  reel_audio_rate_over_48k: "소리 샘플링이 48 kHz 를 넘어 인스타가 거부할 수 있음",
+  reel_moov_not_first: "파일 앞부분에 재생 정보(moov)가 없어 인스타 업로드가 실패할 수 있음",
+  reel_duration_out_of_range: "영상 길이가 릴스 허용 범위(3~900초) 밖",
+  reel_width_over_1920: "가로 해상도가 1920 을 넘음",
+  reel_fps_out_of_range: "초당 프레임 수가 23~60 범위 밖",
+  reel_video_codec: "영상 코덱이 H.264/HEVC 가 아님",
+  reel_audio_codec: "소리 코덱이 AAC 가 아님",
+  reel_file_too_big: "파일이 너무 커서 업로드가 거부될 수 있음",
+  reel_cover_not_jpeg: "표지 이미지가 JPEG 가 아님",
+  reel_cover_too_big: "표지 이미지 용량이 너무 큼",
+  script_check_blocked: "대본 검사에서 막힌 문장이 있음",
+  script_check_warned: "대본 검사에서 확인할 문장이 있음",
+  speech_rate_fast: "말이 너무 빨라 알아듣기 어려울 수 있음",
+  card_page_missing: "지정한 카드 페이지를 찾지 못해 대체 카드가 쓰임",
+};
+
+export function qaWarningLabel(code: string): string {
+  return QA_WARNING_KO[code] ?? code;
+}
+
+export interface QaRow { label: string; value: string; ok: boolean | null }
+
+const rec = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const strOrNull = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+
+/** 릴스 규격 표. 값이 없는 항목은 빼고(옛 행), 있는 항목만 ✔/✖(ok) 판정한다. */
+export function reelSpecRows(qa: unknown): QaRow[] {
+  const q = rec(qa);
+  if (!q) return [];
+  const probe = rec(q.probe);
+  const spec = rec(q.reel_spec);
+  const S = DRINKS_REEL_SPEC;
+  const rows: QaRow[] = [];
+  const w = numOrNull(probe?.width), h = numOrNull(probe?.height);
+  if (w != null && h != null) rows.push({ label: "해상도", value: `${w}×${h}`, ok: w <= S.max_width && w === 1080 && h === 1920 });
+  const dur = numOrNull(probe?.duration_sec);
+  if (dur != null) rows.push({ label: "길이", value: `${dur.toFixed(1)}초`, ok: dur >= S.min_sec && dur <= S.max_sec });
+  const fps = numOrNull(spec?.fps);
+  if (fps != null) rows.push({ label: "프레임(fps)", value: String(Math.round(fps * 100) / 100), ok: fps >= S.fps_range[0] && fps <= S.fps_range[1] });
+  const vc = strOrNull(spec?.video_codec);
+  if (vc) rows.push({ label: "영상 코덱", value: vc, ok: S.video_codecs.includes(vc.toLowerCase()) });
+  const ac = strOrNull(probe?.audio_codec) ?? strOrNull(spec?.audio_codec);
+  if (ac) rows.push({ label: "소리 코덱", value: ac, ok: ac.toLowerCase() === S.audio_codec });
+  const sr = numOrNull(spec?.audio_sample_rate);
+  if (sr != null) rows.push({ label: "소리 샘플링", value: `${sr} Hz`, ok: sr <= S.audio_sample_rate_max });
+  if (typeof spec?.moov_first === "boolean") rows.push({ label: "재생 정보(moov) 위치", value: spec.moov_first ? "파일 앞" : "파일 뒤", ok: spec.moov_first });
+  const cm = strOrNull(spec?.cover_mime);
+  if (cm) rows.push({ label: "표지 형식", value: cm, ok: cm === S.cover_mime });
+  return rows;
+}
+
+export interface QaScriptIssue { code: string; scene: number | null; message: string }
+const issues = (v: unknown): QaScriptIssue[] =>
+  (Array.isArray(v) ? v : []).map(rec).filter((x): x is Record<string, unknown> => !!x)
+    .map((x) => ({ code: String(x.code ?? ""), scene: numOrNull(x.scene), message: String(x.message ?? x.code ?? "") }));
+
+export interface QaView {
+  warnings: string[];
+  reel: QaRow[];
+  script: { ok: boolean | null; blocks: QaScriptIssue[]; warns: QaScriptIssue[] } | null;
+  speech: { text: string; fast: boolean } | null;
+  visual: { standIn: number[]; cardPages: number[]; generated: number[] } | null;
+}
+
+/** qa_summary(jsonb) → 화면용. 옛 행에는 새 키가 없으니 있는 것만 채운다. */
+export function qaView(qa: unknown): QaView {
+  const q = rec(qa) ?? {};
+  const warnings = Array.isArray(q.warnings) ? q.warnings.filter((x): x is string => typeof x === "string") : [];
+  const sc = rec(q.script_check);
+  const sp = rec(q.speech_rate);
+  const vs = rec(q.visual_source);
+  const ints = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is number => typeof x === "number") : []);
+  let speech: QaView["speech"] = null;
+  const sps = numOrNull(sp?.syl_per_sec);
+  if (sp && sps != null) {
+    const speed = numOrNull(sp.playback_speed), rate = numOrNull(sp.tts_rate);
+    const parts = [speed != null ? `재생 ${speed}×` : null, rate != null ? `TTS ${rate > 0 ? "+" : ""}${rate}%` : null].filter(Boolean);
+    speech = { text: `${sps.toFixed(1)}음절/초${parts.length ? ` (${parts.join(", ")})` : ""}`, fast: warnings.includes("speech_rate_fast") };
+  }
+  return {
+    warnings,
+    reel: reelSpecRows(q),
+    script: sc ? { ok: typeof sc.ok === "boolean" ? sc.ok : null, blocks: issues(sc.blocks), warns: issues(sc.warns) } : null,
+    speech,
+    visual: vs ? { standIn: ints(vs.stand_in), cardPages: ints(vs.card_pages), generated: ints(vs.generated) } : null,
+  };
+}

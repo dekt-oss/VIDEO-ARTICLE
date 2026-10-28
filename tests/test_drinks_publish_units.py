@@ -3,6 +3,7 @@ DB 를 거치는 상태 기계는 web/lib/drinks/publish.db.test.ts, 한 바퀴�
 import httpx
 import pytest
 
+from engine import drinks_publish as pub
 from engine import drinks_script_check as sc
 from engine import drinks_strategy as ds
 from engine.providers import instagram as ig
@@ -122,6 +123,26 @@ def test_caption_check_blocks_invented_numbers_amounts_and_advice_but_not_hashta
     assert sc.check_caption("쌀을 50% 이하로 깎아요 #2026 #사케", claims).ok
     codes = {f.code for f in sc.check_caption("물을 세 티스푼 넣어 보세요. 70도에서 마셔요", claims).blocks}
     assert codes == {"number_unsupported", "quantity_unsupported", "advice_unsupported"}
+
+
+def test_caption_check_enforces_instagram_caption_limits():
+    """Meta IG User Media v26.0(2026-10-28): 2200자·해시태그 30·멘션 20. 낱말 가운데의 #·@ 는 세지 않는다."""
+    lim = sc.config.DRINKS_CAPTION_LIMITS
+    assert lim == {"max_chars": 2200, "max_hashtags": 30, "max_mentions": 20}
+    codes = lambda cap: {f.code for f in sc.check_caption(cap, []).blocks}   # noqa: E731
+    assert codes("가" * 2200) == set() and codes("가" * 2201) == {"caption_too_long"}
+    assert codes(" ".join(f"#태그{i}" for i in range(30))) == set()
+    assert codes(" ".join(f"#태그{i}" for i in range(31))) == {"hashtags_over_limit"}
+    assert codes(" ".join(f"@user{i}" for i in range(20))) == set()
+    assert codes(" ".join(f"@user{i}" for i in range(21))) == {"mentions_over_limit"}
+    # 낱말 안의 # 와 메일 주소의 @ 는 태그·멘션이 아니다
+    assert codes(" ".join(f"a#b{i}" for i in range(40)) + " mail me@x.com " * 25) == set()
+    # 발행 워커가 멈출 때 사유에 코드가 들어간다
+    rpc_calls = []
+    req = {"request_id": "r", "lease_token": "t", "account": {}, "post_type": "carousel", "caption": "가" * 2300, "claims": []}
+    out = pub.publish_one(req, lambda fn, p: rpc_calls.append((fn, p)) or {"status": p.get("outcome")}, None, None)
+    fin = rpc_calls[-1][1]
+    assert out["status"] == "paused" and fin["error_code"] == "caption_check" and "caption_too_long" in fin["error_message"]
 
 
 def test_graph_media_owner_app_scoped_id_maps_to_account_id(monkeypatch):

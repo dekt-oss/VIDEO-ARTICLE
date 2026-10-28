@@ -13,6 +13,7 @@ from engine.assemble import (
     build_concat_file,
     build_cut_command,
     build_loudnorm_command,
+    build_speed_command,
     build_subtitles_command,
     build_volume_envelope_expr,
     duck_spans_from_words,
@@ -162,3 +163,16 @@ def test_build_bgm_envelope_duck_command_uses_volume_envelope():
     assert "sidechaincompress" not in fc
     assert "amix" in fc and f"loudnorm=I={config.LOUDNESS_LUFS}" in fc
     assert cmd[-1] == "out.mp4"
+
+
+# ── 릴스 규격(2026-10-28): 최종 단계 어느 것이든 48 kHz + faststart ─────────
+def _assert_reel_tail(cmd):
+    assert cmd[cmd.index("-ar") + 1] == str(config.OUTPUT_AUDIO_SAMPLE_RATE) == "48000"
+    assert cmd[cmd.index("-movflags") + 1] == "+faststart"
+
+
+def test_final_stage_commands_pin_48k_and_faststart():
+    _assert_reel_tail(build_loudnorm_command("in.mp4", "out.mp4"))
+    _assert_reel_tail(build_speed_command("in.mp4", "out.mp4", 1.2))
+    _assert_reel_tail(build_bgm_duck_command("v.mp4", "bgm.m4a", "out.mp4"))
+    _assert_reel_tail(build_bgm_envelope_duck_command("v.mp4", "bgm.m4a", "out.mp4", [(0.0, 1.5)]))
