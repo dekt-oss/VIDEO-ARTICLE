@@ -112,3 +112,17 @@
 조립 함수(`build_loudnorm_command`·BGM 두 변형·`build_speed_command`)는 논문·리포트(유튜브) 라인과 같이 쓴다. 48 kHz 와 faststart 는 유튜브에도 해가 없고, 그쪽 동작은 이 두 옵션 말고는 바뀌지 않는다.
 
 **(미검증)** 옛 파일(96 kHz, moov 뒤)을 인스타가 실제로 거절했는지는 확인하지 못했다. 첫 실제 릴스 게시에서 확인한다.
+
+## 릴스 2차 묶음(2026-10-28)
+
+1차(파일 규격)에 이어 `docs/진단_주류릴스엔진_2026-10-28.md` §6 의 2~5번을 같은 날 처리했다. 전부 돈이 들지 않는다(무료 경로·코드 검사뿐).
+
+- **무료 경로에도 대본 검사(경고)**: 영상 작업은 렌더 전에 `drinks_script_check.check` 를 돌려 결과를 검수 화면의 `qa.script_check` 와 경고 코드(`script_check_blocked`·`script_check_warned`)로 남긴다. 막힘이 있어도 작업은 성공한다(먼저 완성 — 차단은 유료 경로만, 거기는 그대로 사기 전에 멈춘다). 검사기가 예외로 죽어도 영상은 나가고 `script_check_error` 만 남는다.
+- **슬라이드 릴스(`card_page`, 0057)**: 장면에 `card_page: N`(1~20 정수)을 적으면 같은 소재의 가장 최근 **승인되고 지금도 쓸 수 있는** 카드뉴스 묶음의 N쪽이 그 장면의 그림이 된다(LLM·비용 0). DB 는 두 함수만 다시 정의했다 — `drinks_validate_plan`(card_page 보존, 범위 밖이면 `invalid_plan`)·`drinks_start_render`(작업에 `card_pages [{position, storage_key, mime}]`, 없으면 `[]`). 둘 다 0054 정의를 복사해 더했고 `set search_path = public, pg_temp`(0056 방식)를 정의 안에 적었다. 워커는 계획이 쓰는 쪽만 꺼내 1080×1350 쪽을 1080×1920 브랜드 배경 가운데에 **자르지 않고** 놓고 장면 유형 배지·쪽 번호는 위쪽 띠에 얹는다. 쪽이 없으면 글자 카드로 되돌아가고 `card_page_missing` 경고. 산 그림(유료)이 있는 장면은 그쪽이 우선. 파일 출처 표기는 `provenance.images = "card_pages"` — `rights` 는 DB 허용 목록 때문에 `generated_local` 그대로다.
+  - 되돌리기: 0054 의 `drinks_start_render`·`drinks_validate_plan` 정의를 다시 실행(그다음 0056 의 반복문 한 번 더). 저장된 `card_page` 는 워커가 못 받으니 무시된다.
+  - ★ 알려진 한계: 엔진이 모든 스틸에 켄번스 줌(최대 1.18배)을 걸어 카드 쪽 가장자리가 최대 7~8% 잘릴 수 있다. 카드 여백 안에 글자가 있는지 눈으로 본다. 줌 없는 정지 컷은 엔진(`render.py`) 변경이 필요해 이번엔 안 했다.
+- **템포·자막 앵커**: 주류는 TTS +10% 위에 조립 끝 1.2× 가 또 걸려 5.9음절/초였다. 이제 기본 `DRINKS_PLAYBACK_SPEED = 1.0`(속도는 TTS 한 곳, 실측 4.9음절/초)이고 자막 앵커는 릴스(0.68, `DRINKS_CAPTION_PLATFORM`)다. 렌더 qa 에 `speech_rate`(음절·최종 길이·음절/초·배속·TTS 속도)가 남고 5.5 를 넘으면 `speech_rate_fast`. **운영자 귀 판정 대기** — 느리면 `DRINKS_PLAYBACK_SPEED` 환경변수로 조정.
+- **소음·캡션 한도**: 범례가 없는 지시서(주류 나열식)에서 "색 코드가 어긋나 범례를 그리지 않는다" 경고가 찍히던 것을 범례가 실제로 있을 때만 찍도록 했다(`render.py` 한 줄). 캡션 검사에 인스타 한도(2200자·해시태그 30·멘션 20, `DRINKS_CAPTION_LIMITS`)를 넣어 `caption_too_long`·`hashtags_over_limit`·`mentions_over_limit` 이 막힘이 되고, 발행 워커는 이때 멈추며 사유에 코드가 들어간다.
+- qa 새 필드(검수 화면이 읽음): `warnings`(위 코드들), `script_check {ok, blocks, warns}`, `speech_rate`, `visual_source {stand_in, card_pages, generated}`.
+
+**(미검증)** 실제 릴스 게시, GitHub Actions 에서의 영상 렌더(카드 페이지를 Supabase 저장소에서 내려받는 경로 포함 — 로컬 저장소로만 시험했다), 운영 DB 에 0057 적용.

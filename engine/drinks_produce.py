@@ -25,7 +25,8 @@ from typing import Any, Callable, Optional
 
 from . import config
 from .drinks_collect import DbError, supabase_rpc
-from .drinks_render import RenderError, render_video, sha256_file
+from . import drinks_script_check as script_check
+from .drinks_render import RenderError, card_page_of, render_video, sha256_file
 from .util import log
 
 Rpc = Callable[[str, dict[str, Any]], Any]
@@ -102,8 +103,6 @@ def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str)
     장면에 영어 그림 지시문(visual_prompt)이 없으면 **아무것도 사기 전에** 멈춘다 — 반쯤 산 채로 실패하지 않게."""
     from .drinks_paid import PaidError, build_image_items, buy
 
-    from . import drinks_script_check as script_check
-
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     scenes = (job.get("plan") or {}).get("scenes") or []
     # 대본·화면 계획 코드 검사(0원) — 원문에 없는 숫자·양·권고, 근거 없는 사실 장면이 있으면 아무것도 사지 않는다.
@@ -134,6 +133,37 @@ def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str)
     return images, costs
 
 
+def fetch_card_pages(job: dict[str, Any], storage: Storage, work: str) -> dict[int, str]:
+    """슬라이드 릴스(0057): 제작안 장면이 쓰는 카드뉴스 페이지만 작업 폴더로 꺼낸다. {페이지 번호: 로컬 경로}.
+
+    꺼내지 못한 페이지는 조용히 빼지 않고 로그를 남기고 건너뛴다 — 그 장면은 대체 카드로 가고 qa 에 card_page_missing 이 뜬다."""
+    wanted = {n for sc in (job.get("plan") or {}).get("scenes") or [] if (n := card_page_of(sc)) is not None}
+    out: dict[int, str] = {}
+    for cp in job.get("card_pages") or []:
+        pos = cp.get("position")
+        if pos not in wanted:
+            continue
+        ext = MIME_EXT.get(cp.get("mime") or "", ".png")
+        dest = os.path.join(work, "cards_in", f"{int(pos):02d}{ext}")
+        try:
+            storage.get(cp["storage_key"], dest)
+        except Exception as exc:  # noqa: BLE001 — 한 장을 못 받아도 영상은 만든다(해당 장면만 대체 카드)
+            log.warning("drinks: 카드 페이지 %s 를 꺼내지 못했습니다(%s) — 대체 카드로 갑니다", pos, type(exc).__name__)
+            continue
+        out[int(pos)] = dest
+    return out
+
+
+def free_script_check(job: dict[str, Any]) -> Optional[script_check.Report]:
+    """무료 경로의 대본 검사(0원) — 경고로만 쓴다(먼저 완성, 차단은 유료 경로만). 검사 자체가 죽어도 작업을 막지 않는다."""
+    try:
+        return script_check.check(script_check.plan_spec(job.get("plan") or {}, job.get("claims") or [],
+                                                         sources=job.get("sources"), brief=job.get("brief")))
+    except Exception:  # noqa: BLE001
+        log.exception("drinks: 제작 작업 %s 대본 검사가 죽었습니다 — 경고만 남기고 계속합니다", job.get("job_id"))
+        return None
+
+
 def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "edge") -> dict[str, Any]:
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     work = tempfile.mkdtemp(prefix=f"drinks_{job['job_id'][:8]}_")
@@ -145,10 +175,14 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
         if job["format"] == "video":
             images: dict[int, str] = {}
             paid_costs: list[dict[str, Any]] = []
+            # 대본 검사(0원): 유료 경로는 buy_scene_images 안에서 막히면 아무것도 사기 전에 멈춘다. 무료 경로는 막혀도 멈추지 않고
+            # 결과를 qa 에 싣기만 한다(경고 — 2026-10-28 진단: 무료 경로에서 원문 밖 숫자가 릴스까지 갔다).
+            check_report = free_script_check(job)
             if job.get("renderer") == "paid":
                 images, paid_costs = buy_scene_images(job, rpc, storage, work)
-            rendered = render_video(job, work, tts=tts, images=images)
+            rendered = render_video(job, work, tts=tts, images=images, card_pages=fetch_card_pages(job, storage, work))
             rendered.costs = paid_costs + rendered.costs
+            attach_script_check(rendered.qa, check_report)   # 유료 경로는 막혔다면 위에서 이미 멈췄다 — 여기선 알림만 실린다
         else:
             from .drinks_cards import render_carousel   # 카드뉴스 렌더(정적 이미지)
 
@@ -165,9 +199,9 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
             reg = rpc("drinks_register_asset", {**lease, "asset": {
                 "storage_key": stored, "sha256": sha256_file(f["path"]), "mime": f["mime"], "bytes": os.path.getsize(f["path"]),
                 "width": f.get("width"), "height": f.get("height"), "duration_ms": f.get("duration_ms"),
+                # rights 는 DB 허용 목록(generated_local/paid/licensed/own) 안에서만 — 카드뉴스 페이지도 우리가 로컬로 만든 것이다.
                 "rights": "generated_paid" if rendered.qa.get("generated_scenes") else "generated_local",
-                "provenance": {"renderer": job.get("renderer_version"),
-                               "images": "generated_paid" if rendered.qa.get("generated_scenes") else "local_stand_in_cards",
+                "provenance": {"renderer": job.get("renderer_version"), "images": _image_provenance(rendered.qa),
                                "spend_approval_id": job.get("spend_approval_id"),
                                "tts": tts if job["format"] == "video" else None, "brand": rendered.qa.get("brand")}}})
             assets.append({"asset_id": reg["asset_id"], "role": f["role"], "position": f["position"]})
@@ -194,6 +228,28 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
             return {"status": "lease_lost"}
     finally:
         shutil.rmtree(work, ignore_errors=True)   # 이 작업의 임시 폴더만 지운다(저장소 파일은 건드리지 않는다)
+
+
+def _image_provenance(qa: dict[str, Any]) -> str:
+    """영상 장면 그림의 출처 표기. 산 그림이 있으면 그것이 우선(generated_paid), 카드 페이지만 썼으면 card_pages."""
+    if qa.get("generated_scenes"):
+        return "generated_paid"
+    if qa.get("card_page_scenes"):
+        return "card_pages"
+    return "local_stand_in_cards"
+
+
+def attach_script_check(qa: dict[str, Any], rep: Optional[script_check.Report]) -> None:
+    """무료 경로 대본 검사 결과를 qa 에 싣는다(검수 화면이 읽는다). 막힘도 작업을 실패시키지 않는다 — 경고 코드만 더한다."""
+    warnings = qa.setdefault("warnings", [])
+    if rep is None:
+        warnings.append("script_check_error")
+        return
+    qa["script_check"] = rep.as_dict()
+    if not rep.ok:
+        warnings.append("script_check_blocked")
+    if rep.warns:
+        warnings.append("script_check_warned")
 
 
 def run_queue(rpc: Rpc, storage: Storage, *, worker_id: str, tts: str = "edge", max_jobs: int = 5) -> list[dict[str, Any]]:

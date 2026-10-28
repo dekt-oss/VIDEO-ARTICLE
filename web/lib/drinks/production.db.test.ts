@@ -1,4 +1,4 @@
-// 주류 C단계 제작·파일·검수(0053) DB 통합 테스트 — PGlite 위에 0050~0053.
+// 주류 C단계 제작·파일·검수(0053) DB 통합 테스트 — PGlite 위에 0050~0054 + 0057(슬라이드 릴스).
 // 운영자 동작은 runDrinksAction 경로, 워커 동작(drinks_start_render 등)은 rpc 직접.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { DRINKS_ACTIONS, runDrinksAction } from "./actions.ts";
 
 const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
-  "0053_drinks_production.sql"].map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
+  "0053_drinks_production.sql", "0054_drinks_spend.sql", "0057_drinks_slide_reel.sql"].map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);
@@ -322,4 +322,58 @@ test("화면 상태 조회도 멈춘 작업을 정리한다", async () => {
   const st = await worker("drinks_plan_render_state", { plan_revision_id: P.video });
   assert.equal(st.block, null);
   assert.equal((await jobRow(r.job.job_id)).status, "failed");
+});
+
+
+// ── 슬라이드 릴스(0057): 카드뉴스 페이지를 영상 장면 그림으로 ─────────────────────────────
+
+const slideScenes = (cardPage: unknown) => [
+  { narration: "다이긴조, 왜 비쌀까요?", content_kind: "transition", visual_role: "reality" },
+  { narration: "쌀을 반 이상 깎아요", visual_role: "mechanism", claim_ids: ["c1"], timing_sec: 4, card_page: cardPage }];
+
+test("0057: 장면의 card_page 는 제작안에 보존되고, 1~20 정수가 아니면 거부된다", async () => {
+  const P = await approvedPlans();
+  const dv = (await row("select version from drink_deliverables where topic_id = $1 and format = 'video'", [P.topicId])).version;
+  const saved = await ok("save_plan", { topic_id: P.topicId, format: "video", topic_review_id: P.reviewId, expected_deliverable_version: dv,
+    plan_json: { scenes: slideScenes(2) } });
+  const plan = (await planRow(saved.revision_id)).plan_json;
+  assert.equal(plan.scenes[1].card_page, 2, "card_page 보존");
+  assert.equal(plan.scenes[0].card_page, null, "없는 장면은 null");
+  // 작성 중인 버전을 이어서 고친다
+  const edit = async (cardPage: unknown) => ({ topic_id: P.topicId, format: "video", topic_review_id: P.reviewId, revision_id: saved.revision_id,
+    expected_version: (await planRow(saved.revision_id)).version, plan_json: { scenes: slideScenes(cardPage) } });
+  for (const bad of [0, 21, 1.5, -1, "2"]) {
+    await fails("save_plan", await edit(bad), "invalid_plan");
+  }
+  await ok("save_plan", await edit(20));
+  assert.equal((await planRow(saved.revision_id)).plan_json.scenes[1].card_page, 20);
+});
+
+test("0057: 영상 작업에 같은 소재의 최근 승인된 카드뉴스 페이지가 card_pages 로 실린다(없으면 [])", async () => {
+  const P = await approvedPlans();
+  // 승인된 카드뉴스가 없을 때
+  await ok("request_render", { plan_revision_id: P.video });
+  const none = await renderOnce("video");
+  assert.deepEqual(none.job.card_pages, [], "카드 묶음이 없으면 빈 배열");
+  await none.fin();
+  // 카드 3장 렌더 — 검수 전(pending)에는 싣지 않는다
+  await ok("request_render", { plan_revision_id: P.card });
+  const c = await renderOnce("carousel", 3);
+  const cfin = await c.fin();
+  await ok("request_render", { plan_revision_id: P.video });
+  const pending = await renderOnce("video");
+  assert.deepEqual(pending.job.card_pages, [], "승인 전 카드는 쓰지 않는다");
+  await pending.fin();
+  // 승인 뒤
+  const rev = await reviewFor(cfin.manifest_id);
+  await ok("output_review_action", { review_id: rev.id, expected_version: rev.version, action: "approve", checklist: CARD_CK });
+  await ok("request_render", { plan_revision_id: P.video });
+  const withCards = await renderOnce("video");
+  const cp = withCards.job.card_pages;
+  assert.deepEqual(cp.map((x: Any) => x.position), [1, 2, 3]);
+  assert.deepEqual(cp.map((x: Any) => x.storage_key), [1, 2, 3].map((n) => `drinks/${c.job.job_id}/page_${n}`));
+  assert.ok(cp.every((x: Any) => x.mime === "image/png"));
+  // 카드뉴스 작업 자체에는 싣지 않는다(영상 작업 전용)
+  assert.deepEqual(c.job.card_pages, []);
+  await withCards.fin();
 });

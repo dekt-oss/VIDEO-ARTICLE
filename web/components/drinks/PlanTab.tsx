@@ -315,6 +315,11 @@ function SceneEditor({ scenes, onChange, claims, required }: { scenes: VideoScen
                   onChange={(e) => set(i, { visual_prompt: e.target.value || null })} />
               </label>
             )}
+            <label className="dk-field">
+              <span>카드 페이지 번호(슬라이드 릴스, 비우면 대체 카드)</span>
+              <input type="number" min={1} step={1} value={s.card_page ?? ""}
+                onChange={(e) => set(i, { card_page: e.target.value === "" ? undefined : Math.max(1, Math.trunc(Number(e.target.value))) })} />
+            </label>
           </div>
           <ClaimChecks value={s.claim_ids} claims={claims} required={required} onChange={(v) => set(i, { claim_ids: v })} />
           <div className="actions">

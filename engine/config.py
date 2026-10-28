@@ -1860,6 +1860,14 @@ DRINKS_REEL_SPEC: dict = {
     "fps_range": (23, 60), "video_codecs": ("h264", "hevc"), "audio_codec": "aac",
     "max_bytes": 300 * 1024 * 1024, "cover_mime": "image/jpeg", "cover_max_bytes": 8 * 1024 * 1024,
 }
+# 주류 릴스 템포·자막 앵커(2026-10-28). 논문 라인은 RENDER_PLAYBACK_SPEED(1.2×)를 조립 끝에 걸지만, 주류는 TTS +10%(EDGE_TTS_RATE)와
+# 겹쳐 5.9음절/초(실측)였다 — 속도는 한 곳에서만 올린다(TTS). 기본 1.0×, 운영자가 귀로 판정한 뒤 조정한다.
+# drinks_render._guard_free 가 렌더 직전에 RENDER_PLAYBACK_SPEED 를 이 값으로 덮는다(논문·리포트 렌더는 그 함수를 지나지 않는다).
+DRINKS_PLAYBACK_SPEED: float = _get_float("DRINKS_PLAYBACK_SPEED", 1.0)
+DRINKS_SPEECH_RATE_WARN_SYL_PER_SEC: float = 5.5   # 최종 영상 기준 말 속도(음절/초) — 넘으면 speech_rate_fast 경고
+DRINKS_CAPTION_PLATFORM: str = "reels"             # 자막 앵커(PLATFORM_CAPTION_ANCHOR_PCT) — 릴스 0.68
+# 인스타 캡션 한도 — Meta IG User Media v26.0, 2026-10-28 조회. drinks_script_check.check_caption 이 쓴다(발행 워커가 막힘이면 멈춤).
+DRINKS_CAPTION_LIMITS: dict = {"max_chars": 2200, "max_hashtags": 30, "max_mentions": 20}
 # ─ 렌더 QA 게이트 (수정지시서 v2 §7) — 발행 전 실제 mp4 를 ffprobe 로 실검(프레임 실측) ─
 # "98.8%=버그" 단정 삭제 대신, 자동 판정 가능한 값만 하드 게이트로: 끝 검은프레임·>250ms 무음·오디오
 # 클리핑·길이. 자막 존재는 우리 파이프라인이 ASS 를 결정적으로 번인하므로 프레임 디코드 여부로 확인

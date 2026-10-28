@@ -4,6 +4,7 @@
 import Link from "next/link";
 
 import { CancelRender, CloseSpendApproval, OpenSpendApproval, OutputReview, PaidRenderRequest, RenderRequest } from "@/components/drinks/ProductionControls";
+import QaPanel from "./QaPanel";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { fmtTime } from "@/components/drinks/RunPill";
 import { FORMAT_LABEL, VERSION_STATUS_LABEL, type Format } from "@/lib/drinks/model";
@@ -120,9 +121,7 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
               <span className="muted">{fmtTime(m.manifest.created_at)}</span>
             </div>
             {m.review?.reason && <p className="muted">{m.review.reason}</p>}
-            {Array.isArray((m.review?.qa_summary as { warnings?: string[] })?.warnings) && ((m.review!.qa_summary as { warnings: string[] }).warnings.length > 0) && (
-              <p className="banner-warn">기계 검사 경고: {(m.review!.qa_summary as { warnings: string[] }).warnings.join(", ")}</p>
-            )}
+            {m.review && <QaPanel qa={m.review.qa_summary} />}
             <div className="dk-row" style={{ alignItems: "flex-start" }}>
               {m.files.map((file) => (
                 <div key={file.id} style={{ maxWidth: f === "video" ? 260 : 200 }}>

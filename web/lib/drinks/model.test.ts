@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   weightedScore, fitOk, nextAction, actionRank, blockerLabel, fromQuery, nextMonday, deriveTopic, originSummary,
-  planCoverage, effectiveMeta,
+  planCoverage, effectiveMeta, QA_WARNING_KO, qaWarningLabel, qaView, reelSpecRows,
   type NextActionInput,
 } from "./model.ts";
 
@@ -177,4 +177,33 @@ test("deriveTopic: 형식별 현재 제작안을 따로 본다", () => {
   assert.notEqual(ready.action.label, "편성", "지금 쓸 수 없는 승인으로 편성을 권하지 않는다");
   const unknown = { ...(review as object), currently_valid: undefined } as never;
   assert.equal(deriveTopic(topic, new Map([["r1", unknown]]), deliverables, plans).approvalValid, false, "판정이 없으면 유효로 보지 않는다");
+});
+
+const QA_CODES = [
+  "not_vertical_1080x1920", "narration_silent", "narration_silent_scenes", "text_truncated", "glyph_missing", "reel_audio_rate_over_48k",
+  "reel_moov_not_first", "reel_duration_out_of_range", "reel_width_over_1920", "reel_fps_out_of_range", "reel_video_codec", "reel_audio_codec",
+  "reel_file_too_big", "reel_cover_not_jpeg", "reel_cover_too_big", "script_check_blocked", "script_check_warned", "speech_rate_fast", "card_page_missing",
+];
+
+test("기계 검사 경고 코드는 전부 한국어 라벨이 있고, 모르는 코드는 그대로 보인다", () => {
+  for (const c of QA_CODES) assert.ok(QA_WARNING_KO[c] && QA_WARNING_KO[c] !== c, c);
+  assert.equal(qaWarningLabel("something_new"), "something_new");
+});
+
+test("qaView: 옛 행(새 키 없음)도 터지지 않고, 새 키는 문턱대로 ✔/✖", () => {
+  assert.deepEqual(qaView(null).reel, []);
+  assert.equal(qaView({ warnings: ["x"] }).script, null);
+  const v = qaView({
+    probe: { width: 1080, height: 1920, duration_sec: 40 },
+    reel_spec: { moov_first: false, audio_sample_rate: 96000, video_codec: "h264", fps: 30, cover_mime: "image/png" },
+    script_check: { ok: false, blocks: [{ code: "a", scene: 2, message: "m" }], warns: [] },
+    speech_rate: { syl_per_sec: 5.94, playback_speed: 1, tts_rate: 10 }, warnings: ["speech_rate_fast"],
+    visual_source: { stand_in: [1], card_pages: [], generated: [2, 3] },
+  });
+  const by = Object.fromEntries(v.reel.map((r) => [r.label, r.ok]));
+  assert.equal(by["해상도"], true); assert.equal(by["소리 샘플링"], false); assert.equal(by["재생 정보(moov) 위치"], false);
+  assert.equal(by["표지 형식"], false); assert.equal(by["영상 코덱"], true);
+  assert.equal(v.speech?.text, "5.9음절/초 (재생 1×, TTS +10%)"); assert.equal(v.speech?.fast, true);
+  assert.equal(v.script?.blocks[0].scene, 2); assert.deepEqual(v.visual?.generated, [2, 3]);
+  assert.equal(reelSpecRows({ probe: { width: 1080, height: 1920, duration_sec: 2 } })[1].ok, false);
 });
