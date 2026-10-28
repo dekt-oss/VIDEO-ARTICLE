@@ -11,7 +11,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
-  "0053_drinks_production.sql", "0054_drinks_spend.sql", "0055_drinks_publish_loop.sql"]
+  "0053_drinks_production.sql", "0054_drinks_spend.sql", "0055_drinks_publish_loop.sql", "0056_drinks_function_search_path.sql"]
   .map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;

@@ -18,7 +18,7 @@ const req = createRequire(join(ROOT, "web", "package.json"));
 const { PGlite } = await import(pathToFileURL(req.resolve("@electric-sql/pglite")).href);
 
 const MIGS = ["0050_drinks_factory_phase_a", "0051_drinks_factory_phase_b", "0052_drinks_discovery", "0053_drinks_production",
-  "0054_drinks_spend", "0055_drinks_publish_loop"];
+  "0054_drinks_spend", "0055_drinks_publish_loop", "0056_drinks_function_search_path"];
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);
