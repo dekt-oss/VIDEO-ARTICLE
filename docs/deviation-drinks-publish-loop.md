@@ -42,7 +42,7 @@
 | 같은 e2e: 게시 후 응답 끊김 → unknown → 재게시 없음 → 대조로 published · 게시 전 끊김 → failed → 재시도 · 2시간 늦음 → paused · 근거 없는 캡션 → paused | 통과 |
 | DB 규칙(PGlite, `web/lib/drinks/publish.db.test.ts` 7개) — 계정 접두어·토큰 원문 거부·외부 ID 불변·불일치, 지문 승인, 작성 중에만 수정, 중복, 스위치·철회·늦음, 게시 호출 뒤 failed 금지, 끊긴 임대 → unknown, 성과 칸·받은 지표만, 전략 상한·기준 변경 | 통과 |
 | 공급자 단위(`tests/test_drinks_publish_units.py`) — 토큰은 헤더로만·오류 문장에 비밀 없음·실제 공급자 기본 꺼짐 | 통과 |
-| **실제 Meta Graph API** | **미검증** — 계정 미정. 엔드포인트·필드 이름(`user_id`, `ig_reels_avg_watch_time` 등)은 첫 연결 때 실측해 고친다 |
+| 실제 Meta Graph API(읽기만, 2026-10-28) | 계정 `sooljjerigo`(ID 17841473765861006, 크리에이터) **Instagram 로그인** 토큰으로 계정 대조·게시 한도(100/일)·게시물 성과(reach·saved·shares·likes·comments·total_interactions) 조회 성공. **실측으로 결함 1건 수정**: 게시물 owner 가 앱 전용 ID 로 와서 매 게시가 unknown 이 될 뻔했다 → /me 로 계정 ID 에 이어 줌. 실제 게시·릴스 지표(`ig_reels_avg_watch_time`)는 아직 미검증 |
 | 운영 DB 0055 적용·운영 배포·실게시 | 안 함(각각 승인 필요) |
 
 ## 운영 순서(승인 뒤)

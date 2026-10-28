@@ -299,9 +299,14 @@ class GraphInstagram:
 
     def media(self, account: dict[str, Any], media_id: str) -> Media:
         b = self._call("GET", account, f"/{media_id}", params={"fields": "id,permalink,caption,owner"})
-        owner = b.get("owner") or {}
-        return Media(id=str(b.get("id")), owner_id=str(owner.get("id") or account["external_account_id"]),
-                     permalink=b.get("permalink"), caption=b.get("caption") or "")
+        owner = str((b.get("owner") or {}).get("id") or "")
+        # ★ Instagram 로그인 토큰은 게시물 주인을 **앱 전용 ID**(/me 의 id)로 준다 — 계정 ID(/me 의 user_id)와 다르다
+        #   (2026-10-28 실측: 29421…≠17841…). 그 둘을 이어 주지 않으면 매 게시가 '계정 불일치 → unknown' 이 된다.
+        if account.get("connection") == "instagram_login" and owner:
+            me = self._call("GET", account, "/me", params={"fields": "id,user_id"})
+            if owner == str(me.get("id") or ""):
+                owner = str(me.get("user_id") or "")
+        return Media(id=str(b.get("id")), owner_id=owner, permalink=b.get("permalink"), caption=b.get("caption") or "")
 
     def find_published(self, account: dict[str, Any], container_ids: list[str], caption: str) -> tuple[str, Optional[Media]]:
         statuses = []

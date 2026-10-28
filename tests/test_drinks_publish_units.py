@@ -122,3 +122,19 @@ def test_caption_check_blocks_invented_numbers_amounts_and_advice_but_not_hashta
     assert sc.check_caption("쌀을 50% 이하로 깎아요 #2026 #사케", claims).ok
     codes = {f.code for f in sc.check_caption("물을 세 티스푼 넣어 보세요. 70도에서 마셔요", claims).blocks}
     assert codes == {"number_unsupported", "quantity_unsupported", "advice_unsupported"}
+
+
+def test_graph_media_owner_app_scoped_id_maps_to_account_id(monkeypatch):
+    """실측(2026-10-28): Instagram 로그인 토큰은 게시물 owner 를 앱 전용 ID 로 준다 — 계정 ID 로 이어 줘야 게시가 unknown 이 안 된다."""
+    def handler(req):
+        if req.url.path.endswith("/me"):
+            return httpx.Response(200, json={"id": "29421002334173283", "user_id": "1784"})
+        return httpx.Response(200, json={"id": "m1", "permalink": "https://www.instagram.com/p/x/", "owner": {"id": "29421002334173283"}})
+    m = graph(handler, monkeypatch).media(ACC, "m1")
+    assert m.owner_id == "1784"
+
+    def other(req):
+        if req.url.path.endswith("/me"):
+            return httpx.Response(200, json={"id": "29421002334173283", "user_id": "1784"})
+        return httpx.Response(200, json={"id": "m1", "owner": {"id": "555"}})
+    assert graph(other, monkeypatch).media(ACC, "m1").owner_id == "555", "다른 주인은 그대로 둔다(불일치로 잡히게)"
