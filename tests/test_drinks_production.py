@@ -334,14 +334,14 @@ def test_speech_rate_helper_counts_letters_not_punctuation_and_flags_fast(tmp_pa
     assert dr.speech_rate([], 0.0, 1.0, "+10%")["syl_per_sec"] == 0.0
     cap = {}
     _fake_engine(monkeypatch, tmp_path, cap)
-    fast = [{"narration": "가" * 120, "visual_role": "text_card"}]   # 120음절 / 20초 = 6.0
+    fast = [{"narration": "가" * 140, "visual_role": "text_card"}]   # 140음절 / 20초 = 7.0 > 문턱 6.5
     assert "speech_rate_fast" in dr.render_video(_video_job(fast), str(tmp_path / "w"), tts="placeholder").qa["warnings"]
 
 
 def test_guard_free_applies_drinks_playback_speed(monkeypatch):
     for k in ("IMAGE_PROVIDER", "VIDEO_PROVIDER", "TTS_PROVIDER", "CAPTION_PHRASE_BREAKS", "RENDER_PLAYBACK_SPEED"):
         monkeypatch.setattr(config, k, getattr(config, k))
-    assert config.DRINKS_PLAYBACK_SPEED == 1.0, "기본은 조립 끝 배속 없음(TTS +10% 한 곳)"
+    assert config.DRINKS_PLAYBACK_SPEED == 1.2, "운영자 판정(2026-10-28) — 주류도 1.2×"
     monkeypatch.setattr(config, "DRINKS_PLAYBACK_SPEED", 1.05)
     dr._guard_free("edge")
     assert config.RENDER_PLAYBACK_SPEED == 1.05
