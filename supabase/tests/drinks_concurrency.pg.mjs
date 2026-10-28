@@ -1,0 +1,520 @@
+// 주류 공장 실제 동시성 검증 — **실제 Postgres 서버 전용**(PGlite 는 연결이 하나라 못 한다). CI 에 묶지 않았다.
+//
+// 두 개의 독립 연결로 같은 행을 동시에 건드려, 잠금(for update)과 버전 비교가 "늦게 온 쪽"을 막는지 본다.
+//   ① 검토 요청 vs 초안 수정   ② 같은 버전 승인 두 번   ③ 근거 철회 vs 제작안 승인   ④ 새 제작안 동시 생성 두 번
+// 같은 expected_version 을 순차로 두 번 보내는 web/lib/drinks/drinks.db.test.ts 와는 다른 검사다.
+//
+// ★ 빈 데이터베이스에만 돌린다 — 스크립트가 역할을 만들고 0050 을 적용한다. 운영·공유 DB 에 돌리지 말 것.
+// 실행(예: 로컬 Postgres 17):
+//   npm i --prefix <임시폴더> pg@8.13.1
+//   DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/drinks \
+//   DRINKS_PG_MODULE=<임시폴더>/node_modules/pg/lib/index.js node supabase/tests/drinks_concurrency.pg.mjs
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const url = process.env.DATABASE_URL;
+if (!url) throw new Error("DATABASE_URL 이 필요합니다(빈 테스트 DB)");
+if (/supabase\.co|pooler\.supabase/.test(url)) throw new Error("원격 Supabase 주소에는 돌리지 않습니다");
+const pgMod = process.env.DRINKS_PG_MODULE ? pathToFileURL(process.env.DRINKS_PG_MODULE).href : "pg";
+const { default: pg } = await import(pgMod);
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const admin = new pg.Client({ connectionString: url });
+await admin.connect();
+const exists = await admin.query("select to_regclass('public.drink_topics') as t");
+if (exists.rows[0].t) throw new Error("drink_topics 가 이미 있습니다 — 빈 DB 에만 돌리세요");
+await admin.query(`do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+end $$; grant usage on schema public to anon, authenticated, service_role;`);
+for (const f of ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
+  "0053_drinks_production.sql", "0054_drinks_spend.sql"]) {
+  await admin.query(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
+}
+
+async function conn() {
+  const c = new pg.Client({ connectionString: url });
+  await c.connect();
+  await c.query("set role service_role");
+  await c.query("set lock_timeout = '10s'");
+  return c;
+}
+const A = await conn();
+const B = await conn();
+const call = async (c, fn, p) => (await c.query(`select ${fn}($1::jsonb) as r`, [JSON.stringify(p)])).rows[0].r;
+const codeOf = (e) => (/^drinks:([a-z_]+):/.exec(e?.message ?? "")?.[1]) ?? e?.code ?? String(e);
+const one = async (sql, params = []) => (await admin.query(sql, params)).rows[0];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** A 가 트랜잭션 안에서 fnA 를 끝내고 잠금을 쥔 채로, B 가 fnB 를 시작한다. B 가 기다리는지 보고 A 를 커밋한다. */
+async function race(fnA, fnB) {
+  await A.query("begin");
+  const ra = await fnA(A);
+  let settled = false;
+  const pb = fnB(B).then((v) => ({ ok: true, v }), (e) => ({ ok: false, e })).finally(() => { settled = true; });
+  await sleep(400);
+  const blocked = !settled;
+  await A.query("commit");
+  return { ra, rb: await pb, blocked };
+}
+
+const BODY = "준마이 다이긴조는 정미율 50% 이하의 쌀을 사용한다.";
+const SCORES = { relevance: 4, utility: 4, curiosity: 3, fit_video: 3, fit_carousel: 4, timeliness: 2 };
+const brief = { audience_question: "왜 비쌀까", core_takeaway: "쌀을 깎는다", selected_claim_ids: ["c1"],
+  proposed_formats: ["carousel"], required_claims: { carousel: ["c1"] } };
+let n = 0;
+async function topicWithDraft() {
+  const t = await call(A, "drinks_create_topic", { title: "t", question: `q${n++}`, categories: ["sake"], lane: "evergreen" });
+  const id = t.topic_id;
+  const v = async () => (await one("select version from drink_topics where id=$1", [id])).version;
+  await call(A, "drinks_triage", { topic_id: id, expected_version: await v(), scores: SCORES });
+  await call(A, "drinks_topic_action", { topic_id: id, expected_version: await v(), action: "start_research" });
+  const s = await call(A, "drinks_add_source", { topic_id: id, source: { body_text: BODY + n, rights_status: "quote_ok" } });
+  const claims = [{ claim_id: "c1", text: "정미율 50%", claim_type: "process", support_review: "supported",
+    source_refs: [{ snapshot_id: s.snapshot_id, original_quote: "정미율 50% 이하의 쌀을 사용한다" }] }];
+  const r = await call(A, "drinks_save_review", { topic_id: id, expected_topic_version: await v(), scores: SCORES, brief,
+    evidence_pack: { claims } });
+  return { id, reviewId: r.review_id, v };
+}
+const rv = (id) => one("select * from drink_topic_reviews where id=$1", [id]);
+const results = [];
+const check = (name, fn) => results.push(fn().then(() => console.log(`✔ ${name}`), (e) => { console.log(`✖ ${name}: ${e.message}`); process.exitCode = 1; }));
+
+// ① 검토 요청(A, 잠금 보유) vs 같은 버전의 초안 수정(B)
+await (async () => {
+  const { reviewId } = await topicWithDraft();
+  const before = await rv(reviewId);
+  const { rb, blocked } = await race(
+    (c) => call(c, "drinks_review_action", { review_id: reviewId, expected_version: before.version, action: "submit" }),
+    (c) => call(c, "drinks_save_review", { topic_id: before.topic_id, review_id: reviewId, expected_version: before.version,
+      brief: { ...brief, exclusions: "늦게 온 수정" } }));
+  const after = await rv(reviewId);
+  await check("① 검토 요청 vs 초안 수정: B 가 잠금을 기다렸고, 늦게 온 수정은 거부", async () => {
+    assert.equal(blocked, true, "B 가 A 의 커밋을 기다려야 한다");
+    assert.equal(rb.ok, false);
+    assert.ok(["version_conflict", "immutable"].includes(codeOf(rb.e)), codeOf(rb.e));
+    assert.equal(after.status, "in_review");
+    assert.equal(after.brief.exclusions, null, "검토에 올린 본문이 그대로");
+  });
+})();
+
+// ② 같은 버전 승인 두 번(두 연결)
+await (async () => {
+  const { reviewId } = await topicWithDraft();
+  let r0 = await rv(reviewId);
+  await call(A, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "submit" });
+  r0 = await rv(reviewId);
+  const { rb, blocked } = await race(
+    (c) => call(c, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "approve" }),
+    (c) => call(c, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "approve" }));
+  const after = await rv(reviewId);
+  await check("② 같은 버전 승인 두 번: 하나만 성공, 승인 해시 불변", async () => {
+    assert.equal(blocked, true);
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "version_conflict");
+    assert.equal(after.status, "approved");
+    assert.equal(after.approved_hash, after.input_hash);
+    const ev = await one(`select count(*)::int as n from drink_workflow_events where entity_id=$1 and action='review_approve'`, [reviewId]);
+    assert.equal(ev.n, 1, "승인 이력도 한 번만");
+  });
+})();
+
+// ③ 근거 철회(A) vs 제작안 승인(B)
+await (async () => {
+  const { id, reviewId, v } = await topicWithDraft();
+  let r0 = await rv(reviewId);
+  await call(A, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "submit" });
+  r0 = await rv(reviewId);
+  await call(A, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "approve" });
+  r0 = await rv(reviewId);
+  await call(A, "drinks_select", { topic_id: id, expected_version: await v(), review_id: reviewId, review_input_hash: r0.approved_hash,
+    formats: ["carousel"], editorial_week: "2026-10-26" });
+  const plan = await call(A, "drinks_save_plan", { topic_id: id, format: "carousel", topic_review_id: reviewId,
+    plan_json: { pages: [{ role: "cover", heading: "표지" }, { role: "explain", heading: "정미율", claim_ids: ["c1"] }] } });
+  let pv = await one("select * from drink_plan_revisions where id=$1", [plan.revision_id]);
+  await call(A, "drinks_plan_action", { revision_id: pv.id, expected_version: pv.version, action: "submit" });
+  pv = await one("select * from drink_plan_revisions where id=$1", [plan.revision_id]);
+  const { rb, blocked } = await race(
+    (c) => call(c, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "revoke", reason: "오류" }),
+    (c) => call(c, "drinks_plan_action", { revision_id: pv.id, expected_version: pv.version, action: "approve" }));
+  const after = await one("select * from drink_plan_revisions where id=$1", [plan.revision_id]);
+  await check("③ 철회 vs 제작안 승인: 철회가 먼저 잡으면 제작안은 승인되지 않고 차단", async () => {
+    assert.equal(blocked, true);
+    assert.equal(rb.ok, false);
+    assert.ok(["version_conflict", "plan_blocked", "review_not_approved", "format_not_selected"].includes(codeOf(rb.e)), codeOf(rb.e));
+    assert.equal(after.plan_status, "in_review");
+    assert.ok(after.blocked_at);
+  });
+})();
+
+// ④ 새 제작안 동시 생성 두 번 → 하나만
+await (async () => {
+  const { id, reviewId, v } = await topicWithDraft();
+  let r0 = await rv(reviewId);
+  await call(A, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "submit" });
+  r0 = await rv(reviewId);
+  await call(A, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "approve" });
+  r0 = await rv(reviewId);
+  await call(A, "drinks_select", { topic_id: id, expected_version: await v(), review_id: reviewId, review_input_hash: r0.approved_hash,
+    formats: ["carousel"], editorial_week: "2026-10-26" });
+  const p = { topic_id: id, format: "carousel", topic_review_id: reviewId, plan_json: { pages: [{ role: "cover", heading: "x" }] } };
+  const { rb, blocked } = await race((c) => call(c, "drinks_save_plan", p), (c) => call(c, "drinks_save_plan", p));
+  const cnt = await one("select count(*)::int as n from drink_plan_revisions where topic_id=$1", [id]);
+  await check("④ 새 제작안 동시 생성 두 번: 하나만 생기고 나머지는 거부", async () => {
+    assert.equal(blocked, true);
+    assert.equal(rb.ok, false);
+    assert.ok(["draft_exists", "version_conflict", "23505"].includes(codeOf(rb.e)), codeOf(rb.e));
+    assert.equal(cnt.n, 1);
+  });
+})();
+
+// ⑤ 공유 출처: 소재1 권리 철회(+영향 승인 철회) vs 소재2 정정 기록 — 교착(40P01) 없이 B 가 기다렸다 성공
+await (async () => {
+  const url = `https://shared.example/${Date.now()}`;
+  const T1 = await topicWithDraft();
+  const T2 = await topicWithDraft();
+  const s1 = await call(A, "drinks_add_source", { topic_id: T1.id, source: { canonical_url: url, body_text: BODY } });
+  await call(A, "drinks_add_source", { topic_id: T2.id, source: { canonical_url: url, body_text: BODY } });
+  const { rb, blocked } = await race(
+    (c) => call(c, "drinks_attest_source", { topic_id: T1.id, snapshot_id: s1.snapshot_id, kind: "rights_revoked",
+      fields: { rights_status: "restricted" }, reason: "철회", revoke_affected: true }),
+    (c) => call(c, "drinks_attest_source", { topic_id: T2.id, snapshot_id: s1.snapshot_id, kind: "correction",
+      fields: { publisher: "정정" }, reason: "오기" }));
+  const n = await one("select count(*)::int as n from drink_snapshot_attestations where snapshot_id=$1", [s1.snapshot_id]);
+  await check("⑤ 공유 출처 동시 기록: 교착 없이 순서대로 둘 다 기록", async () => {
+    assert.equal(blocked, true, "B 는 같은 잠금 범위를 기다린다");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(n.n, 2);
+  });
+})();
+
+// ⑥ 권리 철회(체크박스 없이) vs 제작안 승인 — 어느 쪽이 먼저든 "지금 쓸 수 없는 제작안"이 유효하게 남지 않는다
+async function inReviewPlan() {
+  const { id, reviewId, v } = await topicWithDraft();
+  let r0 = await rv(reviewId);
+  await call(A, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "submit" });
+  r0 = await rv(reviewId);
+  await call(A, "drinks_review_action", { review_id: reviewId, expected_version: r0.version, action: "approve" });
+  r0 = await rv(reviewId);
+  await call(A, "drinks_select", { topic_id: id, expected_version: await v(), review_id: reviewId, review_input_hash: r0.approved_hash,
+    formats: ["carousel"], editorial_week: "2026-10-26" });
+  const plan = await call(A, "drinks_save_plan", { topic_id: id, format: "carousel", topic_review_id: reviewId,
+    plan_json: { pages: [{ role: "cover", heading: "표지" }, { role: "explain", heading: "정미율", claim_ids: ["c1"] }] } });
+  let pv = await one("select * from drink_plan_revisions where id=$1", [plan.revision_id]);
+  await call(A, "drinks_plan_action", { revision_id: pv.id, expected_version: pv.version, action: "submit" });
+  pv = await one("select * from drink_plan_revisions where id=$1", [plan.revision_id]);
+  const snap = (await one(`select (evidence_pack->'claims'->0->'source_refs'->0->>'snapshot_id')::uuid as s from drink_topic_reviews where id=$1`,
+    [reviewId])).s;
+  return { id, reviewId, pv, snap };
+}
+await (async () => {
+  // 순서 1: 철회가 먼저 잠금을 잡는다
+  const x = await inReviewPlan();
+  const { rb, blocked } = await race(
+    (c) => call(c, "drinks_attest_source", { topic_id: x.id, snapshot_id: x.snap, kind: "rights_revoked",
+      fields: { rights_status: "restricted" }, reason: "철회", revoke_affected: false }),
+    (c) => call(c, "drinks_plan_action", { revision_id: x.pv.id, expected_version: x.pv.version, action: "approve" }));
+  const after = await one("select * from drink_plan_revisions where id=$1", [x.pv.id]);
+  const valid = await one("select currently_valid from drink_review_validity where review_id=$1", [x.reviewId]);
+  await check("⑥-1 철회 먼저: 제작안 승인은 거부되고 차단, 근거는 지금 사용 불가", async () => {
+    assert.equal(blocked, true);
+    assert.equal(rb.ok, false, "승인이 통과하면 안 된다");
+    assert.notEqual(after.plan_status, "approved");
+    assert.ok(after.blocked_at);
+    assert.equal(valid.currently_valid, false);
+  });
+  // 순서 2: 제작안 승인이 먼저 잠금을 잡는다 → 승인 뒤 철회가 차단한다
+  const y = await inReviewPlan();
+  const r2 = await race(
+    (c) => call(c, "drinks_plan_action", { revision_id: y.pv.id, expected_version: y.pv.version, action: "approve" }),
+    (c) => call(c, "drinks_attest_source", { topic_id: y.id, snapshot_id: y.snap, kind: "rights_revoked",
+      fields: { rights_status: "restricted" }, reason: "철회", revoke_affected: false }));
+  const after2 = await one("select * from drink_plan_revisions where id=$1", [y.pv.id]);
+  await check("⑥-2 승인 먼저: 승인 기록은 남되 곧바로 차단(사용 가능으로 남지 않음)", async () => {
+    assert.equal(r2.blocked, true);
+    assert.equal(r2.rb.ok, true, r2.rb.ok ? "" : codeOf(r2.rb.e));
+    assert.equal(after2.plan_status, "approved");
+    assert.ok(after2.blocked_at, "차단돼야 한다");
+  });
+})();
+
+// ⑦ 같은 출처에 두 연결이 동시에 정정 기록 — 잠금을 먼저 잡은 쪽이 먼저 적용되고, 나중 쪽이 최종 상태가 된다
+await (async () => {
+  for (const [first, second, expected] of [["quote_ok", "restricted", "restricted"], ["restricted", "quote_ok", "quote_ok"]]) {
+    const T = await topicWithDraft();
+    const s = await call(A, "drinks_add_source", { topic_id: T.id, source: { canonical_url: `https://order.example/${Date.now()}${first}`,
+      body_text: BODY } });
+    const kind = (r) => (r === "restricted" ? "rights_revoked" : "rights_confirmed");
+    const { rb, blocked } = await race(
+      (c) => call(c, "drinks_attest_source", { topic_id: T.id, snapshot_id: s.snapshot_id, kind: kind(first),
+        fields: { rights_status: first }, reason: "먼저" }),
+      (c) => call(c, "drinks_attest_source", { topic_id: T.id, snapshot_id: s.snapshot_id, kind: kind(second),
+        fields: { rights_status: second }, reason: "나중" }));
+    const fin = await one("select drinks_snapshot_meta($1) ->> 'rights_status' as r", [s.snapshot_id]);
+    const order = (await admin.query("select reason from drink_snapshot_attestations where snapshot_id=$1 order by seq", [s.snapshot_id]))
+      .rows.map((x) => x.reason);
+    await check(`⑦ 동시 정정 ${first}→${second}: 나중에 잠금을 잡은 기록이 최종(${expected})`, async () => {
+      assert.equal(blocked, true);
+      assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+      assert.deepEqual(order, ["먼저", "나중"]);
+      assert.equal(fin.r, expected);
+    });
+  }
+})();
+
+// ── B단계(0051) 수집 경합 ──
+const LONG = (t) => `${t} `.repeat(30);
+async function validatedSource(host) {
+  const r = await call(A, "drinks_register_source", { name: `src ${host} ${Math.random()}`, home_url: `https://${host}/${Math.random()}`,
+    language: "ja", categories: ["sake"], method: "approved_page", entry_urls: [`https://${host}/a`], terms_status: "verified",
+    terms_note: "확인", terms_checked_at: "2026-10-22" });
+  const id = r.source_id;
+  await call(A, "drinks_request_run", { source_id: id, mode: "validate" });
+  const got = await call(A, "drinks_start_run", { worker_id: "v" });
+  const lease = { run_id: got.run.run_id, lease_token: got.run.lease_token };
+  await call(A, "drinks_collect_item", { ...lease, item: { canonical_url: `https://${host}/a`, status: "fetched", body_text: LONG("本文") } });
+  await call(A, "drinks_finish_run", lease);
+  const v = (await one("select version from drink_sources where id=$1", [id])).version;
+  await call(A, "drinks_source_action", { source_id: id, expected_version: v, action: "validate" });
+  return id;
+}
+async function activeSource(host) {
+  const r = await call(A, "drinks_register_source", { name: `src ${host} ${Math.random()}`, home_url: `https://${host}/${Math.random()}`,
+    language: "ja", categories: ["sake"], method: "approved_page", entry_urls: [`https://${host}/a`], terms_status: "verified",
+    terms_note: "확인", terms_checked_at: "2026-10-22" });
+  const id = r.source_id;
+  await call(A, "drinks_request_run", { source_id: id, mode: "validate" });
+  const got = await call(A, "drinks_start_run", { worker_id: "v" });
+  const lease = { run_id: got.run.run_id, lease_token: got.run.lease_token };
+  await call(A, "drinks_collect_item", { ...lease, item: { canonical_url: `https://${host}/a`, status: "fetched", body_text: LONG("本文") } });
+  await call(A, "drinks_finish_run", lease);
+  for (const action of ["validate", "activate"]) {
+    const v = (await one("select version from drink_sources where id=$1", [id])).version;
+    await call(A, "drinks_source_action", { source_id: id, expected_version: v, action });
+  }
+  return id;
+}
+
+// ⑧ 두 워커가 동시에 실행을 가져간다 — 하나만 가져가고, 다른 쪽은 기다리지 않고 빈손으로 돌아간다(skip locked)
+await (async () => {
+  const id = await activeSource(`w8.${Date.now()}.example.jp`);
+  await call(A, "drinks_request_run", { source_id: id, mode: "collect" });
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_start_run", { worker_id: "A" }),
+    (c) => call(c, "drinks_start_run", { worker_id: "B" }));
+  const running = await one("select count(*)::int n from drink_collection_runs where source_id=$1 and status='running'", [id]);
+  await check("⑧ 동시 start_run: 실행 하나를 한 워커만 가져간다", async () => {
+    assert.ok(ra.run, "A 가 가져간다");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(rb.v.run, null, "B 는 같은 실행을 받지 않는다");
+    assert.equal(blocked, false, "skip locked — B 는 A 를 기다리지 않는다");
+    assert.equal(running.n, 1);
+  });
+  await call(A, "drinks_finish_run", { run_id: ra.run.run_id, lease_token: ra.run.lease_token });
+})();
+
+// ⑨ 같은 수집원에 실행 요청 두 번이 동시에 — 하나만 생기고 나중 쪽은 run_in_progress
+await (async () => {
+  const id = await activeSource(`w9.${Date.now()}.example.jp`);
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_request_run", { source_id: id, mode: "collect" }),
+    (c) => call(c, "drinks_request_run", { source_id: id, mode: "collect" }));
+  const n = await one("select count(*)::int n from drink_collection_runs where source_id=$1 and status in ('queued','running')", [id]);
+  await check("⑨ 동시 실행 요청: 대기 실행은 하나, 나중 요청은 run_in_progress", async () => {
+    assert.ok(ra.run_id);
+    assert.equal(blocked, true, "수집원 행 잠금으로 나중 요청이 기다린다");
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "run_in_progress");
+    assert.equal(n.n, 1);
+  });
+  const g = await call(A, "drinks_start_run", { worker_id: "cleanup" });  // 다음 시나리오가 이 대기 실행을 집지 않게
+  await call(A, "drinks_finish_run", { run_id: g.run.run_id, lease_token: g.run.lease_token });
+})();
+
+// ⑩ 두 수집원의 실행이 같은 URL·같은 본문을 동시에 기록 — 스냅샷은 하나, 나중 쪽은 '변화 없음'
+await (async () => {
+  const host = `w10.${Date.now()}.example.jp`;
+  const s1 = await activeSource(host);
+  const s2 = await activeSource(host);
+  await call(A, "drinks_request_run", { source_id: s1, mode: "collect" });
+  await call(A, "drinks_request_run", { source_id: s2, mode: "collect" });
+  const g1 = await call(A, "drinks_start_run", { worker_id: "1" });
+  const g2 = await call(A, "drinks_start_run", { worker_id: "2" });
+  const item = { canonical_url: `https://${host}/same`, status: "fetched", title: "same", body_text: LONG("同じ本文") };
+  const { ra, rb, blocked } = await race(
+    (c) => call(c, "drinks_collect_item", { run_id: g1.run.run_id, lease_token: g1.run.lease_token, item }),
+    (c) => call(c, "drinks_collect_item", { run_id: g2.run.run_id, lease_token: g2.run.lease_token, item }));
+  const n = await one("select count(*)::int n from drink_source_snapshots where canonical_url=$1", [item.canonical_url]);
+  await check("⑩ 동시 같은 문서 기록: 스냅샷 하나, 나중 쪽은 기존 스냅샷을 가리킨다", async () => {
+    assert.equal(ra.status, "new");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(blocked, true, "같은 고유 키 입력은 앞 트랜잭션을 기다린다");
+    assert.equal(rb.v.status, "unchanged");
+    assert.equal(rb.v.snapshot_id, ra.snapshot_id);
+    assert.equal(n.n, 1);
+  });
+  for (const g of [g1, g2]) await call(A, "drinks_finish_run", { run_id: g.run.run_id, lease_token: g.run.lease_token });
+})();
+
+// ⑪ 활성 11개에서 두 수집원을 동시에 활성화 — 하나만 12번째가 되고 다른 쪽은 active_limit(13개가 되지 않는다)
+await (async () => {
+  const have = (await one("select count(*)::int n from drink_sources where state='active'")).n;
+  for (let i = have; i < 11; i++) await activeSource(`w11-${i}.${Date.now()}.example.jp`);
+  const x = await validatedSource(`w11x.${Date.now()}.example.jp`);
+  const y = await validatedSource(`w11y.${Date.now()}.example.jp`);
+  const ver = async (id) => (await one("select version from drink_sources where id=$1", [id])).version;
+  const vx = await ver(x);
+  const vy = await ver(y);
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_source_action", { source_id: x, expected_version: vx, action: "activate" }),
+    (c) => call(c, "drinks_source_action", { source_id: y, expected_version: vy, action: "activate" }));
+  const n = await one("select count(*)::int n from drink_sources where state='active'");
+  await check("⑪ 동시 활성화(11개에서 둘): 하나만 성공, 활성 12개를 넘지 않는다", async () => {
+    assert.equal(ra.state, "active");
+    assert.equal(blocked, true, "활성화끼리 줄을 선다(advisory lock)");
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "active_limit");
+    assert.equal(n.n, 12);
+  });
+})();
+
+// ── C단계(0053) 제작 경합 ──
+const hex64 = () => Array.from({ length: 64 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+async function approvedVideoPlan() {
+  const SC = { relevance: 4, utility: 4, curiosity: 3, fit_video: 3, fit_carousel: 4, timeliness: 2 };
+  const t = await call(A, "drinks_create_topic", { title: "제작 경합", question: `q ${Math.random()}`, categories: ["sake"], lane: "evergreen" });
+  const id = t.topic_id;
+  const tv = async () => (await one("select version from drink_topics where id=$1", [id])).version;
+  await call(A, "drinks_triage", { topic_id: id, expected_version: await tv(), scores: SC });
+  await call(A, "drinks_topic_action", { topic_id: id, expected_version: await tv(), action: "start_research" });
+  const s = await call(A, "drinks_add_source", { topic_id: id, source: { canonical_url: `https://p.example/${Math.random()}`, body_text: BODY,
+    rights_status: "quote_ok" } });
+  const sv = await call(A, "drinks_save_review", { topic_id: id, expected_topic_version: await tv(), scores: SC,
+    brief: { ...brief, proposed_formats: ["video"], required_claims: { video: ["c1"] } },
+    evidence_pack: { claims: [{ claim_id: "c1", text: "정미율", claim_type: "process", support_review: "supported",
+      source_refs: [{ snapshot_id: s.snapshot_id, original_quote: "정미율 50% 이하의 쌀을 사용한다" }] }] } });
+  for (const action of ["submit", "approve"]) {
+    const r = await one("select version from drink_topic_reviews where id=$1", [sv.review_id]);
+    await call(A, "drinks_review_action", { review_id: sv.review_id, expected_version: r.version, action });
+  }
+  const r = await one("select approved_hash from drink_topic_reviews where id=$1", [sv.review_id]);
+  await call(A, "drinks_select", { topic_id: id, expected_version: await tv(), review_id: sv.review_id, review_input_hash: r.approved_hash,
+    formats: ["video"], editorial_week: "2026-10-26" });
+  const pl = await call(A, "drinks_save_plan", { topic_id: id, format: "video", topic_review_id: sv.review_id,
+    plan_json: { scenes: [{ narration: "왜?", content_kind: "transition" }, { narration: "정미율", claim_ids: ["c1"] }] } });
+  for (const action of ["submit", "approve"]) {
+    const v = (await one("select version from drink_plan_revisions where id=$1", [pl.revision_id])).version;
+    await call(A, "drinks_plan_action", { revision_id: pl.revision_id, expected_version: v, action });
+  }
+  return { topicId: id, planId: pl.revision_id, snapshotId: s.snapshot_id };
+}
+async function renderedPending(P) {
+  await call(A, "drinks_request_render", { plan_revision_id: P.planId });
+  const g = await call(A, "drinks_start_render", { worker_id: "w" });
+  const lease = { job_id: g.job.job_id, lease_token: g.job.lease_token };
+  const reg = async (role) => (await call(A, "drinks_register_asset", { ...lease, asset: { storage_key: `drinks/${g.job.job_id}/${role}`,
+    sha256: hex64(), mime: role === "final" ? "video/mp4" : "image/png", bytes: 10, rights: "generated_local" } })).asset_id;
+  const fin = await call(A, "drinks_finish_render", { ...lease, outcome: "succeeded", assets: [
+    { asset_id: await reg("final"), role: "final_video", position: 1 }, { asset_id: await reg("cover"), role: "cover", position: 1 }] });
+  return one("select * from drink_output_reviews where manifest_id=$1", [fin.manifest_id]);
+}
+const VCK = { scene_types_labeled: true, no_real_product_implied: true, claims_match_evidence: true, audio_subtitles_ok: true, vertical_ok: true };
+
+// ⑫ 두 워커가 동시에 제작 작업을 가져간다 — 하나만, 다른 쪽은 기다리지 않는다
+await (async () => {
+  const P = await approvedVideoPlan();
+  await call(A, "drinks_request_render", { plan_revision_id: P.planId });
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_start_render", { worker_id: "A" }),
+    (c) => call(c, "drinks_start_render", { worker_id: "B" }));
+  await check("⑫ 동시 start_render: 제작 작업 하나를 한 워커만", async () => {
+    assert.ok(ra.job);
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(rb.v.job, null);
+    assert.equal(blocked, false);
+  });
+  await call(A, "drinks_finish_render", { job_id: ra.job.job_id, lease_token: ra.job.lease_token, outcome: "failed", error_code: "t" });
+})();
+
+// ⑬ 같은 제작안에 렌더 요청 두 번이 동시에 — 작업은 하나, 나중 요청은 같은 작업을 돌려받는다
+await (async () => {
+  const P = await approvedVideoPlan();
+  const { ra, rb, blocked } = await race((c) => call(c, "drinks_request_render", { plan_revision_id: P.planId }),
+    (c) => call(c, "drinks_request_render", { plan_revision_id: P.planId }));
+  const n = await one("select count(*)::int n from drink_production_jobs where plan_revision_id=$1", [P.planId]);
+  await check("⑬ 동시 렌더 요청: 작업 하나, 나중 요청은 기존 작업", async () => {
+    assert.equal(blocked, true, "제작안 행 잠금으로 기다린다");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.equal(rb.v.existing, true);
+    assert.equal(rb.v.job_id, ra.job_id);
+    assert.equal(n.n, 1);
+  });
+  await call(A, "drinks_cancel_render", { job_id: ra.job_id });
+})();
+
+// ⑭ 권리 철회(진행 중) vs 파일 승인 — 승인은 철회를 기다렸다가 다시 재서 승인되지 않는다
+await (async () => {
+  const P = await approvedVideoPlan();
+  const rev = await renderedPending(P);
+  const { rb, blocked } = await race(
+    (c) => call(c, "drinks_attest_source", { topic_id: P.topicId, snapshot_id: P.snapshotId, kind: "rights_revoked",
+      fields: { rights_status: "restricted" }, reason: "철회", revoke_affected: false }),
+    (c) => call(c, "drinks_output_review_action", { review_id: rev.id, expected_version: rev.version, action: "approve", checklist: VCK }));
+  const after = await one("select status from drink_output_reviews where id=$1", [rev.id]);
+  await check("⑭ 철회 진행 중 승인: 기다린 뒤 다시 재서 승인되지 않는다(blocked)", async () => {
+    assert.equal(blocked, true, "승인이 제작안 행 잠금에서 기다린다");
+    assert.equal(rb.ok, true, rb.ok ? "" : codeOf(rb.e));
+    assert.notEqual(after.status, "approved");
+    assert.equal(after.status, "blocked");
+  });
+})();
+
+// ── 유료 결재(0054) 경합 ──
+
+// ⑮ 같은 결재에 두 워커가 동시에 가잡기 — 둘을 합치면 상한을 넘는다. 늦게 온 쪽은 기다린 뒤 거절돼야 한다.
+await (async () => {
+  const ap = await call(A, "drinks_open_spend_approval", { stage: "경합", purpose: "경합", cap_usd: 0.3, allowed_kinds: ["image"],
+    approver_words: "시험" });
+  const h = (key) => (c) => call(c, "drinks_hold_spend", { approval_id: ap.approval_id, item_key: key, kind: "image", est_usd: 0.2 });
+  const { ra, rb, blocked } = await race(h("scene-01"), h("scene-02"));
+  const t = await one("select coalesce(sum(est_usd), 0) as s, count(*) as n from drink_spend_holds where approval_id=$1 and status='held'",
+    [ap.approval_id]);
+  await check("⑮ 동시 가잡기 두 건(합계 상한 초과): 늦은 쪽은 결재 행 잠금에서 기다린 뒤 budget_exceeded", async () => {
+    assert.ok(ra.hold_id);
+    assert.equal(blocked, true, "두 번째 가잡기가 결재 행 잠금에서 기다린다");
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "budget_exceeded");
+    assert.equal(Number(t.s), 0.2);
+    assert.equal(Number(t.n), 1);
+  });
+})();
+
+// ⑯ 같은 항목을 두 워커가 동시에 — 하나만 가잡힌다(중복 구매 없음)
+await (async () => {
+  const ap = await call(A, "drinks_open_spend_approval", { stage: "경합2", purpose: "경합", cap_usd: 1, allowed_kinds: ["image"],
+    approver_words: "시험" });
+  const h = (c) => call(c, "drinks_hold_spend", { approval_id: ap.approval_id, item_key: "scene-01", kind: "image", est_usd: 0.039 });
+  const { ra, rb, blocked } = await race(h, h);
+  await check("⑯ 같은 항목 동시 가잡기: 하나만 통과, 다른 쪽은 hold_in_progress", async () => {
+    assert.ok(ra.hold_id);
+    assert.equal(blocked, true);
+    assert.equal(rb.ok, false);
+    assert.equal(codeOf(rb.e), "hold_in_progress");
+  });
+})();
+
+// 권한: anon 은 표·함수 모두 거부
+await (async () => {
+  const c = new pg.Client({ connectionString: url });
+  await c.connect();
+  await c.query("set role anon");
+  const t = await c.query("select * from drink_topics").then(() => "ok", (e) => e.code);
+  const f = await c.query(`select drinks_create_topic('{}'::jsonb)`).then(() => "ok", (e) => e.code);
+  await c.end();
+  await check("권한: anon 은 표 읽기·함수 실행 모두 거부(42501)", async () => {
+    assert.equal(t, "42501");
+    assert.equal(f, "42501");
+  });
+})();
+
+await Promise.all(results);
+await Promise.all([A.end(), B.end(), admin.end()]);

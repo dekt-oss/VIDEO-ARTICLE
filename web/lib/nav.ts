@@ -1,4 +1,4 @@
-// 두 공장(논문 / 리포트) 네비게이션 정의. TopBar 가 그룹 단위(직접 탭 / 드롭다운)로 렌더한다.
+// 세 공장(논문 / 리포트 / 주류) 네비게이션 정의. TopBar 가 그룹 단위(직접 탭 / 드롭다운)로 렌더한다.
 import type { Factory } from "@/components/AppShell";
 
 export interface NavItem {
@@ -59,13 +59,47 @@ export const GROUPS_FINANCE: NavGroup[] = [
   },
 ];
 
+// 주류 공장(2026-10-22, A단계) — /drinks 접두. 논문·리포트와 메뉴가 다르다: 렌더·업로드·성과가 아직 없다.
+//   제작 화면은 형식별 제작안 승인 상태와 "실제 제작 미연결"만 보여준다. 설정은 지원 범위를 정직하게 보여준다.
+export const GROUPS_DRINKS: NavGroup[] = [
+  { title: "선별", items: [{ href: "/drinks", label: "선별", match: "exact" }] },
+  {
+    title: "수집",
+    items: [
+      { href: "/drinks/discover", label: "소재 발견", match: "prefix" },
+      { href: "/drinks/collected", label: "수집 문서", match: "prefix" },
+      { href: "/drinks/sources", label: "수집원", match: "prefix" },
+      { href: "/drinks/runs", label: "실행 기록", match: "prefix" },
+    ],
+  },
+  { title: "작업함", items: [{ href: "/drinks/review", label: "작업함", match: "prefix" }] },
+  { title: "제작", items: [{ href: "/drinks/production", label: "제작", match: "prefix" }] },
+  // D단계 순환(2026-10-27): 발행(인스타 예약·게시 여부 확인)·성과(스냅샷 + 전략 제안)
+  {
+    title: "발행·성과",
+    items: [
+      { href: "/drinks/publish", label: "발행", match: "prefix" },
+      { href: "/drinks/analytics", label: "성과·전략", match: "prefix" },
+    ],
+  },
+  { title: "설정", items: [{ href: "/drinks/settings", label: "설정·지원 범위", match: "prefix" }] },
+];
+
 export const BRAND: Record<Factory, { emoji: string; label: string; home: string }> = {
   paper: { emoji: "🎬", label: "video-article", home: "/" },
   finance: { emoji: "📈", label: "리포트 공장", home: "/finance" },
+  drinks: { emoji: "🍶", label: "주류 공장", home: "/drinks" },
 };
 
 export function groupsFor(factory: Factory): NavGroup[] {
-  return factory === "finance" ? GROUPS_FINANCE : GROUPS_PAPER;
+  switch (factory) {
+    case "finance":
+      return GROUPS_FINANCE;
+    case "drinks":
+      return GROUPS_DRINKS;
+    case "paper":
+      return GROUPS_PAPER;
+  }
 }
 
 export function isActive(pathname: string, item: NavItem): boolean {

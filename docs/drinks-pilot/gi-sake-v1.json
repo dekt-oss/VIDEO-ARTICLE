@@ -1,0 +1,130 @@
+{
+  "pilot_id": "gi-sake-v1",
+  "written_at": "2026-10-24",
+  "topic": {
+    "title": "사케 라벨의 '산지 이름'은 아무나 못 쓴다",
+    "question": "일본 술 라벨의 지역 이름(지리적 표시)은 누가 정할까?",
+    "categories": [
+      "sake"
+    ]
+  },
+  "source": {
+    "publisher": "国税庁",
+    "title": "酒類の地理的表示",
+    "url": "https://www.nta.go.jp/taxes/sake/hyoji/chiriteki.htm",
+    "terms": "公共データ利用規約(第1.0版) — 출처 기재",
+    "fetched_at": "2026-10-24"
+  },
+  "claims": [
+    {
+      "claim_id": "c1",
+      "text": "그 산지만의 특성이 확립된 술은, 산지의 신청을 받아 국세청장관이 지정하면 그 산지 이름을 독점적으로 쓸 수 있다",
+      "original_quote": "お酒にその産地ならではの特性が確立されており、産地からの申立てに基づき、国税庁長官の指定を受けることで産地名を独占的に名乗ることができます"
+    },
+    {
+      "claim_id": "c2",
+      "text": "산지에는 지역 브랜드로 다른 제품과 구별되는 효과, 소비자에게는 일정한 품질이 확보돼 신뢰가 높아지는 효과가 있다",
+      "original_quote": "産地にとっては、地域ブランド確立による「他の製品との差別化」、消費者にとっては、一定の品質が確保されていることによる「信頼性の向上」という効果があります"
+    },
+    {
+      "claim_id": "c3",
+      "text": "WTO 출범 때 와인·증류주의 지리적 표시 보호가 가입국 의무가 되어 1994년(平成6年) 국세청이 제도를 만들었고, 2015년(平成27年) 개정으로 모든 주류가 대상이 됐다",
+      "original_quote": "WTO（世界貿易機関）の発足に際し、ぶどう酒と蒸留酒の地理的表示の保護が加盟国の義務とされたことから、平成６年に国税庁が制度を制定。平成27年に見直しを行い、すべての酒類が制度の対象となりました"
+    }
+  ],
+  "scenes": [
+    {
+      "narration": "사케 병에 적힌 지역 이름, 아무 양조장이나 붙여도 될까요?",
+      "visual_role": "reality",
+      "content_kind": "transition",
+      "timing_sec": 4,
+      "explanation": "작은 주류 가게 진열대, 가운데 사케 한 병이 주인공",
+      "visual_prompt": "A small wooden shelf from a Japanese liquor shop corner holding a neat row of five green glass sake bottles; the bottle in the center stands slightly closer to the viewer and is clearly the main subject, its plain cream paper label facing forward; nothing else on the shelf"
+    },
+    {
+      "narration": "안 돼요. 그 지역 술만의 특징이 뚜렷해야 하고, 지역에서 신청하면 일본 국세청이 지정해 줘야 해요.",
+      "visual_role": "mechanism",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c1"
+      ],
+      "timing_sec": 7,
+      "explanation": "양조장(산지) → 신청서 → 관청 지정 도장",
+      "visual_prompt": "Isometric cutaway diorama on a plain table: on the left, one small traditional Japanese sake brewery with a round cedar ball hanging at its entrance and a narrow strip of rice field behind it; a single sealed paper envelope, the amber part being explained, travels along a short path from the brewery to one small government office building on the right; on the office desk a red round seal mark with no characters is being stamped onto a sheet of paper; only these two buildings, the path and the envelope on the table, nothing else",
+      "motion_prompt": "The sealed envelope slides along the path from the brewery to the office building, then the stamp presses down once onto the paper and lifts, leaving the red round mark"
+    },
+    {
+      "narration": "이렇게 지정된 이름을 지리적 표시라고 하는데요, 그 이름은 그 지역 술만 쓸 수 있어요.",
+      "visual_role": "reality",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c1"
+      ],
+      "timing_sec": 6,
+      "continuity": "ref:1",
+      "explanation": "1번 장면의 그 병을 손이 집어 라벨을 돌려 보인다",
+      "visual_prompt": "A hand reaches in and lifts the central green sake bottle off the shelf, turning its plain cream paper label toward the viewer"
+    },
+    {
+      "narration": "이 제도는 1994년에 생겼어요. 세계무역기구가 생기면서, 와인과 증류주 산지 이름은 꼭 보호하기로 했거든요.",
+      "visual_role": "reality",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c3"
+      ],
+      "timing_sec": 7,
+      "explanation": "와인병과 증류주병 두 병만",
+      "visual_prompt": "A plain table with exactly two bottles standing side by side: a dark green wine bottle and a clear glass spirits bottle; soft even light; empty background"
+    },
+    {
+      "narration": "그러다 2015년부터는 사케든 소주든, 모든 술로 넓어졌고요.",
+      "visual_role": "reality",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c3"
+      ],
+      "timing_sec": 5,
+      "explanation": "사케·소주·와인·위스키·맥주 등 여러 술병이 한 줄로",
+      "visual_prompt": "A long plain table with a single neat row of six different bottles: a green sake bottle, a squat shochu bottle, a dark wine bottle, a whisky bottle, a brown beer bottle and a small liqueur bottle; evenly lit; empty background"
+    },
+    {
+      "narration": "덕분에 산지는 다른 술과 확실히 구별되고, 마시는 사람은 품질을 믿고 고를 수 있죠.",
+      "visual_role": "text_card",
+      "content_kind": "fact",
+      "claim_ids": [
+        "c2"
+      ],
+      "timing_sec": 6,
+      "explanation": "산지: 다른 제품과 구별 · 소비자: 일정한 품질 → 신뢰"
+    },
+    {
+      "narration": "다음에 사케 고를 땐, 라벨 속 지역 이름이 지리적 표시인지 한번 확인해 보세요.",
+      "visual_role": "text_card",
+      "content_kind": "transition",
+      "timing_sec": 5,
+      "explanation": "라벨에서 확인: 지역 이름 · 지리적 표시(GI)"
+    }
+  ],
+  "stages": {
+    "1": {
+      "what": "이어진 장면 1~3의 그림 3장(실사형 2 + 3D 도해 1)",
+      "images": [
+        1,
+        2,
+        3
+      ],
+      "cap_usd": 0.3
+    },
+    "2": {
+      "what": "2번 장면(3D 도해)을 6초 움직이는 장면으로",
+      "clips": [
+        {
+          "scene": 2,
+          "sec": 6
+        }
+      ],
+      "cap_usd": 0.4
+    }
+  },
+  "script_rev": "v2 — 2026-10-24 운영자: '대본이 너무 별로 / 대중이 쉽게 / 구어체로 자연스럽게'"
+}

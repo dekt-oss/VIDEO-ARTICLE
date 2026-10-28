@@ -1,0 +1,56 @@
+# 주류 공장 순환 워커 — ③ 인스타 발행 · ④ 성과 수집 · ⑤ 전략 제안 (2026-10-27). docs/deviation-drinks-publish-loop.md
+#
+# ★ 수동 실행만 있다(workflow_dispatch). 예약 실행(cron)은 운영자 승인 뒤에 켠다 — 무인 게시가 되기 때문이다.
+# ★ 실제 인스타 게시 스위치를 켰다(2026-10-28 운영자 지시 "실제 게시 준비를 시작해"): DRINKS_IG_LIVE=1 과 계정 토큰 비밀.
+#   그래도 이 워크플로가 혼자 게시하지는 않는다. 게시되려면 DB 에서 셋이 다 맞아야 한다(0055):
+#     ① 계정이 워커 대조로 '연결 확인됨' + 운영자가 [발행 켜기]  ② 발행 요청을 운영자가 지문 확인 후 [승인]·[예약]
+#     ③ 예약 시각 도래(2시간 넘게 늦으면 게시하지 않음). 운영 DB 에 0050~0055 가 없으면 아무것도 집지 않는다.
+# ★ 토큰은 계정별 비밀로 준다. 대시보드 계정 등록의 '비밀 이름'(credential_ref)과 아래 env 이름이 같아야 한다.
+#   계정을 늘리면 여기에 한 줄씩 추가한다. 토큰을 로그·URL 에 남기지 않는다(공급자는 Authorization 헤더로만 보낸다).
+# ★ 유료 호출 없음: LLM·이미지·영상 키를 주지 않는다. 전략 제안은 코드 계산(0원)이다.
+name: drinks-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "돌릴 단계"
+        type: choice
+        default: publish
+        options: [publish, metrics, strategy]
+
+concurrency:
+  group: drinks-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      TIMEZONE: "Asia/Seoul"
+      WORKER_ID: ${{ github.run_id }}
+      DRINKS_STORAGE: supabase
+      DRINKS_IG_LIVE: "1"
+      SOOLJJERIGO_IG_TOKEN: ${{ secrets.SOOLJJERIGO_IG_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -r engine/requirements.txt
+      - name: publish
+        if: inputs.step == 'publish'
+        run: python -m engine.drinks_publish
+      - name: metrics
+        if: inputs.step == 'metrics'
+        run: python -m engine.drinks_metrics
+      - name: strategy
+        if: inputs.step == 'strategy'
+        run: python -m engine.drinks_strategy

@@ -3135,6 +3135,14 @@ CAPTION_TAIL_HOLD_MAX_SEC: float = 0.5       # 침묵 구간까지만 표시창 
 #   긴 문장을 한 줄로 띄우면 시청자가 그림 대신 글을 읽는다. 너무 짧은 청크는 아래 하드 플로어가 병합한다.
 CAPTION_CHUNK_MAX: dict[str, int] = {"ko": 3, "en": 4}
 CAPTION_CHUNK_FAST: dict[str, int] = {"ko": 2, "en": 3}
+# 한국어 자막을 **뜻 단위**로 끊기(subtitles.phrase_groups). 어절 수만 세면 "그 지역만의 / 특성이"처럼 꾸미는 말과
+#   꾸밈 받는 말이 갈린다(2026-10-24 주류 1단계 운영자 판정: "자막 보여지는것도 어절별로 자연스럽게 끊어내").
+#   쉼표·문장 끝에서 끊고, 조사·어미로 끝나는 어절 뒤를 선호하고, 관형형(된·한·의…)·관형사(그·이·모든…) 뒤에서는 끊지 않는다.
+#   길이 목표는 위 벤치마크(1~2어절)를 그대로 따른다. 기본 꺼짐 — 주류 렌더가 켠다(논문·리포트 자막은 그대로).
+CAPTION_PHRASE_BREAKS: bool = os.getenv("CAPTION_PHRASE_BREAKS", "").lower() in ("1", "true", "yes")
+CAPTION_PHRASE_IDEAL_CHARS: int = 7     # 한 줄 목표 글자 수(공백 제외)
+CAPTION_PHRASE_MAX_CHARS: int = 14      # 이보다 길면 어절 하나짜리가 아닌 한 끊는다(화면 한 줄 상한 SUBTITLE_MAX_CHARS 22 안)
+CAPTION_PHRASE_MAX_TOKENS: int = 5     # "물 탄 술이라는 거 아세요?"처럼 짧은 어절이 겹친 덩어리를 한 줄에 두려면 5(글자 상한이 길이를 잡는다)
 # 한 줄 최대 글자수(오토핏 근사). EN 은 폭 초과 방지 위해 넉넉히.
 CAPTION_MAX_CHARS: dict[str, int] = {"ko": SUBTITLE_MAX_CHARS, "en": 34}
 CAPTION_AUTOFIT_MAX_WIDTH_PX: int = 900
@@ -4258,6 +4266,10 @@ class Secrets:
     # 분리해 쓸 수 있게(운영 자동업로드에 영향 없음).
     youtube_analytics_client_id: str = field(default_factory=lambda: os.getenv("YOUTUBE_ANALYTICS_CLIENT_ID", ""))
     youtube_analytics_client_secret: str = field(default_factory=lambda: os.getenv("YOUTUBE_ANALYTICS_CLIENT_SECRET", ""))
+    # 주류 공장 소재 발견(공개 데이터 읽기 전용). 업로드·성과 토큰과 섞지 않는다 — 비면 그 채널은 "키 필요"로 멈춘다.
+    youtube_data_api_key: str = field(default_factory=lambda: os.getenv("YOUTUBE_DATA_API_KEY", ""))
+    naver_client_id: str = field(default_factory=lambda: os.getenv("NAVER_CLIENT_ID", ""))
+    naver_client_secret: str = field(default_factory=lambda: os.getenv("NAVER_CLIENT_SECRET", ""))
 
     def require(self, *names: str) -> None:
         """필요한 시크릿이 비어 있으면 명확한 에러."""
@@ -4269,3 +4281,55 @@ class Secrets:
 
 
 SECRETS = Secrets()
+
+
+# ─────────────────────────────────────────────────────────────
+# 주류 공장 B단계 — 수집(2026-10-22). docs/deviation-drinks-phase-b.md
+#   DB 상한(supabase/migrations/0051 drinks_collect_limits)과 같은 값이어야 한다 — tests/test_drinks_phase_b.py 가 대조.
+#   수집원별 상한은 등록부(drink_sources)에 있고, 여기 값은 그 **천장**과 요청기 안전 한도다.
+# ─────────────────────────────────────────────────────────────
+DRINKS_MAX_ACTIVE_SOURCES: int = 12
+DRINKS_MAX_ITEMS_PER_RUN: int = 100        # 실행 1회 문서(메타데이터) 천장
+DRINKS_MAX_BODIES_PER_RUN: int = 20        # 실행 1회 본문 수집 천장
+DRINKS_RUNS_PER_DAY: int = 4               # 수집원 하나의 24시간 실행 수
+DRINKS_RUN_LEASE_SEC: int = 900
+DRINKS_MIN_INTERVAL_SEC: int = 3           # 요청 간 최소 간격(수집원 설정의 하한)
+# 아래는 요청기(engine/drinks_fetch.py) 전용 — DB 에는 없다.
+DRINKS_RUN_TIME_BUDGET_SEC: int = _get_int("DRINKS_RUN_TIME_BUDGET_SEC", 600)   # 임대(900초)보다 짧게
+DRINKS_MAX_RUNS_PER_INVOCATION: int = _get_int("DRINKS_MAX_RUNS_PER_INVOCATION", 12)
+DRINKS_FETCH_RETRIES: int = 1              # 5xx·시간 초과 재시도 횟수(요청당). 무한 재시도 없음
+DRINKS_MAX_REDIRECTS: int = 3
+DRINKS_MAX_RESPONSE_BYTES: int = 2_000_000
+DRINKS_CONNECT_TIMEOUT_SEC: float = 10.0
+DRINKS_READ_TIMEOUT_SEC: float = 15.0
+DRINKS_TOTAL_TIMEOUT_SEC: float = 30.0
+DRINKS_MIN_BODY_CHARS: int = 200           # 이보다 짧으면 본문이 아니라 제목·요약만(metadata_only)
+DRINKS_MAX_BODY_CHARS: int = 200_000       # drink_source_snapshots.body_text 상한과 같다
+DRINKS_VALIDATE_ITEMS: int = 3             # 검증 실행이 본문 추출을 시험하는 문서 수
+DRINKS_FEED_OVERLAP_DAYS: int = 3          # 피드 워처마크 겹침(늦게 올라온 글 대비)
+DRINKS_USER_AGENT_TOKEN: str = "video-article-drinks"
+
+# 소재 발견(B 보완, 2026-10-22). docs/deviation-drinks-discovery.md
+DRINKS_DISCOVERY_RUBRIC: str = "discovery-v1"
+DRINKS_DISCOVERY_SIMILAR_MIN: float = 0.34   # 낱말 Jaccard(흔한 낱말·주종 이름 제외, 겹친 낱말 2개 이상) — 이 이상이면 같은 후보로(판정 아님)
+DRINKS_DISCOVERY_SUMMARY_CHARS: int = 600    # 확보한 요약 보관 길이(원문 전문을 보관하지 않음)
+DRINKS_YT_COMMENTS_PER_VIDEO: int = 20       # commentThreads.list 1회(쿼터 1). 질문 문장만 뽑는다
+DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 — 검색어 수 상한(0052 등록 때도 3개로 막는다)
+DRINKS_DISCOVERY_BACKFILL_DAYS: int = 365    # 발견 첫 실행은 최근 1년부터(오래된 것부터 받아 워처마크를 전진)
+# 네이버 검색은 네이버 클라우드 API HUB 로 부른다(2026-10-23) — 술째리고(k-vivino)와 같은 키를 쓴다.
+#   developers.naver.com(openapi.naver.com) 키와는 서로 호환되지 않는다(공식 이관 가이드). 한시 무료,
+#   검색 카테고리 통합 월 775,000건 한도에 닿으면 자동 차단 — 같은 키를 쓰는 서비스끼리 합산된다.
+DRINKS_NAVER_SEARCH_BASE: str = "https://naverapihub.apigw.ntruss.com/search/v1"
+
+# 유료 생성 시험(2026-10-24, 운영자 결재 "승인한다 진행해"). docs/deviation-drinks-paid-pilot.md
+#   단계마다 결재(0054 drink_spend_approvals)를 받고 결재 금액이 상한이다. 아래 단가는 0054 drinks_spend_limits 와
+#   같아야 하고(tests/test_drinks_paid.py 가 대조), 엔진 정가표(PRICING)의 해당 모델 값과도 같아야 한다.
+DRINKS_PAID_PRICES: dict[str, float] = {"image_mechanism": 0.134, "image_reality": 0.039, "video_per_sec": 0.05}
+DRINKS_PILOT_CLIP_SEC: int = 6        # 2단계 움직이는 장면 길이(Veo 3.1 티어 4·6·8 중)
+# 주류 그림에 붙이는 구도 규칙 — 실제 상표·제품으로 오인되지 않게. 화풍(VISUAL_ROLE_STYLE)이 아니라 소품 규칙이다.
+#   글자는 공통 BURN_IN_NEGATIVE_PROMPT 가 막고, 지역 이름 같은 글은 화면 오버레이로 얹는다.
+DRINKS_PRODUCT_CLAUSE: str = (
+    # ★ 2026-10-27 고침: 옛 문구("plain blank paper labels with no writing, no logos")가 오히려 라벨·상자를 불렀다
+    #   (위스키 1단계 3장 — 잔에 빈 라벨, 옆에 빈 상자). 엔진 교훈 그대로 부정어 대신 **긍정 묘사**로 쓴다.
+    "every object is plain and unbranded, with smooth clean surfaces"
+)
