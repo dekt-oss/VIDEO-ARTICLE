@@ -338,7 +338,7 @@ export interface NextAction {
   label: string;
   tab: "overview" | "evidence" | "brief" | Format | "history";
   hint: string;
-  /** A단계에서 실행할 수 없는 행동(제작 요청 등). 화면은 버튼을 잠그고 이유를 보여준다. */
+  /** 지금 실행할 수 없는 행동. 화면은 버튼을 잠그고 이유를 보여준다(2026-10-28 기준 해당 행동 없음 — 제작이 연결됐다). */
   unavailable?: boolean;
 }
 
@@ -382,11 +382,11 @@ export function nextAction(v: NextActionInput): NextAction {
         if (p.status === "in_review") return { label: `${name} 제작안 승인`, tab: f, hint: "근거 버전·필수 주장 전달을 서버가 다시 확인합니다." };
         if (p.status === "changes_requested") return { label: `${name} 새 제작안`, tab: f, hint: "변경 요청을 반영해 새 버전을 만듭니다." };
       }
+      // 제작안이 모두 승인되면 다음은 제작 화면(로컬 렌더 → 파일 검수 → 발행안). 렌더·검수 진행 상황은 그 화면이 보여 준다.
       return {
-        label: "제작 요청",
+        label: "렌더·검수",
         tab: v.selectedFormats[0] ?? "brief",
-        hint: "제작안이 모두 승인됐습니다. 실제 영상·카드 제작은 아직 연결되지 않았습니다(B~C단계).",
-        unavailable: true,
+        hint: "제작안이 모두 승인됐습니다. 제작 화면에서 로컬 렌더(무료) → 파일 검수 → 발행안 작성으로 이어 갑니다.",
       };
     }
   }
