@@ -1860,11 +1860,11 @@ DRINKS_REEL_SPEC: dict = {
     "fps_range": (23, 60), "video_codecs": ("h264", "hevc"), "audio_codec": "aac",
     "max_bytes": 300 * 1024 * 1024, "cover_mime": "image/jpeg", "cover_max_bytes": 8 * 1024 * 1024,
 }
-# 주류 릴스 템포·자막 앵커(2026-10-28). 논문 라인은 RENDER_PLAYBACK_SPEED(1.2×)를 조립 끝에 걸지만, 주류는 TTS +10%(EDGE_TTS_RATE)와
-# 겹쳐 5.9음절/초(실측)였다 — 속도는 한 곳에서만 올린다(TTS). 기본 1.0×, 운영자가 귀로 판정한 뒤 조정한다.
+# 주류 릴스 템포·자막 앵커(2026-10-28). 조립 끝 배속은 TTS +10%(EDGE_TTS_RATE)와 겹쳐 5.9음절/초가 된다(실측).
+# 1.0× 로 내렸다가 운영자 판정 "말속도는 1.2배로"(2026-10-28)로 되돌렸다 — 논문 라인과 같은 1.2×. 경고 문턱도 그 위로.
 # drinks_render._guard_free 가 렌더 직전에 RENDER_PLAYBACK_SPEED 를 이 값으로 덮는다(논문·리포트 렌더는 그 함수를 지나지 않는다).
-DRINKS_PLAYBACK_SPEED: float = _get_float("DRINKS_PLAYBACK_SPEED", 1.0)
-DRINKS_SPEECH_RATE_WARN_SYL_PER_SEC: float = 5.5   # 최종 영상 기준 말 속도(음절/초) — 넘으면 speech_rate_fast 경고
+DRINKS_PLAYBACK_SPEED: float = _get_float("DRINKS_PLAYBACK_SPEED", 1.2)
+DRINKS_SPEECH_RATE_WARN_SYL_PER_SEC: float = 6.5   # 최종 영상 기준 말 속도(음절/초) — 1.2× 실측 5.9 는 운영자 승인값, 그 위면 speech_rate_fast
 DRINKS_CAPTION_PLATFORM: str = "reels"             # 자막 앵커(PLATFORM_CAPTION_ANCHOR_PCT) — 릴스 0.68
 # 인스타 캡션 한도 — Meta IG User Media v26.0, 2026-10-28 조회. drinks_script_check.check_caption 이 쓴다(발행 워커가 막힘이면 멈춤).
 DRINKS_CAPTION_LIMITS: dict = {"max_chars": 2200, "max_hashtags": 30, "max_mentions": 20}
