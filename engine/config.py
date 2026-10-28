@@ -1850,6 +1850,16 @@ EVIDENCE_RULES_SHARED: str = """- 모든 사실 나레이션은 근거 Claim(cla
 SUBTITLE_SAFE_TOP: float = 0.12     # 상단 12% 자막 배치 회피
 SUBTITLE_SAFE_BOTTOM: float = 0.15  # 하단 15% 회피(플랫폼 UI)
 LOUDNESS_LUFS: float = -14.0        # 유튜브 기준 정규화 타깃
+# 인스타 릴스 상한 48 kHz. loudnorm 이 내부 192 kHz 로 올려 AAC 가 96 kHz 로 떨어지던 것을 고정
+# (2026-10-28 실측, docs/진단_주류릴스엔진_2026-10-28.md). 유튜브 라인에도 무해.
+OUTPUT_AUDIO_SAMPLE_RATE: int = 48000
+DRINKS_COVER_JPEG_QUALITY: int = 92   # 릴스 표지 JPEG 품질(규격 ≤8 MB — 1080×1920 에서 약 90 KB)
+# 주류 릴스 파일 규격 — Meta IG User Media 문서 v26.0, 2026-10-28 조회. engine/drinks_render.reel_spec_warnings 가 쓴다.
+DRINKS_REEL_SPEC: dict = {
+    "audio_sample_rate_max": 48000, "min_sec": 3.0, "max_sec": 900.0, "max_width": 1920,
+    "fps_range": (23, 60), "video_codecs": ("h264", "hevc"), "audio_codec": "aac",
+    "max_bytes": 300 * 1024 * 1024, "cover_mime": "image/jpeg", "cover_max_bytes": 8 * 1024 * 1024,
+}
 # ─ 렌더 QA 게이트 (수정지시서 v2 §7) — 발행 전 실제 mp4 를 ffprobe 로 실검(프레임 실측) ─
 # "98.8%=버그" 단정 삭제 대신, 자동 판정 가능한 값만 하드 게이트로: 끝 검은프레임·>250ms 무음·오디오
 # 클리핑·길이. 자막 존재는 우리 파이프라인이 ASS 를 결정적으로 번인하므로 프레임 디코드 여부로 확인

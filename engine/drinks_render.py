@@ -236,17 +236,91 @@ def draw_cover(topic: dict[str, Any], plan: dict[str, Any], out_path: str, size=
     d.text((80, 120), BRAND["name"], font=f_brand, fill=BRAND["accent"])
     y, cut1 = _block(d, (80, int(h * 0.28)), topic.get("title") or "", f_title, w - 160, BRAND["text"], max_lines=5, role="head", size=92)
     _, cut2 = _block(d, (80, y + 40), f"Q. {topic.get('question') or ''}", f_q, w - 160, BRAND["muted"], max_lines=4, role="body", size=50)
-    img.save(out_path, "PNG")
+    img.convert("RGB").save(out_path, "JPEG", quality=config.DRINKS_COVER_JPEG_QUALITY)   # 릴스 표지는 JPEG(규격) — docs/진단_주류릴스엔진_2026-10-28.md
     return {"truncated": cut1 or cut2}
 
 
 def _probe(path: str) -> dict[str, Any]:
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height:format=duration",
+    out = subprocess.run(["ffprobe", "-v", "error",
+                          "-show_entries", "stream=codec_type,codec_name,width,height,sample_rate,r_frame_rate:format=duration",
                           "-of", "json", path], capture_output=True, text=True, check=True).stdout
     data = json.loads(out)
     v = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), {})
     a = [s for s in data.get("streams", []) if s.get("codec_type") == "audio"]
-    return {"width": v.get("width"), "height": v.get("height"), "duration_sec": float(data["format"]["duration"]), "audio_streams": len(a)}
+    return {"width": v.get("width"), "height": v.get("height"), "duration_sec": float(data["format"]["duration"]), "audio_streams": len(a),
+            "video_codec": v.get("codec_name"), "audio_codec": a[0].get("codec_name") if a else None,
+            "audio_sample_rate": int(a[0]["sample_rate"]) if a and a[0].get("sample_rate") else None,
+            "fps": _parse_fps(v.get("r_frame_rate"))}
+
+
+def _parse_fps(raw: Optional[str]) -> Optional[float]:
+    """ffprobe r_frame_rate("30/1") → 30.0. 읽을 수 없으면 None."""
+    try:
+        num, _, den = str(raw).partition("/")
+        return round(float(num) / float(den or 1), 3)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def moov_before_mdat(path: str) -> bool:
+    """mp4 최상위 박스를 훑어 moov 가 mdat 보다 앞에 있으면 True(릴스 규격: moov 앞)."""
+    import struct
+
+    seen: dict[str, int] = {}
+    size_total = os.path.getsize(path)
+    with open(path, "rb") as f:
+        pos = 0
+        while pos + 8 <= size_total:
+            f.seek(pos)
+            head = f.read(8)
+            if len(head) < 8:
+                break
+            size, kind = struct.unpack(">I4s", head)
+            name = kind.decode("latin-1")
+            if size == 1:
+                ext = f.read(8)
+                if len(ext) < 8:
+                    break
+                size = struct.unpack(">Q", ext)[0]
+            elif size == 0:
+                size = size_total - pos
+            seen.setdefault(name, pos)
+            if "moov" in seen and "mdat" in seen:
+                break
+            if size < 8:
+                break
+            pos += size
+    return "moov" in seen and ("mdat" not in seen or seen["moov"] < seen["mdat"])
+
+
+def reel_spec_warnings(probe: dict[str, Any], file_bytes: int, moov_first: bool, cover_mime: str, cover_bytes: int) -> list[str]:
+    """인스타 릴스 규격 위반 코드 목록(순수 함수). 경고일 뿐 작업을 막지 않는다 — config.DRINKS_REEL_SPEC 기준."""
+    spec = config.DRINKS_REEL_SPEC
+    out: list[str] = []
+    rate = probe.get("audio_sample_rate")
+    if rate is not None and rate > spec["audio_sample_rate_max"]:
+        out.append("reel_audio_rate_over_48k")
+    if not moov_first:
+        out.append("reel_moov_not_first")
+    dur = probe.get("duration_sec")
+    if dur is None or not (spec["min_sec"] <= float(dur) <= spec["max_sec"]):
+        out.append("reel_duration_out_of_range")
+    if (probe.get("width") or 0) > spec["max_width"]:
+        out.append("reel_width_over_1920")
+    fps, (lo, hi) = probe.get("fps"), spec["fps_range"]
+    if fps is None or not (lo <= fps <= hi):
+        out.append("reel_fps_out_of_range")
+    if probe.get("video_codec") not in spec["video_codecs"]:
+        out.append("reel_video_codec")
+    if probe.get("audio_codec") != spec["audio_codec"]:
+        out.append("reel_audio_codec")
+    if file_bytes > spec["max_bytes"]:
+        out.append("reel_file_too_big")
+    if cover_mime != spec["cover_mime"]:
+        out.append("reel_cover_not_jpeg")
+    if cover_bytes > spec["cover_max_bytes"]:
+        out.append("reel_cover_too_big")
+    return out
 
 
 def _mean_volume_db(path: str) -> Optional[float]:
@@ -303,7 +377,7 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
     placeholders = engine_render.take_placeholder_fallbacks()
     if placeholders:
         raise RenderError("placeholder_cuts", f"빈 화면으로 대체된 장면이 있습니다: {placeholders}")
-    cover = os.path.join(work_dir, "cover.png")
+    cover = os.path.join(work_dir, "cover.jpg")
     cover_qa = draw_cover(topic, plan, cover)
     probe = _probe(out)
     vol = _mean_volume_db(out)
@@ -328,10 +402,15 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
         warnings.append("text_truncated")
     if MISSING:
         warnings.append("glyph_missing")
+    cover_mime = "image/jpeg"
+    moov_first = moov_before_mdat(out)
+    warnings.extend(reel_spec_warnings(probe, os.path.getsize(out), moov_first, cover_mime, os.path.getsize(cover)))
     stand_in = [i for i, sc in enumerate(scenes, 1) if i not in images and (sc.get("visual_role") or "reality") != "text_card"]
     qa = {"probe": probe, "mean_volume_db": vol, "silent_scenes": silent, "missing_glyphs": sorted(set(MISSING)), "scenes": len(scenes), "scene_labels": [c["label"] for c in card_qa],
           "warnings": warnings, "stand_in_visuals": bool(stand_in), "stand_in_scenes": stand_in, "generated_scenes": generated,
           "tts": tts, "brand": BRAND["version"],
+          "reel_spec": {"moov_first": moov_first, "audio_sample_rate": probe.get("audio_sample_rate"), "video_codec": probe.get("video_codec"),
+                        "fps": probe.get("fps"), "cover_mime": cover_mime},
           "note": ("대체 이미지 렌더 — 흐름 검증용. 목표 화풍 품질 검증이 아니다" if not generated else
                    "생성 그림 장면 " + ",".join(map(str, generated)) + (" · 대체 카드 장면 " + ",".join(map(str, stand_in)) if stand_in else ""))}
     costs = [{"kind": "tts", "provider": tts, "model": config.EDGE_TTS_VOICE if tts == "edge" else None, "cost_usd": 0,
@@ -340,7 +419,7 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
               "note": "장면 카드(Pillow)·조립(ffmpeg)" + (" — 생성 그림은 미리 산 것을 재사용(비용은 그림 기록에)" if generated else "")}]
     files = [{"path": out, "role": "final_video", "position": 1, "mime": "video/mp4", "width": probe["width"],
               "height": probe["height"], "duration_ms": int(probe["duration_sec"] * 1000)},
-             {"path": cover, "role": "cover", "position": 1, "mime": "image/png", "width": 1080, "height": 1920}]
+             {"path": cover, "role": "cover", "position": 1, "mime": cover_mime, "width": 1080, "height": 1920}]
     return Rendered(files, qa, costs)
 
 

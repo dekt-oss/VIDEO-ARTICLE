@@ -31,6 +31,8 @@ from .util import log
 Rpc = Callable[[str, dict[str, Any]], Any]
 
 BUCKET = "drinks"
+# 자산 mime → 저장 확장자(0053 허용 목록과 같다). 표지는 JPEG(릴스 규격).
+MIME_EXT = {"video/mp4": ".mp4", "image/jpeg": ".jpg", "image/png": ".png", "audio/mp4": ".m4a", "text/plain": ".txt"}
 
 
 class Storage:
@@ -154,7 +156,7 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
         rpc("drinks_heartbeat_render", lease)
         assets = []
         for f in rendered.files:
-            ext = ".mp4" if f["mime"] == "video/mp4" else ".png"
+            ext = MIME_EXT[f["mime"]]
             name = f"{f['role']}_{f['position']:02d}{ext}"
             key = f"drinks/{job['job_id']}/{name}"   # 작업마다 새 폴더 — 옛 묶음 파일을 덮지 않는다
             # ★ 올린 뒤 등록한다. 등록 직전에 임대를 잃으면 비공개 버킷에 DB 행 없는 파일이 남는다(고아) —

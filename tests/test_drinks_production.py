@@ -115,3 +115,56 @@ def test_worker_closes_the_job_on_any_db_refusal(tmp_path):
     rpc = FakeRpc(fail={"drinks_record_cost": "invalid_input"})
     out = dp.process_job(JOB, rpc, dp.Storage("local", str(tmp_path)))
     assert out["status"] == "failed" and out["error_code"] == "invalid_input", "'렌더 중'에 남기지 않는다"
+
+
+# ── 릴스 파일 규격(2026-10-28, docs/진단_주류릴스엔진_2026-10-28.md) ─────────
+OK_PROBE = {"width": 1080, "height": 1920, "duration_sec": 40.0, "audio_streams": 1, "video_codec": "h264",
+            "audio_codec": "aac", "audio_sample_rate": 48000, "fps": 30.0}
+
+
+def _w(**kw):
+    args = {"probe": OK_PROBE, "file_bytes": 5_000_000, "moov_first": True, "cover_mime": "image/jpeg", "cover_bytes": 200_000}
+    args.update(kw)
+    return dr.reel_spec_warnings(**args)
+
+
+def test_reel_spec_compliant_has_no_warnings():
+    assert _w() == []
+
+
+def test_reel_spec_flags_each_violation():
+    assert "reel_audio_rate_over_48k" in _w(probe={**OK_PROBE, "audio_sample_rate": 96000})
+    assert "reel_moov_not_first" in _w(moov_first=False)
+    assert "reel_cover_not_jpeg" in _w(cover_mime="image/png")
+    assert "reel_duration_out_of_range" in _w(probe={**OK_PROBE, "duration_sec": 2.0})
+    assert "reel_width_over_1920" in _w(probe={**OK_PROBE, "width": 2160})
+    assert "reel_fps_out_of_range" in _w(probe={**OK_PROBE, "fps": 120.0})
+    assert "reel_video_codec" in _w(probe={**OK_PROBE, "video_codec": "vp9"})
+    assert "reel_audio_codec" in _w(probe={**OK_PROBE, "audio_codec": "mp3"})
+    assert "reel_file_too_big" in _w(file_bytes=301 * 1024 * 1024)
+    assert "reel_cover_too_big" in _w(cover_bytes=9 * 1024 * 1024)
+
+
+def _box(kind: bytes, payload: bytes = b"") -> bytes:
+    import struct
+    return struct.pack(">I4s", 8 + len(payload), kind) + payload
+
+
+def test_moov_before_mdat_reads_top_level_atoms(tmp_path):
+    front, back = tmp_path / "front.mp4", tmp_path / "back.mp4"
+    front.write_bytes(_box(b"ftyp", b"isom0000") + _box(b"moov", b"x" * 20) + _box(b"mdat", b"y" * 50))
+    back.write_bytes(_box(b"ftyp", b"isom0000") + _box(b"mdat", b"y" * 50) + _box(b"moov", b"x" * 20))
+    assert dr.moov_before_mdat(str(front)) is True
+    assert dr.moov_before_mdat(str(back)) is False
+
+
+def test_cover_is_written_as_jpeg(tmp_path):
+    out = tmp_path / "cover.jpg"
+    qa = dr.draw_cover({"title": "사케는 쌀을 얼마나 깎나", "question": "한 병에 쌀이 얼마나 들어갈까?"}, {}, str(out))
+    img = Image.open(out)
+    assert img.format == "JPEG" and img.size == (1080, 1920)
+    assert qa["truncated"] is False
+
+
+def test_asset_extension_follows_mime():
+    assert dp.MIME_EXT["video/mp4"] == ".mp4" and dp.MIME_EXT["image/jpeg"] == ".jpg" and dp.MIME_EXT["image/png"] == ".png"

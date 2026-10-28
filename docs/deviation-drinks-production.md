@@ -99,3 +99,16 @@
 - 유료 생성(이미지·영상·고품질 TTS) 연결: 예산·승인 절차를 정하면 `paid_disabled` 를 풀고 엔진의 Gemini/Veo 경로를 쓴다(자산 캐시는 주류 전용 표가 필요).
 - 같은 제작안을 바뀐 것 없이 다시 렌더하면 파일이 똑같아 같은 묶음으로 합쳐진다(새 묶음이 생기지 않는다). 고칠 점은 제작안 새 버전으로.
 - 주류 파일 정리(보관 기한·참조 해제)는 아직 없다 — 명세 §12 대로 드라이런 검증 뒤 연결.
+
+## 릴스 파일 규격(2026-10-28)
+
+주류 릴스 mp4 를 무료로 로컬 렌더해 인스타 릴스 규격(Meta IG User Media 문서 v26.0)과 대 봤더니 세 군데가 어긋나 있었다. 근거: `docs/진단_주류릴스엔진_2026-10-28.md` §2~§3.
+
+- **소리 샘플링 96 kHz** (규격 상한 48 kHz): 마지막 단계 `loudnorm` 이 내부에서 샘플링을 크게 올리고 AAC 가 그대로 96 kHz 로 저장했다. `-ar 48000` 으로 고정했다(`config.OUTPUT_AUDIO_SAMPLE_RATE`).
+- **moov 가 파일 뒤쪽** (규격: 앞): `-movflags +faststart` 를 어디에도 안 붙였었다. 이제 붙인다.
+- **표지가 PNG** (규격: JPEG): `cover.jpg`(JPEG, 품질 92)로 바꿨다. 저장 확장자는 mime 표(`drinks_produce.MIME_EXT`)로 정한다. DB 는 0053 이 이미 `image/jpeg` 를 허용해 마이그레이션이 없다. 카드뉴스 쪽 PNG 는 그대로다.
+- **검사 추가**: `render_video` 의 qa 가 규격을 직접 잰다. 경고 코드: `reel_audio_rate_over_48k`, `reel_moov_not_first`, `reel_duration_out_of_range`, `reel_width_over_1920`, `reel_fps_out_of_range`, `reel_video_codec`, `reel_audio_codec`, `reel_file_too_big`, `reel_cover_not_jpeg`, `reel_cover_too_big`. 기준표는 `config.DRINKS_REEL_SPEC`. 측정값은 `qa.reel_spec` 에 남는다. **경고일 뿐 작업을 막지 않는다.**
+
+조립 함수(`build_loudnorm_command`·BGM 두 변형·`build_speed_command`)는 논문·리포트(유튜브) 라인과 같이 쓴다. 48 kHz 와 faststart 는 유튜브에도 해가 없고, 그쪽 동작은 이 두 옵션 말고는 바뀌지 않는다.
+
+**(미검증)** 옛 파일(96 kHz, moov 뒤)을 인스타가 실제로 거절했는지는 확인하지 못했다. 첫 실제 릴스 게시에서 확인한다.
