@@ -44,14 +44,14 @@ test("다음 행동: 상태마다 하나", () => {
   assert.equal(nextAction({ ...base, status: "rejected" }).label, "다시 열기");
 });
 
-test("다음 행동: 편성 후에는 형식별로, 둘 다 승인되면 '제작 요청'은 미연결로 잠긴다", () => {
+test("다음 행동: 편성 후에는 형식별로, 둘 다 승인되면 '렌더·검수'로 이어진다(제작 연결됨)", () => {
   const sel = { ...base, status: "selected" as const, reviewStatus: "approved" as const, approvalValid: true, selectedFormats: ["video", "carousel"] as ("video" | "carousel")[] };
   assert.equal(nextAction(sel).label, "영상 제작안 작성");
   assert.equal(nextAction({ ...sel, plans: { video: { status: "approved", blocked: false, evidenceValid: true } } }).label, "카드뉴스 제작안 작성");
   assert.equal(nextAction({ ...sel, plans: { video: { status: "approved", blocked: true, evidenceValid: true } } }).label, "영상 제작안 작성");
   const done = nextAction({ ...sel, plans: { video: { status: "approved", blocked: false, evidenceValid: true }, carousel: { status: "approved", blocked: false, evidenceValid: true } } });
-  assert.equal(done.label, "제작 요청");
-  assert.equal(done.unavailable, true);
+  assert.equal(done.label, "렌더·검수");
+  assert.notEqual(done.unavailable, true, "제작이 연결됐으니 잠그지 않는다");
   assert.ok(actionRank(done, "selected") > actionRank(nextAction({ ...base, reviewStatus: "in_review" }), "researching"));
 });
 
@@ -73,13 +73,13 @@ test("최종 보완 결함2: 제작안이 참조하는 근거가 무효면 '모�
   assert.equal(bad.selectedValid, true, "편성 버전 R2 는 유효");
   assert.equal(bad.action.label, "카드뉴스 근거 재확인");
   assert.equal(bad.planEvidenceValid.carousel, false, "선별 편성함·상세 배지가 쓰는 같은 판정");
-  assert.notEqual(bad.action.label, "제작 요청");
+  assert.notEqual(bad.action.label, "렌더·검수");
   const good = deriveTopic(topic, new Map([["r1", rv("r1", true)], ["r2", rv("r2", true)]]) as never, deliverables, plans);
-  assert.equal(good.action.label, "제작 요청", "둘 다 유효면 기존대로");
+  assert.equal(good.action.label, "렌더·검수", "둘 다 유효면 기존대로");
   assert.equal(good.planEvidenceValid.carousel, true);
   const lost = deriveTopic(topic, new Map([["r2", rv("r2", true)]]) as never, deliverables, plans);
   assert.ok(lost.missingPointers.includes("카드뉴스 제작안의 근거 버전"), "근거 행 누락은 조회 누락");
-  assert.notEqual(lost.action.label, "제작 요청");
+  assert.notEqual(lost.action.label, "렌더·검수");
   const blocked = new Map([["p1", { id: "p1", plan_status: "approved", blocked_at: "2026-10-22", topic_review_id: "r1" }]]) as never;
   assert.equal(deriveTopic(topic, new Map([["r1", rv("r1", true)], ["r2", rv("r2", true)]]) as never, deliverables, blocked).action.label,
     "카드뉴스 제작안 작성", "재확인으로 근거가 유효해져도 차단된 제작안은 차단 그대로");

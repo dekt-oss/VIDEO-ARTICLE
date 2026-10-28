@@ -3,7 +3,8 @@
 // 형식별 제작안 탭 — 영상(장면) / 카드뉴스(페이지). 사람이 쓰고 고친다(LLM 생성 없음).
 // ★ 형식마다 결과물·버전·승인이 따로다. 영상 제작안을 고쳐도 카드뉴스 승인은 그대로다(명세 §2).
 // ★ 승인된 제작안은 고칠 수 없다 — [새 버전 작성]이 같은 내용으로 새 draft 를 만든다.
-// ★ "제작 요청"은 A단계에 연결되지 않았다. 버튼은 잠겨 있고, 서버에도 그 동작이 없다.
+// ★ 승인된 제작안은 [렌더·검수로 →] 가 제작 화면(/drinks/production/[planId])으로 보낸다 — 렌더 요청은 그 화면에서 한다.
+import Link from "next/link";
 import { useState } from "react";
 
 import {
@@ -136,9 +137,11 @@ export default function PlanTab({
             {!editingInPlace && !creating && current.plan_status !== "in_review" && (
               <button className="btn" disabled={busy} onClick={() => setCreating(true)}>새 버전 작성</button>
             )}
-            <button className="btn" disabled title="실제 영상·카드 제작은 B~C단계에서 연결됩니다">
-              제작 요청 — 실제 제작 미연결
-            </button>
+            {current.plan_status === "approved" && !current.blocked_at ? (
+              <Link className="btn" href={`/drinks/production/${current.id}`}>렌더·검수로 →</Link>
+            ) : (
+              <button className="btn" disabled title="제작안이 승인돼야 렌더할 수 있습니다">렌더·검수 — 제작안 승인 후</button>
+            )}
           </div>
         </section>
       )}
@@ -176,7 +179,7 @@ export default function PlanTab({
                   </select>
                 </label>
               </div>
-              <p className="dk-kv">비용 추정: <b>산정하지 않음</b> — 실제 제작이 연결되지 않아 유료 호출이 없습니다.</p>
+              <p className="dk-kv">비용: <b>로컬 렌더는 0원</b>(대체 이미지 + 무료 음성). 유료 그림은 제작 화면에서 결재한 금액 안에서만 삽니다.</p>
               <CoverageView coverage={liveCoverage} label="작성 중 내용 기준(저장 전)" />
               {format === "video" ? (
                 <SceneEditor scenes={scenes} onChange={setScenes} claims={coreClaims} required={required} />

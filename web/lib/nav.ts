@@ -59,8 +59,8 @@ export const GROUPS_FINANCE: NavGroup[] = [
   },
 ];
 
-// 주류 공장(2026-10-22, A단계) — /drinks 접두. 논문·리포트와 메뉴가 다르다: 렌더·업로드·성과가 아직 없다.
-//   제작 화면은 형식별 제작안 승인 상태와 "실제 제작 미연결"만 보여준다. 설정은 지원 범위를 정직하게 보여준다.
+// 주류 공장(2026-10-22~) — /drinks 접두. 논문·리포트와 메뉴가 다르다: 수집 → 작업함 → 제작(렌더·검수) → 발행·성과.
+//   설정은 지금 되는 것과 안 하는 것을 정직하게 보여준다.
 export const GROUPS_DRINKS: NavGroup[] = [
   { title: "선별", items: [{ href: "/drinks", label: "선별", match: "exact" }] },
   {

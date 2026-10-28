@@ -1,6 +1,6 @@
 // 주류 제작 (/drinks/production) — 편성된 소재의 형식별 제작안 승인 상태.
 // ★ "제작안 승인"은 대본·페이지 구성 승인일 뿐이다. 파일은 /drinks/production/[planId] 에서 렌더하고 따로 검수한다(C단계).
-//   발행(Instagram)은 아직 없다(D단계).
+//   검수 승인된 파일은 /drinks/publish 에서 발행안 → 승인 → 예약으로 이어진다(D단계, 2026-10-27).
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
@@ -37,7 +37,7 @@ export default async function DrinksProductionPage(props: { searchParams: Promis
       </div>
       <p className="banner-info" style={{ marginTop: 12 }}>
         승인된 제작안은 [렌더·검수]에서 <b>로컬·무료 렌더</b>(대체 이미지 + 무료 TTS)로 파일을 만들고 최종 파일을 검수합니다.
-        유료 생성(목표 화풍)은 예산이 정해지지 않아 꺼져 있고, Instagram 발행은 아직 없습니다(D단계).
+        유료 그림은 결재한 금액 안에서만 삽니다. 검수 승인한 파일은 <Link href="/drinks/publish">발행</Link>에서 인스타 게시를 승인·예약합니다.
       </p>
       {board.state !== "ok" ? (
         <LoadProblem state={board.state} error={board.state === "failed" ? board.error : undefined} />

@@ -283,7 +283,7 @@ function WeekBox({ rows, derived }: { rows: TopicRow[]; derived: Map<string, Top
           })}
         </section>
       ))}
-      <p className="muted">형식별 제작안 승인은 실제 파일 제작·발행이 아닙니다. 실제 제작은 아직 연결되지 않았습니다.</p>
+      <p className="muted">형식별 제작안 승인은 파일 제작·발행이 아닙니다. 파일은 제작 화면에서 렌더·검수하고, 게시는 발행 화면에서 따로 승인합니다.</p>
     </>
   );
 }

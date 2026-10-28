@@ -101,7 +101,7 @@ export function CandidateActions({ c, others }: {
             ))}
           </div>
           <button className="btn pick" disabled={busy || !title || !question || cats.length === 0} onClick={() => promote()}>올리기</button>
-          <p className="muted">올린 뒤: 경량 평가 → 조사 → 공식·전문 원자료를 근거로 등록 → 근거 검토·승인(A단계). 발견 자료는 근거가 될 수 없습니다.</p>
+          <p className="muted">올린 뒤: 경량 평가 → 조사 → 공식·전문 원자료를 근거로 등록 → 근거 검토·승인. 발견 자료는 근거가 될 수 없습니다.</p>
         </div>
       )}
       {mode === "dismiss" && (
