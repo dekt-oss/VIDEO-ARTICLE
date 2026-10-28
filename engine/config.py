@@ -1850,6 +1850,24 @@ EVIDENCE_RULES_SHARED: str = """- 모든 사실 나레이션은 근거 Claim(cla
 SUBTITLE_SAFE_TOP: float = 0.12     # 상단 12% 자막 배치 회피
 SUBTITLE_SAFE_BOTTOM: float = 0.15  # 하단 15% 회피(플랫폼 UI)
 LOUDNESS_LUFS: float = -14.0        # 유튜브 기준 정규화 타깃
+# 인스타 릴스 상한 48 kHz. loudnorm 이 내부 192 kHz 로 올려 AAC 가 96 kHz 로 떨어지던 것을 고정
+# (2026-10-28 실측, docs/진단_주류릴스엔진_2026-10-28.md). 유튜브 라인에도 무해.
+OUTPUT_AUDIO_SAMPLE_RATE: int = 48000
+DRINKS_COVER_JPEG_QUALITY: int = 92   # 릴스 표지 JPEG 품질(규격 ≤8 MB — 1080×1920 에서 약 90 KB)
+# 주류 릴스 파일 규격 — Meta IG User Media 문서 v26.0, 2026-10-28 조회. engine/drinks_render.reel_spec_warnings 가 쓴다.
+DRINKS_REEL_SPEC: dict = {
+    "audio_sample_rate_max": 48000, "min_sec": 3.0, "max_sec": 900.0, "max_width": 1920,
+    "fps_range": (23, 60), "video_codecs": ("h264", "hevc"), "audio_codec": "aac",
+    "max_bytes": 300 * 1024 * 1024, "cover_mime": "image/jpeg", "cover_max_bytes": 8 * 1024 * 1024,
+}
+# 주류 릴스 템포·자막 앵커(2026-10-28). 논문 라인은 RENDER_PLAYBACK_SPEED(1.2×)를 조립 끝에 걸지만, 주류는 TTS +10%(EDGE_TTS_RATE)와
+# 겹쳐 5.9음절/초(실측)였다 — 속도는 한 곳에서만 올린다(TTS). 기본 1.0×, 운영자가 귀로 판정한 뒤 조정한다.
+# drinks_render._guard_free 가 렌더 직전에 RENDER_PLAYBACK_SPEED 를 이 값으로 덮는다(논문·리포트 렌더는 그 함수를 지나지 않는다).
+DRINKS_PLAYBACK_SPEED: float = _get_float("DRINKS_PLAYBACK_SPEED", 1.0)
+DRINKS_SPEECH_RATE_WARN_SYL_PER_SEC: float = 5.5   # 최종 영상 기준 말 속도(음절/초) — 넘으면 speech_rate_fast 경고
+DRINKS_CAPTION_PLATFORM: str = "reels"             # 자막 앵커(PLATFORM_CAPTION_ANCHOR_PCT) — 릴스 0.68
+# 인스타 캡션 한도 — Meta IG User Media v26.0, 2026-10-28 조회. drinks_script_check.check_caption 이 쓴다(발행 워커가 막힘이면 멈춤).
+DRINKS_CAPTION_LIMITS: dict = {"max_chars": 2200, "max_hashtags": 30, "max_mentions": 20}
 # ─ 렌더 QA 게이트 (수정지시서 v2 §7) — 발행 전 실제 mp4 를 ffprobe 로 실검(프레임 실측) ─
 # "98.8%=버그" 단정 삭제 대신, 자동 판정 가능한 값만 하드 게이트로: 끝 검은프레임·>250ms 무음·오디오
 # 클리핑·길이. 자막 존재는 우리 파이프라인이 ASS 를 결정적으로 번인하므로 프레임 디코드 여부로 확인

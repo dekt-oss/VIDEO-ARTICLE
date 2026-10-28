@@ -228,6 +228,9 @@ def plan_spec(plan: dict[str, Any], claims: list[dict[str, Any]], *, sources: Op
 
 
 _HASHTAG = re.compile(r"#[^\s#]+")
+# 한도 계산용 — 낱말 한가운데의 #·@(a#b, 메일 주소)는 태그·멘션이 아니다.
+_HASHTAG_TOKEN = re.compile(r"(?<!\w)#\w+")
+_MENTION_TOKEN = re.compile(r"(?<![\w.])@[\w.]+")
 
 
 def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Optional[list[dict[str, Any]]] = None) -> Report:
@@ -236,6 +239,15 @@ def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Option
     캡션은 장면이 아니라서 근거 표시(claim_ids)가 없다 → 승인된 근거 묶음 **전체**의 원문 인용을 허용 범위로 본다.
     해시태그는 검사에서 뺀다(#2026 같은 태그가 숫자로 걸리지 않게)."""
     rep = Report()
+    # 인스타 캡션 한도(Meta IG User Media v26.0, 2026-10-28) — config.DRINKS_CAPTION_LIMITS. 넘으면 게시가 거부된다.
+    lim = config.DRINKS_CAPTION_LIMITS
+    n_chars, n_tags, n_mentions = len(caption or ""), len(_HASHTAG_TOKEN.findall(caption or "")), len(_MENTION_TOKEN.findall(caption or ""))
+    if n_chars > lim["max_chars"]:
+        rep.blocks.append(Finding("caption_too_long", None, f"캡션이 {n_chars}자입니다(한도 {lim['max_chars']}자)"))
+    if n_tags > lim["max_hashtags"]:
+        rep.blocks.append(Finding("hashtags_over_limit", None, f"해시태그가 {n_tags}개입니다(한도 {lim['max_hashtags']}개)"))
+    if n_mentions > lim["max_mentions"]:
+        rep.blocks.append(Finding("mentions_over_limit", None, f"@멘션이 {n_mentions}개입니다(한도 {lim['max_mentions']}개)"))
     text = _HASHTAG.sub(" ", caption or "")
     usable = [c for c in claims or [] if isinstance(c, dict) and not _is_derived(c)]
     quotes = " ".join(q for c in usable for q in _quotes(c))

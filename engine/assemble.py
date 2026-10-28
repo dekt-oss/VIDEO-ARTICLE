@@ -469,11 +469,16 @@ def build_crossfade_command(cut_files: list[str], durations: list[float], transi
 def build_loudnorm_command(
     in_path: str, out_path: str, lufs: float = config.LOUDNESS_LUFS
 ) -> list[str]:
-    """최종 오디오 라우드니스 정규화(-14 LUFS 기본)."""
+    """최종 오디오 라우드니스 정규화(-14 LUFS 기본).
+
+    ★ -ar: loudnorm 이 내부 192 kHz 로 올려 AAC 가 96 kHz 로 떨어졌다(인스타 릴스 상한 48 kHz).
+      -movflags +faststart: moov 를 파일 앞으로(릴스 규격). docs/진단_주류릴스엔진_2026-10-28.md
+    """
     return [
         "ffmpeg", "-y", "-i", in_path,
         "-af", f"loudnorm=I={lufs}:TP=-1.5:LRA=11",
         "-c:v", "copy", "-c:a", "aac",
+        "-ar", str(config.OUTPUT_AUDIO_SAMPLE_RATE), "-movflags", "+faststart",
         out_path,
     ]
 
@@ -534,6 +539,7 @@ def build_bgm_duck_command(in_video: str, bgm_path: str, out_path: str,
         "-filter_complex", filt,
         "-map", "0:v", "-map", "[a]",
         "-c:v", "copy", "-c:a", "aac", "-shortest",
+        "-ar", str(config.OUTPUT_AUDIO_SAMPLE_RATE), "-movflags", "+faststart",
         out_path,
     ]
 
@@ -616,6 +622,7 @@ def build_bgm_envelope_duck_command(in_video: str, bgm_path: str, out_path: str,
         "-filter_complex", filt,
         "-map", "0:v", "-map", "[a]",
         "-c:v", "copy", "-c:a", "aac", "-shortest",
+        "-ar", str(config.OUTPUT_AUDIO_SAMPLE_RATE), "-movflags", "+faststart",
         out_path,
     ]
 
@@ -694,6 +701,7 @@ def build_speed_command(in_path: str, out_path: str, speed: float) -> list[str]:
             "-filter:v", f"setpts=PTS/{float(speed):.3f}",
             "-filter:a", f"atempo={float(speed):.3f}",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+            "-ar", str(config.OUTPUT_AUDIO_SAMPLE_RATE), "-movflags", "+faststart",
             out_path]
 
 

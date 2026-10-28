@@ -81,7 +81,7 @@ def publish_one(req: dict[str, Any], rpc: Rpc, storage: Storage, providers: Prov
         rep = script_check.check_caption(req.get("caption") or "", req.get("claims") or [], sources=req.get("sources"))
         if not rep.ok:
             return finish("paused", error_code="caption_check",
-                          error_message="캡션 검사에서 막혔습니다: " + "; ".join(f.message for f in rep.blocks)[:1500])
+                          error_message="캡션 검사에서 막혔습니다: " + "; ".join(f"{f.code}: {f.message}" for f in rep.blocks)[:1500])
         provider = providers(account)
         files = req.get("files") or []
         if req["post_type"] == "carousel":

@@ -200,6 +200,26 @@ def draw_scene_card(scene: dict[str, Any], idx: int, total: int, topic: dict[str
     return {"truncated": cut, "label": tag}
 
 
+def _draw_role_badge(d, scene: dict[str, Any], idx: int, total: int, *, num_y: float = 0.105, tag_y: float = 0.15) -> str:
+    """그림 위에 얹는 장면 유형 표기(배지) + 쪽 번호 + 브랜드. 반환 = 배지 문구.
+
+    산 그림(label_image)과 카드뉴스 페이지(compose_card_page)가 같은 문구·같은 안전 영역을 쓴다(검수 scene_types_labeled).
+    num_y·tag_y 는 화면 높이 비율 — 기본값은 그림 위(꽉 채운 배경), 카드 페이지는 위쪽 띠 안으로 올린다."""
+    w, h = config.RENDER_WIDTH, config.RENDER_HEIGHT
+    role = scene.get("visual_role") or "reality"
+    tag = SCENE_LABEL.get(role, SCENE_LABEL["other"])
+    f_tag, f_small = _font("small", 38), _font("small", 30)
+    m = int(w * 0.14)   # 카메라 움직임이 가장자리를 잘라도 표기가 남는 안쪽
+    ty, ny = int(h * tag_y), int(h * num_y)
+    tw = d.textlength(tag, font=f_tag)
+    d.rounded_rectangle([m, ty, m + tw + 48, ty + 64], radius=32, fill=BRAND["accent"] if role != "reality" else BRAND["warn"])
+    d.text((m + 24, ty + 10), tag, font=f_tag, fill=BRAND["bg"])
+    d.text((m, ny), f"{idx} / {total}", font=f_small, fill=BRAND["text"], stroke_width=2, stroke_fill=BRAND["bg"])
+    d.text((w - m - d.textlength(BRAND["name"], font=f_small), ny), BRAND["name"], font=f_small, fill=BRAND["accent"],
+           stroke_width=2, stroke_fill=BRAND["bg"])
+    return tag
+
+
 def label_image(src: str, scene: dict[str, Any], idx: int, total: int, out_path: str) -> dict[str, Any]:
     """산 그림(유료 생성) 위에 장면 유형 표기를 얹는다 — 대체 카드와 같은 문구·같은 안전 영역(검수 scene_types_labeled).
 
@@ -207,22 +227,40 @@ def label_image(src: str, scene: dict[str, Any], idx: int, total: int, out_path:
     from PIL import Image, ImageDraw, ImageOps
 
     w, h = config.RENDER_WIDTH, config.RENDER_HEIGHT
-    role = scene.get("visual_role") or "reality"
     with Image.open(src) as im:
         img = ImageOps.fit(im.convert("RGB"), (w, h), method=Image.LANCZOS)
-    d = ImageDraw.Draw(img)
-    tag = SCENE_LABEL.get(role, SCENE_LABEL["other"])
-    f_tag, f_small = _font("small", 38), _font("small", 30)
-    m = int(w * 0.14)   # 카메라 움직임이 가장자리를 잘라도 표기가 남는 안쪽
-    tw = d.textlength(tag, font=f_tag)
-    d.rounded_rectangle([m, int(h * 0.15), m + tw + 48, int(h * 0.15) + 64], radius=32,
-                        fill=BRAND["accent"] if role != "reality" else BRAND["warn"])
-    d.text((m + 24, int(h * 0.15) + 10), tag, font=f_tag, fill=BRAND["bg"])
-    d.text((m, int(h * 0.105)), f"{idx} / {total}", font=f_small, fill=BRAND["text"], stroke_width=2, stroke_fill=BRAND["bg"])
-    d.text((w - m - d.textlength(BRAND["name"], font=f_small), int(h * 0.105)), BRAND["name"], font=f_small, fill=BRAND["accent"],
-           stroke_width=2, stroke_fill=BRAND["bg"])
+    tag = _draw_role_badge(ImageDraw.Draw(img), scene, idx, total)
     img.save(out_path, "PNG")
     return {"truncated": False, "label": tag}
+
+
+def card_page_of(scene: dict[str, Any]) -> Optional[int]:
+    """장면의 card_page(1~20 정수) — 없거나 잘못되면 None(DB 가 이미 거른 값이지만 워커도 믿지 않는다)."""
+    raw = scene.get("card_page")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw != int(raw) or not 1 <= int(raw) <= 20:
+        return None
+    return int(raw)
+
+
+def compose_card_page(src: str, scene: dict[str, Any], idx: int, total: int, out_path: str) -> dict[str, Any]:
+    """카드뉴스 페이지(1080×1350)를 1080×1920 브랜드 배경 위 세로 가운데에 놓는다 — 자르지 않는다(cover-crop 없음).
+
+    페이지가 다른 크기면 비율을 지킨 채 화면 안에 들어가게만 줄이거나 늘린다. 장면 유형 배지·쪽 번호는 위쪽 띠(페이지 위)에 얹는다.
+    그림이 곧 페이지 글자라서 explanation 카드와 달리 글자 잘림 검사 대상이 아니다(페이지 자체는 카드 검수를 통과한 것)."""
+    from PIL import Image, ImageDraw
+
+    w, h = config.RENDER_WIDTH, config.RENDER_HEIGHT
+    img = Image.new("RGB", (w, h), BRAND["bg"])
+    with Image.open(src) as im:
+        page = im.convert("RGB")
+    scale = min(w / page.width, h / page.height)
+    if scale != 1.0:
+        page = page.resize((max(1, int(round(page.width * scale))), max(1, int(round(page.height * scale)))), Image.LANCZOS)
+    img.paste(page, ((w - page.width) // 2, (h - page.height) // 2))
+    # 위쪽 띠: 1920 에서 페이지(1350) 위가 285px — 번호·브랜드 줄(9%)과 배지(11%)가 그 안에 든다.
+    tag = _draw_role_badge(ImageDraw.Draw(img), scene, idx, total, num_y=0.09, tag_y=0.111)
+    img.save(out_path, "PNG")
+    return {"truncated": False, "label": tag, "card_page": True}
 
 
 def draw_cover(topic: dict[str, Any], plan: dict[str, Any], out_path: str, size=(1080, 1920)) -> dict[str, Any]:
@@ -236,17 +274,91 @@ def draw_cover(topic: dict[str, Any], plan: dict[str, Any], out_path: str, size=
     d.text((80, 120), BRAND["name"], font=f_brand, fill=BRAND["accent"])
     y, cut1 = _block(d, (80, int(h * 0.28)), topic.get("title") or "", f_title, w - 160, BRAND["text"], max_lines=5, role="head", size=92)
     _, cut2 = _block(d, (80, y + 40), f"Q. {topic.get('question') or ''}", f_q, w - 160, BRAND["muted"], max_lines=4, role="body", size=50)
-    img.save(out_path, "PNG")
+    img.convert("RGB").save(out_path, "JPEG", quality=config.DRINKS_COVER_JPEG_QUALITY)   # 릴스 표지는 JPEG(규격) — docs/진단_주류릴스엔진_2026-10-28.md
     return {"truncated": cut1 or cut2}
 
 
 def _probe(path: str) -> dict[str, Any]:
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height:format=duration",
+    out = subprocess.run(["ffprobe", "-v", "error",
+                          "-show_entries", "stream=codec_type,codec_name,width,height,sample_rate,r_frame_rate:format=duration",
                           "-of", "json", path], capture_output=True, text=True, check=True).stdout
     data = json.loads(out)
     v = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), {})
     a = [s for s in data.get("streams", []) if s.get("codec_type") == "audio"]
-    return {"width": v.get("width"), "height": v.get("height"), "duration_sec": float(data["format"]["duration"]), "audio_streams": len(a)}
+    return {"width": v.get("width"), "height": v.get("height"), "duration_sec": float(data["format"]["duration"]), "audio_streams": len(a),
+            "video_codec": v.get("codec_name"), "audio_codec": a[0].get("codec_name") if a else None,
+            "audio_sample_rate": int(a[0]["sample_rate"]) if a and a[0].get("sample_rate") else None,
+            "fps": _parse_fps(v.get("r_frame_rate"))}
+
+
+def _parse_fps(raw: Optional[str]) -> Optional[float]:
+    """ffprobe r_frame_rate("30/1") → 30.0. 읽을 수 없으면 None."""
+    try:
+        num, _, den = str(raw).partition("/")
+        return round(float(num) / float(den or 1), 3)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def moov_before_mdat(path: str) -> bool:
+    """mp4 최상위 박스를 훑어 moov 가 mdat 보다 앞에 있으면 True(릴스 규격: moov 앞)."""
+    import struct
+
+    seen: dict[str, int] = {}
+    size_total = os.path.getsize(path)
+    with open(path, "rb") as f:
+        pos = 0
+        while pos + 8 <= size_total:
+            f.seek(pos)
+            head = f.read(8)
+            if len(head) < 8:
+                break
+            size, kind = struct.unpack(">I4s", head)
+            name = kind.decode("latin-1")
+            if size == 1:
+                ext = f.read(8)
+                if len(ext) < 8:
+                    break
+                size = struct.unpack(">Q", ext)[0]
+            elif size == 0:
+                size = size_total - pos
+            seen.setdefault(name, pos)
+            if "moov" in seen and "mdat" in seen:
+                break
+            if size < 8:
+                break
+            pos += size
+    return "moov" in seen and ("mdat" not in seen or seen["moov"] < seen["mdat"])
+
+
+def reel_spec_warnings(probe: dict[str, Any], file_bytes: int, moov_first: bool, cover_mime: str, cover_bytes: int) -> list[str]:
+    """인스타 릴스 규격 위반 코드 목록(순수 함수). 경고일 뿐 작업을 막지 않는다 — config.DRINKS_REEL_SPEC 기준."""
+    spec = config.DRINKS_REEL_SPEC
+    out: list[str] = []
+    rate = probe.get("audio_sample_rate")
+    if rate is not None and rate > spec["audio_sample_rate_max"]:
+        out.append("reel_audio_rate_over_48k")
+    if not moov_first:
+        out.append("reel_moov_not_first")
+    dur = probe.get("duration_sec")
+    if dur is None or not (spec["min_sec"] <= float(dur) <= spec["max_sec"]):
+        out.append("reel_duration_out_of_range")
+    if (probe.get("width") or 0) > spec["max_width"]:
+        out.append("reel_width_over_1920")
+    fps, (lo, hi) = probe.get("fps"), spec["fps_range"]
+    if fps is None or not (lo <= fps <= hi):
+        out.append("reel_fps_out_of_range")
+    if probe.get("video_codec") not in spec["video_codecs"]:
+        out.append("reel_video_codec")
+    if probe.get("audio_codec") != spec["audio_codec"]:
+        out.append("reel_audio_codec")
+    if file_bytes > spec["max_bytes"]:
+        out.append("reel_file_too_big")
+    if cover_mime != spec["cover_mime"]:
+        out.append("reel_cover_not_jpeg")
+    if cover_bytes > spec["cover_max_bytes"]:
+        out.append("reel_cover_too_big")
+    return out
 
 
 def _mean_volume_db(path: str) -> Optional[float]:
@@ -254,6 +366,19 @@ def _mean_volume_db(path: str) -> Optional[float]:
                        capture_output=True, text=True)
     m = re.search(r"mean_volume:\s*(-?[\d.]+) dB", p.stderr)
     return float(m.group(1)) if m else None
+
+
+def count_syllables(narrations: list[str]) -> int:
+    """나레이션 음절 수 — 공백·문장부호를 뺀 글자 수(한글은 한 글자 = 한 음절). 숫자도 글자로 센다."""
+    return sum(1 for text in narrations for ch in (text or "") if ch.isalnum())
+
+
+def speech_rate(narrations: list[str], final_sec: float, playback_speed: float, tts_rate: str) -> dict[str, Any]:
+    """말 속도(최종 영상 기준 음절/초). 주류가 5.9 였다(2026-10-28 실측) — 경고는 호출쪽이 문턱과 비교한다."""
+    syl = count_syllables(narrations)
+    rate = round(syl / final_sec, 2) if final_sec and final_sec > 0 else 0.0
+    return {"syllables": syl, "final_sec": round(float(final_sec), 2), "syl_per_sec": rate,
+            "playback_speed": float(playback_speed), "tts_rate": tts_rate}
 
 
 @dataclass
@@ -272,12 +397,17 @@ def _guard_free(tts: str) -> None:
     config.TTS_PROVIDER = tts
     # 주류 자막은 뜻 단위로 끊는다(2026-10-24 운영자 판정). 논문·리포트 렌더는 이 함수를 지나지 않는다.
     config.CAPTION_PHRASE_BREAKS = True
+    # 속도는 TTS +10% 한 곳에서만 올린다 — 논문 라인의 조립 끝 1.2× 는 주류에서 겹쳐 5.9음절/초였다(config.DRINKS_PLAYBACK_SPEED 주석).
+    config.RENDER_PLAYBACK_SPEED = config.DRINKS_PLAYBACK_SPEED
     if config.image_is_paid() or config.video_is_paid():
         raise RenderError("paid_disabled", "유료 이미지·영상 공급자가 켜져 있습니다")
 
 
-def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", images: Optional[dict[int, str]] = None) -> Rendered:
+def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", images: Optional[dict[int, str]] = None,
+                 card_pages: Optional[dict[int, str]] = None) -> Rendered:
     """images = {장면 번호: 산 그림 경로}. 주어진 장면은 그 그림(+장면 유형 표기), 나머지는 로컬 대체 카드.
+    card_pages = {카드뉴스 페이지 번호: 로컬 PNG 경로}. 장면이 card_page: N 이면 그 페이지가 장면 그림이다(0원, 자르지 않고 배경 위에 놓음).
+      페이지가 없으면 대체 카드로 되돌리고 card_page_missing 경고를 남긴다. 산 그림(images)이 있는 장면은 그쪽이 우선.
 
     ★ 조립 자체는 언제나 무료 경로다 — 그림은 미리 사 두고(engine/drinks_paid.py) 여기서는 재사용(reuse)만 한다."""
     from . import render as engine_render   # 무거운 엔진 import 는 여기서만
@@ -289,9 +419,22 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
     os.makedirs(cards, exist_ok=True)
     MISSING.clear()
     images = images or {}
-    card_qa = [label_image(images[i], sc, i, len(scenes), os.path.join(cards, f"{i:03d}.png")) if i in images
-               else draw_scene_card(sc, i, len(scenes), topic, os.path.join(cards, f"{i:03d}.png"))
-               for i, sc in enumerate(scenes, 1)]
+    card_pages = card_pages or {}
+    card_qa: list[dict[str, Any]] = []
+    from_pages: list[int] = []      # 카드뉴스 페이지를 그림으로 쓴 장면
+    page_missing: list[int] = []    # card_page 를 원했지만 페이지가 없어 대체 카드로 간 장면
+    for i, sc in enumerate(scenes, 1):
+        out_png = os.path.join(cards, f"{i:03d}.png")
+        want = card_page_of(sc)
+        if i in images:
+            card_qa.append(label_image(images[i], sc, i, len(scenes), out_png))
+        elif want is not None and want in card_pages:
+            card_qa.append(compose_card_page(card_pages[want], sc, i, len(scenes), out_png))
+            from_pages.append(i)
+        else:
+            if want is not None:
+                page_missing.append(i)
+            card_qa.append(draw_scene_card(sc, i, len(scenes), topic, out_png))
     generated = sorted(i for i in images if 1 <= i <= len(scenes))
     config.IMAGE_REUSE_DIR = cards
     directive = plan_to_directive(plan, topic)
@@ -299,11 +442,11 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
     out = os.path.join(work_dir, "final.mp4")
     engine_dir = os.path.join(work_dir, "engine")
     os.makedirs(engine_dir, exist_ok=True)   # 엔진은 작업 폴더를 만들지 않는다
-    engine_render.render_directive_local(directive, out, work_dir=engine_dir, lang="ko")
+    engine_render.render_directive_local(directive, out, work_dir=engine_dir, lang="ko", platform=config.DRINKS_CAPTION_PLATFORM)
     placeholders = engine_render.take_placeholder_fallbacks()
     if placeholders:
         raise RenderError("placeholder_cuts", f"빈 화면으로 대체된 장면이 있습니다: {placeholders}")
-    cover = os.path.join(work_dir, "cover.png")
+    cover = os.path.join(work_dir, "cover.jpg")
     cover_qa = draw_cover(topic, plan, cover)
     probe = _probe(out)
     vol = _mean_volume_db(out)
@@ -328,19 +471,36 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
         warnings.append("text_truncated")
     if MISSING:
         warnings.append("glyph_missing")
-    stand_in = [i for i, sc in enumerate(scenes, 1) if i not in images and (sc.get("visual_role") or "reality") != "text_card"]
+    cover_mime = "image/jpeg"
+    moov_first = moov_before_mdat(out)
+    warnings.extend(reel_spec_warnings(probe, os.path.getsize(out), moov_first, cover_mime, os.path.getsize(cover)))
+    if page_missing:
+        warnings.append("card_page_missing")
+    rate = speech_rate([sc.get("narration") or "" for sc in scenes], probe["duration_sec"], config.RENDER_PLAYBACK_SPEED, config.EDGE_TTS_RATE)
+    if rate["syl_per_sec"] > config.DRINKS_SPEECH_RATE_WARN_SYL_PER_SEC:
+        warnings.append("speech_rate_fast")
+    # 글자 카드(대체 이미지)로 나간 장면 — 정리 카드(text_card)는 원래 글자 카드라 뺀다. 원했던 카드 페이지가 없어 되돌아간 장면은 넣는다.
+    stand_in = [i for i, sc in enumerate(scenes, 1) if i not in images and i not in from_pages
+                and ((sc.get("visual_role") or "reality") != "text_card" or i in page_missing)]
     qa = {"probe": probe, "mean_volume_db": vol, "silent_scenes": silent, "missing_glyphs": sorted(set(MISSING)), "scenes": len(scenes), "scene_labels": [c["label"] for c in card_qa],
           "warnings": warnings, "stand_in_visuals": bool(stand_in), "stand_in_scenes": stand_in, "generated_scenes": generated,
+          "card_page_scenes": from_pages,
+          "visual_source": {"stand_in": stand_in, "card_pages": from_pages, "generated": generated},
+          "speech_rate": rate,
           "tts": tts, "brand": BRAND["version"],
-          "note": ("대체 이미지 렌더 — 흐름 검증용. 목표 화풍 품질 검증이 아니다" if not generated else
-                   "생성 그림 장면 " + ",".join(map(str, generated)) + (" · 대체 카드 장면 " + ",".join(map(str, stand_in)) if stand_in else ""))}
+          "reel_spec": {"moov_first": moov_first, "audio_sample_rate": probe.get("audio_sample_rate"), "video_codec": probe.get("video_codec"),
+                        "fps": probe.get("fps"), "cover_mime": cover_mime},
+          "note": ("대체 이미지 렌더 — 흐름 검증용. 목표 화풍 품질 검증이 아니다" if not generated and not from_pages else
+                   " · ".join(([f"생성 그림 장면 {','.join(map(str, generated))}"] if generated else []) +
+                              ([f"카드뉴스 페이지 장면 {','.join(map(str, from_pages))}"] if from_pages else []) +
+                              ([f"대체 카드 장면 {','.join(map(str, stand_in))}"] if stand_in else [])))}
     costs = [{"kind": "tts", "provider": tts, "model": config.EDGE_TTS_VOICE if tts == "edge" else None, "cost_usd": 0,
               "units": len(scenes), "note": "무료 TTS"},
              {"kind": "render", "provider": "local_ffmpeg", "cost_usd": 0,
               "note": "장면 카드(Pillow)·조립(ffmpeg)" + (" — 생성 그림은 미리 산 것을 재사용(비용은 그림 기록에)" if generated else "")}]
     files = [{"path": out, "role": "final_video", "position": 1, "mime": "video/mp4", "width": probe["width"],
               "height": probe["height"], "duration_ms": int(probe["duration_sec"] * 1000)},
-             {"path": cover, "role": "cover", "position": 1, "mime": "image/png", "width": 1080, "height": 1920}]
+             {"path": cover, "role": "cover", "position": 1, "mime": cover_mime, "width": 1080, "height": 1920}]
     return Rendered(files, qa, costs)
 
 
