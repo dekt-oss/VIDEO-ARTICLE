@@ -4316,6 +4316,10 @@ DRINKS_DISCOVERY_SUMMARY_CHARS: int = 600    # 확보한 요약 보관 길이(�
 DRINKS_YT_COMMENTS_PER_VIDEO: int = 20       # commentThreads.list 1회(쿼터 1). 질문 문장만 뽑는다
 DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 — 검색어 수 상한(0052 등록 때도 3개로 막는다)
 DRINKS_DISCOVERY_BACKFILL_DAYS: int = 365    # 발견 첫 실행은 최근 1년부터(오래된 것부터 받아 워처마크를 전진)
+# 소재의 질문 유형(0058 drink_topics.question_kind 의 체크와 같은 목록 — tests/test_drinks_bootstrap.py 가 SQL 과 대조).
+#   후보의 signals 중 우선순위가 가장 높은 것을 소재로 올릴 때 복사한다. 목록에 없는 신호(question·new_product·event)는 general.
+DRINKS_QUESTION_KINDS: tuple[str, ...] = ("storage", "misconception", "selection", "debate", "pairing", "howto", "general")
+DRINKS_QUESTION_KIND_PRIORITY: tuple[str, ...] = ("storage", "misconception", "debate", "selection")
 # 수집원별 소급일(parser_config.lookback_days)이 있으면 위 기본값 대신 쓴다. 0052 drinks_discovery_connector 가 1~3650 으로 막는다.
 DRINKS_DISCOVERY_LOOKBACK_MAX_DAYS: int = 3650
 # 한국어 질문 끝말(2026-10-28). 네이버 검색 요약은 물음표가 잘려 나가는 일이 많아, 이 끝말로 끝나는 한글 문장도 질문으로 친다.
