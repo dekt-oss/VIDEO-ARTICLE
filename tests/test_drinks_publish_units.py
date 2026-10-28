@@ -138,3 +138,22 @@ def test_graph_media_owner_app_scoped_id_maps_to_account_id(monkeypatch):
             return httpx.Response(200, json={"id": "29421002334173283", "user_id": "1784"})
         return httpx.Response(200, json={"id": "m1", "owner": {"id": "555"}})
     assert graph(other, monkeypatch).media(ACC, "m1").owner_id == "555", "다른 주인은 그대로 둔다(불일치로 잡히게)"
+
+
+def test_live_publish_workflow_is_manual_only_and_reads_token_from_secret():
+    """실제 게시 스위치(DRINKS_IG_LIVE)를 켠 워크플로는 사람이 눌러야만 돈다 — 예약 실행·푸시 실행이 끼면 무인 게시가 된다."""
+    import pathlib
+    import re as _re
+
+    import yaml
+
+    p = pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows" / "drinks-publish.yml"
+    raw = p.read_text(encoding="utf-8")
+    wf = yaml.safe_load(raw)
+    triggers = wf.get("on") or wf.get(True)
+    assert set(triggers) == {"workflow_dispatch"}, "실제 게시 워크플로에 cron·push 를 붙이려면 운영자 승인 후 이 시험을 고친다"
+    env = wf["jobs"]["run"]["env"]
+    assert env.get("DRINKS_IG_LIVE") == "1"
+    tokens = {k: v for k, v in env.items() if k.endswith("_IG_TOKEN")}
+    assert tokens and all(v == "${{ secrets.%s }}" % k for k, v in tokens.items()), "토큰은 같은 이름의 GitHub 비밀에서만"
+    assert not _re.search(r"echo .*TOKEN|set -x", raw), "토큰을 로그에 찍지 않는다"
