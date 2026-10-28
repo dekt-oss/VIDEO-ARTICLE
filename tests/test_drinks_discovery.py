@@ -39,6 +39,42 @@ def test_signals_and_questions_are_rules_not_translation():
     assert dd.extract_questions("質問です。これはどうですか？") == ["これはどうですか？"]
 
 
+def test_korean_question_endings_count_without_question_mark():
+    """네이버 검색 요약 모양의 문장 5개 — 물음표가 잘렸어도 끝말로 질문을 알아본다(질문 3, 아닌 것 2)."""
+    snippets = [
+        "개봉한 지 한 달 된 사케를 냉장고에 두면 얼마나 오래 마셔도 되는 건가요",      # 질문 (물음표 없음)
+        "위스키 입문용으로 어떤 제품을 사면 좋을까요...",                              # 질문 (말줄임표)
+        "막걸리 유통기한이 지난 것을 마셔도 괜찮은지 궁금",                              # 질문 (궁금)
+        "어제 마트에서 사케를 한 병 사서 냉장고에 넣어 두었어요",                        # 서술
+        "전통주는 우리나라의 고유한 술로 지역마다 빚는 방식이 다릅니다.",                 # 서술
+    ]
+    got = [dd.extract_questions(x) for x in snippets]
+    assert [bool(g) for g in got] == [True, True, True, False, False]
+    assert got[1] == [snippets[1]], "원문 그대로(번역·요약 없음)"
+    assert dd.extract_questions("사케 궁금") == [], "한글 6자 미만 조각은 질문으로 치지 않는다"
+    assert dd.extract_questions("Which is better for me") == [], "한글이 아닌 문장은 물음표 없이는 질문이 아니다"
+    assert "인가요" in config.DRINKS_QUESTION_ENDINGS_KO and "?" not in "".join(config.DRINKS_QUESTION_ENDINGS_KO)
+
+
+def test_per_source_lookback_days_replaces_global_first_run_default():
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 28, tzinfo=timezone.utc)
+    assert (now - dd.first_run_start({}, now)).days == config.DRINKS_DISCOVERY_BACKFILL_DAYS
+    assert (now - dd.first_run_start({"lookback_days": 3000}, now)).days == 3000
+    for bad in (0, -5, 3651, "3000", True, None, 12.5):
+        assert (now - dd.first_run_start({"lookback_days": bad}, now)).days == config.DRINKS_DISCOVERY_BACKFILL_DAYS, bad
+    # 실제 요청의 fromdate 도 그 값으로 간다
+    h, seen = _se_pages([{"items": [], "has_more": False}])
+    dd.stackexchange(fetcher(h, ["api.stackexchange.com"]), {"queries": ["sake"], "lookback_days": 3000}, None, 10)
+    age_days = (datetime.now(timezone.utc).timestamp() - int(seen[0].url.params["fromdate"])) / 86400
+    assert 2999 < age_days < 3001
+    # 워처마크(since)가 있으면 그것이 우선이다
+    since = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    h2, seen2 = _se_pages([{"items": [], "has_more": False}])
+    dd.stackexchange(fetcher(h2, ["api.stackexchange.com"]), {"queries": ["sake"], "lookback_days": 3000}, since, 10)
+    assert int(seen2[0].url.params["fromdate"]) == int(since.timestamp())
+
+
 def _se_pages(pages):
     """쪽 번호별 응답. 마지막 쪽 다음은 빈 쪽."""
     seen = []

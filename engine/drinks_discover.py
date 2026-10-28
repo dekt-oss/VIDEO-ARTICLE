@@ -50,17 +50,29 @@ def extract_signals(text: str) -> list[str]:
     return [k for k, p in SIGNAL_PATTERNS.items() if p.search(_URL.sub(" ", text or ""))]
 
 
+_TRAILING_PUNCT = " .,!…·~)]}\"'”’。"
+_HANGUL = re.compile(r"[가-힯]")
+
+
 def _is_question(sent: str) -> bool:
     if not sent.endswith(("?", "？")):
-        return False
+        return _is_korean_question_ending(sent)
     body = sent.rstrip("?？ ")
     if _CJK.search(body):
         return len(body) >= 6
     return len(re.findall(r"[A-Za-z]{2,}", body)) >= 3   # "(?)" 같은 조각·한두 단어는 질문으로 치지 않는다
 
 
+def _is_korean_question_ending(sent: str) -> bool:
+    """물음표 없이 끝말로 질문을 알아본다(네이버 요약은 물음표가 잘린다). 한글 6자 이상 + 끝말 + 뒤에는 문장부호만."""
+    body = sent.rstrip(_TRAILING_PUNCT)
+    if len(_HANGUL.findall(body)) < 6:
+        return False
+    return body.endswith(config.DRINKS_QUESTION_ENDINGS_KO)
+
+
 def extract_questions(*texts: str, limit: int = 5) -> list[str]:
-    """원문의 질문 문장(물음표로 끝나는 완전한 문장)만. 주소는 먼저 지운다. 번역·요약하지 않는다."""
+    """원문의 질문 문장(물음표로 끝나거나, 한글 문장이 질문 끝말로 끝나는 것)만. 주소는 먼저 지운다. 번역·요약하지 않는다."""
     out: list[str] = []
     for t in texts:
         for sent in _SPLIT.split(_URL.sub(" ", t or "")):
@@ -134,14 +146,24 @@ def _metrics(pairs: dict[str, Optional[int]]) -> dict[str, int]:
     return {k: v for k, v in pairs.items() if v is not None}  # 없는 지표는 키 자체를 빼고 0 을 만들지 않는다
 
 
+def first_run_start(cfg: dict, now: Optional[datetime] = None) -> datetime:
+    """첫 실행의 시작 시각. 수집원 설정의 lookback_days(1~3650)가 있으면 그것을, 없으면 전역 기본값(365일)을 쓴다.
+    (DB 가 등록 때 이미 막지만 여기서도 범위를 지킨다 — 손으로 바꾼 설정이 천장을 넘지 못하게.)"""
+    days = config.DRINKS_DISCOVERY_BACKFILL_DAYS
+    v = cfg.get("lookback_days")
+    if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= config.DRINKS_DISCOVERY_LOOKBACK_MAX_DAYS:
+        days = v
+    return (now or datetime.now(timezone.utc)) - timedelta(days=days)
+
+
 def stackexchange(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> Batch:
     """오래된 것부터(생성 시각 오름차순) 받는다 — 상한에 걸리면 "빠짐없이 본 데까지"만 워처마크가 전진한다.
     태그는 따로 묻는다(tagged 는 AND). 더 남은 태그가 있으면, 그 태그가 이번에 받은 마지막 글 시각을 넘어 전진하지 않는다
-    (넘으면 그 태그의 사이 글을 건너뛴다). 첫 실행은 최근 DRINKS_DISCOVERY_BACKFILL_DAYS 일부터."""
+    (넘으면 그 태그의 사이 글을 건너뛴다). 첫 실행은 수집원별 lookback_days, 없으면 최근 DRINKS_DISCOVERY_BACKFILL_DAYS 일부터."""
     found: list[Found] = []
     parsed = incomplete = 0
     tags = [t for t in (cfg.get("queries") or []) if t]
-    start = since or (datetime.now(timezone.utc) - timedelta(days=config.DRINKS_DISCOVERY_BACKFILL_DAYS))
+    start = since or first_run_start(cfg)
     page, has_more, last_ts = 1, True, None
     safe_ts: Optional[int] = None   # 더 남은 태그들이 이번에 받은 마지막 글 시각 중 가장 이른 것
     backoff = False
