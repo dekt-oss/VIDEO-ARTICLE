@@ -1,4 +1,4 @@
-// 주류 D단계 순환(0055) DB 통합 테스트 — PGlite 위에 0050~0055.
+// 주류 D단계 순환(0055) + 질문 신호(0058) DB 통합 테스트 — PGlite 위에 0050~0056·0058.
 // 운영자 동작은 runDrinksAction 경로(라우트와 같은 코드), 워커 동작(점유·단계·끝내기·대조·성과)은 rpc 직접.
 // 한 바퀴 전체(수집 → 렌더 → 게시 → 성과 → 전략 반영)는 Python 워커로 tests/test_drinks_loop_e2e.py 가 본다.
 import test from "node:test";
@@ -11,7 +11,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
-  "0053_drinks_production.sql", "0054_drinks_spend.sql", "0055_drinks_publish_loop.sql", "0056_drinks_function_search_path.sql"]
+  "0053_drinks_production.sql", "0054_drinks_spend.sql", "0055_drinks_publish_loop.sql", "0056_drinks_function_search_path.sql",
+  "0058_drinks_topic_signals.sql"]
   .map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
@@ -64,8 +65,9 @@ const BODY = "준마이 다이긴조는 정미율 50% 이하의 쌀을 사용한
 const CARD_CK = { page_order_ok: true, no_text_overflow: true, claims_match_evidence: true, source_page_ok: true };
 
 /** 근거 승인 → 카드 편성 → 제작안 승인 → (워커처럼) 렌더 → 검수 승인. 검수 id 와 묶음 id. */
-async function approvedCard(cats = ["sake"]) {
-  const t = await ok("create_topic", { title: "다이긴조", question: `다이긴조는 왜 비쌀까 ${uniq()}`, categories: cats, lane: "evergreen" });
+async function approvedCard(cats = ["sake"], kind = "general") {
+  const t = await ok("create_topic", { title: "다이긴조", question: `다이긴조는 왜 비쌀까 ${uniq()}`, categories: cats, lane: "evergreen",
+    question_kind: kind });
   const id = t.topic_id;
   await ok("triage", { topic_id: id, expected_version: await ver("drink_topics", id), scores: SCORES });
   await ok("topic_action", { topic_id: id, expected_version: await ver("drink_topics", id), action: "start_research" });
@@ -309,4 +311,65 @@ test("전략: 기준이 바뀐 제안은 저장·반영 거부 · 가중치 상�
   await assert.rejects(db.query("update drink_strategy_versions set weights = '{}' where id = $1", [nv.id]), /immutable/);
   const p3 = await worker("drinks_save_strategy_proposal", { base_version_id: nv.id, weights: {}, basis: {}, sample_total: 1, sufficient: false });
   await fails("strategy_action", { proposal_id: p3.proposal_id, action: "accept" }, "insufficient_sample");
+});
+
+// ── 질문 유형(0058): 소재 -> 전략 입력 -> 가점 ──
+
+test("전략 입력·가점(0058): 게시물의 질문 유형이 전략 입력에 실리고, 제안은 question_kind 묶음을 받고, 순위 가점이 붙는다", async () => {
+  // 1) 질문 유형이 storage 인 소재를 게시 -> 72h 칸 성과 -> 전략 입력에 question_kind 가 실린다
+  const A = await approvedCard(["sake"], "storage");
+  assert.equal((await row("select question_kind from drink_topics where id = $1", [A.topicId])).question_kind, "storage");
+  const acc = await activeAccount();
+  const req = await scheduled(A.reviewId, acc);
+  const got = await worker("drinks_claim_publication", { worker_id: "t" });
+  const ext = (await row("select external_account_id from drink_social_accounts where id = $1", [acc])).external_account_id;
+  await worker("drinks_finish_publication", { request_id: req, lease_token: got.request.lease_token, outcome: "published",
+    external_post_id: "m_q", external_url: "https://www.instagram.com/p/m_q/", owner_account_id: ext });
+  await db.query("alter table drink_publication_requests disable trigger drink_publications_guard");
+  await db.query("update drink_publication_requests set published_at = now() - interval '80 hours' where id = $1", [req]);
+  await db.query("alter table drink_publication_requests enable trigger drink_publications_guard");
+  const m = await worker("drinks_record_metrics", { request_id: req, external_post_id: "m_q", values: { reach: 1000, saved: 30, shares: 10 } });
+  assert.equal(m.bucket, "72h");
+  const inputs = await worker("drinks_strategy_inputs", {});
+  const post = inputs.posts.find((x: Any) => x.request_id === req);
+  assert.equal(post.question_kind, "storage");
+  assert.deepEqual(post.categories, ["sake"]);
+
+  // 2) 제안 저장은 question_kind 묶음을 받는다(상한 ±0.5 는 같다). 모르는 묶음은 여전히 거부
+  const active = await row("select id from drink_strategy_versions where status = 'active'");
+  await workerFails("drinks_save_strategy_proposal", { base_version_id: active.id, weights: { question_kind: { storage: 0.9 } } }, "invalid_input");
+  await workerFails("drinks_save_strategy_proposal", { base_version_id: active.id, weights: { mood: {} } }, "invalid_input");
+  const prop = await worker("drinks_save_strategy_proposal", { base_version_id: active.id, weights: { question_kind: { storage: 0.2 } },
+    basis: {}, sample_total: 6, sufficient: true });
+  await ok("strategy_action", { proposal_id: prop.proposal_id, action: "accept" });
+
+  // 3) 같은 점수의 소재 둘 - 질문 유형 가점만 다르다
+  const mk = async (kind: string) => {
+    const t = await ok("create_topic", { title: `순위 ${kind}`, question: `순위 시험 ${kind} ${uniq()}`, categories: ["whisky"], lane: "evergreen",
+      question_kind: kind });
+    await ok("triage", { topic_id: t.topic_id, expected_version: await ver("drink_topics", t.topic_id), scores: SCORES });
+    return t.topic_id as string;
+  };
+  const ks = await mk("storage");
+  const kg = await mk("general");
+  const rank = await worker("drinks_strategy_rank", {});
+  const byId = (id: string) => rank.topics.find((x: Any) => x.topic_id === id);
+  assert.equal(byId(ks).question_kind, "storage");
+  assert.equal(Number(byId(ks).lift), 0.2, "질문 유형 가중치가 가점으로 붙는다");
+  assert.equal(Number(byId(kg).lift), 0, "가중치가 없는 질문 유형은 가점 0");
+  assert.ok(Number(byId(ks).adjusted_score) > Number(byId(kg).adjusted_score));
+  assert.equal(Number(byId(ks).adjusted_score), Math.round(Number(byId(ks).provisional_score) * 1.2 * 100) / 100);
+
+  // 4) 4-인자 호출(질문 유형 생략)도 그대로 동작하고, 옛 4-인자 함수가 따로 남아 있지 않다
+  const n = await row("select count(*)::int n from pg_proc where proname = 'drinks_strategy_lift'");
+  assert.equal(n.n, 1);
+  const l = await row(`select drinks_strategy_lift('{"lane":{"evergreen":0.1}}'::jsonb, array['sake'], 'evergreen', array['carousel']) l`);
+  assert.equal(Number(l.l), 0.1);
+});
+
+test("검색 경로 고정(0056 반복문을 0058 이 다시 돌린다): 주류 함수에 search_path 설정이 남아 있다", async () => {
+  const r = await row(`select count(*)::int n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+    where s.nspname = 'public' and (p.proname like 'drinks\\_%' or p.proname like 'drink\\_%')
+      and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')`);
+  assert.equal(r.n, 0, "search_path 가 빠진 주류 함수");
 });

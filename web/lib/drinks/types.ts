@@ -1,5 +1,5 @@
 // 주류 공장 표의 행 모양(0050_drinks_factory_phase_a.sql). 타입만 — 값 없음.
-import type { Category, Format, Lane, Scores, TopicStatus, VersionStatus } from "./model";
+import type { Category, Format, Lane, QuestionKind, Scores, TopicStatus, VersionStatus } from "./model";
 
 export interface TopicRow {
   id: string;
@@ -8,6 +8,12 @@ export interface TopicRow {
   reader_value: string | null;
   categories: Category[];
   lane: Lane;
+  /** 질문 유형(0058). 0058 적용 전 DB 에서는 오지 않는다 */
+  question_kind?: QuestionKind;
+  /** 발견 채널(0058) - 후보에서 올라온 소재만 값이 있다 */
+  discovery_platforms?: string[];
+  /** 관심 신호(0058) - 독립 출처 수·플랫폼별 지표. 합산하지 않는다 */
+  interest?: Record<string, unknown> | null;
   target_subject: string | null;
   angle: string | null;
   dedupe_key: string;

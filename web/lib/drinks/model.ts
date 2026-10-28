@@ -14,6 +14,14 @@ export const CATEGORIES = Object.keys(CATEGORY_LABEL) as Category[];
 export const LANE_LABEL = { evergreen: "상시 지식", timely: "시의성", reader_question: "독자 질문" } as const;
 export type Lane = keyof typeof LANE_LABEL;
 
+// 질문 유형(0058 drink_topics.question_kind). 파이썬 설정 engine/config.py DRINKS_QUESTION_KINDS 와 같은 목록이어야 한다
+// (tests/test_drinks_bootstrap.py 가 SQL 과 대조). general 은 "아직 모름/일반" - 전략이 따로 배우지 못하는 기본값.
+export const QUESTION_KIND_LABEL = {
+  storage: "보관", misconception: "오해", selection: "선택", debate: "논쟁", pairing: "페어링", howto: "방법", general: "일반",
+} as const;
+export type QuestionKind = keyof typeof QUESTION_KIND_LABEL;
+export const QUESTION_KINDS = Object.keys(QUESTION_KIND_LABEL) as QuestionKind[];
+
 export const TOPIC_STATUS_LABEL = {
   inbox: "등록됨",
   triaged: "경량 평가 완료",
