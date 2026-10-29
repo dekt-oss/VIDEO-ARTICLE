@@ -373,6 +373,25 @@ def test_naver_items_without_a_qualifying_question_are_not_stored(naver_keys, mo
     assert out["parsed_count"] == 4
 
 
+def test_validate_run_filters_before_the_item_limit(naver_keys, monkeypatch):
+    """검증 실행(상한 3건)에서 앞 3건이 질문 없는 글이어도 뒤의 자격 있는 글을 본다(2026-10-29 운영 실측: no_body_extracted 2건)."""
+    monkeypatch.setattr(config, "DRINKS_NAVER_SORT", "sim")
+    monkeypatch.setattr(config, "DRINKS_VALIDATE_ITEMS", 3)
+    posts = [{"title": f"막걸리 후기 {i}", "description": "맛있어요", "link": f"https://blog.naver.com/a/{i}", "postdate": "20261001"}
+             for i in range(3)]
+    posts += [{"title": f"막걸리 유통기한 지나도 되나요 {i}?", "description": "", "link": f"https://blog.naver.com/b/{i}", "postdate": "20261001"}
+              for i in range(4)]
+    calls = []
+
+    def rpc(fn, p):
+        calls.append((fn, p))
+        return {"status": "finished", **p} if fn == "drinks_finish_run" else {}
+    run = {**_run("naver"), "mode": "validate"}
+    dd.DiscoveryProcessor(run, rpc, fetcher(lambda r: js({"items": posts}))).process()
+    stored = [p["item"]["canonical_url"] for fn, p in calls if fn == "drinks_collect_discovery"]
+    assert stored == [f"https://blog.naver.com/b/{i}" for i in range(3)], "질문 없는 앞 3건을 건너뛰고 자격 있는 글 3건을 본다"
+
+
 def test_stackexchange_items_are_stored_as_before_even_without_a_drink_word_in_the_question(monkeypatch):
     se = {"items": [{"question_id": 2, "link": "https://alcohol.stackexchange.com/questions/2/x", "title": "Johnnie Walker Green vs Gold Label?",
                      "body": "<p>x</p>", "creation_date": 1622853616, "view_count": 1}], "has_more": False}
