@@ -4445,3 +4445,142 @@ DRINKS_PRODUCT_CLAUSE: str = (
     #   (위스키 1단계 3장 — 잔에 빈 라벨, 옆에 빈 상자). 엔진 교훈 그대로 부정어 대신 **긍정 묘사**로 쓴다.
     "every object is plain and unbranded, with smooth clean surfaces"
 )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 주류 동향 수집 — 술 커뮤니티 언급 순위·반응(긍정/부정)·주류 이슈 (2026-10-29). docs/deviation-drinks-trends.md
+#   운영자: "주류 커뮤니티도 수집에 추가. 언급 많은 주류를 소재와 같이 보여줘. 긍정/부정도 점수화. 제품 말고 이슈도."
+#   engine/drinks_trends.py 가 읽는다. 이 블록은 파일 맨 끝에 둔다(다른 DRINKS 블록과 따로 바꿔도 충돌하지 않게).
+# ════════════════════════════════════════════════════════════════════════════
+
+# 커뮤니티(네이버 카페) 화이트리스트 = cafeurl 슬러그. 2026-10-29 네이버 API HUB 로 술 검색어 10개 × 카페글 2,000건을
+#   실측해 글 수가 많은 순으로 고른 실제 술 커뮤니티(사케·전통주·위스키 범위 - 와인·맥주 카페는 운영자 범위 밖).
+#   주석은 그때 잰 글 수. 목록 밖 카페 글은 버린다(쇼핑·여행 카페 잡음 방지).
+DRINKS_COMMUNITY_CAFES: dict[str, str] = {
+    "whiskycognac": "위스키 코냑 클럽",       # 629
+    "oakmen": "숙성주작소",                    # 207
+    "sakelove": "내가사케",                    # 110
+    "kliquor": "우리술·국술",                  # 81
+    "wisewhisky": "슬기로운 위스키 생활",      # 42
+    "whiskylove9999": "위스키사랑",            # 29
+    "skietboy": "위스키 세션 아지트",          # 21
+    "enzymeschool": "발효아카데미",            # 17
+    "homebrewing": "술 만드는 사람들",         # 16
+    "soccer2016": "위스키 맛집",               # 14
+    "ajotssi": "위스키 아젓씨",                # 12
+    "sakeholics": "SakeHolics",                # 11
+}
+# 넓은 검색어 - 제품 이름이 아니라 주종·갈래로 훑는다(제품은 아래 사전으로 글에서 찾는다).
+DRINKS_COMMUNITY_QUERIES: tuple[str, ...] = (
+    "위스키", "싱글몰트", "버번", "하이볼", "사케", "니혼슈", "막걸리", "전통주", "증류식 소주", "약주",
+)
+# 주류 이슈(제품 아님) - 세금·규제·가격·수입·업계 소식. 뉴스 검색.
+DRINKS_ISSUE_QUERIES: tuple[str, ...] = (
+    "주세 개정", "주류 규제", "주류 광고 규제", "전통주 정책", "전통주 온라인 판매", "위스키 가격 인상",
+    "위스키 수입", "사케 수입", "막걸리 업계", "주류 출고가", "소주 가격",
+)
+DRINKS_TRENDS_DISPLAY: int = 100              # 검색 한 번에 받는 건수(네이버 상한 100)
+DRINKS_TRENDS_PAGES: int = 2                  # 검색어당 쪽 수(최신순 앞 200건) - 하루 한 번 돌리므로 그날 새 글을 덮는다
+DRINKS_TRENDS_ISSUE_DISPLAY: int = 13         # 검색어당 최신 기사 수 - 11개 검색어 × 13 = 143건 이하(하루 몇백 건씩 쌓여 같은 이야기가 겹치던 것을 줄인다)
+DRINKS_TRENDS_MAX_ISSUES_PER_RUN: int = 150   # 한 실행에서 기록하는 이슈 기사 상한
+DRINKS_TRENDS_INTERVAL_SEC: float = 3.0       # 요청 간격(안전 요청기가 DRINKS_MIN_INTERVAL_SEC 미만으로는 못 내린다)
+DRINKS_TRENDS_MAX_REQUESTS: int = 80          # 실행 1회 요청 상한(커뮤니티 10×2 + 이슈 11 = 31회 예상)
+DRINKS_TRENDS_MAX_POSTS_PER_RUN: int = 1500   # 한 실행에서 기록하는 글 상한(폭주 방지)
+DRINKS_TRENDS_SUMMARY_CHARS: int = 600        # 판정·저장에 쓰는 요약 길이 상한 - 검색 결과 요약일 뿐 본문 전문이 아니다
+# 반응 판정(Jev). 비용은 판정 1건 ≈ 입력 수백 토큰이라 한 실행 1센트 미만으로 예상 - 실측 전이라 미검증.
+DRINKS_TRENDS_JEV_QUESTIONS_PER_MENTION: int = 2   # 언급 하나에 '좋게 평가하나'·'나쁘게 평가하나' 두 질문(한 호출에 같이 보낸다)
+DRINKS_TRENDS_JEV_MAX_PER_RUN: int = 300      # 한 실행에서 Jev 에 묻는 질문 상한(언급 하나 = 2건 -> 150개 언급). 넘는 것은 다음 실행에 넘긴다
+# 점수 = p_good - p_bad (Jev 가 '좋게 평가한다'/'나쁘게 평가한다'고 본 확률의 차). 의견 없는 글(질문·구매글)은 둘 다 낮아 0 근처 = 중립. 화면의 긍정/부정 개수 문턱 - 0059 보기(drink_trend_products)와 같아야 한다.
+DRINKS_TRENDS_POSITIVE_ABOVE: float = 0.2
+DRINKS_TRENDS_NEGATIVE_BELOW: float = -0.2
+
+# 알려진 제품·브랜드 사전: 대표 이름 → 주종 + 글에서 찾을 표기들. 짧거나 흔한 낱말은 일부러 뺐다('지평'·'려'·'마르스' 등).
+#   영문(ASCII) 표기는 낱말 경계로, 한글·일본어는 부분 문자열로 찾는다. 긴 표기부터 찾고 찾은 자리는 다시 쓰지 않는다.
+#   사전에 없는 제품은 잡히지 않는다 - 커버리지는 운영 실측 전이라 미검증(운영자가 눈으로 보고 늘린다).
+DRINKS_PRODUCT_LEXICON: dict[str, dict] = {
+    # ── 위스키 ──
+    "발베니": {"category": "whisky", "aliases": ["발베니", "balvenie"]},
+    "맥캘란": {"category": "whisky", "aliases": ["맥캘란", "맥켈란", "맥칼란", "macallan"]},
+    "글렌피딕": {"category": "whisky", "aliases": ["글렌피딕", "글렌 피딕", "glenfiddich"]},
+    "글렌리벳": {"category": "whisky", "aliases": ["글렌리벳", "글렌 리벳", "glenlivet"]},
+    "글렌모렌지": {"category": "whisky", "aliases": ["글렌모렌지", "글렌 모렌지", "glenmorangie"]},
+    "글렌드로낙": {"category": "whisky", "aliases": ["글렌드로낙", "glendronach"]},
+    "글렌파클라스": {"category": "whisky", "aliases": ["글렌파클라스", "glenfarclas"]},
+    "라프로익": {"category": "whisky", "aliases": ["라프로익", "laphroaig"]},
+    "아드벡": {"category": "whisky", "aliases": ["아드벡", "ardbeg"]},
+    "라가불린": {"category": "whisky", "aliases": ["라가불린", "lagavulin"]},
+    "보모어": {"category": "whisky", "aliases": ["보모어", "bowmore"]},
+    "탈리스커": {"category": "whisky", "aliases": ["탈리스커", "talisker"]},
+    "하이랜드파크": {"category": "whisky", "aliases": ["하이랜드파크", "하이랜드 파크", "highland park"]},
+    "스프링뱅크": {"category": "whisky", "aliases": ["스프링뱅크", "springbank"]},
+    "달위니": {"category": "whisky", "aliases": ["달위니", "dalwhinnie"]},
+    "조니워커": {"category": "whisky", "aliases": ["조니워커", "조니 워커", "johnnie walker", "johnny walker"]},
+    "시바스리갈": {"category": "whisky", "aliases": ["시바스리갈", "시바스 리갈", "chivas regal"]},
+    "로얄살루트": {"category": "whisky", "aliases": ["로얄살루트", "로열살루트", "royal salute"]},
+    "제임슨": {"category": "whisky", "aliases": ["제임슨", "jameson"]},
+    "히비키": {"category": "whisky", "aliases": ["히비키", "hibiki"]},
+    "야마자키": {"category": "whisky", "aliases": ["야마자키", "yamazaki"]},
+    "하쿠슈": {"category": "whisky", "aliases": ["하쿠슈", "hakushu"]},
+    "산토리 가쿠빈": {"category": "whisky", "aliases": ["산토리 가쿠빈", "산토리가쿠빈", "가쿠빈", "kakubin"]},
+    "닛카": {"category": "whisky", "aliases": ["닛카", "nikka"]},
+    "요이치": {"category": "whisky", "aliases": ["요이치", "yoichi"]},
+    "치치부": {"category": "whisky", "aliases": ["치치부", "chichibu"]},
+    "카발란": {"category": "whisky", "aliases": ["카발란", "kavalan"]},
+    "짐빔": {"category": "whisky", "aliases": ["짐빔", "짐 빔", "jim beam"]},
+    "메이커스마크": {"category": "whisky", "aliases": ["메이커스마크", "메이커스 마크", "maker's mark", "makers mark"]},
+    "버팔로트레이스": {"category": "whisky", "aliases": ["버팔로트레이스", "버팔로 트레이스", "buffalo trace"]},
+    "와일드터키": {"category": "whisky", "aliases": ["와일드터키", "와일드 터키", "wild turkey"]},
+    "우드포드 리저브": {"category": "whisky", "aliases": ["우드포드 리저브", "우드포드리저브", "woodford reserve"]},
+    "포로지스": {"category": "whisky", "aliases": ["포로지스", "포 로지스", "four roses"]},
+    "불렛": {"category": "whisky", "aliases": ["불렛 버번", "불렛버번", "bulleit"]},
+    "잭다니엘": {"category": "whisky", "aliases": ["잭다니엘", "잭 다니엘", "jack daniel"]},
+    "엘리야 크레이그": {"category": "whisky", "aliases": ["엘리야 크레이그", "elijah craig"]},
+    "김창수 위스키": {"category": "whisky", "aliases": ["김창수 위스키", "김창수위스키", "김창수 증류소", "김창수 싱글몰트"]},
+    "기원 위스키": {"category": "whisky", "aliases": ["기원 위스키", "기원위스키", "기원 싱글몰트"]},
+    # ── 사케 ──
+    "닷사이": {"category": "sake", "aliases": ["닷사이", "獺祭", "dassai"]},
+    "쿠보타": {"category": "sake", "aliases": ["쿠보타", "구보타", "kubota"]},
+    "핫카이산": {"category": "sake", "aliases": ["핫카이산", "八海山", "hakkaisan"]},
+    "쥬욘다이": {"category": "sake", "aliases": ["쥬욘다이", "주욘다이", "十四代", "juyondai"]},
+    "아라마사": {"category": "sake", "aliases": ["아라마사", "aramasa"]},
+    "신세이": {"category": "sake", "aliases": ["신세이", "shinsei"]},
+    "쿠도키조즈": {"category": "sake", "aliases": ["쿠도키조즈", "구도키조즈", "口説き上手", "kudokijozu"]},
+    "하쿠츠루": {"category": "sake", "aliases": ["하쿠츠루", "hakutsuru"]},
+    "겟케이칸": {"category": "sake", "aliases": ["겟케이칸", "月桂冠", "gekkeikan"]},
+    "오토코야마": {"category": "sake", "aliases": ["오토코야마", "otokoyama"]},
+    "기쿠마사무네": {"category": "sake", "aliases": ["기쿠마사무네", "키쿠마사무네", "菊正宗", "kikumasamune"]},
+    "오제키": {"category": "sake", "aliases": ["오제키", "ozeki"]},
+    "나베시마": {"category": "sake", "aliases": ["나베시마", "nabeshima"]},
+    "사와노츠루": {"category": "sake", "aliases": ["사와노츠루", "澤乃井", "sawanotsuru"]},
+    # ── 전통주 ──
+    "지평막걸리": {"category": "traditional", "aliases": ["지평막걸리", "지평 막걸리", "지평생막걸리"]},
+    "장수막걸리": {"category": "traditional", "aliases": ["장수막걸리", "장수 막걸리", "장수생막걸리"]},
+    "느린마을": {"category": "traditional", "aliases": ["느린마을", "느린 마을 막걸리"]},
+    "복순도가": {"category": "traditional", "aliases": ["복순도가", "복순 도가"]},
+    "해창막걸리": {"category": "traditional", "aliases": ["해창막걸리", "해창 막걸리"]},
+    "화요": {"category": "traditional", "aliases": ["화요", "hwayo"]},
+    "일품진로": {"category": "traditional", "aliases": ["일품진로", "일품 진로"]},
+    "안동소주": {"category": "traditional", "aliases": ["안동소주", "안동 소주"]},
+    "문배술": {"category": "traditional", "aliases": ["문배술", "문배주"]},
+    "이강주": {"category": "traditional", "aliases": ["이강주"]},
+    "한산소곡주": {"category": "traditional", "aliases": ["한산소곡주", "한산 소곡주"]},
+    "원소주": {"category": "traditional", "aliases": ["원소주"]},
+    "토끼소주": {"category": "traditional", "aliases": ["토끼소주", "토끼 소주"]},
+    "대대포": {"category": "traditional", "aliases": ["대대포"]},
+    "국순당": {"category": "traditional", "aliases": ["국순당"]},
+    "백세주": {"category": "traditional", "aliases": ["백세주"]},
+    "산사춘": {"category": "traditional", "aliases": ["산사춘"]},
+    "매화수": {"category": "traditional", "aliases": ["매화수"]},
+    "풍정사계": {"category": "traditional", "aliases": ["풍정사계"]},
+    "삼해소주": {"category": "traditional", "aliases": ["삼해소주", "삼해주"]},
+    "감홍로": {"category": "traditional", "aliases": ["감홍로"]},
+    "죽력고": {"category": "traditional", "aliases": ["죽력고"]},
+    "계명주": {"category": "traditional", "aliases": ["계명주"]},
+    "송절주": {"category": "traditional", "aliases": ["송절주"]},
+    "추성주": {"category": "traditional", "aliases": ["추성주"]},
+    "이화주": {"category": "traditional", "aliases": ["이화주"]},
+    "담솔": {"category": "traditional", "aliases": ["담솔 소주", "담솔소주"]},
+    "서울의밤": {"category": "traditional", "aliases": ["서울의밤", "서울의 밤"]},
+}
+# 사전 표기를 포함하지만 그 술이 아닌 낱말 - 찾기 전에 지운다('화요' → '화요일').
+DRINKS_PRODUCT_FALSE_FRIENDS: tuple[str, ...] = ("화요일", "화요회", "화요모임", "화요 모임", "화요 정모")

@@ -58,3 +58,9 @@ jobs:
           else
             python -m engine.drinks_collect
           fi
+      # 주류 동향(2026-10-29): 술 커뮤니티 언급 순위·반응 점수·주류 이슈. 실패해도 수집 결과를 가리지 않는다(continue-on-error).
+      #   LLM 은 반응 판정(Jev)만 — JEV 키가 없으면 점수는 '판정 없음'(null)으로 남는다. docs/deviation-drinks-trends.md
+      - name: trends
+        if: ${{ !cancelled() }}   # 수집 단계가 일부 실패해도 동향은 돈다
+        continue-on-error: true
+        run: python -m engine.drinks_trends
