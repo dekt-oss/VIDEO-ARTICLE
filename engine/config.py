@@ -4429,8 +4429,9 @@ DRINKS_DEMAND_BONUS_MAX: int = 15
 # Jev 최종 판정(2026-10-29): 새 후보를 만들기 전 대표 질문을 한 번 묻는다. 실패·꺼짐이면 만든다(fail-open).
 DRINKS_DISCOVERY_JEV_MIN_P: float = 0.5
 DRINKS_DISCOVERY_JEV_MAX_PER_RUN: int = 60
-# True 면 Jev 가 거른 묶음을 '기각된 후보'로 남겨 자료를 발견함 앞줄에서 치운다(기본 False=만들지 않는다 — 다음 실행에 같은 자료를 또 묻는다).
-DRINKS_DISCOVERY_JEV_PARK_REJECTED: bool = _get_bool("DRINKS_DISCOVERY_JEV_PARK_REJECTED", False)
+# True(기본)면 Jev 가 거른 묶음을 '기각된 후보'로 남긴다 — 열린 후보는 아니고(운영자가 다시 열 수 있다), 자료가 발견함 앞줄에서 빠져 다시 판정되지 않는다.
+#   False 면 후보를 만들지 않아 같은 자료를 매 실행 다시 묻는다(상한 60건이 거른 것으로 찰 수 있다).
+DRINKS_DISCOVERY_JEV_PARK_REJECTED: bool = _get_bool("DRINKS_DISCOVERY_JEV_PARK_REJECTED", True)
 
 # 유료 생성 시험(2026-10-24, 운영자 결재 "승인한다 진행해"). docs/deviation-drinks-paid-pilot.md
 #   단계마다 결재(0054 drink_spend_approvals)를 받고 결재 금액이 상한이다. 아래 단가는 0054 drinks_spend_limits 와

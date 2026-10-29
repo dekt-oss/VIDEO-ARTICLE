@@ -313,9 +313,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         log.info("drinks: 예약 실행 %d건 생성", schedule_runs(rpc, today_local()))
     results = run_queue(rpc, worker_id=config.WORKER_ID)
     try:
-        from .drinks_discover import suggest_candidates
+        from .drinks_discover import read_candidate_interests, suggest_candidates
 
-        log.info("drinks: 소재 후보 묶기 %s", suggest_candidates(rpc))  # 규칙만(LLM 0회). 승인·편성은 사람이 한다
+        log.info("drinks: 소재 후보 묶기 %s", suggest_candidates(rpc, read_candidate_interests))  # 규칙만(LLM 0회). 승인·편성은 사람이 한다
     except Exception:  # noqa: BLE001 — 후보 묶기 실패가 수집 결과를 가리지 않게 따로 기록
         log.exception("drinks: 소재 후보 묶기 실패")
     bad = [r for r in results if r.get("status") in ("failed", "lease_lost")]

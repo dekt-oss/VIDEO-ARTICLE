@@ -390,6 +390,9 @@ CONNECTORS: dict[str, Callable[[SafeFetcher, dict, Optional[datetime], int], Bat
 
 # ── 실행 처리(발견용 수집원) ──
 
+QUESTION_REQUIRED_PLATFORMS = ("naver_cafe", "naver_blog", "youtube")
+
+
 class DiscoveryProcessor:
     def __init__(self, run: dict[str, Any], rpc, fetcher: SafeFetcher):
         self.run, self.rpc, self.fetcher = run, rpc, fetcher
@@ -415,9 +418,16 @@ class DiscoveryProcessor:
                 raise FetchError("method_unsupported", f"발견 채널이 아닙니다: {self.src.get('platform')}")
             batch = conn(self.fetcher, self.src.get("parser_config") or {}, since, limit)
             self.rpc("drinks_heartbeat_run", self._lease({"listed_count": len(batch.found), "request_count": self.fetcher.requests}))
+            no_question = 0
             for fd in batch.found[:limit]:
+                item = fd.item()
+                # 네이버·유튜브는 질문 문장이 후보 자격(술 낱말 + 길이 상한)을 갖춘 글만 저장한다 — 안 그러면 후보가 될 수 없는 자료가
+                #   발견함 조회 창(오래된 순 500건)을 채워 새 자료를 밀어낸다. Stack Exchange 는 종전대로 다 저장한다.
+                if fd.platform in QUESTION_REQUIRED_PLATFORMS and not good_questions(item):
+                    no_question += 1
+                    continue
                 try:
-                    self.rpc("drinks_collect_discovery", self._lease({"item": fd.item()}))
+                    self.rpc("drinks_collect_discovery", self._lease({"item": item}))
                 except DbError as exc:
                     if exc.code == "lease_lost":
                         return {"status": "lease_lost"}
@@ -429,6 +439,9 @@ class DiscoveryProcessor:
                         break
                     raise
             batch.incomplete += max(0, len(batch.found) - limit)
+            if no_question:
+                log.info("drinks: 질문 없음 제외 %d건(받은 글 %d건 중) — 질문 문장에 술 낱말이 없거나 너무 길어 저장하지 않았다",
+                         no_question, len(batch.found))
         except FetchError as exc:
             if exc.code == "request_cap":
                 aborted = (exc.code, exc.message)
@@ -670,7 +683,25 @@ def _cand_cell(c: dict) -> tuple[Optional[str], Optional[str]]:
     return group_cell(c["items"]) if c.get("items") else question_cell(c.get("key_question"))
 
 
-def suggest_candidates(rpc) -> dict[str, int]:
+def read_candidate_interests() -> dict[str, dict]:
+    """열린 후보의 interest(jsonb) - 점수를 다시 계산해도 Jev 기록을 잇기 위해 읽는다. 못 읽으면 빈 dict(기록만 잃고 수집은 계속)."""
+    try:
+        from . import db
+        rows = db.select_all("drink_discovery_candidates", "id,interest", key=("id",), where=lambda q: q.eq("status", "suggested"))
+        return {r["id"]: r.get("interest") or {} for r in rows}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("drinks: 후보 interest 조회 실패(Jev 기록은 이번 갱신에서 이어지지 않는다): %s", exc)
+        return {}
+
+
+def _keep_jev(card: dict, old: Optional[dict]) -> None:
+    """다시 만든 카드의 interest 에 기존 후보의 Jev 기록(jev·jev_p)을 합친다 - 덮어쓰지 않는다."""
+    for k in ("jev", "jev_p"):
+        if old and k in old:
+            card["interest"][k] = old[k]
+
+
+def suggest_candidates(rpc, read_interests: Optional[Callable[[], dict[str, dict]]] = None) -> dict[str, int]:
     back = rpc("drinks_discovery_backlog", {}) or {}
     items, cands, topics = back.get("items") or [], back.get("candidates") or [], back.get("topics") or []
     made = added = jev_rejected = jev_unavailable = 0
@@ -678,6 +709,18 @@ def suggest_candidates(rpc) -> dict[str, int]:
     eligible = [it for it in items if good_questions(it)]
     skipped = len(items) - len(eligible)
     judge = JevJudge()
+    old_interest: dict[str, dict] = {}
+    if read_interests is not None:
+        try:
+            old_interest = read_interests() or {}
+        except Exception as exc:  # noqa: BLE001
+            log.warning("drinks: 후보 interest 조회 실패(무시): %s", exc)
+
+    fresh: dict[str, dict] = {}   # 이번 실행에 만든 후보의 Jev 기록(아래 다시 계산 때 잇는다)
+
+    def prior(c: dict) -> Optional[dict]:
+        return c.get("interest") or old_interest.get(c["id"]) or fresh.get(c["id"])
+
     for g in cluster(eligible):
         first = build_card(g, topics)
         cell = group_cell(g)
@@ -687,6 +730,7 @@ def suggest_candidates(rpc) -> dict[str, int]:
         park: Optional[float] = None
         if target:
             card["key_question"] = target["key_question"]
+            _keep_jev(card, prior(target))
         else:
             status, p = judge.verdict(card["key_question"])
             card["interest"]["jev"] = "ok" if status == "rejected" else status   # 기각돼도 판정은 '했다'
@@ -705,12 +749,13 @@ def suggest_candidates(rpc) -> dict[str, int]:
         if r.get("candidate_id"):
             if park is not None:   # 기각된 묶음은 열린 후보가 아니라 '기각' 상태로 남겨 자료를 다음 실행의 앞줄에서 치운다
                 rpc("drinks_candidate_action", {"candidate_id": r["candidate_id"], "expected_version": 1, "action": "dismiss",
-                                                "reason": f"Jev 기각(p={park:.2f}, 질문 지도 2026-10-29)"})
+                                                "reason": f"Jev 판정 미달 p={park:.2f} (질문 지도 2026-10-29)"})
             elif target:
                 added += 1
                 target["items"] = (target.get("items") or []) + g
             else:
                 made += 1
+                fresh[r["candidate_id"]] = {k: card["interest"][k] for k in ("jev", "jev_p") if k in card["interest"]}
                 cands.append({"id": r["candidate_id"], "key_question": card["key_question"], "items": list(g)})
     # 합치기(운영자)로 자료가 옮겨진 후보도 다음 묶기 때 자료 전체로 다시 계산한다.
     refreshed = 0
@@ -718,6 +763,7 @@ def suggest_candidates(rpc) -> dict[str, int]:
         if c.get("items"):
             card = build_card(c["items"], topics)
             card.pop("key_question", None)   # 대표 질문은 운영자가 고친 것일 수 있다 — 유지
+            _keep_jev(card, prior(c))
             rpc("drinks_suggest_candidate", {"item_ids": [], "candidate_id": c["id"], **card})
             refreshed += 1
     return {"new": made, "added": added, "skipped_items": skipped, "refreshed": refreshed,

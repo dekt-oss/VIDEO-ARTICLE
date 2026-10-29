@@ -103,5 +103,6 @@
 **스크립트와 순서**(기본은 미리보기, `--apply` 가 있어야 쓴다): ① `python -m scripts.drinks_question_map_sources --apply`(옛 네이버 수집원 종료·새 6개 등록·검증 요청) → 워크플로가 검증 처리 → ② 같은 스크립트 `--activate --apply`(검증 성공분만 이용 조건 확인·활성화·첫 수집) → ③ `python -m scripts.drinks_dismiss_offmap_candidates [--jev] --apply`(술 낱말 없음·너무 긴 열린 후보 기각, 되돌릴 수 있음).
 **미검증**
 - 새 수집원의 실제 수집·Jev 판정은 운영에서 안 돌려 봤다(테스트는 가짜 응답). 첫 수집 뒤 후보 질을 사람이 본다.
-- `rubric` 은 글자 칸이라 칸 이름표·Jev 기록을 `interest`(jsonb)에 넣었다. 후보 점수를 다시 계산할 때 칸 이름표는 되살아나지만 Jev 기록은 지워진다.
-- Jev 가 거른 자료는 후보가 없어 발견함에 남고 다음 실행에서 또 판정된다. 쌓이면 상한이 거른 것으로 찰 수 있다 — 그때 `DRINKS_DISCOVERY_JEV_PARK_REJECTED=1`. `drinks_discovery_backlog` 가 오래된 순 500건만 주는 것도 같은 위험(정렬 변경은 마이그레이션).
+- Jev 가 거른 묶음은 '기각된 후보'(사유 "Jev 판정 미달 p=…")로 남아 다시 판정되지 않는다. 운영자가 다시 열 수 있다. 끄려면 `DRINKS_DISCOVERY_JEV_PARK_REJECTED=0`.
+- 네이버·유튜브는 질문 문장이 후보 자격(술 낱말 + 길이)을 못 갖춘 글을 **저장하지 않는다**(로그 "질문 없음 제외 N건"). 백로그(오래된 순 500건)가 못 쓸 자료로 차는 것을 막는다. Stack Exchange 는 종전대로.
+- 후보 점수를 다시 계산할 때 `interest` 는 새로 만들되 기존 `jev`·`jev_p` 는 이어 붙인다(워커가 후보 표에서 읽는다).

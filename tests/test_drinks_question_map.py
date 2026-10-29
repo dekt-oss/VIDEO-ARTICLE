@@ -224,7 +224,8 @@ def jev(monkeypatch):
 QS = [_it(1, "사케 개봉 후 냉장 보관 기간이 얼마나 되나요?"), _it(2, "위스키 12년은 무슨 뜻인가요?")]
 
 
-def test_jev_below_threshold_does_not_create_the_candidate(jev):
+def test_jev_below_threshold_does_not_create_an_open_candidate_when_parking_is_off(jev, monkeypatch):
+    monkeypatch.setattr(config, "DRINKS_DISCOVERY_JEV_PARK_REJECTED", False)
     jev.p = 0.2
     rpc = Rec([dict(x) for x in QS])
     out = dd.suggest_candidates(rpc)
@@ -282,16 +283,111 @@ def test_open_candidate_in_another_cell_is_not_a_merge_target(jev):
     assert out["added"] == 0 and out["new"] == 1
 
 
-def test_parked_rejections_are_dismissed_not_left_open(jev, monkeypatch):
-    monkeypatch.setattr(config, "DRINKS_DISCOVERY_JEV_PARK_REJECTED", True)
+def test_jev_rejections_are_parked_as_dismissed_candidates_by_default(jev):
+    assert config.DRINKS_DISCOVERY_JEV_PARK_REJECTED is True
     jev.p = 0.1
     rpc = Rec([dict(QS[0])])
     out = dd.suggest_candidates(rpc)
     dismissed = [p for fn, p in rpc.calls if fn == "drinks_candidate_action"]
     assert out["new"] == 0 and out["jev_rejected"] == 1 and len(dismissed) == 1 and dismissed[0]["action"] == "dismiss"
-    assert "Jev" in dismissed[0]["reason"]
+    assert dismissed[0]["reason"].startswith("Jev 판정 미달 p=0.10") and dismissed[0]["expected_version"] == 1
+    assert len(rpc.made()) == 1, "자료를 후보에 묶어 발견함 앞줄에서 치운다(그래야 다시 판정하지 않는다)"
+    # 다음 실행: 그 자료는 더 이상 백로그에 없다 -> 다시 묻지 않는다
+    jev.asked.clear()
+    dd.suggest_candidates(Rec([]))
+    assert jev.asked == []
 
 
+def test_refresh_keeps_the_jev_record_of_the_existing_candidate(jev):
+    old = [_it(10 + i, "사케 개봉 후 냉장 보관 기간이 얼마나 되나요?") for i in range(2)]
+    cand = {"id": "c1", "key_question": "사케 개봉 후 냉장 보관 기간이 얼마나 되나요?", "items": old}
+    rpc = Rec([], [cand])
+    dd.suggest_candidates(rpc, lambda: {"c1": {"jev": "ok", "jev_p": 0.77, "items": 99}})
+    refresh = next(p for fn, p in rpc.calls if fn == "drinks_suggest_candidate" and not p["item_ids"])
+    assert refresh["interest"]["jev"] == "ok" and refresh["interest"]["jev_p"] == 0.77
+    assert refresh["interest"]["items"] == 2, "나머지 숫자는 자료 전체로 새로 계산한다(Jev 기록만 잇는다)"
+    # 읽기 실패·읽기 함수 없음은 기록만 이어지지 않을 뿐 갱신은 한다
+    for reader in (None, lambda: (_ for _ in ()).throw(RuntimeError("x"))):
+        r = Rec([], [dict(cand)])
+        dd.suggest_candidates(r, reader)
+        assert any(fn == "drinks_suggest_candidate" and not p["item_ids"] and "jev" not in p["interest"] for fn, p in r.calls)
+
+
+def test_adding_to_an_open_candidate_keeps_its_jev_record_too(jev):
+    old = [_it(10 + i, "사케 개봉 후 냉장 보관 기간이 얼마나 되나요?") for i in range(2)]
+    cand = {"id": "c1", "key_question": "사케 개봉 후 냉장 보관 기간이 얼마나 되나요?", "items": old, "interest": {"jev": "ok", "jev_p": 0.9}}
+    rpc = Rec([_it(1, "사케 개봉하고 냉장 보관 기간은 얼마나 되나요?")], [cand])
+    dd.suggest_candidates(rpc)
+    add = next(p for fn, p in rpc.calls if fn == "drinks_suggest_candidate" and p["item_ids"])
+    assert add["interest"]["jev"] == "ok" and add["interest"]["jev_p"] == 0.9
+
+
+def test_candidate_made_this_run_keeps_its_jev_record_when_recomputed(jev):
+    jev.p = 0.66
+    first = dict(QS[0])
+    calls = []
+    n = {"backlog": 0}
+
+    def rpc(fn, p):
+        calls.append((fn, p))
+        if fn == "drinks_discovery_backlog":
+            n["backlog"] += 1
+            if n["backlog"] == 1:
+                return {"items": [first], "candidates": [], "topics": []}
+            return {"items": [], "topics": [], "candidates": [{"id": "cNEW", "key_question": first["title"], "items": [first]}]}
+        return {"candidate_id": "cNEW"}
+    dd.suggest_candidates(rpc)
+    refresh = next(p for fn, p in calls if fn == "drinks_suggest_candidate" and not p["item_ids"])
+    assert refresh["candidate_id"] == "cNEW" and refresh["interest"]["jev"] == "ok" and refresh["interest"]["jev_p"] == 0.66
+
+
+# ── 질문 없는 자료는 저장하지 않는다(백로그 창 보호) ──
+
+def _run(platform):
+    return {"run_id": "r", "lease_token": "t", "mode": "collect", "cursor_from": None,
+            "limits": {"max_items": 20, "max_bodies": 0, "interval_sec": 3, "max_requests": 20},
+            "source": {"id": "s", "name": "n", "method": "api", "purpose": "discovery", "platform": platform,
+                       "parser_config": {"queries": ["막걸리"], "kinds": ["blog"]}, "allowed_hosts": HUB,
+                       "item_hosts": ["blog.naver.com"]}}
+
+
+def test_naver_items_without_a_qualifying_question_are_not_stored(naver_keys, monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(config, "DRINKS_NAVER_SORT", "sim")
+    posts = [
+        {"title": "막걸리 유통기한 지나도 되나요?", "description": "", "link": "https://blog.naver.com/a/1", "postdate": "20261001"},   # 통과
+        {"title": "막걸리 후기", "description": "맛있어요 또 사 먹을 거예요", "link": "https://blog.naver.com/a/2", "postdate": "20261001"},   # 질문 없음
+        {"title": "오늘 점심", "description": "이거 지나도 마셔도 되나요?", "link": "https://blog.naver.com/a/3", "postdate": "20261001"},   # 술 낱말은 제목에만... 없음
+        {"title": "막걸리 이야기", "description": "막걸리 " + "가나다라마바사 " * 12 + "궁금합니다", "link": "https://blog.naver.com/a/4", "postdate": "20261001"},   # 너무 긴 문장
+    ]
+    calls = []
+
+    def rpc(fn, p):
+        calls.append((fn, p))
+        return {"status": "finished", **p} if fn == "drinks_finish_run" else {}
+    with caplog.at_level(logging.INFO):
+        out = dd.DiscoveryProcessor(_run("naver"), rpc, fetcher(lambda r: js({"items": posts}))).process()
+    stored = [p["item"]["canonical_url"] for fn, p in calls if fn == "drinks_collect_discovery"]
+    assert stored == ["https://blog.naver.com/a/1"]
+    assert "질문 없음 제외 2건" in caplog.text, "커넥터가 술과 무관한 글(3번)을 먼저 거르고, 남은 3건 중 질문 없음(2·4번)을 제외"
+    assert out["parsed_count"] == 4
+
+
+def test_stackexchange_items_are_stored_as_before_even_without_a_drink_word_in_the_question(monkeypatch):
+    se = {"items": [{"question_id": 2, "link": "https://alcohol.stackexchange.com/questions/2/x", "title": "Johnnie Walker Green vs Gold Label?",
+                     "body": "<p>x</p>", "creation_date": 1622853616, "view_count": 1}], "has_more": False}
+    run = {**_run("stackexchange"), "source": {**_run("stackexchange")["source"], "allowed_hosts": ["api.stackexchange.com"],
+                                                "parser_config": {"queries": ["whisky"]}}}
+    calls = []
+
+    def rpc(fn, p):
+        calls.append((fn, p))
+        return {"status": "finished", **p} if fn == "drinks_finish_run" else {}
+    handler = lambda r: httpx.Response(200, headers={"content-type": "application/json"}, content=json.dumps(se).encode())  # noqa: E731
+    f = SafeFetcher(["api.stackexchange.com"], interval_sec=3, max_requests=50, transport=httpx.MockTransport(handler),
+                    resolver=lambda h, p: ["8.8.8.8"], verify_peer=False, sleep=lambda s: None)
+    dd.DiscoveryProcessor(run, rpc, f).process()
+    assert len([1 for fn, _ in calls if fn == "drinks_collect_discovery"]) == 1
 def test_items_whose_question_has_no_drink_word_stay_in_the_inbox(jev):
     it = _it(1, "이거 유통기한 지나도 마셔도 되나요?")
     it["title"] = "막걸리 이야기"
