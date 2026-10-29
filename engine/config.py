@@ -4365,6 +4365,73 @@ DRINKS_NAVER_MAX_DISPLAY: int = 30   # 네이버 검색 API 가 한 번에 주�
 #   검색 카테고리 통합 월 775,000건 한도에 닿으면 자동 차단 — 같은 키를 쓰는 서비스끼리 합산된다.
 DRINKS_NAVER_SEARCH_BASE: str = "https://naverapihub.apigw.ntruss.com/search/v1"
 
+# ── 질문 지도(2026-10-29). docs/주류_질문지도_v1_2026-10-29.md · docs/deviation-drinks-discovery.md ──
+#   "술 낱말로 최근 글 긁기" 대신 주종 3 × 질문 유형 8 = 24칸, 칸마다 사람이 묻는 모양의 검색어 2개(총 48), 정확도순 검색.
+#   (주종 키, 질문 유형 키, 질문 유형 이름, [검색어 2개]). 이 표가 유일한 정본이다 — 수집원 등록 스크립트·칸 이름표가 여기서 읽는다.
+#   검색어 옆 숫자(글 20개 중 술 질문이 담긴 글 수)는 문서에 있다.
+DRINKS_QUESTION_MAP: list[tuple[str, str, str, list[str]]] = [
+    ("sake", "storage", "보관·유통기한", ["사케 개봉 후 보관", "사케 유통기한"]),
+    ("sake", "selection", "고르기·입문", ["사케 뭐 마셔야", "사케 고르는 법"]),
+    ("sake", "difference", "차이", ["준마이 다이긴조 차이", "사케 청주 차이"]),
+    ("sake", "howto", "마시는 법·온도", ["사케 데워 마시는", "사케 차갑게 마셔야"]),
+    ("sake", "pairing", "음식 궁합", ["사케 회 어울리나요", "사케랑 먹기 좋은"]),
+    ("sake", "label", "라벨 읽기", ["사케 라벨 보는 법", "정미보합 뜻"]),
+    ("sake", "misconception", "오해", ["사케 오래될수록", "사케 숙취 없다"]),
+    ("sake", "making", "만드는 법", ["사케 만드는 과정", "사케 쌀 깎는 이유"]),
+    ("traditional", "storage", "보관·유통기한", ["막걸리 유통기한", "막걸리 보관 방법"]),
+    ("traditional", "selection", "고르기·입문", ["막걸리 추천", "전통주 입문 추천"]),
+    ("traditional", "difference", "차이", ["생막걸리 살균막걸리 차이", "약주 청주 차이"]),
+    ("traditional", "howto", "마시는 법·온도", ["막걸리 흔들어 마시는", "증류식 소주 마시는 법"]),
+    ("traditional", "pairing", "음식 궁합", ["막걸리 파전 왜", "막걸리 안주 추천"]),
+    ("traditional", "label", "라벨 읽기", ["막걸리 성분표", "막걸리 아스파탐"]),
+    ("traditional", "misconception", "오해", ["막걸리 살찌는", "막걸리 숙취 이유"]),
+    ("traditional", "making", "만드는 법", ["누룩이란", "막걸리 왜 시큼"]),
+    ("whisky", "storage", "보관·유통기한", ["위스키 유통기한", "위스키 개봉 후 보관"]),
+    ("whisky", "selection", "고르기·입문", ["위스키 뭐부터", "위스키 고르는 법"]),
+    ("whisky", "difference", "차이", ["싱글몰트 블렌디드 차이", "버번 스카치 차이"]),
+    ("whisky", "howto", "마시는 법·온도", ["위스키 물 타는 이유", "위스키 니트 온더락"]),
+    ("whisky", "pairing", "음식 궁합", ["위스키 어울리는 음식", "위스키 안주"]),
+    ("whisky", "label", "라벨 읽기", ["위스키 12년 의미", "캐스크 스트렝스 뜻"]),
+    ("whisky", "misconception", "오해", ["위스키 오래될수록 좋은", "위스키 병에서도 숙성"]),
+    ("whisky", "making", "만드는 법", ["위스키 캐스크 숙성", "위스키 만드는 과정"]),
+]
+DRINKS_CATEGORY_KO: dict[str, str] = {"sake": "사케", "traditional": "전통주", "whisky": "위스키"}
+# 질문 지도 수집원 이름의 머리말 — 이 머리말로 시작하지 않는 네이버 발견 수집원은 교체 대상이다(scripts/drinks_question_map_sources.py).
+DRINKS_QUESTION_MAP_SOURCE_PREFIX: str = "네이버 질문지도"
+# 수집원 하나는 검색어 10개까지(0052) — 주종마다 4칸(8개)씩 둘로 나눈다. 순서는 위 표의 질문 유형 순서.
+DRINKS_QUESTION_MAP_SPLIT: tuple[tuple[str, ...], ...] = (
+    ("storage", "selection", "difference", "howto"), ("pairing", "label", "misconception", "making"))
+DRINKS_NAVER_SORT: str = "sim"            # sim=정확도순(질문 지도), date=최신순(워처마크·날짜 필터를 쓰는 옛 방식)
+DRINKS_NAVER_PAGE_ROTATION: int = 5       # 정확도순은 시간순이 아니라서, 날짜 순번으로 시작 위치를 돌려 매일 다른 결과를 본다
+DRINKS_NAVER_MAX_START: int = 1000        # 네이버 검색 API 의 start 상한
+# 질문 문장 길이(2026-10-29): 네이버 요약은 문장부호가 없어 문단 전체가 한 "질문"으로 잡혔다. 한글·한자·가나 문장은 60자, 그 밖은 140자까지만 질문.
+DRINKS_QUESTION_MAX_CHARS: int = 60
+DRINKS_QUESTION_MAX_CHARS_LATIN: int = 140
+# 질문 칸 이름표(규칙, 0원). 앞에 있는 질문 유형이 이긴다 — "막걸리 안주 추천" 은 고르기가 아니라 음식 궁합, "증류식 소주 마시는 법" 은 만들기가 아니라 마시는 법.
+DRINKS_CELL_KIND_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "storage": ("보관", "유통기한", "개봉", "상온", "냉장", "상했"),
+    "label": ("라벨", "뜻", "의미", "성분", "정미보합", "아스파탐", "12년", "18년", "21년"),
+    "pairing": ("안주", "어울리", "궁합", "페어링", "파전", "먹기 좋"),
+    "difference": ("차이", "다른", "다를", "vs", "비교"),
+    "misconception": ("숙취", "살찌", "칼로리", "오래될수록", "숙성빨", "병에서"),
+    "howto": ("데워", "온도", "마시는", "흔들", "니트", "온더락", "물 타", "차갑게"),
+    "making": ("만드는", "만들어", "발효", "누룩", "증류", "캐스크", "깎는", "시큼"),
+    "selection": ("추천", "뭐부터", "뭐 마", "고르", "입문", "처음"),
+}
+DRINKS_CELL_CATEGORY_TERMS: dict[str, tuple[str, ...]] = {
+    "sake": ("사케", "니혼슈", "일본주", "준마이", "긴조", "정미", "日本酒", "sake"),
+    "traditional": ("막걸리", "전통주", "약주", "소주", "탁주", "동동주", "증류식", "누룩", "makgeolli", "soju"),
+    "whisky": ("위스키", "버번", "스카치", "싱글몰트", "몰트", "캐스크", "하이볼", "whisky", "whiskey", "bourbon", "scotch"),
+}
+# 수요 가점(2026-10-29): 같은 칸에서 서로 다른 글이 같은 것을 물으면 임시 점수가 오른다. 추가 글 하나당 +N, 상한 M. 총점은 100 을 넘지 않는다.
+DRINKS_DEMAND_BONUS_PER_ITEM: int = 3
+DRINKS_DEMAND_BONUS_MAX: int = 15
+# Jev 최종 판정(2026-10-29): 새 후보를 만들기 전 대표 질문을 한 번 묻는다. 실패·꺼짐이면 만든다(fail-open).
+DRINKS_DISCOVERY_JEV_MIN_P: float = 0.5
+DRINKS_DISCOVERY_JEV_MAX_PER_RUN: int = 60
+# True 면 Jev 가 거른 묶음을 '기각된 후보'로 남겨 자료를 발견함 앞줄에서 치운다(기본 False=만들지 않는다 — 다음 실행에 같은 자료를 또 묻는다).
+DRINKS_DISCOVERY_JEV_PARK_REJECTED: bool = _get_bool("DRINKS_DISCOVERY_JEV_PARK_REJECTED", False)
+
 # 유료 생성 시험(2026-10-24, 운영자 결재 "승인한다 진행해"). docs/deviation-drinks-paid-pilot.md
 #   단계마다 결재(0054 drink_spend_approvals)를 받고 결재 금액이 상한이다. 아래 단가는 0054 drinks_spend_limits 와
 #   같아야 하고(tests/test_drinks_paid.py 가 대조), 엔진 정가표(PRICING)의 해당 모델 값과도 같아야 한다.

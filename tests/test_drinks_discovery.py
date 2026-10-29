@@ -219,7 +219,7 @@ def test_suggest_skips_items_without_any_signal():
                     "candidates": [], "topics": []}
         return {"candidate_id": "c"}
     out = dd.suggest_candidates(rpc)
-    assert out == {"new": 0, "added": 0, "skipped_items": 1, "refreshed": 0}
+    assert out == {"new": 0, "added": 0, "skipped_items": 1, "refreshed": 0, "jev_rejected": 0, "jev_unavailable": 0}
     assert [fn for fn, _ in calls] == ["drinks_discovery_backlog", "drinks_discovery_backlog"], "후보 생성 없음(다시 계산 조회만)"
 
 
@@ -263,6 +263,7 @@ def test_discovery_processor_records_items_and_api_key_missing_fails_validation(
 def test_naver_keeps_same_day_posts_after_the_watermark(monkeypatch):
     """게시일이 날짜뿐이라 시각 비교로 같은 날 늦은 글을 잃던 것(검토 지적)."""
     from datetime import datetime, timezone
+    monkeypatch.setattr(config, "DRINKS_NAVER_SORT", "date")   # 날짜 필터는 최신순에서만 쓴다(정확도순은 test_drinks_question_map)
     monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
 
     def h(req):
@@ -332,6 +333,7 @@ def test_naver_calls_every_query_and_kind_once_and_drops_irrelevant(monkeypatch)
 
 def test_naver_full_page_is_judged_against_the_per_call_display(monkeypatch):
     from datetime import datetime, timezone
+    monkeypatch.setattr(config, "DRINKS_NAVER_SORT", "date")
     monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
 
     def h(req):
