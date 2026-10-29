@@ -92,31 +92,44 @@ def test_cafe_slug_and_whitelist():
 
 # ── 반응 점수 ──
 
-def test_sentiment_mapping_is_two_p_minus_one_and_labels_follow_config_thresholds():
-    assert dt.sentiment_from_p(1.0) == 1.0 and dt.sentiment_from_p(0.0) == -1.0 and dt.sentiment_from_p(0.5) == 0.0
-    assert dt.sentiment_from_p(0.9) == 0.8 and dt.sentiment_from_p(0.123) == -0.75
-    assert dt.sentiment_from_p(1.4) == 1.0 and dt.sentiment_from_p(-0.2) == -1.0, "범위 밖 p 는 잘라낸다"
+def test_sentiment_is_p_good_minus_p_bad_and_labels_follow_config_thresholds():
+    assert dt.sentiment_from_pair(0.9, 0.05) == 0.85 and dt.sentiment_from_pair(0.05, 0.9) == -0.85
+    assert dt.sentiment_from_pair(0.05, 0.04) == 0.01, "의견 없는 글(둘 다 낮음)은 0 근처 - 옛 2p-1 이면 -0.9 였다"
+    assert dt.sentiment_from_pair(1.0, 0.0) == 1.0 and dt.sentiment_from_pair(0.0, 1.0) == -1.0
+    assert dt.sentiment_from_pair(1.4, -0.2) == 1.0 and dt.sentiment_from_pair(-0.5, 1.5) == -1.0, "범위 밖은 잘라낸다"
     assert dt.sentiment_label(None) == "판정 없음"
     assert dt.sentiment_label(0.21) == "긍정" and dt.sentiment_label(0.2) == "중립"
+    assert dt.sentiment_label(0.01) == "중립" and dt.sentiment_label(0.0) == "중립", "판정 없음은 Jev 를 못 쓴 경우만 - 의견 없는 글은 중립"
     assert dt.sentiment_label(-0.21) == "부정" and dt.sentiment_label(-0.2) == "중립"
 
 
-def test_jev_sentiment_maps_p_and_fails_open_to_none(monkeypatch):
+def test_jev_sentiment_asks_two_questions_in_one_call_and_neutral_posts_are_neutral(monkeypatch):
     from engine import decide
 
     calls = []
+    answers = {"good": 0.9, "bad": 0.05}
 
-    def fake_noul(state, instructions, criteria, site="", subject=""):
-        calls.append((state, site, subject))
-        return 0.9
+    def fake_many(state, questions, site="", subject=""):
+        calls.append((state, set(questions), site, subject))
+        return dict(answers)
     monkeypatch.setattr(decide, "enabled", lambda: True)
-    monkeypatch.setattr(decide, "noul", fake_noul)
-    assert dt.jev_sentiment("발베니", "발베니 12 후기", "부드럽고 맛있다") == (0.8, 0.9)
-    assert "PRODUCT: 발베니" in calls[0][0] and calls[0][1] == "drink_trend_sentiment"
-    monkeypatch.setattr(decide, "noul", lambda *a, **k: None)   # Jev 실패·차단기
+    monkeypatch.setattr(decide, "noul_many", fake_many)
+    monkeypatch.setattr(decide, "noul", lambda *a, **k: pytest.fail("한 질문짜리 noul 로 묻지 않는다"))
+    assert dt.jev_sentiment("발베니", "발베니 12 후기", "부드럽고 맛있다") == (0.85, 0.9, 0.05)
+    assert "PRODUCT: 발베니" in calls[0][0] and calls[0][1] == {"good", "bad"} and calls[0][2] == "drink_trend_sentiment"
+    # 질문글·구매글: 좋게도 나쁘게도 안 말한다 → 둘 다 낮다 → 중립
+    answers.update(good=0.04, bad=0.03)
+    score, pg, pb = dt.jev_sentiment("카발란", "제주공항 면세점 혹시 카발란 있나요!", "")
+    assert score == 0.01 and dt.sentiment_label(score) == "중립" and (pg, pb) == (0.04, 0.03)
+    answers.update(good=0.02, bad=0.88)
+    assert dt.sentiment_label(dt.jev_sentiment("발베니", "t", "s")[0]) == "부정"
+    # Jev 실패·차단기 → None, 일부 답만 와도 None(점수를 지어내지 않는다)
+    monkeypatch.setattr(decide, "noul_many", lambda *a, **k: None)
+    assert dt.jev_sentiment("발베니", "t", "s") is None
+    monkeypatch.setattr(decide, "noul_many", lambda *a, **k: {"good": 0.9})
     assert dt.jev_sentiment("발베니", "t", "s") is None
     monkeypatch.setattr(decide, "enabled", lambda: False)        # 꺼짐·키 없음 - 묻지도 않는다
-    monkeypatch.setattr(decide, "noul", lambda *a, **k: pytest.fail("Jev 가 꺼졌는데 물었다"))
+    monkeypatch.setattr(decide, "noul_many", lambda *a, **k: pytest.fail("Jev 가 꺼졌는데 물었다"))
     assert dt.jev_sentiment("발베니", "t", "s") is None
 
 
@@ -124,6 +137,7 @@ def test_migration_view_thresholds_match_config():
     sql = Path(__file__).resolve().parent.parent.joinpath("supabase/migrations/0059_drinks_trends.sql").read_text(encoding="utf-8")
     assert f"sentiment > {config.DRINKS_TRENDS_POSITIVE_ABOVE}" in sql
     assert f"sentiment < {config.DRINKS_TRENDS_NEGATIVE_BELOW}" in sql
+    assert f"sentiment between {config.DRINKS_TRENDS_NEGATIVE_BELOW} and {config.DRINKS_TRENDS_POSITIVE_ABOVE}" in sql, "중립 개수 문턱도 같다"
 
 
 def test_trend_constants_do_not_pollute_jev_threshold_snapshot():
@@ -187,7 +201,7 @@ class FakeRpc:
             if new:
                 self.mentions[k] = {"category": p["category"], "sentiment": None}
             if p.get("sentiment") is not None and self.mentions[k]["sentiment"] is None:
-                self.mentions[k].update(sentiment=p["sentiment"], jev_p=p.get("jev_p"))
+                self.mentions[k].update(sentiment=p["sentiment"], jev_p=p.get("jev_p"), jev_p_bad=p.get("jev_p_bad"))
             return {"created": new, "judged": self.mentions[k]["sentiment"] is not None}
         if fn == "drinks_trends_pending_mentions":
             by_id = {v["id"]: v for v in self.posts.values()}
@@ -216,13 +230,13 @@ def naver_handler(req):
 
 
 def test_run_records_whitelisted_posts_mentions_issues_and_judges_with_cap(monkeypatch):
-    monkeypatch.setattr(config, "DRINKS_TRENDS_JEV_MAX_PER_RUN", 3)
+    monkeypatch.setattr(config, "DRINKS_TRENDS_JEV_MAX_PER_RUN", 6)   # 질문 상한 6 = 언급 3개(한 언급에 질문 2건)
     rpc = FakeRpc()
     asked: list[str] = []
 
     def judge(product, title, summary):
         asked.append(product)
-        return (0.8, 0.9) if product == "발베니" else (-0.4, 0.3)
+        return (0.8, 0.9, 0.1) if product == "발베니" else (-0.4, 0.1, 0.5)
     out = dt.run(rpc, fetcher(naver_handler), judge=judge, hdr=HDR)
     # 커뮤니티: 검색어 10개 × (화이트리스트 통과 2건) - 같은 검색어라도 주소가 다르면 다른 글
     assert out["community_posts"] == 2 * len(config.DRINKS_COMMUNITY_QUERIES)
@@ -233,11 +247,11 @@ def test_run_records_whitelisted_posts_mentions_issues_and_judges_with_cap(monke
     # 언급: 글마다 발베니+맥캘란(발베니 글 10개) / 화요일 글은 제품 없음
     assert out["mentions"] == 2 * len(config.DRINKS_COMMUNITY_QUERIES) and out["mentions_new"] == out["mentions"]
     assert {p for (_, p) in rpc.mentions} == {"발베니", "맥캘란"}
-    # 판정은 상한 3건까지, 나머지는 null 로 남아 다음 실행에 넘어간다
+    # 판정은 질문 상한 6건 = 언급 3개까지(질문 2건씩 센다), 나머지는 null 로 남아 다음 실행에 넘어간다
     assert out["judged"] == 3 and len(asked) == 3
     judged = [m for m in rpc.mentions.values() if m["sentiment"] is not None]
     assert len(judged) == 3
-    assert {m["sentiment"] for m in judged} <= {0.8, -0.4}
+    assert {m["sentiment"] for m in judged} <= {0.8, -0.4} and all(m["jev_p_bad"] is not None for m in judged), "p_good·p_bad 를 같이 저장"
     # 같은 실행을 한 번 더 - 새 글·새 언급은 0, 판정 대기만 이어서 처리
     out2 = dt.run(rpc, fetcher(naver_handler), judge=judge, hdr=HDR)
     assert out2["community_new"] == 0 and out2["mentions_new"] == 0 and out2["issues_new"] == 0
@@ -300,3 +314,21 @@ def test_workflow_has_continue_on_error_trends_step_at_the_end():
     tail = wf[wf.index("- name: trends"):]
     assert "continue-on-error: true" in tail and "python -m engine.drinks_trends" in tail
     assert not re.search(r"^\s+- name: ", tail.split("python -m engine.drinks_trends", 1)[1], re.M), "trends 가 마지막 단계다"
+
+
+def test_issue_lane_asks_few_per_query_and_stores_at_most_the_run_cap(monkeypatch):
+    assert len(config.DRINKS_ISSUE_QUERIES) * config.DRINKS_TRENDS_ISSUE_DISPLAY <= config.DRINKS_TRENDS_MAX_ISSUES_PER_RUN <= 150
+    shown = []
+
+    def h(req):
+        n = int(req.url.params["display"])
+        shown.append(n)
+        q = req.url.params["query"]
+        return js({"items": [news_item(f"{q} 위스키 소식 {i}", "술", f"https://news.example.kr/{q}/{i}") for i in range(n)]})
+    rpc = FakeRpc()
+    out = dt.run(rpc, fetcher(h), judge=lambda *a: None, hdr=HDR)
+    assert set(shown) >= {config.DRINKS_TRENDS_ISSUE_DISPLAY} and out["issues"] <= 150
+    # 상한을 더 낮추면 거기서 멈춘다
+    monkeypatch.setattr(config, "DRINKS_TRENDS_MAX_ISSUES_PER_RUN", 20)
+    rpc2 = FakeRpc()
+    assert dt.run(rpc2, fetcher(h), judge=lambda *a: None, hdr=HDR)["issues"] == 20

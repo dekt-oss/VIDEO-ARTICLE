@@ -4,7 +4,7 @@
 --   부정인지 긍정인지도 점수화해서 보여주면 더 좋고. 구체적 제품 말고도 주류 관련 이슈가 있으면 수집."
 -- 이 파일이 하는 일(전부 새 객체 - 기존 표·함수는 건드리지 않는다):
 --   1) drink_trend_posts     : 커뮤니티 글(kind=community)·주류 이슈 기사(kind=issue). 주소가 같으면 한 건.
---   2) drink_trend_mentions  : 글 하나에서 언급된 제품(글×제품 한 건). sentiment(-1~1)·jev_p 는 판정이 없으면 null - 추측해 채우지 않는다.
+--   2) drink_trend_mentions  : 글 하나에서 언급된 제품(글×제품 한 건). sentiment(-1~1)·jev_p(좋게 평가할 확률)·jev_p_bad(나쁘게 평가할 확률)는 판정이 없으면 null - 추측해 채우지 않는다.
 --   3) 보기 drink_trend_products : 최근 7일 언급 제품 집계(긍정 > 0.2·부정 < -0.2 개수, 평균, 예시 글 3개까지).
 --      보기 drink_trend_issues   : 최근 14일 이슈 기사.
 --   4) 워커 전용 함수 3개: drinks_trends_record_post / drinks_trends_record_mention / drinks_trends_pending_mentions.
@@ -37,8 +37,9 @@ create table if not exists drink_trend_mentions (
   post_id    uuid not null references drink_trend_posts(id) on delete cascade,
   product    text not null check (length(product) between 1 and 100),
   category   text not null check (category in ('sake','traditional','whisky')),
-  sentiment  numeric check (sentiment is null or sentiment between -1 and 1),   -- 2p-1. 판정이 없으면 null('판정 없음')
-  jev_p      numeric check (jev_p is null or jev_p between 0 and 1),
+  sentiment  numeric check (sentiment is null or sentiment between -1 and 1),   -- p_good - p_bad. 판정이 없으면 null('판정 없음')
+  jev_p      numeric check (jev_p is null or jev_p between 0 and 1),        -- p_good: 글쓴이가 좋게 평가할 확률
+  jev_p_bad  numeric check (jev_p_bad is null or jev_p_bad between 0 and 1), -- 글쓴이가 나쁘게 평가할 확률(의견 없는 글은 둘 다 낮다 -> 중립)
   judged_at  timestamptz,
   constraint drink_trend_mentions_judged_ck check ((sentiment is null) = (judged_at is null)),
   constraint drink_trend_mentions_post_product_uq unique (post_id, product)
@@ -84,7 +85,7 @@ create or replace function drinks_trends_record_mention(p jsonb) returns jsonb
 language plpgsql set search_path = public, pg_temp as $$
 declare
   v_post uuid := drinks_uuid(p, 'post_id'); v_product text := left(drinks_text(p, 'product'), 100); v_cat text := drinks_text(p, 'category');
-  v_sent numeric; v_p numeric; v_id uuid; v_created boolean; m drink_trend_mentions;
+  v_sent numeric; v_p numeric; v_pb numeric; v_id uuid; v_created boolean; m drink_trend_mentions;
 begin
   if v_product is null then perform drinks_fail('invalid_input', 'product 가 필요합니다'); end if;
   if v_cat not in ('sake','traditional','whisky') then perform drinks_fail('invalid_input', '주종은 사케·전통주·위스키 중에서 고르세요'); end if;
@@ -92,16 +93,19 @@ begin
   begin
     v_sent := nullif(btrim(p ->> 'sentiment'), '')::numeric;
     v_p := nullif(btrim(p ->> 'jev_p'), '')::numeric;
+    v_pb := nullif(btrim(p ->> 'jev_p_bad'), '')::numeric;
   exception when others then
-    perform drinks_fail('invalid_input', 'sentiment·jev_p 는 숫자여야 합니다');
+    perform drinks_fail('invalid_input', 'sentiment·jev_p·jev_p_bad 는 숫자여야 합니다');
   end;
   if v_sent is not null and (v_sent < -1 or v_sent > 1) then perform drinks_fail('invalid_input', 'sentiment 는 -1~1 사이입니다'); end if;
-  if v_p is not null and (v_p < 0 or v_p > 1) then perform drinks_fail('invalid_input', 'jev_p 는 0~1 사이입니다'); end if;
+  if (v_p is not null and (v_p < 0 or v_p > 1)) or (v_pb is not null and (v_pb < 0 or v_pb > 1)) then
+    perform drinks_fail('invalid_input', 'jev_p·jev_p_bad 는 0~1 사이입니다');
+  end if;
   insert into drink_trend_mentions (post_id, product, category) values (v_post, v_product, v_cat)
     on conflict (post_id, product) do nothing returning id into v_id;
   v_created := v_id is not null;
   if v_sent is not null then
-    update drink_trend_mentions set sentiment = v_sent, jev_p = v_p, judged_at = now()
+    update drink_trend_mentions set sentiment = v_sent, jev_p = v_p, jev_p_bad = v_pb, judged_at = now()
       where post_id = v_post and product = v_product and sentiment is null;
   end if;
   select * into m from drink_trend_mentions where post_id = v_post and product = v_product;
@@ -133,6 +137,7 @@ select m.product, m.category,
   round(avg(m.sentiment), 2)                                   as avg_sentiment,
   count(*) filter (where m.sentiment > 0.2)                    as positive,
   count(*) filter (where m.sentiment < -0.2)                   as negative,
+  count(*) filter (where m.sentiment between -0.2 and 0.2)     as neutral,
   max(coalesce(t.posted_at, t.collected_at))                   as last_seen,
   (array_agg(t.canonical_url order by coalesce(t.posted_at, t.collected_at) desc, t.id))[1:3] as sample_urls,
   (array_agg(t.title order by coalesce(t.posted_at, t.collected_at) desc, t.id))[1:3]         as sample_titles

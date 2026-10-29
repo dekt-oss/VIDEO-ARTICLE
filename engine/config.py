@@ -4413,14 +4413,16 @@ DRINKS_ISSUE_QUERIES: tuple[str, ...] = (
 )
 DRINKS_TRENDS_DISPLAY: int = 100              # 검색 한 번에 받는 건수(네이버 상한 100)
 DRINKS_TRENDS_PAGES: int = 2                  # 검색어당 쪽 수(최신순 앞 200건) - 하루 한 번 돌리므로 그날 새 글을 덮는다
-DRINKS_TRENDS_ISSUE_DISPLAY: int = 50
+DRINKS_TRENDS_ISSUE_DISPLAY: int = 13         # 검색어당 최신 기사 수 - 11개 검색어 × 13 = 143건 이하(하루 몇백 건씩 쌓여 같은 이야기가 겹치던 것을 줄인다)
+DRINKS_TRENDS_MAX_ISSUES_PER_RUN: int = 150   # 한 실행에서 기록하는 이슈 기사 상한
 DRINKS_TRENDS_INTERVAL_SEC: float = 3.0       # 요청 간격(안전 요청기가 DRINKS_MIN_INTERVAL_SEC 미만으로는 못 내린다)
 DRINKS_TRENDS_MAX_REQUESTS: int = 80          # 실행 1회 요청 상한(커뮤니티 10×2 + 이슈 11 = 31회 예상)
 DRINKS_TRENDS_MAX_POSTS_PER_RUN: int = 1500   # 한 실행에서 기록하는 글 상한(폭주 방지)
 DRINKS_TRENDS_SUMMARY_CHARS: int = 600        # 판정·저장에 쓰는 요약 길이 상한 - 검색 결과 요약일 뿐 본문 전문이 아니다
 # 반응 판정(Jev). 비용은 판정 1건 ≈ 입력 수백 토큰이라 한 실행 1센트 미만으로 예상 - 실측 전이라 미검증.
-DRINKS_TRENDS_JEV_MAX_PER_RUN: int = 300      # 한 실행에서 Jev 에 묻는 상한. 넘는 것은 다음 실행에 넘긴다
-# 점수 = 2p-1 (p = Jev 가 '좋게 말한다'고 본 확률). 화면의 긍정/부정 개수 문턱 - 0059 보기(drink_trend_products)와 같아야 한다.
+DRINKS_TRENDS_JEV_QUESTIONS_PER_MENTION: int = 2   # 언급 하나에 '좋게 평가하나'·'나쁘게 평가하나' 두 질문(한 호출에 같이 보낸다)
+DRINKS_TRENDS_JEV_MAX_PER_RUN: int = 300      # 한 실행에서 Jev 에 묻는 질문 상한(언급 하나 = 2건 -> 150개 언급). 넘는 것은 다음 실행에 넘긴다
+# 점수 = p_good - p_bad (Jev 가 '좋게 평가한다'/'나쁘게 평가한다'고 본 확률의 차). 의견 없는 글(질문·구매글)은 둘 다 낮아 0 근처 = 중립. 화면의 긍정/부정 개수 문턱 - 0059 보기(drink_trend_products)와 같아야 한다.
 DRINKS_TRENDS_POSITIVE_ABOVE: float = 0.2
 DRINKS_TRENDS_NEGATIVE_BELOW: float = -0.2
 

@@ -84,14 +84,15 @@ test("언급: (글, 제품) 유일 — 반복 기록은 새 행을 만들지 않
 test("판정 기록: null 이던 언급에만 채우고, 이미 판정된 값은 덮지 않는다", async () => {
   const p = await post();
   const m = await mention(p.post_id, "맥캘란");
-  const j = await mention(p.post_id, "맥캘란", { sentiment: 0.6, jev_p: 0.8 });
+  const j = await mention(p.post_id, "맥캘란", { sentiment: 0.6, jev_p: 0.8, jev_p_bad: 0.2 });
   assert.equal(j.judged, true);
   assert.equal(j.mention_id, m.mention_id);
-  const again = await mention(p.post_id, "맥캘란", { sentiment: -0.9, jev_p: 0.05 });
+  const again = await mention(p.post_id, "맥캘란", { sentiment: -0.9, jev_p: 0.05, jev_p_bad: 0.95 });
   assert.equal(again.judged, true);
-  const row = (await asService(`select sentiment::float s, jev_p::float j, judged_at from drink_trend_mentions where id='${m.mention_id}'`))[0];
+  const row = (await asService(`select sentiment::float s, jev_p::float j, jev_p_bad::float jb, judged_at from drink_trend_mentions where id='${m.mention_id}'`))[0];
   assert.equal(row.s, 0.6);
   assert.equal(row.j, 0.8);
+  assert.equal(row.jb, 0.2, "p_bad 도 같이 저장되고 덮이지 않는다");
   assert.ok(row.judged_at);
 });
 
@@ -100,6 +101,7 @@ test("언급: 범위·주종·없는 글을 거절한다", async () => {
   await fails("drinks_trends_record_mention", { post_id: p.post_id, product: "x", category: "beer" }, /invalid_input/);
   await fails("drinks_trends_record_mention", { post_id: p.post_id, product: "x", category: "sake", sentiment: 1.5, jev_p: 1 }, /invalid_input/);
   await fails("drinks_trends_record_mention", { post_id: p.post_id, product: "x", category: "sake", sentiment: 0.1, jev_p: 2 }, /invalid_input/);
+  await fails("drinks_trends_record_mention", { post_id: p.post_id, product: "x", category: "sake", sentiment: 0.1, jev_p: 0.5, jev_p_bad: -1 }, /invalid_input/);
   await fails("drinks_trends_record_mention", { post_id: "00000000-0000-0000-0000-000000000000", product: "x", category: "sake" }, /not_found/);
   await fails("drinks_trends_record_mention", { post_id: "not-a-uuid", product: "x", category: "sake" }, /invalid_input/);
 });
@@ -127,21 +129,24 @@ test("집계 보기: 7일 안 글만, 긍정·부정 문턱(0.2), 판정 없음�
   const prod = `집계${uniq()}`;
   const mk = async (sent: number | null, ago = 1) => {
     const p = await post({ posted_at: daysAgo(ago), title: `글 ${uniq()}` });
-    await mention(p.post_id, prod, sent === null ? {} : { sentiment: sent, jev_p: (sent + 1) / 2 });
+    await mention(p.post_id, prod, sent === null ? {} : { sentiment: sent, jev_p: Math.max(sent, 0.05), jev_p_bad: Math.max(-sent, 0.05) });
     return p;
   };
   await mk(0.8);
-  await mk(0.2); // 문턱 경계 - 긍정이 아니다(> 0.2)
+  await mk(0.2); // 문턱 경계 - 긍정이 아니다(> 0.2) -> 중립
+  await mk(0.0); // 의견 없는 글(질문·구매글) - 중립
   await mk(-0.5);
   await mk(null);
   await mk(0.9, 10); // 7일 밖 - 제외
   const [r] = await asService(`select * from drink_trend_products where product='${prod}'`);
-  assert.equal(Number(r.posts), 4);
-  assert.equal(Number(r.mentions), 4);
-  assert.equal(Number(r.judged), 3);
+  assert.equal(Number(r.posts), 5);
+  assert.equal(Number(r.mentions), 5);
+  assert.equal(Number(r.judged), 4);
   assert.equal(Number(r.positive), 1);
   assert.equal(Number(r.negative), 1);
-  assert.equal(Number(r.avg_sentiment), 0.17); // (0.8+0.2-0.5)/3 = 0.1667
+  assert.equal(Number(r.neutral), 2, "경계 0.2 와 0.0 은 중립 - 판정 없음(null)은 어느 쪽에도 안 센다");
+  assert.equal(Number(r.positive) + Number(r.neutral) + Number(r.negative), Number(r.judged));
+  assert.equal(Number(r.avg_sentiment), 0.13); // (0.8+0.2+0-0.5)/4 = 0.125
   assert.equal(r.category, "whisky");
   assert.equal(r.sample_urls.length, 3);
   assert.equal(r.sample_titles.length, 3);

@@ -6,8 +6,10 @@
 하는 일 넷:
   1) 커뮤니티 — 네이버 카페 검색(최신순)에서 **화이트리스트 카페**(config.DRINKS_COMMUNITY_CAFES) 글만 기록한다
   2) 언급 — 글 제목·요약에서 제품 사전(config.DRINKS_PRODUCT_LEXICON)의 표기를 찾아 (글, 제품) 한 건씩 기록한다
-  3) 반응 — 새 언급마다 Jev 에 "글쓴이가 이 제품을 좋게 말하나"를 묻고 점수 = 2p-1 (-1~1). Jev 를 못 쓰면 **null**
-     (화면에 '판정 없음') — 추측해 채우지 않는다. 실행당 상한 config.DRINKS_TRENDS_JEV_MAX_PER_RUN, 넘는 것은 다음 실행에
+  3) 반응 — 언급마다 Jev 에 두 질문("좋게 평가하나"·"나쁘게 평가하나")을 한 호출로 묻고 점수 = p_good - p_bad (-1~1).
+     한 질문만 쓰면 의견 없는 글(질문·구매글)이 '좋지 않다'로 읽혀 부정이 됐다(2026-10-29 실측) — 둘 다 낮으면 중립.
+     Jev 를 못 쓰면 **null**(화면에 '판정 없음') — 추측해 채우지 않는다. 실행당 질문 상한 config.DRINKS_TRENDS_JEV_MAX_PER_RUN
+     (언급 하나 = 질문 2건), 넘는 것은 다음 실행에
   4) 이슈 — 네이버 뉴스 검색에서 술 이야기(`is_relevant`)인 기사를 기록한다(제품이 아니라 세금·규제·가격·수입 소식)
 
 규칙: 외부 요청은 안전 요청기(SafeFetcher)만 쓴다 · 검색 결과 요약만 저장(회원 전용 본문은 받지 않는다) ·
@@ -31,8 +33,8 @@ from .drinks_parse import canonicalize
 from .util import log
 
 Rpc = Callable[[str, dict[str, Any]], Any]
-#: (product, title, summary) → (점수 -1~1, p) 또는 None(못 물었다).
-Judge = Callable[[str, str, str], Optional[tuple[float, float]]]
+#: (product, title, summary) → (점수 -1~1, p_good, p_bad) 또는 None(못 물었다).
+Judge = Callable[[str, str, str], Optional[tuple[float, float, float]]]
 
 NAVER_HOST = "naverapihub.apigw.ntruss.com"
 
@@ -109,13 +111,13 @@ def in_whitelist(cafeurl: Optional[str]) -> bool:
 
 # ── 반응 점수 ──
 
-def sentiment_from_p(p: float) -> float:
-    """p('좋게 말한다'일 확률 0~1) → 점수 -1~1. 2p-1, 소수 둘째 자리."""
-    return round(max(-1.0, min(1.0, 2.0 * float(p) - 1.0)), 2)
+def sentiment_from_pair(p_good: float, p_bad: float) -> float:
+    """p_good(좋게 평가할 확률) - p_bad(나쁘게 평가할 확률) → 점수 -1~1, 소수 둘째 자리. 둘 다 낮으면 0 근처(중립)."""
+    return round(max(-1.0, min(1.0, float(p_good) - float(p_bad))), 2)
 
 
 def sentiment_label(score: Optional[float]) -> str:
-    if score is None:
+    if score is None:   # 판정 없음은 Jev 를 못 썼을 때만 - 의견 없는 글은 '중립'이다
         return "판정 없음"
     if score > config.DRINKS_TRENDS_POSITIVE_ABOVE:
         return "긍정"
@@ -124,24 +126,35 @@ def sentiment_label(score: Optional[float]) -> str:
     return "중립"
 
 
-def jev_sentiment(product: str, title: str, summary: str) -> Optional[tuple[float, float]]:
-    """Jev 에게 '이 글에서 글쓴이는 제품을 좋게 말하고 있나'를 묻는다. 못 물었으면(꺼짐·키 없음·실패·차단기) None."""
+_GOOD_Q = (
+    "Does the author of this community post evaluate the PRODUCT favorably (praises it, recommends it, "
+    "or reports a good experience with it)?",
+    {"true": "the author expresses a positive opinion of the product: praise, recommendation, enjoyment, good value",
+     "false": "the author expresses no positive opinion of the product (a question, a purchase or sale notice, "
+              "a price, a stock check, neutral information, or a negative opinion)"},
+)
+_BAD_Q = (
+    "Does the author of this community post evaluate the PRODUCT unfavorably (criticizes it, warns against it, "
+    "or reports a bad experience or disappointment with it)?",
+    {"true": "the author expresses a negative opinion of the product: complaint, warning, disappointment, regret",
+     "false": "the author expresses no negative opinion of the product (a question, a purchase or sale notice, "
+              "a price, a stock check, neutral information, or a positive opinion)"},
+)
+
+
+def jev_sentiment(product: str, title: str, summary: str) -> Optional[tuple[float, float, float]]:
+    """Jev 에게 같은 글로 두 질문을 한 호출에 묻는다 - '좋게 평가하나'·'나쁘게 평가하나'. (점수, p_good, p_bad).
+
+    못 물었으면(꺼짐·키 없음·실패·차단기·답 모양 이상) None - 점수를 지어내지 않는다."""
     from . import decide
 
     if not decide.enabled():
         return None
     state = f"PRODUCT: {product}\nPOST TITLE: {title}\nPOST TEXT: {(summary or '')[:config.DRINKS_TRENDS_SUMMARY_CHARS]}"
-    p = decide.noul(
-        state,
-        "Does the author of this community post speak favorably about the PRODUCT (praises it, recommends it, "
-        "or reports a good experience with it)?",
-        {"true": "the author is positive about the product: praise, recommendation, enjoyment, good value",
-         "false": "the author is negative about the product: complaint, warning, disappointment, regret, "
-                  "or mentions it only neutrally without any favorable opinion"},
-        site="drink_trend_sentiment", subject=product)
-    if p is None:
+    got = decide.noul_many(state, {"good": _GOOD_Q, "bad": _BAD_Q}, site="drink_trend_sentiment", subject=product)
+    if not got or "good" not in got or "bad" not in got:
         return None
-    return sentiment_from_p(p), round(float(p), 4)
+    return sentiment_from_pair(got["good"], got["bad"]), round(float(got["good"]), 4), round(float(got["bad"]), 4)
 
 
 # ── 검색 결과 → 글 ──
@@ -281,7 +294,7 @@ def run(rpc: Rpc, fetcher: SafeFetcher, *, judge: Judge = jev_sentiment, hdr: Op
             out["mentions"] += 1
             out["mentions_new"] += 1 if m.get("created") else 0
 
-    iss, ist = collect_issues(fetcher, hdr, max(0, budget - len(com)))
+    iss, ist = collect_issues(fetcher, hdr, min(config.DRINKS_TRENDS_MAX_ISSUES_PER_RUN, max(0, budget - len(com))))
     out["requests_failed"] += ist["requests_failed"]
     for post in iss:
         r = put("drinks_trends_record_post", post)
@@ -289,20 +302,21 @@ def run(rpc: Rpc, fetcher: SafeFetcher, *, judge: Judge = jev_sentiment, hdr: Op
         out["issues_new"] += 1 if r.get("created") else 0
 
     # 반응 판정 - 판정 없는 언급(이번에 새로 생긴 것 + 지난번에 못 물은 것)을 상한까지. 못 물으면 null 로 남는다.
+    max_mentions = max(1, config.DRINKS_TRENDS_JEV_MAX_PER_RUN // config.DRINKS_TRENDS_JEV_QUESTIONS_PER_MENTION)   # 상한은 질문 수 기준
     try:
-        pending = rpc("drinks_trends_pending_mentions", {"limit": config.DRINKS_TRENDS_JEV_MAX_PER_RUN}) or []
+        pending = rpc("drinks_trends_pending_mentions", {"limit": max_mentions}) or []
     except Exception as exc:  # noqa: BLE001
         out["records_failed"] += 1
         log.warning("drinks-trends: 판정 대기 목록을 읽지 못했습니다 — %s", type(exc).__name__)
         pending = []
-    for m in pending[:config.DRINKS_TRENDS_JEV_MAX_PER_RUN]:
+    for m in pending[:max_mentions]:
         got = judge(m["product"], m.get("title") or "", m.get("summary") or "")
         if got is None:
             out["judge_unavailable"] += 1
             continue
-        score, p = got
+        score, p_good, p_bad = got
         r = put("drinks_trends_record_mention", {"post_id": m["post_id"], "product": m["product"], "category": m["category"],
-                                                 "sentiment": score, "jev_p": p})
+                                                 "sentiment": score, "jev_p": p_good, "jev_p_bad": p_bad})
         out["judged"] += 1 if r.get("judged") else 0
     return out
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { CATEGORY_LABEL } from "@/lib/drinks/model";
 import {
-  NEGATIVE_BELOW, POSITIVE_ABOVE, safeHref, scoreText, sentimentBar, sentimentLabel, type TrendIssueRow, type TrendProductRow,
+  NEGATIVE_BELOW, POSITIVE_ABOVE, clusterIssues, safeHref, scoreText, sentimentBar, sentimentLabel, type TrendIssueRow, type TrendProductRow,
 } from "@/lib/drinks/trends";
 import { loadTrends } from "@/lib/drinks/trendsQueries";
 
@@ -28,7 +28,7 @@ function ReactionCell({ r }: { r: TrendProductRow }) {
         <span style={{ width: `${bar.negativePct}%`, background: "var(--danger)" }} />
       </div>
       <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
-        평균 {scoreText(r.avg_sentiment)} ({sentimentLabel(r.avg_sentiment)}) · 긍정 {r.positive} · 부정 {r.negative} · 판정 {r.judged}/{r.mentions}
+        평균 {scoreText(r.avg_sentiment)} ({sentimentLabel(r.avg_sentiment)}) · 긍정 {r.positive} · 중립 {r.neutral ?? r.judged - r.positive - r.negative} · 부정 {r.negative} · 판정 {r.judged}/{r.mentions}
       </div>
     </div>
   );
@@ -71,15 +71,27 @@ function ProductTable({ rows }: { rows: TrendProductRow[] }) {
 
 function IssueList({ rows }: { rows: TrendIssueRow[] }) {
   if (rows.length === 0) return <p className="muted">최근 14일에 모은 주류 이슈 기사가 없습니다.</p>;
+  const clusters = clusterIssues(rows);
   return (
     <div>
-      {rows.map((i) => {
+      <p className="muted" style={{ fontSize: 13 }}>기사 {rows.length}건 → 같은 이야기 {clusters.length}묶음 (기사 수 많은 순)</p>
+      {clusters.map((c) => {
+        const i = c.representative;
         const href = safeHref(i.canonical_url);
+        const others = c.links.slice(1).map((l) => ({ ...l, href: safeHref(l.url) })).filter((l) => l.href);
         return (
           <div key={i.id} className="list-row">
             <span>
+              {c.count > 1 && <span className="pill on">기사 {c.count}건</span>}{" "}
               {href ? <a href={href} target="_blank" rel="noreferrer noopener">{i.title}</a> : i.title}
-              <span className="muted"> · {day(i.posted_at ?? i.collected_at)} · {i.channel_name ?? "출처 미상"}{i.query && ` · 검색어 ${i.query}`}</span>
+              <span className="muted"> · {day(c.newest)} · {i.channel_name ?? "출처 미상"}{i.query && ` · 검색어 ${i.query}`}</span>
+              {others.length > 0 && (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  <br />같은 이야기: {others.map((l, n) => (
+                    <span key={l.url}>{n > 0 && " · "}<a href={l.href!} target="_blank" rel="noreferrer noopener" title={l.title}>{l.channel ?? `기사 ${n + 2}`}</a></span>
+                  ))}{c.count > 3 && ` 외 ${c.count - 3}건`}
+                </span>
+              )}
             </span>
           </div>
         );
@@ -111,8 +123,8 @@ export default async function DrinksTrendsPage() {
             <h3>커뮤니티에서 많이 언급된 술 (최근 7일)</h3>
             <p className="muted" style={{ fontSize: 13 }}>
               술 전문 카페 글의 제목·검색 요약에서 제품 사전에 있는 이름을 찾아 센 것입니다(본문 전문 아님, 사전에 없는 제품은 안 잡힘).
-              반응은 Jev 가 &quot;글쓴이가 좋게 말하나&quot;를 판정한 점수(-1~1)이며 +{POSITIVE_ABOVE} 초과를 긍정, {NEGATIVE_BELOW} 미만을 부정으로 셉니다.
-              판정하지 못한 글은 &apos;판정 없음&apos;으로 남고 평균에서 빠집니다.
+              반응은 Jev 가 &quot;좋게 평가하나&quot;·&quot;나쁘게 평가하나&quot; 두 질문의 확률 차(-1~1)로 낸 점수이며 +{POSITIVE_ABOVE} 초과를 긍정, {NEGATIVE_BELOW} 미만을 부정으로 셉니다.
+              질문·구매글처럼 의견이 없는 글은 중립이고, Jev 를 쓰지 못한 글만 &apos;판정 없음&apos;으로 남아 평균에서 빠집니다.
             </p>
             <ProductTable rows={v.data.products} />
           </section>
