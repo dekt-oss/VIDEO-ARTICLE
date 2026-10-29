@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any, Callable, Optional
 
-from . import config
+from . import config, decide
 from .drinks_fetch import JSON_TYPES, TEXT_TYPES, FetchError, SafeFetcher
 from .drinks_parse import canonicalize, clean_text
 from .util import log
@@ -36,7 +36,7 @@ SIGNAL_PATTERNS: dict[str, re.Pattern] = {
     "debate": re.compile(r"\bvs\.?\b|대\s|논쟁|호불호|갑론|どっち|派|\b(versus|debate|overrated|controversial)\b", re.I),
     "misconception": re.compile(r"오해|사실은|잘못 알|속설|誤解|本当は|\b(myth|misconception|actually|is it true)\b", re.I),
     "selection": re.compile(r"추천|고르|입문|선택|차이|おすすめ|選び|違い|\b(recommend|choose|which one|difference|beginner|best)\b", re.I),
-    "storage": re.compile(r"보관|냉장|개봉|유통기한|상했|숙성|保存|開栓|冷蔵|賞味|\b(store|storage|shelf|expire|freez|fridge|old bottle|opened)\b", re.I),
+    "storage": re.compile(r"보관|냉장|개봉|유통기한|상했|숙성|保存|開栓|冷蔵|賞味|\b(store|storage|shelf|expire|freez|fridge|old bottle|opened|open bottle|how long[^.?!]*\blasts?)\b", re.I),
     "new_product": re.compile(r"신제품|출시|한정판|리뉴얼|新発売|限定|発売|\b(new release|launch|limited edition)\b", re.I),
     "event": re.compile(r"행사|페스티벌|축제|시음회|박람회|イベント|祭|試飲会|\b(festival|tasting event|expo|fair)\b", re.I),
 }
@@ -46,8 +46,44 @@ _SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[。？！])|\n+")   # 일본어·중국
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
 
+def _has_term(text: str, terms: tuple[str, ...]) -> bool:
+    t = (text or "").lower()
+    for w in config.DRINKS_RELEVANCE_FALSE_FRIENDS:
+        t = t.replace(w, " ")
+    return any(x in t for x in terms)
+
+
+def is_relevant(title: Optional[str], summary: Optional[str]) -> bool:
+    """술 이야기인가(규칙). 제목+요약에 술 낱말이 하나라도 있고, **제목에** 상거래·여행 잡음 낱말이 없어야 한다."""
+    if any(n in (title or "") for n in config.DRINKS_NOISE_TERMS):
+        return False
+    return _has_term(f"{title or ''} {summary or ''}", tuple(x.lower() for x in config.DRINKS_RELEVANCE_TERMS))
+
+
+_RELEVANCE_TERMS_LOWER = tuple(x.lower() for x in config.DRINKS_RELEVANCE_TERMS)
+
+
+def question_max_chars(q: str) -> int:
+    """질문 문장 길이 상한. 한글·한자·가나 문장은 짧게(네이버 요약은 문장부호가 없어 문단 전체가 한 문장이 된다), 그 밖은 넉넉히."""
+    return config.DRINKS_QUESTION_MAX_CHARS if _CJK.search(q) else config.DRINKS_QUESTION_MAX_CHARS_LATIN
+
+
+def question_ok(q: Optional[str]) -> bool:
+    """후보가 될 자격이 있는 질문인가(규칙): 길이 상한 안이고, **질문 문장 자체에** 술 낱말(오탈자 낱말 '기술' 같은 것은 제외)이 있다."""
+    q = clean_text(q or "")
+    return bool(q) and len(q) <= question_max_chars(q) and _has_term(q, _RELEVANCE_TERMS_LOWER)
+
+
+def good_questions(it: dict) -> list[str]:
+    return [q for q in (it.get("questions") or []) if question_ok(q)]
+
+
 def extract_signals(text: str) -> list[str]:
-    return [k for k, p in SIGNAL_PATTERNS.items() if p.search(_URL.sub(" ", text or ""))]
+    clean = _URL.sub(" ", text or "")
+    out = [k for k, p in SIGNAL_PATTERNS.items() if p.search(clean)]
+    if "storage" in out and not _has_term(clean, tuple(x.lower() for x in (*config.DRINKS_RELEVANCE_TERMS, *config.DRINKS_STORAGE_EXTRA_TERMS))):
+        out.remove("storage")   # 호텔 '짐 보관' 처럼 술 이야기가 아닌 보관은 보관 신호가 아니다
+    return out
 
 
 _TRAILING_PUNCT = " .,!…·~)]}\"'”’。"
@@ -72,13 +108,14 @@ def _is_korean_question_ending(sent: str) -> bool:
 
 
 def extract_questions(*texts: str, limit: int = 5) -> list[str]:
-    """원문의 질문 문장(물음표로 끝나거나, 한글 문장이 질문 끝말로 끝나는 것)만. 주소는 먼저 지운다. 번역·요약하지 않는다."""
+    """원문의 질문 문장(물음표로 끝나거나, 한글 문장이 질문 끝말로 끝나는 것)만. 주소는 먼저 지운다. 번역·요약하지 않는다.
+    길이 상한(DRINKS_QUESTION_MAX_CHARS)을 넘는 문장은 질문으로 치지 않는다 — 문장부호 없는 요약 전체가 질문이 되던 것을 막는다."""
     out: list[str] = []
     for t in texts:
         for sent in _SPLIT.split(_URL.sub(" ", t or "")):
             q = clean_text(sent).lstrip(")]}>-–·,;: ")
-            if q and _is_question(q) and q not in out:
-                out.append(q[:300])
+            if q and len(q) <= question_max_chars(q) and _is_question(q) and q not in out:
+                out.append(q)
             if len(out) >= limit:
                 return out
     return out
@@ -227,7 +264,7 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
         raise FetchError("api_key_missing", "YOUTUBE_DATA_API_KEY 가 없습니다 — 유튜브 발견은 키를 넣기 전까지 멈춰 있습니다")
     hdr = {"X-Goog-Api-Key": key}
     found: list[Found] = []
-    parsed = incomplete = 0
+    parsed = incomplete = dropped = 0
     queries = (cfg.get("queries") or [])[: config.DRINKS_YT_SEARCH_MAX_QUERIES]   # 등록 때 3개로 막는다(0052)
     for q in queries:
         params = {"part": "snippet", "q": q, "type": "video", "order": "date", "maxResults": min(25, max(1, limit - len(found)))}
@@ -249,6 +286,9 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
             vid = x["id"]["videoId"]
             meta = by_id.get(vid, {})
             sn = meta.get("snippet") or x.get("snippet") or {}
+            if not is_relevant(sn.get("title"), clean_text(sn.get("description") or "")):
+                dropped += 1
+                continue
             st = meta.get("statistics") or {}
             comments: list[str] = []
             coverage = "title_summary"
@@ -273,7 +313,19 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
                 coverage=coverage, comments=[t for t in comments if extract_questions(t)][:5]))
             if len(found) >= limit:
                 break
+    if dropped:
+        log.info("drinks: 유튜브 발견 — 술과 무관·잡음으로 %d건 제외(API 결과 %d건)", dropped, parsed)
     return Batch(found, parsed, incomplete)
+
+
+def kst_day_ordinal() -> int:
+    return datetime.now(ZoneInfo(config.TIMEZONE)).date().toordinal()
+
+
+def naver_start(per_call: int, day_ordinal: Optional[int] = None) -> int:
+    """정확도순 검색의 시작 위치: 날짜 순번 % 회전 수 만큼 한 쪽씩 민다(네이버 상한 1000)."""
+    n = kst_day_ordinal() if day_ordinal is None else day_ordinal
+    return min(config.DRINKS_NAVER_MAX_START, 1 + (n % max(1, config.DRINKS_NAVER_PAGE_ROTATION)) * per_call)
 
 
 def naver(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> Batch:
@@ -282,38 +334,48 @@ def naver(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> B
         raise FetchError("api_key_missing", "NAVER_CLIENT_ID/SECRET(네이버 클라우드 API HUB 키)이 없습니다 — 네이버 발견은 키를 넣기 전까지 멈춰 있습니다")
     hdr = {"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": sec}
     found: list[Found] = []
-    parsed = incomplete = 0
+    parsed = incomplete = dropped = 0
     hub = config.DRINKS_NAVER_SEARCH_BASE
-    for kind, platform, base in [("cafearticle", "naver_cafe", f"{hub}/cafearticle"),
-                                 ("blog", "naver_blog", f"{hub}/blog")]:
-        if kind not in (cfg.get("kinds") or ["cafearticle", "blog"]):
-            continue
-        for q in cfg.get("queries") or []:
-            if len(found) >= limit:
-                incomplete += 1
-                break
+    kinds = [(k, p, b) for k, p, b in [("cafearticle", "naver_cafe", f"{hub}/cafearticle"), ("blog", "naver_blog", f"{hub}/blog")]
+             if k in (cfg.get("kinds") or ["cafearticle", "blog"])]
+    queries = list(cfg.get("queries") or [])
+    sim = config.DRINKS_NAVER_SORT == "sim"
+    # 검색어 × 종류를 **한 번씩 모두** 부른다 — 앞의 검색어가 한도를 다 채워 뒤의 검색어가 굶던 것(첫 운영 실행: 6개 중 2개)을 막는다.
+    per_call = max(1, min(config.DRINKS_NAVER_MAX_DISPLAY, limit // max(1, len(kinds) * len(queries))))
+    # 정확도순(sim)은 시간순이 아니다 — 워처마크·날짜 필터·"꽉 찬 쪽" 판정이 모두 의미가 없고(URL 중복 제거가 반복을 막는다),
+    #   매일 같은 상위 결과만 보지 않게 날짜 순번으로 시작 위치를 돌린다.
+    start = naver_start(per_call) if sim else None
+    for kind, platform, base in kinds:
+        for q in queries:
             # API HUB 는 JSON 본문을 text/plain 으로 내려보낸다(2026-10-23 실측) — 이 커넥터만 그 형식을 받는다.
             #   본문은 아래 json.loads 가 읽으므로 JSON 이 아니면 그대로 실패한다.
             d = json.loads(f.get(base, accept=JSON_TYPES + TEXT_TYPES, headers=hdr,
-                                 params={"query": q, "display": min(30, limit - len(found)), "sort": "date"}).body)
+                                 params={"query": q, "display": per_call, "sort": config.DRINKS_NAVER_SORT,
+                                         **({"start": start} if sim else {})}).body)
             items = d.get("items") or []
             parsed += len(items)
             # 한 쪽을 꽉 채웠고 가장 오래된 글도 워처마크 날짜 이후면 더 있을 수 있다 — 다 못 봤다고 센다(조용히 자르지 않게).
-            if since and len(items) >= min(30, limit) and items:
+            if since and not sim and items and len(items) >= per_call:
                 oldest = min((it.get("postdate") or "99999999") for it in items)
                 if oldest >= since.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d"):
                     incomplete += 1
             for it in items:
+                title = html_text(it.get("title") or "") or None
+                summary = html_text(it.get("description") or "") or None
+                if not is_relevant(title, summary):
+                    dropped += 1
+                    continue
                 posted = None
                 pd = it.get("postdate")
                 if pd and re.fullmatch(r"\d{8}", pd):
                     posted = f"{pd[:4]}-{pd[4:6]}-{pd[6:]}T00:00:00+09:00"
                 found.append(Found(
-                    url=it.get("link") or "", platform=platform, title=html_text(it.get("title") or "") or None,
-                    summary=html_text(it.get("description") or "") or None,
+                    url=it.get("link") or "", platform=platform, title=title, summary=summary,
                     channel_name=it.get("cafename") or it.get("bloggername"), posted_at=posted,
                     coverage="title_summary"))  # 회원 전용 카페 본문은 받지 않는다 — 검색 결과 요약만
-    if since:
+    if dropped:
+        log.info("drinks: 네이버 발견 — 술과 무관·잡음으로 %d건 제외(API 결과 %d건, 호출당 %d건)", dropped, parsed, per_call)
+    if since and not sim:
         # 네이버 게시일은 '날짜'뿐이다(시각 없음) — 워처마크와 시각으로 비교하면 같은 날 늦게 올라온 글을 잃는다(검토 지적).
         # 한국 날짜로 비교하고, 같은 날 글은 다시 받아 URL 로 중복을 거른다.
         since_day = since.astimezone(ZoneInfo("Asia/Seoul")).date()
@@ -327,6 +389,9 @@ CONNECTORS: dict[str, Callable[[SafeFetcher, dict, Optional[datetime], int], Bat
 
 
 # ── 실행 처리(발견용 수집원) ──
+
+QUESTION_REQUIRED_PLATFORMS = ("naver_cafe", "naver_blog", "youtube")
+
 
 class DiscoveryProcessor:
     def __init__(self, run: dict[str, Any], rpc, fetcher: SafeFetcher):
@@ -353,9 +418,16 @@ class DiscoveryProcessor:
                 raise FetchError("method_unsupported", f"발견 채널이 아닙니다: {self.src.get('platform')}")
             batch = conn(self.fetcher, self.src.get("parser_config") or {}, since, limit)
             self.rpc("drinks_heartbeat_run", self._lease({"listed_count": len(batch.found), "request_count": self.fetcher.requests}))
+            no_question = 0
             for fd in batch.found[:limit]:
+                item = fd.item()
+                # 네이버·유튜브는 질문 문장이 후보 자격(술 낱말 + 길이 상한)을 갖춘 글만 저장한다 — 안 그러면 후보가 될 수 없는 자료가
+                #   발견함 조회 창(오래된 순 500건)을 채워 새 자료를 밀어낸다. Stack Exchange 는 종전대로 다 저장한다.
+                if fd.platform in QUESTION_REQUIRED_PLATFORMS and not good_questions(item):
+                    no_question += 1
+                    continue
                 try:
-                    self.rpc("drinks_collect_discovery", self._lease({"item": fd.item()}))
+                    self.rpc("drinks_collect_discovery", self._lease({"item": item}))
                 except DbError as exc:
                     if exc.code == "lease_lost":
                         return {"status": "lease_lost"}
@@ -367,6 +439,9 @@ class DiscoveryProcessor:
                         break
                     raise
             batch.incomplete += max(0, len(batch.found) - limit)
+            if no_question:
+                log.info("drinks: 질문 없음 제외 %d건(받은 글 %d건 중) — 질문 문장에 술 낱말이 없거나 너무 길어 저장하지 않았다",
+                         no_question, len(batch.found))
         except FetchError as exc:
             if exc.code == "request_cap":
                 aborted = (exc.code, exc.message)
@@ -426,6 +501,41 @@ def similarity(a: str, b: str) -> float:
     return len(both) / len(x | y)
 
 
+# ── 질문 지도 칸 이름표(규칙, 0원) ──
+
+_KIND_KO = {kind: ko for _, kind, ko, _ in config.DRINKS_QUESTION_MAP}
+
+
+def question_cell(text: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """질문 문장 → (주종 키, 질문 유형 키). 낱말로만 정한다. 못 정하면 None. 주종은 먼저 나온 술 낱말, 유형은 DRINKS_CELL_KIND_KEYWORDS 앞 순서가 이긴다."""
+    t = (text or "").lower()
+    for w in config.DRINKS_RELEVANCE_FALSE_FRIENDS:
+        t = t.replace(w, " ")
+    category, best = None, None
+    for cat, terms in config.DRINKS_CELL_CATEGORY_TERMS.items():
+        at = [t.find(x.lower()) for x in terms if x.lower() in t]
+        if at and (best is None or min(at) < best):
+            category, best = cat, min(at)
+    kind = next((k for k, words in config.DRINKS_CELL_KIND_KEYWORDS.items() if any(w in t for w in words)), None)
+    return category, kind
+
+
+def item_cell(it: dict) -> tuple[Optional[str], Optional[str]]:
+    """자료의 칸. 후보 자격이 있는 질문 중 칸이 가장 또렷한(주종·유형이 다 잡히는) 것으로 정한다. 질문이 없으면 제목으로."""
+    qs = good_questions(it) or [it.get("title") or ""]
+    return max((question_cell(q) for q in qs), key=lambda c: (c[0] is not None) + (c[1] is not None))
+
+
+def group_cell(items: list[dict]) -> tuple[Optional[str], Optional[str]]:
+    cells = Counter(item_cell(it) for it in items)
+    return cells.most_common(1)[0][0] if cells else (None, None)
+
+
+def cell_card(cell: tuple[Optional[str], Optional[str]]) -> dict[str, Optional[str]]:
+    cat, kind = cell
+    return {"category": cat, "category_ko": config.DRINKS_CATEGORY_KO.get(cat or ""), "kind": kind, "kind_ko": _KIND_KO.get(kind or "")}
+
+
 READER_VALUE = {
     "storage": "개봉 후·보관 방법처럼 집에서 바로 쓰는 답", "selection": "고를 때 무엇을 보면 되는지 기준",
     "misconception": "흔한 오해를 근거로 바로잡기", "debate": "엇갈리는 주장을 근거로 정리",
@@ -465,8 +575,8 @@ def build_card(items: list[dict], topics: list[dict]) -> dict[str, Any]:
     sig = Counter(s for it in items for s in (it.get("signals") or []))
     signals = set(sig)
     # 대표 질문: 질문 꼴 제목을 먼저(글쓴이가 직접 던진 질문), 없으면 본문·댓글에서 뽑은 질문, 그것도 없으면 제목.
-    titles = [it.get("title") for it in items if it.get("title") and _is_question(clean_text(it["title"]))]
-    qs = [q for it in items for q in (it.get("questions") or [])]
+    titles = [it.get("title") for it in items if it.get("title") and _is_question(clean_text(it["title"])) and question_ok(it["title"])]
+    qs = [q for it in items for q in good_questions(it)]
     key_q = (titles or qs or [items[0].get("title") or items[0].get("canonical_url")])[0]
     dominant = next((s for s in ["storage", "misconception", "selection", "debate", "new_product", "event", "question"] if s in signals), "question")
     fit_v, fit_c = _fit(signals)
@@ -486,55 +596,166 @@ def build_card(items: list[dict], topics: list[dict]) -> dict[str, Any]:
     score_i = min(indep, 4) * 10
     score_s = min(len(signals - {"question"}), 3) * 5
     score_f = max(fit_v, fit_c) * 5
-    total = score_q + score_i + score_s + score_f
+    # 수요 가점: 같은 칸에서 서로 다른 글(주소가 다른 자료)이 같은 것을 물을수록 조금 오른다. 상한이 있고 총점은 100 을 넘지 않는다.
+    distinct = len({it.get("canonical_url") or it.get("id") or id(it) for it in items})
+    score_d = min(config.DRINKS_DEMAND_BONUS_MAX, max(0, distinct - 1) * config.DRINKS_DEMAND_BONUS_PER_ITEM)
+    total = min(100, score_q + score_i + score_s + score_f + score_d)
+    cell = group_cell(items)
     return {
         "key_question": key_q[:500], "reader_value": READER_VALUE[dominant],
         "discovery_path": " · ".join(sorted({f"{it.get('platform')}:{it.get('channel_name') or '-'}" for it in items}))[:500],
         "signals": sorted(signals), "first_scene": "[규칙 제안] " + FIRST_SCENE[dominant],
         "fit_video": fit_v, "fit_carousel": fit_c, "facts_to_check": facts, "duplicate_topic_ids": dups,
         "interest": {"independent_sources": indep, "items": len(items), "by_platform": dict(per_platform),
+                     **({"cell": cell_card(cell)} if any(cell) else {}),
                      "note": "플랫폼별 지표는 합산하지 않는다 · 미제공 지표는 없음으로 둔다"},
         "provisional_score": total, "rubric": config.DRINKS_DISCOVERY_RUBRIC,
-        "score_reason": f"질문 신호 {score_q} + 독립 출처 {indep}곳 {score_i} + 신호 종류 {score_s} + 형식 적합 {score_f} = {total}/100 (임시)",
+        "score_reason": f"질문 신호 {score_q} + 독립 출처 {indep}곳 {score_i} + 신호 종류 {score_s} + 형식 적합 {score_f} + 수요 {score_d} = {total}/100 (임시)",
     }
 
 
 def cluster(items: list[dict], threshold: float = config.DRINKS_DISCOVERY_SIMILAR_MIN) -> list[list[dict]]:
+    """비슷한 자료를 묶는다. **같은 칸 안에서만** 묶는다 — 다른 칸의 비슷한 질문(사케 보관 ↔ 위스키 보관)은 따로 둔다."""
     groups: list[list[dict]] = []
+    cells: list[tuple[Optional[str], Optional[str]]] = []
     for it in items:
         text = " ".join([it.get("title") or "", *(it.get("questions") or [])])
-        for g in groups:
+        cell = item_cell(it)
+        for g, gc in zip(groups, cells):
+            if gc != cell:
+                continue
             if any(it.get("summary_hash") and it.get("summary_hash") == o.get("summary_hash") for o in g) or \
                     max(similarity(text, " ".join([o.get("title") or "", *(o.get("questions") or [])])) for o in g) >= threshold:
                 g.append(it)
                 break
         else:
             groups.append([it])
+            cells.append(cell)
     return groups
 
 
-def suggest_candidates(rpc) -> dict[str, int]:
+# ── Jev 최종 판정(fail-open) ──
+JEV_QUESTION = (
+    "Is QUESTION a question about an alcoholic drink (sake, Korean traditional liquor such as makgeolli or soju, or whisky) "
+    "whose answer an ordinary Instagram viewer would be curious to learn?",
+    {"true": "a genuine question about such a drink that a general viewer would want answered",
+     "false": "not about alcoholic drinks (shopping, travel, ads, chatter) or too narrow or personal for a general audience"},
+)
+
+
+def _jev_ask(question: str) -> Optional[float]:
+    """'예'일 확률. 못 물었으면 None — 어떤 오류도 수집을 막지 않는다."""
+    try:
+        return decide.noul(f"QUESTION (Korean): {question}", JEV_QUESTION[0], JEV_QUESTION[1],
+                           site="drinks_discovery", subject=question[:40])
+    except Exception as exc:  # noqa: BLE001
+        log.warning("drinks: Jev 판정 실패(무시): %s", exc)
+        return None
+
+
+class JevJudge:
+    """실행당 호출 상한·같은 질문 재사용을 가진 판정기. verdict → ('ok'|'rejected'|'unavailable'|'capped', p)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.memo: dict[str, tuple[str, Optional[float]]] = {}
+
+    def verdict(self, question: str) -> tuple[str, Optional[float]]:
+        if question in self.memo:
+            return self.memo[question]
+        try:
+            on = decide.enabled()
+        except Exception:  # noqa: BLE001
+            on = False
+        if not on:
+            v: tuple[str, Optional[float]] = ("unavailable", None)
+        elif self.calls >= config.DRINKS_DISCOVERY_JEV_MAX_PER_RUN:
+            v = ("capped", None)   # 비용 상한 — 못 물은 것은 막지 않고 만든다(fail-open)
+        else:
+            self.calls += 1
+            p = _jev_ask(question)
+            v = ("unavailable", None) if p is None else (("rejected" if p < config.DRINKS_DISCOVERY_JEV_MIN_P else "ok"), p)
+        self.memo[question] = v
+        return v
+
+
+def _cand_cell(c: dict) -> tuple[Optional[str], Optional[str]]:
+    return group_cell(c["items"]) if c.get("items") else question_cell(c.get("key_question"))
+
+
+def read_candidate_interests() -> dict[str, dict]:
+    """열린 후보의 interest(jsonb) - 점수를 다시 계산해도 Jev 기록을 잇기 위해 읽는다. 못 읽으면 빈 dict(기록만 잃고 수집은 계속)."""
+    try:
+        from . import db
+        rows = db.select_all("drink_discovery_candidates", "id,interest", key=("id",), where=lambda q: q.eq("status", "suggested"))
+        return {r["id"]: r.get("interest") or {} for r in rows}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("drinks: 후보 interest 조회 실패(Jev 기록은 이번 갱신에서 이어지지 않는다): %s", exc)
+        return {}
+
+
+def _keep_jev(card: dict, old: Optional[dict]) -> None:
+    """다시 만든 카드의 interest 에 기존 후보의 Jev 기록(jev·jev_p)을 합친다 - 덮어쓰지 않는다."""
+    for k in ("jev", "jev_p"):
+        if old and k in old:
+            card["interest"][k] = old[k]
+
+
+def suggest_candidates(rpc, read_interests: Optional[Callable[[], dict[str, dict]]] = None) -> dict[str, int]:
     back = rpc("drinks_discovery_backlog", {}) or {}
     items, cands, topics = back.get("items") or [], back.get("candidates") or [], back.get("topics") or []
-    made = added = skipped = 0
-    for g in cluster(items):
-        if not any((it.get("signals") or []) or (it.get("questions") or []) for it in g):
-            skipped += len(g)  # 질문·신호가 하나도 없는 자료는 후보로 만들지 않는다(그대로 발견함에 남는다)
-            continue
+    made = added = jev_rejected = jev_unavailable = 0
+    # 질문 문장 자체가 후보 자격(길이 상한 + 술 낱말)을 갖춘 자료만 후보가 된다. 나머지는 그대로 발견함에 남는다.
+    eligible = [it for it in items if good_questions(it)]
+    skipped = len(items) - len(eligible)
+    judge = JevJudge()
+    old_interest: dict[str, dict] = {}
+    if read_interests is not None:
+        try:
+            old_interest = read_interests() or {}
+        except Exception as exc:  # noqa: BLE001
+            log.warning("drinks: 후보 interest 조회 실패(무시): %s", exc)
+
+    fresh: dict[str, dict] = {}   # 이번 실행에 만든 후보의 Jev 기록(아래 다시 계산 때 잇는다)
+
+    def prior(c: dict) -> Optional[dict]:
+        return c.get("interest") or old_interest.get(c["id"]) or fresh.get(c["id"])
+
+    for g in cluster(eligible):
         first = build_card(g, topics)
-        target = next((c for c in cands if similarity(first["key_question"], c["key_question"]) >= 0.5), None)
+        cell = group_cell(g)
+        target = next((c for c in cands if _cand_cell(c) == cell and similarity(first["key_question"], c["key_question"]) >= 0.5), None)
         # 열린 후보에 더할 때는 그 후보의 **자료 전체**로 카드를 다시 만든다(새 묶음만으로 점수를 덮지 않게 — 검토 지적).
         card = build_card((target.get("items") or []) + g, topics) if target else first
+        park: Optional[float] = None
         if target:
             card["key_question"] = target["key_question"]
+            _keep_jev(card, prior(target))
+        else:
+            status, p = judge.verdict(card["key_question"])
+            card["interest"]["jev"] = "ok" if status == "rejected" else status   # 기각돼도 판정은 '했다'
+            if p is not None:
+                card["interest"]["jev_p"] = round(p, 4)
+            if status == "rejected":
+                jev_rejected += 1
+                log.info("drinks: Jev 기각(p=%.2f) %s", p or 0.0, card["key_question"][:60])
+                if not config.DRINKS_DISCOVERY_JEV_PARK_REJECTED:
+                    continue   # 후보를 만들지 않는다 — 자료는 발견함에 그대로 남는다
+                park = p or 0.0
+            elif status != "ok":
+                jev_unavailable += 1
         r = rpc("drinks_suggest_candidate", {"item_ids": [it["id"] for it in g], **card,
                                              **({"candidate_id": target["id"]} if target else {})}) or {}
         if r.get("candidate_id"):
-            if target:
+            if park is not None:   # 기각된 묶음은 열린 후보가 아니라 '기각' 상태로 남겨 자료를 다음 실행의 앞줄에서 치운다
+                rpc("drinks_candidate_action", {"candidate_id": r["candidate_id"], "expected_version": 1, "action": "dismiss",
+                                                "reason": f"Jev 판정 미달 p={park:.2f} (질문 지도 2026-10-29)"})
+            elif target:
                 added += 1
                 target["items"] = (target.get("items") or []) + g
             else:
                 made += 1
+                fresh[r["candidate_id"]] = {k: card["interest"][k] for k in ("jev", "jev_p") if k in card["interest"]}
                 cands.append({"id": r["candidate_id"], "key_question": card["key_question"], "items": list(g)})
     # 합치기(운영자)로 자료가 옮겨진 후보도 다음 묶기 때 자료 전체로 다시 계산한다.
     refreshed = 0
@@ -542,6 +763,8 @@ def suggest_candidates(rpc) -> dict[str, int]:
         if c.get("items"):
             card = build_card(c["items"], topics)
             card.pop("key_question", None)   # 대표 질문은 운영자가 고친 것일 수 있다 — 유지
+            _keep_jev(card, prior(c))
             rpc("drinks_suggest_candidate", {"item_ids": [], "candidate_id": c["id"], **card})
             refreshed += 1
-    return {"new": made, "added": added, "skipped_items": skipped, "refreshed": refreshed}
+    return {"new": made, "added": added, "skipped_items": skipped, "refreshed": refreshed,
+            "jev_rejected": jev_rejected, "jev_unavailable": jev_unavailable}

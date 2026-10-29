@@ -67,6 +67,7 @@ export const GROUPS_DRINKS: NavGroup[] = [
     title: "수집",
     items: [
       { href: "/drinks/discover", label: "소재 발견", match: "prefix" },
+      { href: "/drinks/trends", label: "커뮤니티 동향", match: "prefix" },
       { href: "/drinks/collected", label: "수집 문서", match: "prefix" },
       { href: "/drinks/sources", label: "수집원", match: "prefix" },
       { href: "/drinks/runs", label: "실행 기록", match: "prefix" },

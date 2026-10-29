@@ -219,7 +219,7 @@ def test_suggest_skips_items_without_any_signal():
                     "candidates": [], "topics": []}
         return {"candidate_id": "c"}
     out = dd.suggest_candidates(rpc)
-    assert out == {"new": 0, "added": 0, "skipped_items": 1, "refreshed": 0}
+    assert out == {"new": 0, "added": 0, "skipped_items": 1, "refreshed": 0, "jev_rejected": 0, "jev_unavailable": 0}
     assert [fn for fn, _ in calls] == ["drinks_discovery_backlog", "drinks_discovery_backlog"], "후보 생성 없음(다시 계산 조회만)"
 
 
@@ -263,10 +263,83 @@ def test_discovery_processor_records_items_and_api_key_missing_fails_validation(
 def test_naver_keeps_same_day_posts_after_the_watermark(monkeypatch):
     """게시일이 날짜뿐이라 시각 비교로 같은 날 늦은 글을 잃던 것(검토 지적)."""
     from datetime import datetime, timezone
+    monkeypatch.setattr(config, "DRINKS_NAVER_SORT", "date")   # 날짜 필터는 최신순에서만 쓴다(정확도순은 test_drinks_question_map)
     monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
 
     def h(req):
-        return js({"items": [{"title": "같은 날 글", "link": "https://blog.naver.com/y/9", "description": "d", "postdate": "20261022"}]})
+        return js({"items": [{"title": "막걸리 같은 날 글", "link": "https://blog.naver.com/y/9", "description": "d", "postdate": "20261022"}]})
     since = datetime(2026, 10, 21, 21, 30, tzinfo=timezone.utc)   # = 2026-10-22 06:30 KST
     b = dd.naver(fetcher(h, ["naverapihub.apigw.ntruss.com"]), {"queries": ["막걸리"], "kinds": ["blog"]}, since, 10)
     assert [x.url for x in b.found] == ["https://blog.naver.com/y/9"]
+
+
+# ── 잡음 거르기(2026-10-29) ──
+
+NOISE_TITLES = ["구룡포 햇 과메기 공구 스타트!!!", "(11월 3일 발송) 복동이네 프리미엄 유라조생/노지감귤",
+                "마지막 공구) 나주 전통방식 한우 순살 갈비탕 & 편육 공동 구매", "20261024 주간 경제전망",
+                "아고다 10월 할인코드 알아볼 때 · 후지카와구치코 독채 위치", "Q2 체크인·체크아웃 시간과 짐 보관은요?", "목요일 강습 인증"]
+GOOD_TITLES = ["막걸리는 왜 병마다 가라앉는 정도가 다를까요", "생 막걸리와 살균 막걸리는 무엇이 다를까요",
+               "다들 위스키를 왜 드시는거죠? 왜 위스키였죠?", "광주 gs25에서 막걸리 사고 제주도 왔는데 유통기한 5개월 지나있네요"]
+
+
+def test_is_relevant_drops_commerce_travel_and_offtopic_titles():
+    for t in NOISE_TITLES:
+        assert dd.is_relevant(t, "") is False, t
+    for t in GOOD_TITLES:
+        assert dd.is_relevant(t, "") is True, t
+
+
+def test_is_relevant_noise_only_counts_in_the_title_and_false_friends_are_ignored():
+    assert dd.is_relevant("막걸리 개봉 후 보관", "택배로 받았는데 며칠 지나도 괜찮나요") is True, "요약의 택배는 허용"
+    assert dd.is_relevant("막걸리 공구 마감", "") is False, "제목의 공구는 거른다"
+    assert dd.is_relevant("신기술 소개", "예술 이야기") is False, "기술·예술의 '술' 은 술이 아니다"
+    assert dd.is_relevant("Sake storage question", None) is True
+    assert dd.is_relevant("Hotel review", "great view") is False
+
+
+def test_storage_signal_requires_a_drink_word():
+    assert "storage" not in dd.extract_signals("Q2 체크인·체크아웃 시간과 짐 보관은요?")
+    assert "storage" in dd.extract_signals("막걸리 유통기한 5개월 지나있네요")
+    assert "storage" in dd.extract_signals("How long does an open bottle of Sake last?")
+    assert "storage" in dd.extract_signals("How long does an opened bottle keep in the fridge?"), "bottle 은 보관 신호에만 인정"
+    assert dd.is_relevant("How long does an opened bottle keep?", "") is False, "bottle 은 관련성 필터에는 쓰지 않는다"
+    assert "question" in dd.extract_signals("Q2 체크인·체크아웃 시간과 짐 보관은요?"), "다른 신호는 그대로"
+
+
+def test_naver_calls_every_query_and_kind_once_and_drops_irrelevant(monkeypatch):
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
+    queries = ["막걸리 보관", "위스키 입문", "사케 추천", "전통주 선물", "소주 도수", "와인 말고 술"]
+    asked: list[tuple[str, str, int]] = []
+
+    def h(req):
+        kind = "cafearticle" if "cafearticle" in req.url.path else "blog"
+        q = req.url.params["query"]
+        asked.append((kind, q, int(req.url.params["display"])))
+        return js({"items": [
+            {"title": f"{q} 이야기", "link": f"https://blog.naver.com/{kind}/{q}", "description": "막걸리 이야기", "postdate": "20261028"},
+            {"title": "구룡포 햇 과메기 공구 스타트!!!", "link": f"https://blog.naver.com/noise/{kind}/{q}", "description": "", "postdate": "20261028"},
+        ]})
+    b = dd.naver(fetcher(h, ["naverapihub.apigw.ntruss.com"]), {"queries": queries}, None, 50)
+    assert {(k, q) for k, q, _ in asked} == {(k, q) for k in ("cafearticle", "blog") for q in queries}, "6검색어 × 2종류 모두 불린다"
+    assert all(1 <= d <= 50 // 12 for _, _, d in asked)
+    assert b.parsed == 24, "API 가 돌려준 건수는 그대로 센다"
+    assert len(b.found) == 12 and all("공구" not in (x.title or "") for x in b.found)
+    assert {x.url for x in b.found} == {x.url for x in b.found if "noise" not in x.url}
+    # 한도가 호출 수보다 작아도 호출당 최소 1건으로 모두 부른다
+    asked.clear()
+    dd.naver(fetcher(h, ["naverapihub.apigw.ntruss.com"]), {"queries": queries}, None, 3)
+    assert len(asked) == 12 and {d for _, _, d in asked} == {1}
+
+
+def test_naver_full_page_is_judged_against_the_per_call_display(monkeypatch):
+    from datetime import datetime, timezone
+    monkeypatch.setattr(config, "DRINKS_NAVER_SORT", "date")
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
+
+    def h(req):
+        n = int(req.url.params["display"])
+        return js({"items": [{"title": f"막걸리 {i}", "link": f"https://blog.naver.com/z/{i}", "description": "", "postdate": "20261029"}
+                             for i in range(n)]})
+    since = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    b = dd.naver(fetcher(h, ["naverapihub.apigw.ntruss.com"]), {"queries": ["a", "b"], "kinds": ["blog"]}, since, 10)
+    assert b.incomplete == 2, "호출당 5건을 꽉 채웠고 가장 오래된 글도 워처마크 이후 → 호출마다 다 못 봤다"
