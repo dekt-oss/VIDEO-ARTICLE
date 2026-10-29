@@ -418,14 +418,15 @@ class DiscoveryProcessor:
                 raise FetchError("method_unsupported", f"발견 채널이 아닙니다: {self.src.get('platform')}")
             batch = conn(self.fetcher, self.src.get("parser_config") or {}, since, limit)
             self.rpc("drinks_heartbeat_run", self._lease({"listed_count": len(batch.found), "request_count": self.fetcher.requests}))
-            no_question = 0
-            for fd in batch.found[:limit]:
+            # 네이버·유튜브는 질문 문장이 후보 자격(술 낱말 + 길이 상한)을 갖춘 글만 저장한다 — 안 그러면 후보가 될 수 없는 자료가
+            #   발견함 조회 창(오래된 순 500건)을 채워 새 자료를 밀어낸다. Stack Exchange 는 종전대로 다 저장한다.
+            # ★ 거른 **뒤에** 건수 상한을 건다(2026-10-29 운영 실측: 검증 실행이 앞 3건만 잘라 놓고 거르는 바람에
+            #   그 3건이 질문 없는 글이면 0건 → no_body_extracted 로 수집원 2개가 검증에 실패했다).
+            eligible = [fd for fd in batch.found
+                        if not (fd.platform in QUESTION_REQUIRED_PLATFORMS and not good_questions(fd.item()))]
+            no_question = len(batch.found) - len(eligible)
+            for fd in eligible[:limit]:
                 item = fd.item()
-                # 네이버·유튜브는 질문 문장이 후보 자격(술 낱말 + 길이 상한)을 갖춘 글만 저장한다 — 안 그러면 후보가 될 수 없는 자료가
-                #   발견함 조회 창(오래된 순 500건)을 채워 새 자료를 밀어낸다. Stack Exchange 는 종전대로 다 저장한다.
-                if fd.platform in QUESTION_REQUIRED_PLATFORMS and not good_questions(item):
-                    no_question += 1
-                    continue
                 try:
                     self.rpc("drinks_collect_discovery", self._lease({"item": item}))
                 except DbError as exc:
@@ -438,7 +439,7 @@ class DiscoveryProcessor:
                         aborted = (exc.code, exc.message)
                         break
                     raise
-            batch.incomplete += max(0, len(batch.found) - limit)
+            batch.incomplete += max(0, len(eligible) - limit)
             if no_question:
                 log.info("drinks: 질문 없음 제외 %d건(받은 글 %d건 중) — 질문 문장에 술 낱말이 없거나 너무 길어 저장하지 않았다",
                          no_question, len(batch.found))
