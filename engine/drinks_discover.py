@@ -36,7 +36,7 @@ SIGNAL_PATTERNS: dict[str, re.Pattern] = {
     "debate": re.compile(r"\bvs\.?\b|대\s|논쟁|호불호|갑론|どっち|派|\b(versus|debate|overrated|controversial)\b", re.I),
     "misconception": re.compile(r"오해|사실은|잘못 알|속설|誤解|本当は|\b(myth|misconception|actually|is it true)\b", re.I),
     "selection": re.compile(r"추천|고르|입문|선택|차이|おすすめ|選び|違い|\b(recommend|choose|which one|difference|beginner|best)\b", re.I),
-    "storage": re.compile(r"보관|냉장|개봉|유통기한|상했|숙성|保存|開栓|冷蔵|賞味|\b(store|storage|shelf|expire|freez|fridge|old bottle|opened)\b", re.I),
+    "storage": re.compile(r"보관|냉장|개봉|유통기한|상했|숙성|保存|開栓|冷蔵|賞味|\b(store|storage|shelf|expire|freez|fridge|old bottle|opened|open bottle|how long[^.?!]*\blasts?)\b", re.I),
     "new_product": re.compile(r"신제품|출시|한정판|리뉴얼|新発売|限定|発売|\b(new release|launch|limited edition)\b", re.I),
     "event": re.compile(r"행사|페스티벌|축제|시음회|박람회|イベント|祭|試飲会|\b(festival|tasting event|expo|fair)\b", re.I),
 }
@@ -46,8 +46,26 @@ _SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[。？！])|\n+")   # 일본어·중국
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
 
+def _has_term(text: str, terms: tuple[str, ...]) -> bool:
+    t = (text or "").lower()
+    for w in config.DRINKS_RELEVANCE_FALSE_FRIENDS:
+        t = t.replace(w, " ")
+    return any(x in t for x in terms)
+
+
+def is_relevant(title: Optional[str], summary: Optional[str]) -> bool:
+    """술 이야기인가(규칙). 제목+요약에 술 낱말이 하나라도 있고, **제목에** 상거래·여행 잡음 낱말이 없어야 한다."""
+    if any(n in (title or "") for n in config.DRINKS_NOISE_TERMS):
+        return False
+    return _has_term(f"{title or ''} {summary or ''}", tuple(x.lower() for x in config.DRINKS_RELEVANCE_TERMS))
+
+
 def extract_signals(text: str) -> list[str]:
-    return [k for k, p in SIGNAL_PATTERNS.items() if p.search(_URL.sub(" ", text or ""))]
+    clean = _URL.sub(" ", text or "")
+    out = [k for k, p in SIGNAL_PATTERNS.items() if p.search(clean)]
+    if "storage" in out and not _has_term(clean, tuple(x.lower() for x in (*config.DRINKS_RELEVANCE_TERMS, *config.DRINKS_STORAGE_EXTRA_TERMS))):
+        out.remove("storage")   # 호텔 '짐 보관' 처럼 술 이야기가 아닌 보관은 보관 신호가 아니다
+    return out
 
 
 _TRAILING_PUNCT = " .,!…·~)]}\"'”’。"
@@ -227,7 +245,7 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
         raise FetchError("api_key_missing", "YOUTUBE_DATA_API_KEY 가 없습니다 — 유튜브 발견은 키를 넣기 전까지 멈춰 있습니다")
     hdr = {"X-Goog-Api-Key": key}
     found: list[Found] = []
-    parsed = incomplete = 0
+    parsed = incomplete = dropped = 0
     queries = (cfg.get("queries") or [])[: config.DRINKS_YT_SEARCH_MAX_QUERIES]   # 등록 때 3개로 막는다(0052)
     for q in queries:
         params = {"part": "snippet", "q": q, "type": "video", "order": "date", "maxResults": min(25, max(1, limit - len(found)))}
@@ -249,6 +267,9 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
             vid = x["id"]["videoId"]
             meta = by_id.get(vid, {})
             sn = meta.get("snippet") or x.get("snippet") or {}
+            if not is_relevant(sn.get("title"), clean_text(sn.get("description") or "")):
+                dropped += 1
+                continue
             st = meta.get("statistics") or {}
             comments: list[str] = []
             coverage = "title_summary"
@@ -273,6 +294,8 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
                 coverage=coverage, comments=[t for t in comments if extract_questions(t)][:5]))
             if len(found) >= limit:
                 break
+    if dropped:
+        log.info("drinks: 유튜브 발견 — 술과 무관·잡음으로 %d건 제외(API 결과 %d건)", dropped, parsed)
     return Batch(found, parsed, incomplete)
 
 
@@ -282,37 +305,42 @@ def naver(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) -> B
         raise FetchError("api_key_missing", "NAVER_CLIENT_ID/SECRET(네이버 클라우드 API HUB 키)이 없습니다 — 네이버 발견은 키를 넣기 전까지 멈춰 있습니다")
     hdr = {"X-NCP-APIGW-API-KEY-ID": cid, "X-NCP-APIGW-API-KEY": sec}
     found: list[Found] = []
-    parsed = incomplete = 0
+    parsed = incomplete = dropped = 0
     hub = config.DRINKS_NAVER_SEARCH_BASE
-    for kind, platform, base in [("cafearticle", "naver_cafe", f"{hub}/cafearticle"),
-                                 ("blog", "naver_blog", f"{hub}/blog")]:
-        if kind not in (cfg.get("kinds") or ["cafearticle", "blog"]):
-            continue
-        for q in cfg.get("queries") or []:
-            if len(found) >= limit:
-                incomplete += 1
-                break
+    kinds = [(k, p, b) for k, p, b in [("cafearticle", "naver_cafe", f"{hub}/cafearticle"), ("blog", "naver_blog", f"{hub}/blog")]
+             if k in (cfg.get("kinds") or ["cafearticle", "blog"])]
+    queries = list(cfg.get("queries") or [])
+    # 검색어 × 종류를 **한 번씩 모두** 부른다 — 앞의 검색어가 한도를 다 채워 뒤의 검색어가 굶던 것(첫 운영 실행: 6개 중 2개)을 막는다.
+    per_call = max(1, min(config.DRINKS_NAVER_MAX_DISPLAY, limit // max(1, len(kinds) * len(queries))))
+    for kind, platform, base in kinds:
+        for q in queries:
             # API HUB 는 JSON 본문을 text/plain 으로 내려보낸다(2026-10-23 실측) — 이 커넥터만 그 형식을 받는다.
             #   본문은 아래 json.loads 가 읽으므로 JSON 이 아니면 그대로 실패한다.
             d = json.loads(f.get(base, accept=JSON_TYPES + TEXT_TYPES, headers=hdr,
-                                 params={"query": q, "display": min(30, limit - len(found)), "sort": "date"}).body)
+                                 params={"query": q, "display": per_call, "sort": "date"}).body)
             items = d.get("items") or []
             parsed += len(items)
             # 한 쪽을 꽉 채웠고 가장 오래된 글도 워처마크 날짜 이후면 더 있을 수 있다 — 다 못 봤다고 센다(조용히 자르지 않게).
-            if since and len(items) >= min(30, limit) and items:
+            if since and items and len(items) >= per_call:
                 oldest = min((it.get("postdate") or "99999999") for it in items)
                 if oldest >= since.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d"):
                     incomplete += 1
             for it in items:
+                title = html_text(it.get("title") or "") or None
+                summary = html_text(it.get("description") or "") or None
+                if not is_relevant(title, summary):
+                    dropped += 1
+                    continue
                 posted = None
                 pd = it.get("postdate")
                 if pd and re.fullmatch(r"\d{8}", pd):
                     posted = f"{pd[:4]}-{pd[4:6]}-{pd[6:]}T00:00:00+09:00"
                 found.append(Found(
-                    url=it.get("link") or "", platform=platform, title=html_text(it.get("title") or "") or None,
-                    summary=html_text(it.get("description") or "") or None,
+                    url=it.get("link") or "", platform=platform, title=title, summary=summary,
                     channel_name=it.get("cafename") or it.get("bloggername"), posted_at=posted,
                     coverage="title_summary"))  # 회원 전용 카페 본문은 받지 않는다 — 검색 결과 요약만
+    if dropped:
+        log.info("drinks: 네이버 발견 — 술과 무관·잡음으로 %d건 제외(API 결과 %d건, 호출당 %d건)", dropped, parsed, per_call)
     if since:
         # 네이버 게시일은 '날짜'뿐이다(시각 없음) — 워처마크와 시각으로 비교하면 같은 날 늦게 올라온 글을 잃는다(검토 지적).
         # 한국 날짜로 비교하고, 같은 날 글은 다시 받아 URL 로 중복을 거른다.

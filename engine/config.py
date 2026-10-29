@@ -4344,6 +4344,22 @@ DRINKS_DISCOVERY_LOOKBACK_MAX_DAYS: int = 3650
 DRINKS_QUESTION_ENDINGS_KO: tuple[str, ...] = (
     "인가요", "일까요", "할까요", "될까요", "나요", "까요", "건가요", "는지", "은지", "궁금", "궁금해요", "궁금합니다",
 )
+# 잡음 거르기(2026-10-29). 네이버 첫 운영 실행에서 공동구매·숙소·경제 글이 후보로 올라왔다. docs/deviation-drinks-discovery.md
+#   술 낱말이 제목+요약에 하나라도 있고, 제목에 상거래·여행 낱말이 없을 때만 발견 자료로 받는다(규칙, LLM 0회).
+DRINKS_RELEVANCE_TERMS: tuple[str, ...] = (
+    "술", "주류", "사케", "일본주", "니혼슈", "청주", "준마이", "긴조", "다이긴조", "막걸리", "탁주", "약주", "전통주", "동동주",
+    "증류식", "소주", "위스키", "버번", "스카치", "싱글몰트", "하이볼", "양조", "증류", "도수", "누룩",
+    "酒", "日本酒", "sake", "whisky", "whiskey", "bourbon", "scotch", "makgeolli", "soju", "spirits", "liquor", "brewery", "distillery",
+)
+DRINKS_NOISE_TERMS: tuple[str, ...] = (   # 제목에 있을 때만 거른다(요약에 택배가 스치듯 나오는 것은 허용)
+    "공구", "공동구매", "공동 구매", "발송", "택배", "최저가", "할인코드", "쿠폰", "특가", "판매합니다",
+    "체크인", "체크아웃", "숙소", "독채", "호텔",
+)
+# '술' 이 들어 있지만 술이 아닌 낱말 — 관련성 판정 전에 지운다.
+DRINKS_RELEVANCE_FALSE_FRIENDS: tuple[str, ...] = ("기술", "예술", "마술", "수술", "학술", "미술", "화술", "요술", "묘술", "전술", "행술")
+# 보관 신호 전용(관련성 필터에는 쓰지 않는다): 영어 SE 글 "open bottle of ..." 가 술 낱말 없이도 보관 질문일 수 있다.
+DRINKS_STORAGE_EXTRA_TERMS: tuple[str, ...] = ("bottle",)
+DRINKS_NAVER_MAX_DISPLAY: int = 30   # 네이버 검색 API 가 한 번에 주는 최대 건수(display 상한)
 # 네이버 검색은 네이버 클라우드 API HUB 로 부른다(2026-10-23) — 술째리고(k-vivino)와 같은 키를 쓴다.
 #   developers.naver.com(openapi.naver.com) 키와는 서로 호환되지 않는다(공식 이관 가이드). 한시 무료,
 #   검색 카테고리 통합 월 775,000건 한도에 닿으면 자동 차단 — 같은 키를 쓰는 서비스끼리 합산된다.
