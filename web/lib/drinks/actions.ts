@@ -48,6 +48,12 @@ export const DRINKS_ACTIONS = {
   update_publication: "drinks_update_publication",
   publication_action: "drinks_publication_action",
   strategy_action: "drinks_strategy_action",
+  // 소재 개발(0060): 근거 초안·대본 초안 요청/취소, 개발 결재 열기·닫기. 초안을 쓰는 LLM 호출·결재 가잡기·확정(워커 전용)은
+  // 여기 없다 — 화면은 요청을 큐에 넣을 뿐이다. 아래 PHASE_A_EXCLUDED 의 research_llm·generate_plan·generate_script 와는 다른 이름이다.
+  request_develop: "drinks_request_develop",
+  cancel_develop: "drinks_cancel_develop",
+  open_develop_budget: "drinks_open_develop_budget",
+  close_develop_budget: "drinks_close_develop_budget",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -133,6 +139,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   // 순환(0055)
   duplicate_account: 409, output_not_usable: 422, capability_missing: 422, duplicate_publication: 409,
   digest_mismatch: 409, not_publishable: 422, too_late: 422, stale_strategy: 409, insufficient_sample: 422,
+  // 소재 개발(0060)
+  budget_missing: 422, evidence_insufficient: 422, script_check_failed: 422, develop_in_progress: 409,
 };
 
 export interface DbError {
@@ -279,6 +287,31 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     p.approved_by = "operator";
     if (typeof p.approver_words !== "string" || !p.approver_words.trim()) {
       return { status: 400, body: { error: "결재 문장(승인한 말 그대로)을 적으세요", code: "invalid_input" } };
+    }
+  }
+  if (action === "request_develop") {
+    if (p.kind !== "evidence" && p.kind !== "plan") {
+      return { status: 400, body: { error: "만들 초안 종류(evidence·plan)를 고르세요", code: "invalid_input" } };
+    }
+  }
+  if (action === "open_develop_budget") {
+    // 개발 결재도 운영자 키를 가진 사람만 연다. 결재자 이름은 입력값을 믿지 않고, 결재 문장은 필수(DB 도 검사).
+    p.approved_by = "operator";
+    if (typeof p.approver_words !== "string" || !p.approver_words.trim()) {
+      return { status: 400, body: { error: "결재 문장(승인한 말 그대로)을 적으세요", code: "invalid_input" } };
+    }
+    if (typeof p.stage !== "string" || !p.stage.trim()) {
+      return { status: 400, body: { error: "결재 단계 이름을 적으세요", code: "invalid_input" } };
+    }
+    const cap = Number(p.cap_usd);
+    if (!Number.isFinite(cap) || cap <= 0) {
+      return { status: 400, body: { error: "상한 금액은 0보다 커야 합니다", code: "invalid_input" } };
+    }
+    p.cap_usd = cap;
+    if (p.days !== undefined && p.days !== null) {
+      const days = Number(p.days);
+      if (!Number.isInteger(days) || days < 1) return { status: 400, body: { error: "유효 기간(일)은 1 이상의 정수여야 합니다", code: "invalid_input" } };
+      p.days = days;
     }
   }
   if (action === "publication_action" || action === "strategy_action") {

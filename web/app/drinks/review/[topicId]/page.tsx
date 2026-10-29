@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import BriefTab from "@/components/drinks/BriefTab";
+import DevelopCard from "@/components/drinks/DevelopCard";
 import EvidenceTab from "@/components/drinks/EvidenceTab";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import PlanTab from "@/components/drinks/PlanTab";
@@ -11,7 +12,7 @@ import { seoulDateTimeLabel, todayInSeoul } from "@/lib/date";
 import {
   CATEGORY_LABEL, FORMAT_LABEL, LANE_LABEL, QUESTION_KIND_LABEL, TOPIC_STATUS_LABEL, VERSION_STATUS_LABEL, deriveTopic, type Format,
 } from "@/lib/drinks/model";
-import { EVENTS_LIMIT, loadTopic } from "@/lib/drinks/queries";
+import { EVENTS_LIMIT, loadDevelop, loadTopic } from "@/lib/drinks/queries";
 import type { EventRow } from "@/lib/drinks/types";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,8 @@ export default async function DrinksTopicPage(props: {
   const review = d.review;
   const reviewKey = `${review?.id ?? "none"}-${review?.version ?? 0}-${topic.version}`;
   const deliverableOf = (f: Format) => deliverables.find((x) => x.format === f) ?? null;
+  // 소재 개발 카드: 초안이 들어오는 요약·근거·공통 기획 탭에서만 읽는다(0060 이 없으면 카드가 말한다).
+  const develop = tab === "overview" || tab === "evidence" || tab === "brief" ? await loadDevelop(topic.id) : null;
 
   return (
     <main className="container">
@@ -100,6 +103,11 @@ export default async function DrinksTopicPage(props: {
           </Link>
         ))}
       </nav>
+
+      {develop && (
+        <DevelopCard topicId={topic.id} topicStatus={topic.status} approvedEvidence={d.approvalValid}
+          plans={plans.map((p) => ({ id: p.id, format: p.format }))} develop={develop} />
+      )}
 
       {tab === "overview" && <TopicPanel key={topic.version} topic={topic} canonical={canonical} />}
       {tab === "evidence" && (

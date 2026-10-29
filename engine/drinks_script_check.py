@@ -101,10 +101,18 @@ def _nums(text: str) -> set[str]:
 
 
 def _source_text(spec: dict[str, Any]) -> str:
-    src = spec.get("source") or {}
+    """출처 표기(제목·발행처·연도…) 글. 시험 소재는 source(dict), DB 작업은 sources(list) 로 온다 — 둘 다 읽는다.
+
+    ★ 2026-10-30 수정: 전엔 source 가 비어도 `{}` 가 dict 라서 sources 를 아예 읽지 않았다 — DB 제작 작업(plan_spec)에서
+      논문 연도 같은 출처 표기 숫자까지 '원문에 없는 숫자'로 막혔다(소재 개발 엔진 0단계에서 발견)."""
+    parts: list[str] = []
+    src = spec.get("source")
     if isinstance(src, dict):
-        return " ".join(str(v) for v in src.values())
-    return " ".join(str(s) for s in (spec.get("sources") or []))
+        parts += [str(v) for v in src.values()]
+    elif src:
+        parts.append(str(src))
+    parts += [str(s) for s in (spec.get("sources") or [])]
+    return " ".join(parts)
 
 
 def check(spec: dict[str, Any]) -> Report:
