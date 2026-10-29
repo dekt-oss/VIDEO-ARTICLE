@@ -42,7 +42,7 @@ export default async function DrinksDiscoverPage(props: { searchParams: Promise<
     <main className="container">
       <div className="header">
         <h1>🍶 소재 발견함</h1>
-        <span className="muted">사람들이 실제로 묻는 것 — 사실 근거가 아닙니다 · <Link href="/drinks/sources">수집원</Link> · <Link href="/drinks/runs">실행 기록</Link></span>
+        <span className="muted">사람들이 실제로 묻는 것 — 사실 근거가 아닙니다 · <Link href="/drinks/sources">수집원</Link> · <Link href="/drinks/runs">실행 기록</Link> · <Link href="/drinks/trends">커뮤니티 동향·이슈</Link></span>
       </div>
       <section className="section">
         <h3>채널 연결 상태</h3>

@@ -78,7 +78,7 @@ function CollectHealth({ health }: { health: Health }) {
     <p className={bad > 0 ? "banner-warn" : "banner-info"} style={{ marginTop: 12 }}>
       활성 수집원 <b>{h.active}</b> · 최근 24시간 실행: 성공 {h.succeeded} · 정상 0건 {h.empty} · 부분 성공 {h.partial} · 실패 {h.failed} ·
       중단 {h.aborted}{h.stuck > 0 && <> · <b>응답 끊긴 실행 {h.stuck}</b></>} — <Link href={bad > 0 ? "/drinks/runs?status=failed" : "/drinks/runs"}>실행 기록</Link> ·{" "}
-      <Link href="/drinks/collected?linked=no">아직 소재 없는 수집 문서</Link>
+      <Link href="/drinks/collected?linked=no">아직 소재 없는 수집 문서</Link> · <Link href="/drinks/trends">커뮤니티 동향·이슈</Link>
     </p>
   );
 }
