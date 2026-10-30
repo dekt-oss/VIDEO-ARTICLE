@@ -557,3 +557,18 @@ def test_workflow_is_manual_only_and_has_the_keys_it_needs():
         assert k in y
     assert "GITHUB_DISPATCH_TOKEN" in y
     assert "DRINKS_DEVELOP_EUROPEPMC_ENABLED:" not in y, "Europe PMC 는 켜지 않는다(env 로 주지 않는다)"
+
+
+def test_plan_save_refused_keeps_the_paid_plan_in_the_request_result():
+    """2026-10-30 운영 실측: 저장이 version_conflict 로 거부되자 돈을 낸 대본이 어디에도 남지 않았다 — 이제 요청 기록에 남긴다."""
+    class Refusing(FakeRpc):
+        def drinks_develop_save_plan(self, p):
+            raise DbError("version_conflict", "다른 곳에서 먼저 저장됐습니다")
+
+    rpc = Refusing()
+    dd.process_job(plan_job(), rpc, deps(write_plan=lambda q, c, b, f=None: gold_plan()))
+    assert rpc.finish["outcome"] == "failed" and rpc.finish["error_code"] == "version_conflict"
+    kept = rpc.finish["result"]["unsaved_plan"]
+    assert kept["scenes"] and len(kept["scenes"]) == len(GOLD_WHISKY["scenes"]), "만든 대본을 버리지 않는다"
+    assert rpc.finish["result"]["source_table"], "장면별 원문 대조표도 함께 남긴다"
+    assert "cost" in rpc.finish["result"]

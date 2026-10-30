@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|60)_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6[01])_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0060_drinks_develop.sql"), "0060 이 목록에 있어야 한다");
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
@@ -276,8 +276,21 @@ test("제작안 초안: 승인된 근거의 핵심 주장만 쓴다 · 초안으
   assert.equal(fin.result.source_table[0].scene, 2);
   // 제작안 초안이 있으면 다시 요청할 수 없다
   await rpcFails("drinks_request_develop", { topic_id: topic, kind: "plan", budget_id: b.budget_id }, "draft_exists");
+  // 2026-10-30 운영 실측(0061): 앞선 초안을 변경 요청으로 닫고 두 번째 초안을 저장하면, 결과물에 현재 제작안이 있어
+  // drinks_save_plan 이 결과물 버전을 요구한다 — 워커 래퍼가 그 자리에서 읽어 넘겨야 version_conflict 가 나지 않는다.
+  let pv = await row("select * from drink_plan_revisions where id = $1", [pl.revision_id]);
+  await ok("plan_action", { revision_id: pl.revision_id, expected_version: pv.version, action: "submit" });
+  pv = await row("select * from drink_plan_revisions where id = $1", [pl.revision_id]);
+  await ok("plan_action", { revision_id: pl.revision_id, expected_version: pv.version, action: "request_changes", reason: "뼈대 변경" });
+  const q2 = await rpc("drinks_request_develop", { topic_id: topic, kind: "plan", budget_id: b.budget_id });
+  const g2 = await rpc("drinks_start_develop", { worker_id: "t2" });
+  assert.equal(g2.job.request_id, q2.request_id);
+  const l2 = { request_id: g2.job.request_id, lease_token: g2.job.lease_token };
+  const pl2 = await rpc("drinks_develop_save_plan", { ...l2, plan_json: { scenes: [{ narration: "왜 물을 넣을까요?", content_kind: "transition", visual_role: "reality", visual_prompt: "A glass" },
+    { narration: "애호가들은 물을 몇 방울 넣어요.", claim_ids: ["c1"], visual_role: "reality", visual_prompt: "A glass" }] } });
+  assert.notEqual(pl2.revision_id, pl.revision_id, "두 번째 초안은 새 버전으로 저장된다");
   // 다른 소재의 요청이 끼어들어도 이 요청 결과는 그대로
-  assert.equal((await rpc("drinks_develop_status", { topic_id: topic })).requests[0].status, "succeeded");
+  assert.equal((await rpc("drinks_develop_status", { topic_id: topic })).requests.find((x: Any) => x.request_id === l.request_id).status, "succeeded");
 });
 
 test("임대가 끊긴 요청은 실패로 회수되고, 대기 중 소재 상태가 바뀌면 시작 전에 취소된다", async () => {

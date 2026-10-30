@@ -247,8 +247,20 @@ PLAN_SYSTEM = (
     "- 장면은 5~7개, 장면 timing_sec 합계 30~40초. 1번 장면은 소재의 질문을 던진다(물음표). 마지막은 근거가 말하는 선에서 마무리.\n"
     "- 사실을 말하는 장면(content_kind=fact)은 claim_ids 에 근거를 단다. 도입·전환(transition)은 비워도 된다.\n"
     "- 각 장면: narration, visual_role(reality|mechanism|text_card), content_kind, claim_ids, timing_sec, answers_ko(이 장면이 답하는 질문), "
-    "staging_ko(화면에서 무슨 일이 일어나나), explanation, visual_prompt(영어, 글자·라벨·화살표·범례를 그리라고 하지 않는다), "
-    "continuity(앞 장면 이어 그리기면 'ref:N'), motion_prompt(영어, 선택). mechanism 장면은 mechanism 객체(무엇이 보이고 무엇이 바뀌나)를 단다.\n"
+    "staging_ko(화면에서 무슨 일이 일어나나), explanation, visual_prompt(영어), "
+    "continuity(앞 장면 이어 그리기면 'ref:N'), motion_prompt(영어, 선택).\n"
+    # ★ 2026-10-30 1단계 실측: "무엇이 보이고 무엇이 바뀌나"라고만 적었더니 모델이 {visible, changes} 두 칸만 만들어
+    #   엔진 게이트(photo_contract.mechanism_spec_complete)에 두 편 모두 막혔다 — 지시문을 검사 규칙과 같은 말로 맞춘다.
+    "- visual_role=mechanism 은 **눈에 보이는 과정(채우기·밀봉·섞기·떠오르기처럼 무언가가 바뀌는 장면)**에만 쓴다. 표시 규칙·분류처럼 과정이 아닌 사실은 "
+    "reality(실제 사물·행동 장면) 또는 text_card 로 한다. mechanism 장면에는 반드시 이 다섯 칸을 모두 채운 mechanism 객체를 단다(영어): "
+    "{\"subject\": \"장면의 주인공 사물\", \"components\": [\"알아볼 수 있는 실제 물건 2개 이상\"], \"relationship\": \"부품끼리의 관계\", "
+    "\"initial_state\": \"처음 상태\", \"transformation\": \"무엇이 어떻게 바뀌나\", \"final_state\": \"끝 상태\", \"highlighted_element\": \"설명 대상\", "
+    "\"claim_ids\": [근거 id]}.\n"
+    # ★ 같은 실측: 라벨이 소재라 "label·letters·inscription·no text" 를 쓴 지시문이 전부 '화면에 글자 요구'로 막혔다
+    #   (부정어로는 못 막는다 — 엔진 교훈). 낱말 자체를 쓰지 않게 하고, 무엇을 보여 줄지를 긍정으로 쓰게 한다.
+    "- visual_prompt 에는 label, text, letters, words, numbers, inscription, sign, caption, chart, diagram, arrow, legend 같은 낱말을 "
+    "**쓰지 않는다**('no text' 같은 부정도 쓰지 않는다). 라벨·날짜·표시 규칙이 주제여도 그림은 병을 옆이나 뒤에서 보거나, 담기·밀봉·고르기 같은 "
+    "손의 행동으로 보여 준다. 글자가 꼭 필요한 정보(날짜 종류·규칙 이름)는 text_card 장면의 explanation 으로만 쓴다.\n"
     "- viewer_conclusion: {\"text\": \"시청자가 이어 들으면 내리는 결론 한 줄\", \"claim_ids\": [근거 id…]} — 결론도 인용 안에서만.\n"
     "- 출력 형식: {\"scenes\": [...], \"viewer_conclusion\": {...}}"
 )
@@ -260,7 +272,9 @@ def _gold_example() -> str:
         path = Path(__file__).resolve().parents[1] / "docs" / "drinks-pilot" / "whisky-water-v1.json"
         d = json.loads(path.read_text(encoding="utf-8"))
         ex = {"claims": [{k: c[k] for k in ("claim_id", "text", "original_quote") if k in c} for c in d["claims"][:3]],
-              "scenes": d["scenes"][:3], "viewer_conclusion": d.get("viewer_conclusion")}
+              # ★ 2026-10-30: 앞 3개만 보여 줬더니 도해(mechanism) 장면 예시가 하나도 없었다 — 완전한 구조를 가진 첫 도해 장면을 함께 보인다.
+              "scenes": d["scenes"][:3] + [s for s in d["scenes"] if isinstance(s.get("mechanism"), dict)][:1],
+              "viewer_conclusion": d.get("viewer_conclusion")}
         return json.dumps(ex, ensure_ascii=False)
     except Exception:  # noqa: BLE001
         return ""
@@ -715,7 +729,16 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
         raise DevelopError("script_check_failed", "대본 검사에서 막혔습니다(다시 쓴 뒤에도).\n" + script_check.summary_ko(rep), "blocked",
                            {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "rejected_plan": plan})
     beat("save")
-    saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan)})
+    try:
+        saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan)})
+    except DbError as exc:
+        if exc.code == "lease_lost":
+            raise
+        # ★ 2026-10-30 실측: 저장이 DB 에서 거부되자(version_conflict) 돈을 낸 대본이 어디에도 남지 않았다($0.045).
+        #   저장에 실패해도 만든 대본과 검사 결과를 요청 기록에 남긴다 — 운영자가 손으로 옮기거나, 고친 뒤 다시 쓰지 않고 저장할 수 있게.
+        raise DevelopError(exc.code, f"대본은 만들었지만 저장이 거부됐습니다: {exc.message}", "failed",
+                           {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "unsaved_plan": clean_plan(plan),
+                            "source_table": source_table(plan, review)}) from exc
     return {"revision_id": saved.get("revision_id"), "checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags,
             "source_table": source_table(plan, review), "viewer_conclusion": plan.get("viewer_conclusion"),
             "coverage": saved.get("coverage")}
