@@ -50,3 +50,21 @@
 ## 비용(1단계 누적, 결재 $1.00 안)
 
 근거 초안 3편 $0.0067 · 첫 대본 회차(화면 규칙에 막힘) $0.138 · 다시 돌린 대본 2편 $0.074 · **합계 $0.2189**
+
+---
+
+## ③ 위스키 — 다시 쓴 대본 ("왜"가 중심, 운영자 뼈대 2026-10-30) · 6장면 33초 · 초안 4판
+
+운영자 피드백: "핵심은 왜 고도주는 안 상하는지 — 법령 부수 규칙은 궁금하지 않다." → 출처 2개를 더해 근거를 다시 만들고 대본을 새로 썼다.
+
+| # | 화면 | 나레이션 | 근거 원문(그대로) |
+|---|---|---|---|
+| 1 | 실사 — 테이블 위 위스키 병 | 위스키 병에는 왜 유통기한이 안 보일까요? | (도입) |
+| 2 | 3D 도해 — 잔 단면, 미생물 무리가 다가가다 막힘 | 에탄올이 미생물을 억제해서요. 도수가 높은 술은 미생물 때문에 상하는 문제가 덜 중요해요. | "However, this is less important for other alcoholic beverages with higher alcohol levels due to the antimicrobial nature of ethanol and where sensory quality is the primary means of defining shelf life." — O'Sullivan (2011), Elsevier |
+| 3 | 실사 — 선반 위 증류주 병들 | 위스키는 소주, 브랜디와 같은 증류주예요. | "나) 증류주류 소주, 위스키, 브랜디, 일반증류주, 리큐르" — 식품등의 표시기준 |
+| 4 | 정리 카드 | 유럽은 알코올 10% 이상인 술엔 품질유지기한을 안 적어도 돼요. | "an indication of the date of minimum durability shall not be required for: … beverages containing 10 % or more by volume of alcohol" — EU Regulation 1169/2011 Annex X 1(d) |
+| 5 | 실사 — 막걸리·약주·맥주 병 | 우리나라도 소비기한은 탁주·약주에 적어요. 위스키 같은 증류주는 제조연월일을 적고요. | "라) 제조연월일(탁주 및 약주는 소비기한, 맥주는 소비기한 또는 품질유지기한)." — 식품등의 표시기준 |
+| 6 | 실사 — 위스키 잔 향을 맡는 사람 | 그래서 이런 술은 유통기한 대신, 맛과 향이 변하는지가 기준이 돼요. | 2번과 같은 문장("sensory quality is the primary means of defining shelf life") |
+
+비용: 근거 다시 $0.0046 · 대본(저장 버그로 사라진 회차) $0.0452 · 대본 $0.0375 · 1단계 누적 $0.3062.
+남은 검토: 1번은 '안 보인다'를 전제한다(운영자 뼈대대로 둠). 2번 도해의 '초록 미생물이 막히는' 그림은 설명용 연출이다(장면 표기 "설명용 도해").
