@@ -73,3 +73,44 @@ test("DB 오류 → HTTP: 코드별 상태와 한국어 문장, detail JSON 해�
   assert.equal(mapDbError({ message: "Could not find the function", code: "PGRST202" }).body.code, "schema_missing");
   assert.equal(mapDbError({ message: "weird" }).status, 500);
 });
+
+test("소재 개발 동작: 새 이름은 허용 목록에 있고, 닫아 둔 LLM 이름과는 다르다", () => {
+  for (const [k, fn] of [["request_develop", "drinks_request_develop"], ["cancel_develop", "drinks_cancel_develop"],
+    ["open_develop_budget", "drinks_open_develop_budget"], ["close_develop_budget", "drinks_close_develop_budget"]]) {
+    assert.equal((DRINKS_ACTIONS as Record<string, string>)[k], fn);
+    assert.ok(!(PHASE_A_EXCLUDED as readonly string[]).includes(k), k);
+  }
+  for (const a of ["research_llm", "generate_plan", "generate_script"]) assert.ok((PHASE_A_EXCLUDED as readonly string[]).includes(a), a);
+});
+
+test("개발 요청: 종류가 evidence·plan 이 아니면 rpc 전에 거부, 맞으면 그대로 통과", async () => {
+  const { exec, calls } = recorder();
+  assert.equal((await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t", kind: "script" } })).status, 400);
+  assert.equal((await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t" } })).status, 400);
+  assert.equal(calls.length, 0);
+  const ok = await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t", kind: "plan", budget_id: "b" } });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(calls[0], { fn: "drinks_request_develop", p: { topic_id: "t", kind: "plan", budget_id: "b" } });
+});
+
+test("개발 결재 열기: 결재자는 서버가 정하고, 결재 문장·단계·상한은 rpc 전에 검사", async () => {
+  const { exec, calls } = recorder();
+  const base = { stage: "0단계", cap_usd: "1.5", days: 7, approver_words: "해도 좋다" };
+  for (const bad of [{ approver_words: " " }, { stage: "" }, { cap_usd: 0 }, { cap_usd: "abc" }, { days: 0 }, { days: 1.5 }]) {
+    const r = await runDrinksAction(exec, { action: "open_develop_budget", payload: { ...base, ...bad } });
+    assert.equal(r.status, 400, JSON.stringify(bad));
+  }
+  assert.equal(calls.length, 0);
+  const r = await runDrinksAction(exec, { action: "open_develop_budget", payload: { ...base, approved_by: "attacker" } });
+  assert.equal(r.status, 200);
+  assert.equal(calls[0].fn, "drinks_open_develop_budget");
+  assert.equal(calls[0].p.approved_by, "operator");
+  assert.equal(calls[0].p.cap_usd, 1.5);
+});
+
+test("개발 오류 코드는 HTTP 상태로 바뀐다", () => {
+  const e = (code: string) => mapDbError({ message: `drinks:${code}:이유` });
+  assert.equal(e("budget_missing").status, 422);
+  assert.equal(e("evidence_insufficient").status, 422);
+  assert.equal(e("develop_in_progress").status, 409);
+});

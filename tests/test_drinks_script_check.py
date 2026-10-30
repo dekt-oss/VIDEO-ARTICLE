@@ -149,3 +149,14 @@ def test_paid_worker_refuses_before_spending_when_script_check_fails(tmp_path):
     fin = [p for fn, p in calls if fn == "drinks_finish_render"][0]
     assert fin["error_code"] == "script_check_failed"
     assert not any(fn in ("drinks_hold_spend", "drinks_find_generated") for fn, _ in calls)
+
+
+def test_db_plan_spec_sources_count_as_source_metadata():
+    """DB 제작 작업은 출처를 sources(list) 로 넘긴다 — 출처 표기의 연도가 '원문에 없는 숫자'로 막히면 안 된다(2026-10-30 수정)."""
+    from engine import drinks_script_check as sc
+    claims = [{"claim_id": "c1", "claim_type": "process", "source_refs": [{"original_quote": "guaiacol is found at the interface"}]}]
+    plan = {"scenes": [{"narration": "2017년 연구가 밝힌 내용이에요.", "visual_role": "text_card", "content_kind": "fact", "claim_ids": ["c1"]}]}
+    spec = sc.plan_spec(plan, claims, sources=[{"title": "Dilution of whisky", "year": 2017}])
+    assert "number_unsupported" not in sc.check(spec).codes()
+    no_meta = sc.plan_spec(plan, claims, sources=[])
+    assert "number_unsupported" in sc.check(no_meta).codes(), "출처 표기에도 없으면 여전히 막는다"

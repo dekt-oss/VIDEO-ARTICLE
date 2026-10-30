@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isSchemaMissing, type DevelopBudgetRow, type DevelopRequestRow } from "@/lib/drinks/develop";
 import type { Loaded } from "@/lib/drinks/model";
 import { fetchAllIn, fetchAllPages, missingIds, PAGE_SIZE, type PageResult } from "@/lib/drinks/paging";
 import type {
@@ -267,4 +268,29 @@ export async function loadTopic(
       sharedWith,
     },
   };
+}
+
+// ── 소재 개발(0060) 읽기 ──
+// 0060 이 아직 운영 DB 에 없으면 화면을 죽이지 않고 "missing" 으로 돌려준다(카드가 그 사실을 말한다).
+// 그 밖의 실패는 failed — "요청 0건"으로 바꾸지 않는다.
+export type DevelopLoad =
+  | { state: "ok"; requests: DevelopRequestRow[]; budgets: DevelopBudgetRow[] }
+  | { state: "missing" }
+  | { state: "failed"; error: string }
+  | { state: "unconfigured" };
+
+export async function loadDevelop(topicId: string): Promise<DevelopLoad> {
+  const db = createAdminClient();
+  if (!db) return { state: "unconfigured" };
+  const [st, bd] = await Promise.all([
+    db.rpc("drinks_develop_status", { p: { topic_id: topicId } }),
+    fetchAllPages<DevelopBudgetRow>((f, to) => db.from("drink_develop_budget_state").select("*", { count: "exact" })
+      .eq("status", "open").order("expires_at", { ascending: false }).order("budget_id").range(f, to), "개발 결재"),
+  ]);
+  if (st.error) return isSchemaMissing(st.error) ? { state: "missing" } : { state: "failed", error: `개발 요청: ${st.error.message}` };
+  if (!bd.ok) return isSchemaMissing({ message: bd.error }) ? { state: "missing" } : { state: "failed", error: bd.error };
+  const raw = st.data as unknown;
+  const list = Array.isArray(raw) ? raw : (raw as { requests?: unknown } | null)?.requests;
+  if (!Array.isArray(list)) return { state: "failed", error: "개발 요청: 응답 모양이 배열이 아닙니다" };
+  return { state: "ok", requests: list as DevelopRequestRow[], budgets: bd.rows };
 }

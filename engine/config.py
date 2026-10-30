@@ -4584,3 +4584,42 @@ DRINKS_PRODUCT_LEXICON: dict[str, dict] = {
 }
 # 사전 표기를 포함하지만 그 술이 아닌 낱말 - 찾기 전에 지운다('화요' → '화요일').
 DRINKS_PRODUCT_FALSE_FRIENDS: tuple[str, ...] = ("화요일", "화요회", "화요모임", "화요 모임", "화요 정모")
+
+
+# ─────────────────────────────────────────────────────────────
+# 주류 소재 자동 개발 (0060, 2026-10-30). docs/deviation-drinks-develop.md  engine/drinks_develop.py 가 읽는다.
+#   운영자가 고른 소재 → 근거 초안(원문 그대로 인용 + 코드가 글자 단위로 대조) → 대본·화면 계획 초안. 초안까지만, 승인은 사람이 기존 화면에서.
+#   ★ 숫자 상한은 supabase/migrations/0060_drinks_develop.sql 의 drinks_develop_limits() 와 같아야 한다(tests/test_drinks_develop.py 가 대조).
+# ─────────────────────────────────────────────────────────────
+DRINKS_DEVELOP_MAX_BUDGET_USD: float = 10.0          # 결재 1건 상한의 상한(SQL max_cap_usd)
+DRINKS_DEVELOP_MAX_USD_PER_REQUEST: float = 0.5      # 요청 1건이 쓸 수 있는 상한(SQL max_usd_per_request) — DB 가 강제한다
+DRINKS_DEVELOP_MAX_HOLDS_PER_REQUEST: int = 20       # 요청 1건의 모델 호출 횟수 상한(SQL max_holds_per_request)
+DRINKS_DEVELOP_MIN_CLAIMS: int = 3                   # 원문 대조를 통과한 주장이 이보다 적으면 evidence_insufficient 로 멈춘다
+DRINKS_DEVELOP_MAX_CLAIMS: int = 12                  # 근거 초안에 싣는 주장 상한
+DRINKS_DEVELOP_REQUIRED_CLAIMS: int = 3              # 브리프의 '영상이 반드시 전한다' 주장 수(앞에서부터). 운영자가 화면에서 고친다
+DRINKS_DEVELOP_MAX_SOURCES: int = 4                  # 근거 추출에 쓰는 출처 수 상한(출처 1개 = 모델 호출 1회)
+DRINKS_DEVELOP_SOURCE_MAX_CHARS: int = 40_000        # 출처 1개에서 모델에 보내는 글자 상한
+DRINKS_DEVELOP_QUOTE_MIN_CHARS: int = 20             # 원문 인용 최소 길이(짧은 낱말 하나가 '일치'로 통과하지 못하게)
+DRINKS_DEVELOP_QUOTE_MAX_CHARS: int = 500
+DRINKS_DEVELOP_MAX_REWRITES: int = 1                 # 검사에 막혔을 때 다시 쓰는 횟수 — 한 번만, 그래도 막히면 멈춘다
+DRINKS_DEVELOP_EXTRACT_MODEL: str = os.getenv("DRINKS_DEVELOP_EXTRACT_MODEL", "gemini-2.5-flash")
+DRINKS_DEVELOP_PLAN_MODEL: str = os.getenv("DRINKS_DEVELOP_PLAN_MODEL", "deepseek-v4-pro")
+DRINKS_DEVELOP_EXTRACT_MAX_TOKENS: int = 6_000
+DRINKS_DEVELOP_PLAN_MAX_TOKENS: int = 16_000
+DRINKS_DEVELOP_CHARS_PER_TOKEN: float = 2.0          # 입력 토큰 추정(한국어·영어 섞임, 보수적으로 작게 잡아 비용을 크게 본다)
+# Europe PMC(오픈액세스 논문) — ★ 기본 꺼짐(2026-10-30): 사이트 robots.txt 가 Content-Signal ai-train=no 를 두고 ClaudeBot 을 막으며
+#   API 약관을 확인하지 못했다. 운영자가 약관을 확인한 뒤에만 켠다. 코드·테스트는 있다.
+DRINKS_DEVELOP_EUROPEPMC_ENABLED: bool = _get_bool("DRINKS_DEVELOP_EUROPEPMC_ENABLED", False)
+DRINKS_DEVELOP_EUROPEPMC_HOSTS: tuple[str, ...] = ("www.ebi.ac.uk",)
+DRINKS_DEVELOP_EUROPEPMC_PAGE_SIZE: int = 5
+# 운영자가 이용 약관을 직접 확인한 공식·전문 출처. 비어 있다 — 후보 조사는 끝났지만 확인된 곳이 아직 없다.
+#   항목: {"name","publisher","url"(https),"source_kind"(official|expert),"rights_status"(quote_ok|summary_only),
+#          "usage_terms","terms_verified": True, "terms_url", "keywords": [..](소재 낱말이 하나라도 있으면 사용)}
+#   terms_verified 가 True 가 아닌 항목은 쓰지 않는다.
+DRINKS_DEVELOP_OFFICIAL_SOURCES: list[dict] = []
+DRINKS_DEVELOP_JEV_ENABLED: bool = _get_bool("DRINKS_DEVELOP_JEV_ENABLED", False)   # 대본 근거 판정(Jev). 0단계는 끔
+DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN: float = _get_float("DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN", 0.6)
+DRINKS_DEVELOP_SOURCE_KINDS_AUTO: tuple[str, ...] = ("official", "expert", "manufacturer")   # 운영자가 붙이지 않은 출처(수집원·공식 목록·논문)에서 자동으로 쓰는 종류
+DRINKS_DEVELOP_SOURCE_KINDS_NEVER: tuple[str, ...] = ("community", "reader", "retailer")      # 운영자가 붙였어도 사실 근거로 쓰지 않는 종류(질문·후기·판매글)
+DRINKS_DEVELOP_SCENES: tuple[int, int] = (5, 7)      # 대본 장면 수 범위(30~40초 릴스)
+DRINKS_DEVELOP_SECONDS: tuple[float, float] = (30.0, 40.0)   # 장면 timing_sec 합계 범위
