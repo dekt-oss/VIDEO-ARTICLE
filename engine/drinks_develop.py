@@ -729,7 +729,16 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
         raise DevelopError("script_check_failed", "대본 검사에서 막혔습니다(다시 쓴 뒤에도).\n" + script_check.summary_ko(rep), "blocked",
                            {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "rejected_plan": plan})
     beat("save")
-    saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan)})
+    try:
+        saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan)})
+    except DbError as exc:
+        if exc.code == "lease_lost":
+            raise
+        # ★ 2026-10-30 실측: 저장이 DB 에서 거부되자(version_conflict) 돈을 낸 대본이 어디에도 남지 않았다($0.045).
+        #   저장에 실패해도 만든 대본과 검사 결과를 요청 기록에 남긴다 — 운영자가 손으로 옮기거나, 고친 뒤 다시 쓰지 않고 저장할 수 있게.
+        raise DevelopError(exc.code, f"대본은 만들었지만 저장이 거부됐습니다: {exc.message}", "failed",
+                           {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "unsaved_plan": clean_plan(plan),
+                            "source_table": source_table(plan, review)}) from exc
     return {"revision_id": saved.get("revision_id"), "checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags,
             "source_table": source_table(plan, review), "viewer_conclusion": plan.get("viewer_conclusion"),
             "coverage": saved.get("coverage")}
