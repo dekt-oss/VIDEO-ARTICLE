@@ -4915,3 +4915,26 @@ DRINKS_EXPLAINER_ASPECT_TOLERANCE: float = 0.02    # 후보 자동 판정의 9:1
 DRINKS_EXPLAINER_SEND_TIMEOUT_SEC: float = _get_float("DRINKS_EXPLAINER_SEND_TIMEOUT_SEC", 300.0)   # 동기 응답(§3-2 ①) 대기. [미검증] 끊기면 unknown_billed 로 멈춘다
 DRINKS_EXPLAINER_STALE_ATTEMPT_SEC: int = 1800     # 이만큼 멈춘 시도는 워커가 죽은 것으로 본다(0053 임대 시간과 같다)
 DRINKS_EXPLAINER_PLACEHOLDER_SYL_PER_SEC: float = 5.9   # tts=placeholder 의 길이 추정(§3-6-2 말 속도). 무음 시험 전용
+
+# ── 3·4단계 준비(2026-11-02): 카드 대본 실제 생성 준비 · Apify 밈 틀 정밀화(총괄 §3 결정 1·§6-7). docs/deviation-drinks-stage3-4.md ──
+# 카드 대본 실제 생성 1회 상한(scripts/card_plan_run.py --yes). 예상액이 이 값을 넘으면 부르지 않는다. 결재 문장 없이도 부르지 않는다.
+DRINKS_CARD_PLAN_RUN_CAP_USD: float = 0.10
+# Apify — 클릭 승인(기획 v2 §6-1): [쓰자] 1회 $0.02 · [이걸로] 1회 $0.05 · 월 상한 $3. SQL 0070 drinks_apify_limits() 와 같아야 한다(tests/test_drinks_meme_refine.py 가 대조).
+DRINKS_APIFY_TOKEN_ENV: str = "APIFY_TOKEN"                 # 토큰 환경변수 **이름**. 값은 Authorization 헤더로만 보내고 저장·로그·출력 금지
+DRINKS_APIFY_HOST: str = "api.apify.com"
+DRINKS_APIFY_REEL_ACTOR: str = "apify~instagram-reel-scraper"   # 검토 §4 — 릴스 1행 $0.0026(FREE) + 실행 시작 $0.001
+DRINKS_APIFY_MONTH_CAP_USD: float = 3.00
+DRINKS_APIFY_RUN_CAP_USD: dict[str, float] = {"meme_refine": 0.02, "explainer_reference": 0.05}
+DRINKS_APIFY_MAX_REELS_PER_RUN: int = 3                      # [쓰자] 한 번에 보내는 릴스 수 상한(기획 v2 §6-1 "3개 이하")
+DRINKS_APIFY_REEL_USD: float = 0.0026                        # 결과 1행(오류 행도 청구된다 — 검토 §1)
+DRINKS_APIFY_START_USD: float = 0.001
+DRINKS_APIFY_RUN_TIMEOUT_SEC: int = 180
+DRINKS_APIFY_LEASE_SEC: int = 900
+# 영상 분석(기획 v2 §6-7): 모델 상수 하나, 60초·20MB 이하만 바이트로 직접 보낸다. 넘으면 분석하지 않는다(표지 분석은 이번에 없다).
+DRINKS_APIFY_ANALYSIS_MODEL: str = os.getenv("DRINKS_APIFY_ANALYSIS_MODEL", "gemini-2.5-flash")
+DRINKS_APIFY_ANALYSIS_MAX_SEC: float = 60.0
+DRINKS_APIFY_ANALYSIS_MAX_BYTES: int = 20 * 1024 * 1024
+DRINKS_APIFY_ANALYSIS_MAX_OUT_TOKENS: int = 1500
+DRINKS_APIFY_ANALYSIS_EST_USD: float = 0.003                 # 영상 1편 분석 예상액(flash 저해상도, 60초 이하). 실측 전 계획값 — 정산은 실제 토큰으로. 3편이면 Apify $0.0088 + $0.009 = $0.0178 ≤ $0.02
+DRINKS_APIFY_SCENE_THRESHOLD: float = 0.30                   # ffmpeg 장면 전환 감지 문턱(검토 §6 시험 2 는 scdet 12 를 썼다 — select 식은 0~1)
+DRINKS_APIFY_TMP_SWEEP_HOURS: int = 24                       # 실행 시작 때 이보다 오래된 임시 폴더를 먼저 지운다(§6-7 파일 수명)
