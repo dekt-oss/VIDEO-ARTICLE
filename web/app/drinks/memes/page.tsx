@@ -18,6 +18,7 @@ import { safeHref } from "@/lib/drinks/trends";
 
 export const dynamic = "force-dynamic";
 
+const ymd = (d: string | null | undefined): string => (d ?? "").slice(0, 10);
 const KIND_LABEL: Record<IgAccountRow["kind"], string> = { meme: "밈", drinks: "술", explainer: "설명형", other: "기타" };
 const CARD_KIND_LABEL: Record<IgCardRow["kind"], string> = { audio: "원본 소리", challenge: "챌린지", structure_hook: "구조·훅", single_reel: "뜨는 릴스" };
 
@@ -99,14 +100,18 @@ function RunTable({ runs }: { runs: IgRunRow[] }) {
 }
 
 function FormatFields({ c }: { c: IgCardRow }) {
+  const filled = FORMAT_FIELDS.filter((f) => c.fields?.[f.key]);
+  const empty = FORMAT_FIELDS.filter((f) => !c.fields?.[f.key] && !f.videoOnly).map((f) => f.label);
+  const emptyVideo = FORMAT_FIELDS.filter((f) => !c.fields?.[f.key] && f.videoOnly).map((f) => f.label);
   return (
     <div className="dk-kv" style={{ margin: "6px 0" }}>
-      {FORMAT_FIELDS.map((f) => {
-        const v = c.fields?.[f.key];
-        if (!v) return <span key={f.key} style={{ marginRight: 10 }}>{f.label}: <span className="muted">비어 있음{f.videoOnly ? "(영상 필요)" : ""}</span></span>;
+      {filled.map((f) => {
+        const v = c.fields[f.key];
         const shown = f.key === "structure" ? STRUCTURE_LABEL[v.value] ?? v.value : v.value;
         return <span key={f.key} style={{ marginRight: 10 }}>{f.label}: <b>{shown}</b> <span className="muted">({EVIDENCE_LABEL[v.evidence] ?? v.evidence}, 확신도 {v.confidence === "high" ? "높음" : "낮음"})</span></span>;
       })}
+      {empty.length > 0 && <div className="muted">비어 있음: {empty.join(" · ")}</div>}
+      {emptyVideo.length > 0 && <div className="muted">영상을 봐야 채우는 칸(비어 있음): {emptyVideo.join(" · ")}</div>}
     </div>
   );
 }
@@ -122,7 +127,7 @@ function MemeCard({ c, today }: { c: IgCardRow; today: string }) {
         {c.decision && <span className="pill pick">{DECISION_LABEL[c.decision]}</span>}
       </div>
       <p className="muted" style={{ margin: "4px 0", fontSize: 13 }}>
-        처음 묶인 날 {c.first_seen_on} · 예시 {c.examples_count} · 관찰 계정 {c.accounts_count}
+        처음 묶인 날 {ymd(c.first_seen_on)} · 예시 {c.examples_count} · 관찰 계정 {c.accounts_count}
         {c.max_multiple !== null && ` · 평소의 ${c.max_multiple}배`}
         {c.audio_position !== null && c.audio_position_on && ` · ${positionLabel(c.audio_position, c.audio_position_on, today)}`}
         {c.same_audio_cards > 0 && ` · 같은 음원을 쓰는 다른 카드 ${c.same_audio_cards}장`}
@@ -197,12 +202,12 @@ function AccountRow({ a }: { a: IgAccountRow }) {
         <span className={a.status === "active" ? "pill on" : "pill"}>{a.status === "active" ? "관찰 중" : a.status === "paused" ? "뺌" : "후보"}</span>{" "}
         <span className="pill">{KIND_LABEL[a.kind]}</span>
         <span className="muted">
-          {a.first_observed_on && ` · 첫 관측 ${a.first_observed_on}`}
-          {a.last_ok_on && ` · 마지막 성공 ${a.last_ok_on}`}
+          {a.first_observed_on && ` · 첫 관측 ${ymd(a.first_observed_on)}`}
+          {a.last_ok_on && ` · 마지막 성공 ${ymd(a.last_ok_on)}`}
           {a.followers_count !== null && ` · 팔로워 ${compactNum(a.followers_count)}`}
           {a.note && ` · ${a.note}`}
         </span>
-        {a.last_error_code && <span className="dk-bad"> · {a.last_error_on} 실패: {failureText(a.last_error_code)}</span>}
+        {a.last_error_code && <span className="dk-bad"> · {ymd(a.last_error_on)} 실패: {failureText(a.last_error_code)}</span>}
       </span>
       <WatchAccountAction username={a.username} status={a.status} />
     </div>
