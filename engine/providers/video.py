@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -223,6 +224,207 @@ def _veo_i2v(cut: dict[str, Any], header: dict[str, Any], out_path: str,
     per_sec = float(spec.unit_price_usd) if spec is not None else config.VEO_COST_PER_SEC_USD
     cost = clip_sec * per_sec
     return out_path, cost
+
+
+# ─────────────────────────────────────────────────────────────
+# 설명형 공급자 어댑터(기획 v2 §3-2, 2026-11-02). ★ 실제 호출 0회 — 요청 모양·응답 해석 순수 함수와 그 단위 테스트만 있다.
+#
+# 기존 Veo 경로(_veo_i2v·generate_clip)와 나란히 둔다. 그쪽은 종료된 미리보기 모델(config.VEO_MODEL)을 부르며 건드리지 않았다.
+# 이 어댑터는 렌더에서 닿지 않는다: drinks_explainer 는 이 모듈을 import 하지 않고(정적 시험), 전송은
+# send_explainer_request 하나뿐이며 config.DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED + 결재 id 가 없으면 거절한다.
+#
+# [미검증] — 문서로 확인되지 않아 단정하지 않는 것(§3-2·§11). 판정은 S2 에서 한다:
+#   ① Omni: input·response_format 안쪽 모양과 응답 outputs 모양은 문서의 최상위 칸(model·input·response_format)만 근거다 — 안쪽은 가정.
+#   ① Omni: 시작 그림이 **첫 프레임으로 고정되는지**, 길이를 정수로 지정하는 방법, 서버 보관, 요청 ID 로 조회 가능한지, seed 지원.
+#   ②③ Vertex: 가격표의 "1 count" = 1초 해석, generateAudio·seed·lastFrame 칸 이름, 지원 종료(2026-11-17 이후) 뒤 후속 모델.
+# ─────────────────────────────────────────────────────────────
+
+class ExplainerProviderError(RuntimeError):
+    """요청을 만들 수 없거나(규격 밖), 응답을 해석할 수 없다. 조용히 넘기지 않는다."""
+
+
+class ExplainerSendRefused(ExplainerProviderError):
+    """실제 전송 거절 — 스위치·결재가 없다. 렌더 경로에서는 절대 열리지 않는다."""
+
+
+@dataclass(frozen=True)
+class ExplainerClipInput:
+    """공통 입력(§3-2): 시작 그림, (선택) 끝 그림, 움직임 문장, 길이, 해상도, 후보 번호."""
+    start_image_b64: str
+    motion_prompt: str
+    clip_sec: int
+    resolution: str = "720p"
+    candidate_k: int = 1
+    end_image_b64: str = ""
+    image_mime: str = "image/png"
+    seed: int | None = None       # [미검증] 공급자가 받으면 후보마다 다르게 준다
+
+
+@dataclass(frozen=True)
+class ExplainerRequest:
+    """보낼 것 전부 — 비밀값은 싣지 않는다. auth 는 전송할 때 붙일 인증 종류 이름이다."""
+    provider: str
+    method: str
+    url: str
+    body: dict[str, Any]
+    auth: str                     # gemini_api_key | gcp_bearer
+    billing_unit: str             # tokens | seconds_unverified
+    unverified: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ExplainerParsed:
+    """응답 해석 결과. video_bytes 또는 gcs_uri 중 하나."""
+    provider: str
+    request_id: str
+    billing_unit: str
+    billed_units: float | None
+    video_bytes: bytes = b""
+    gcs_uri: str = ""
+    done: bool = True
+
+
+@dataclass(frozen=True)
+class ExplainerClipOutput:
+    """공통 출력(§3-2): mp4 파일, 실측 길이, 공급자 요청 ID, 청구 단위."""
+    path: str
+    measured_ms: int
+    width: int | None
+    height: int | None
+    frames: int
+    request_id: str
+    billing_unit: str
+    billed_units: float | None
+
+
+def build_omni_request(clip: ExplainerClipInput) -> ExplainerRequest:
+    """① Gemini Omni Flash — POST v1beta/interactions, 응답에 영상이 base64 로 바로 온다(동기).
+
+    [미검증] 길이 지정 방법이 문서에 없어 전용 칸을 만들지 않고 문장으로 말한다 — 실제 길이는 받은 뒤 E5 가 잰다."""
+    lo, hi = config.DRINKS_EXPLAINER_OMNI_SEC_RANGE
+    if not lo <= int(clip.clip_sec) <= hi:
+        raise ExplainerProviderError(f"Omni 출력 길이는 {lo}~{hi}초입니다: {clip.clip_sec}")
+    if clip.resolution not in config.DRINKS_EXPLAINER_OMNI_RESOLUTIONS:
+        raise ExplainerProviderError(f"Omni 해상도가 아닙니다: {clip.resolution}")
+    if not clip.start_image_b64 or not clip.motion_prompt.strip():
+        raise ExplainerProviderError("시작 그림과 움직임 문장이 필요합니다")
+    parts: list[dict[str, Any]] = [{"type": "image", "mime_type": clip.image_mime, "data": clip.start_image_b64}]
+    if clip.end_image_b64:
+        parts.append({"type": "image", "mime_type": clip.image_mime, "data": clip.end_image_b64})
+    parts.append({"type": "text", "text": f"{clip.motion_prompt.strip()} About {int(clip.clip_sec)} seconds."})
+    return ExplainerRequest(
+        provider="omni", method="POST", url=config.DRINKS_EXPLAINER_OMNI_URL,
+        body={"model": config.DRINKS_EXPLAINER_OMNI_MODEL, "input": parts,
+              "response_format": {"type": "video", "aspect_ratio": "9:16", "resolution": clip.resolution}},
+        auth="gemini_api_key", billing_unit="tokens",
+        unverified=("input 안쪽 모양", "response_format 안쪽 모양", "시작 그림 첫 프레임 고정", "길이 지정 방법", "조회 가능한 요청 ID"))
+
+
+def parse_omni_response(data: dict[str, Any]) -> ExplainerParsed:
+    """[미검증] 가정한 모양: {id, outputs:[{type:"video", data:<base64>}], usage:{total_output_tokens}}. 모양이 다르면 지어내지 않고 멈춘다."""
+    outputs = (data or {}).get("outputs") or []
+    video = next((o for o in outputs if isinstance(o, dict) and o.get("type") == "video" and o.get("data")), None)
+    if video is None:
+        raise ExplainerProviderError(f"Omni 응답에 영상이 없습니다: keys={sorted((data or {}).keys())}")
+    try:
+        raw = base64.b64decode(video["data"], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ExplainerProviderError("Omni 응답의 영상이 base64 가 아닙니다") from exc
+    usage = (data or {}).get("usage") or {}
+    units = usage.get("total_output_tokens")
+    return ExplainerParsed(provider="omni", request_id=str(data.get("id") or ""), billing_unit="tokens",
+                           billed_units=float(units) if units is not None else None, video_bytes=raw)
+
+
+def _vertex_base(project: str) -> str:
+    if not project.strip():
+        raise ExplainerProviderError("Vertex 는 구글 클라우드 프로젝트가 필요합니다")
+    loc = config.DRINKS_EXPLAINER_VERTEX_LOCATION
+    return (f"https://{loc}-aiplatform.googleapis.com/v1/projects/{project}/locations/{loc}"
+            f"/publishers/google/models/{config.DRINKS_EXPLAINER_VERTEX_MODEL}")
+
+
+def build_vertex_veo_request(clip: ExplainerClipInput, project: str, storage_uri: str = "") -> ExplainerRequest:
+    """② Veo 3.1 Fast(Vertex) — predictLongRunning + fetchPredictOperation 폴링. 인증은 서비스 계정 토큰(API 키 방식은 문서에서 확인 못 함)."""
+    if int(clip.clip_sec) not in config.DRINKS_EXPLAINER_VERTEX_SEC_TIERS:
+        raise ExplainerProviderError(f"Veo 3.1 Fast 길이는 {config.DRINKS_EXPLAINER_VERTEX_SEC_TIERS} 중 하나입니다: {clip.clip_sec}")
+    if clip.resolution not in config.DRINKS_EXPLAINER_VERTEX_RESOLUTIONS:
+        raise ExplainerProviderError(f"Veo 3.1 Fast 해상도가 아닙니다: {clip.resolution}")
+    if not clip.start_image_b64 or not clip.motion_prompt.strip():
+        raise ExplainerProviderError("시작 그림과 움직임 문장이 필요합니다")
+    instance: dict[str, Any] = {"prompt": clip.motion_prompt.strip(), "image": {"bytesBase64Encoded": clip.start_image_b64, "mimeType": clip.image_mime}}
+    if clip.end_image_b64:
+        instance["lastFrame"] = {"bytesBase64Encoded": clip.end_image_b64, "mimeType": clip.image_mime}
+    params: dict[str, Any] = {"aspectRatio": "9:16", "durationSeconds": int(clip.clip_sec), "resolution": clip.resolution,
+                              "sampleCount": 1, "generateAudio": False}
+    if storage_uri:
+        params["storageUri"] = storage_uri
+    if clip.seed is not None:
+        params["seed"] = int(clip.seed)
+    return ExplainerRequest(provider="veo_fast", method="POST", url=f"{_vertex_base(project)}:predictLongRunning",
+                            body={"instances": [instance], "parameters": params}, auth="gcp_bearer", billing_unit="seconds_unverified",
+                            unverified=("1 count = 1초", "generateAudio·seed·lastFrame 칸 이름", "2026-11-17 이후 지원"))
+
+
+def build_vertex_fetch_request(operation_name: str, project: str) -> ExplainerRequest:
+    if not operation_name:
+        raise ExplainerProviderError("작업 이름이 없습니다")
+    return ExplainerRequest(provider="veo_fast", method="POST", url=f"{_vertex_base(project)}:fetchPredictOperation",
+                            body={"operationName": operation_name}, auth="gcp_bearer", billing_unit="seconds_unverified")
+
+
+def parse_vertex_operation(data: dict[str, Any], clip_sec: int) -> ExplainerParsed:
+    """fetchPredictOperation 응답. done=False 면 아직이다(결과 없음). 영상은 response.videos[0] 의 gcsUri(버킷) 또는 bytesBase64Encoded."""
+    name = str((data or {}).get("name") or "")
+    if not (data or {}).get("done"):
+        return ExplainerParsed(provider="veo_fast", request_id=name, billing_unit="seconds_unverified", billed_units=None, done=False)
+    if data.get("error"):
+        raise ExplainerProviderError(f"Veo 작업 오류: {str(data['error'])[:300]}")
+    videos = ((data.get("response") or {}).get("videos")) or []
+    v0 = videos[0] if videos and isinstance(videos[0], dict) else {}
+    uri, b64 = str(v0.get("gcsUri") or ""), v0.get("bytesBase64Encoded")
+    if not uri and not b64:
+        raise ExplainerProviderError(f"Veo 응답에 영상이 없습니다: keys={sorted((data.get('response') or {}).keys())}")
+    return ExplainerParsed(provider="veo_fast", request_id=name, billing_unit="seconds_unverified", billed_units=float(clip_sec),
+                           video_bytes=base64.b64decode(b64) if b64 else b"", gcs_uri=uri)
+
+
+def store_parsed_clip(parsed: ExplainerParsed, out_path: str) -> ExplainerClipOutput:
+    """받은 바이트를 저장하고 실제로 잰다(E5) — 요청 길이를 적지 않는다. 읽히지 않는 파일은 결과로 돌려주지 않는다."""
+    from ..drinks_explainer import probe_clip
+
+    if not parsed.video_bytes:
+        raise ExplainerProviderError("저장할 영상 바이트가 없습니다(버킷 파일은 먼저 받아야 합니다)")
+    with open(out_path, "wb") as fout:
+        fout.write(parsed.video_bytes)
+    probe = probe_clip(out_path)
+    if not probe["ok"] or not probe["has_video"] or probe["still"]:
+        raise ExplainerProviderError(f"받은 파일이 움직이는 영상이 아닙니다: {probe['error'][:200]}")
+    return ExplainerClipOutput(path=out_path, measured_ms=int(probe["duration_ms"]), width=probe["width"], height=probe["height"],
+                               frames=int(probe["frames"]), request_id=parsed.request_id, billing_unit=parsed.billing_unit, billed_units=parsed.billed_units)
+
+
+def send_explainer_request(req: ExplainerRequest, *, approval_id: str, client: Any = None) -> dict[str, Any]:
+    """실제 전송 — 스위치가 꺼져 있거나 결재 id 가 없으면 거절한다. 렌더는 이 함수에 닿지 않는다(정적 시험). 재시도하지 않는다."""
+    if not config.DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED:
+        raise ExplainerSendRefused("설명형 공급자 전송이 꺼져 있습니다(DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED) — S2 결재 뒤에만 켭니다")
+    if not str(approval_id or "").strip():
+        raise ExplainerSendRefused("결재 id 가 없는 전송은 하지 않습니다")
+    if req.auth == "gemini_api_key":
+        config.SECRETS.require("gemini_api_key")
+        headers = gemini_auth()
+    else:
+        raise ExplainerSendRefused(f"이 인증({req.auth})의 전송은 아직 연결하지 않았습니다 — 비밀값은 운영자가 넣습니다(§10-3)")
+    own = client is None
+    http = client or httpx.Client(timeout=config.HTTP_TIMEOUT_SEC, follow_redirects=True)
+    try:
+        resp = http.post(req.url, headers=headers, json=req.body)
+    finally:
+        if own:
+            http.close()
+    if resp.status_code >= 400:
+        raise ExplainerProviderError(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
+    return resp.json()
 
 
 def generate_clip(cut: dict[str, Any], header: dict[str, Any], out_path: str,

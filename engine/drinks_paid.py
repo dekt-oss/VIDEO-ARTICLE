@@ -51,6 +51,7 @@ class OrderItem:
     ref_item: Optional[str] = None    # 이어 그릴 앞 그림(같은 세계) / 움직일 시작 그림
     clip_sec: int = 0
     cut: dict[str, Any] = field(default_factory=dict)
+    candidate_id: Optional[str] = None   # 설명형 후보(§3-3). 있으면 해시·항목 키에 들어가 후보 1·2가 한 파일로 합쳐지지 않는다
 
 
 def image_price(role: str) -> float:
@@ -117,8 +118,11 @@ def build_image_items(scenes: list[dict[str, Any]], positions: Optional[list[int
 
 
 def clip_item(position: int, role: str, motion_prompt: str, start_item: str, start_sha256: Optional[str] = None,
-              *, clip_sec: Optional[int] = None) -> OrderItem:
-    """움직이는 장면 1개(시작 그림 + 움직임 지시문 → Veo)."""
+              *, clip_sec: Optional[int] = None, candidate_id: Optional[str] = None) -> OrderItem:
+    """움직이는 장면 1개(시작 그림 + 움직임 지시문 → Veo).
+
+    candidate_id 를 주면 설명형 후보다(기획 v2 §3-3): 항목 키 = 후보 id(0054 의 '항목당 시도' 상한이 후보마다 걸린다), 해시에 후보 id 가 들어간다.
+    주지 않으면 해시·항목 키가 종전과 **글자까지 같다** — 이미 산 시험 클립의 재사용이 끊기지 않는다."""
     from .providers import video as video_provider
 
     sec = int(clip_sec or config.DRINKS_PILOT_CLIP_SEC)
@@ -128,10 +132,12 @@ def clip_item(position: int, role: str, motion_prompt: str, start_item: str, sta
     prompt = video_provider.build_motion_prompt(cut, HEADER)
     model = config.VEO_MODEL
     per_sec = float(config.PRICING.get(model, {}).get("video_720p_per_sec", config.DRINKS_PAID_PRICES["video_per_sec"]))
-    return OrderItem(item_key=f"scene-{position:02d}-clip{sec}", position=position, role=role, kind="video", model=model,
-                     est_usd=round(per_sec * sec, 4), prompt=prompt,
-                     prompt_hash=_hash({"kind": "video", "model": model, "prompt": prompt, "start": start_sha256, "sec": sec}),
-                     ref_item=start_item, clip_sec=sec, cut=cut)
+    payload: dict[str, Any] = {"kind": "video", "model": model, "prompt": prompt, "start": start_sha256, "sec": sec}
+    if candidate_id:
+        payload["candidate_id"] = candidate_id
+    return OrderItem(item_key=candidate_id or f"scene-{position:02d}-clip{sec}", position=position, role=role, kind="video", model=model,
+                     est_usd=round(per_sec * sec, 4), prompt=prompt, prompt_hash=_hash(payload),
+                     ref_item=start_item, clip_sec=sec, cut=cut, candidate_id=candidate_id)
 
 
 def order_hash(items: list[OrderItem]) -> str:
@@ -165,10 +171,38 @@ class Bought:
     hold_id: Optional[str]
     width: Optional[int] = None
     height: Optional[int] = None
+    duration_ms: Optional[int] = None     # 영상: ffprobe 실측(E5)
+    frames: Optional[int] = None
 
 
 def _copy_from_storage(storage: Any, key: str, dest: str) -> None:
     storage.get(key, dest)
+
+
+def _measure_clip(path: str) -> dict[str, Any]:
+    """E5(기획 v2 §3-1): 받은 영상 파일을 실제로 잰다. 요청 길이를 적지 않는다."""
+    from .drinks_explainer import probe_clip
+
+    probe = probe_clip(path)
+    if not probe["ok"] or not probe["has_video"] or probe["still"] or not probe["duration_ms"]:
+        raise PaidError("clip_corrupt", f"받은 영상 파일을 재지 못했습니다: {str(probe['error'])[:200]}")
+    return probe
+
+
+def fetch_selected(slot: str, *, rpc: Rpc, storage: Any, out_dir: str) -> Bought:
+    """설명형 재사용(§3-3): 다시 쓰는 것은 **이 슬롯에서 이미 선택된 자산**뿐이다(재렌더·언어 추가). 선택이 없으면 사지 않고 멈춘다."""
+    from .drinks_render import sha256_file
+
+    row = rpc("drinks_explainer_selected_asset", {"slot_id": slot}) or {}
+    if not row.get("storage_key"):
+        raise PaidError("no_selected_asset", f"이 슬롯에 선택된 자산이 없습니다: {slot}")
+    os.makedirs(out_dir, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", slot)
+    out = os.path.join(out_dir, f"{safe}.mp4")
+    _copy_from_storage(storage, row["storage_key"], out)
+    if sha256_file(out) != row["sha256"]:
+        raise PaidError("cache_corrupt", f"저장된 파일 내용이 기록과 다릅니다: {row['storage_key']}")
+    return Bought(slot, out, 0.0, True, row.get("asset_id"), None, width=row.get("width"), height=row.get("height"), duration_ms=row.get("duration_ms"))
 
 
 def buy(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: str, out_dir: str,
@@ -179,8 +213,10 @@ def buy(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: str, out_dir: s
 
     os.makedirs(out_dir, exist_ok=True)
     ext = ".png" if item.kind == "image" else ".mp4"
-    out = os.path.join(out_dir, f"{item.item_key}{ext}")
-    hit = rpc("drinks_find_generated", {"prompt_hashes": [item.prompt_hash]}) or []
+    # 후보 id 에는 ':'·'#' 가 있다(윈도우 파일 이름에 못 쓴다). 기존 항목 키(scene-01-reality)는 글자가 그대로다.
+    out = os.path.join(out_dir, f"{re.sub(r'[^A-Za-z0-9_-]+', '_', item.item_key)}{ext}")
+    # 후보를 채울 때는 캐시를 보지 않는다(§3-3) — 다시 쓰는 길은 fetch_selected 하나다.
+    hit = [] if item.candidate_id else (rpc("drinks_find_generated", {"prompt_hashes": [item.prompt_hash]}) or [])
     if hit:
         _copy_from_storage(storage, hit[0]["storage_key"], out)
         if sha256_file(out) != hit[0]["sha256"]:
@@ -206,20 +242,28 @@ def buy(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: str, out_dir: s
     rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "settled", "actual_usd": round(float(cost), 4),
                                 "note": "정가표 금액(공급자 청구서 대조 전)"})
     size = None
+    clip_probe: Optional[dict[str, Any]] = None
     if item.kind == "image":
         from .providers.image import measure_aspect
 
         size = measure_aspect(out)
+    else:
+        # 돈은 위에서 이미 확정됐다. 파일이 재지지 않으면 등록하지 않는다 — 깨진 클립이 재사용 목록에 들어가면 안 된다.
+        clip_probe = _measure_clip(out)
+        size = (clip_probe["width"], clip_probe["height"])
     key = f"drinks/generated/{item.prompt_hash[:2]}/{item.prompt_hash}{ext}"
     stored = storage.put(out, key, "image/png" if item.kind == "image" else "video/mp4")
     reg = rpc("drinks_register_generated", {"hold_id": hold_id, "prompt_hash": item.prompt_hash, "asset": {
         "storage_key": stored, "sha256": sha256_file(out), "mime": "image/png" if item.kind == "image" else "video/mp4",
         "bytes": os.path.getsize(out), "width": size[0] if size else None, "height": size[1] if size else None,
-        "duration_ms": item.clip_sec * 1000 if item.kind == "video" else None,
+        "duration_ms": clip_probe["duration_ms"] if clip_probe else None,
         "provenance": {"provider": "gemini" if item.kind == "image" else "veo", "model": item.model, "item_key": item.item_key,
-                       "prompt_hash": item.prompt_hash, "approval_id": approval_id, "ref_item": item.ref_item}}})
+                       "prompt_hash": item.prompt_hash, "approval_id": approval_id, "ref_item": item.ref_item,
+                       **({"requested_ms": item.clip_sec * 1000, "measured_frames": clip_probe["frames"], "measured_fps": clip_probe["fps"]} if clip_probe else {}),
+                       **({"candidate_id": item.candidate_id} if item.candidate_id else {})}}})
     return Bought(item.item_key, out, float(cost), False, reg["asset_id"], hold_id,
-                  width=size[0] if size else None, height=size[1] if size else None)
+                  width=size[0] if size else None, height=size[1] if size else None,
+                  duration_ms=clip_probe["duration_ms"] if clip_probe else None, frames=clip_probe["frames"] if clip_probe else None)
 
 
 def _generate(item: OrderItem, out: str, ref_path: Optional[str]) -> float:
