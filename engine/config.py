@@ -4623,3 +4623,17 @@ DRINKS_DEVELOP_SOURCE_KINDS_AUTO: tuple[str, ...] = ("official", "expert", "manu
 DRINKS_DEVELOP_SOURCE_KINDS_NEVER: tuple[str, ...] = ("community", "reader", "retailer")      # 운영자가 붙였어도 사실 근거로 쓰지 않는 종류(질문·후기·판매글)
 DRINKS_DEVELOP_SCENES: tuple[int, int] = (5, 7)      # 대본 장면 수 범위(30~40초 릴스)
 DRINKS_DEVELOP_SECONDS: tuple[float, float] = (30.0, 40.0)   # 장면 timing_sec 합계 범위
+
+
+# ═════════════════════════════════════════════════════════════
+# 릴스 3형식 1단계(2026-11-02) — docs/총괄계획_릴스3형식_수집부터게시까지_2026-11-02.md §6
+# ═════════════════════════════════════════════════════════════
+
+# ── ⓐ 설명형 ──
+
+
+# ── ⓑ 인스타 트렌드 보드 ──
+
+
+# ── ⓒⓓ 형식 추천·내용 승인 ──
+
