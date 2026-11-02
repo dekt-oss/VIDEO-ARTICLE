@@ -4813,3 +4813,61 @@ DRINKS_FORMAT_EVIDENCE_MAX_CANDIDATES: int = 50
 DRINKS_EXPLAINER_ESTIMATE_USD: float = 7.95
 DRINKS_EXPLAINER_APPROVAL_CAP_USD: float = 8.90
 
+
+# ── 밈형 제작 엔진 (2026-11-02, 총괄 계획 §4-3·기획 v2 §5). docs/deviation-drinks-meme-engine.md ──
+# 길이·화면 숫자는 시험 2 실측(인기 밈 24편, 가운데값 13초)과 설계값이다. 우리 계정 성과로 잰 값이 아니다.
+DRINKS_MEME_MIN_SEC: float = 6.0                     # web/lib/drinks/meme.ts · 0066 과 같아야 한다(tests/test_drinks_meme.py 가 대조)
+DRINKS_MEME_MAX_SEC: float = 15.0
+DRINKS_MEME_BEAT_MIN_MS: int = 500
+DRINKS_MEME_BEAT_MAX_MS: int = 8000
+DRINKS_MEME_MAX_BEATS: int = 6
+DRINKS_MEME_TEXT_MAX_CHARS: int = 60                 # 윗줄·비트 글 한 칸 상한
+DRINKS_MEME_BEAT_MS_PER_CHAR: int = 170              # 비트 길이를 안 정했을 때 글 읽는 시간. 첫 값(meme.ts 와 같다)
+DRINKS_MEME_BEAT_FLOOR_MS: int = 1800                # 짧은 글도 이만큼은 머문다
+DRINKS_MEME_SYNC_REQUIRED_PATTERN: str = r"(필수|맞춰|맞춤|required)"   # 카드의 '음악 동기화' 칸이 이 말이면 박자 맞춤으로 본다(0066 과 같다)
+DRINKS_MEME_FRAMES: tuple[str, ...] = ("top_text", "full_title")     # ① 검은 바탕 위쪽 글 + 가운데 가로 장면 ② 세로 꽉 찬 장면 + 큰 제목
+DRINKS_MEME_SYNC_GRADES: tuple[str, ...] = ("sync_free", "sync_required")
+DRINKS_MEME_AUDIO_MODES: tuple[str, ...] = ("none", "ambient_local", "ig_audio", "app_manual")
+# 화면 — 아래 안전 영역은 설명형 값(기획 v2 §2-3, 앱에서 확인 전 [미검증])을 그대로 쓴다. 글은 좌우 대칭으로 둔다.
+DRINKS_MEME_TEXT_SIDE_PX: int = 120
+DRINKS_MEME_LANDSCAPE_H: int = 608                   # ① 가운데 가로 장면 높이(1080 폭의 16:9)
+DRINKS_MEME_ACCENT: dict = {"top_text": "#FF3B30", "full_title": "#FFE000"}   # 시험 2 실측: 틀 ① 빨강(memezar) · 틀 ② 노랑
+DRINKS_MEME_FONT_FILE: str = "Pretendard-ExtraBold.otf"
+DRINKS_MEME_FONT_NAME: str = "Pretendard ExtraBold"
+DRINKS_MEME_TOP_LINE: dict = {"size": 66, "min_size": 44, "max_lines": 1}
+DRINKS_MEME_TITLE: dict = {"size": 104, "min_size": 72, "max_lines": 3, "y": 400}
+DRINKS_MEME_BEAT_TOP: dict = {"size": 76, "min_size": 52, "max_lines": 3}
+DRINKS_MEME_BEAT_FULL: dict = {"size": 84, "min_size": 56, "max_lines": 3, "y": 900}
+DRINKS_MEME_PALETTES: dict = {       # 코드가 만드는 움직이는 배경(0원). 남의 장면을 쓰지 않는다.
+    "amber": ("0x3A2410", "0x8A5A1E"), "wine": ("0x2C0F1C", "0x7A2A44"), "night": ("0x10182C", "0x2C4A6E"), "moss": ("0x16261A", "0x41653A"),
+}
+DRINKS_MEME_BG_SPEED: float = 0.012                  # 배경 흐름 속도(ffmpeg gradients)
+DRINKS_MEME_AMBIENT_CHORDS: dict = {"amber": (110.0, 165.0, 220.0), "wine": (98.0, 147.0, 196.0), "night": (82.4, 123.5, 164.8), "moss": (123.5, 185.0, 246.9)}
+DRINKS_MEME_X264_PRESET: str = "veryfast"
+DRINKS_MEME_X264_CRF: int = 20
+DRINKS_MEME_FREEZE_MIN_SEC: float = 2.5              # 멈춘 듯 보이는 구간 — 경고만. 밈은 한 장면이 흔하다(시험 2: 24편 중 19편)
+# 안전 검사 — SQL 0066 drinks_meme_unsafe_rules 와 같아야 한다(tests/test_drinks_meme.py 가 대조). 고치면 둘 다 고친다.
+# ★ 낱말 목록이라 뜻은 못 본다. 돌려 말한 농담은 사람이 승인 때 본다. 첫 값이고 실제 카드로 다시 본다.
+DRINKS_MEME_UNSAFE_RULES: tuple[tuple[str, str, str], ...] = (
+    ("meme_encourages_drinking", "음주 조장", r"(원\s*샷|한\s*잔\s*더|한\s*병\s*더|더\s*마셔|마셔\s*라|마시자|달리자|부어라|벌주|취하자|먹고\s*죽|오늘은\s*마신다)"),
+    ("meme_minor", "미성년", r"(미성년|고등학생|중학생|초등학생|고딩|중딩|초딩|교복|수능|청소년|학교\s*끝나고)"),
+    ("meme_overdrinking", "과음 미화", r"(필름\s*(이\s*)?끊|꽐라|만취|폭음|폭탄주|주량\s*자랑|토할\s*때까지|기억\s*(이\s*)?안\s*나|인사불성|해장술|술고래|말술|[0-9]+\s*병\s*(은\s*)?(기본|마셨|깠))"),
+    ("meme_drunk_driving", "음주운전", r"(음주\s*운전|술\s*마시고\s*운전|한\s*잔만\s*하고\s*운전)"),
+    ("meme_pregnancy", "임신 중 음주", r"(임산부|임신\s*중)"),
+)
+# 이 말이 있으면 농담이 아니라 정보로 본다 → 근거가 없으면 멈춘다. 숫자는 단위가 붙은 것만(3초 고민 같은 농담은 잡지 않는다).
+DRINKS_MEME_INFO_PATTERN: str = r"([0-9]+\s*(%|퍼센트|도|ml|밀리|리터|칼로리|kcal|년산|배)|연구|논문|과학적|칼로리|숙취\s*해소|건강에|몸에\s*(좋|나쁘)|효과가|법적으로|법으로|법령|세금|주세)"
+DRINKS_MEME_FOREIGN_MEDIA_PATTERN: str = r"(instagram\.com|cdninstagram|fbcdn|tiktok|youtube\.com|youtu\.be|media_url|permalink)"
+DRINKS_MEME_SCENE_RIGHTS: tuple[str, ...] = ("generated_paid", "own", "licensed")   # 0053 rights 중 장면 칸에 쓸 수 있는 것
+DRINKS_MEME_COPY_SIMILAR_MAX: float = 0.6            # 원본 릴스 캡션·표지 글과 이만큼 겹치면 베낀 것으로 본다(글자 2개 조각 Jaccard). 첫 값
+# 반응 장면(유료) — ★ 이번에는 호출하지 않는다. 기획 v2 §5: 클립 4초 ① 기준 약 $0.41 + 그림 $0.039.
+DRINKS_MEME_REACTION_PAID_ENABLED: bool = False      # 결재 전 꺼짐. 환경변수로 켜지 않는다 — 코드를 바꿔야 켜진다
+DRINKS_MEME_REACTION_CLIP_SEC: int = 4
+DRINKS_MEME_REACTION_CLIP_USD_PER_SEC: float = 0.101
+DRINKS_MEME_REACTION_IMAGE_USD: float = 0.039
+# 글 초안 LLM — 코드 경로만 있다. 결재(drink_develop_budgets)가 있어야 부른다. SQL 0066 drinks_meme_limits 와 같아야 한다.
+DRINKS_MEME_TEXT_MODEL: str = os.getenv("DRINKS_MEME_TEXT_MODEL", "gemini-2.5-flash")
+DRINKS_MEME_TEXT_MAX_OUT_TOKENS: int = 800
+DRINKS_MEME_TEXT_MAX_USD_PER_DRAFT: float = 0.02
+DRINKS_MEME_TEXT_MAX_CALLS_PER_DRAFT: int = 3
+
