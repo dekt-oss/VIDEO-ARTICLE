@@ -4898,3 +4898,20 @@ DRINKS_MEME_TEXT_MAX_OUT_TOKENS: int = 800
 DRINKS_MEME_TEXT_MAX_USD_PER_DRAFT: float = 0.02
 DRINKS_MEME_TEXT_MAX_CALLS_PER_DRAFT: int = 3
 
+# ── 설명형 제작 큐(기획 v2 §3-3·§3-5·§3-9, 2026-11-02) ── 근거·되돌리기: docs/deviation-drinks-explainer-queue.md
+# ★ 실제 공급자 호출 스위치는 위의 DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED 하나다(기본 꺼짐). 이 절의 어떤 값도 호출을 켜지 않는다.
+DRINKS_EXPLAINER_DEFAULT_PROVIDER: str = os.getenv("DRINKS_EXPLAINER_DEFAULT_PROVIDER", "omni")   # S2 에서 확정한다(§3-2). 지금 전송이 연결된 것은 omni 뿐
+DRINKS_EXPLAINER_RESOLUTION: str = "720p"          # 견적 기준(§3-7)
+DRINKS_EXPLAINER_RENDERER_VERSION: str = "drinks-explainer-v1"
+DRINKS_EXPLAINER_RENDERERS: tuple[str, ...] = ("explainer_plan", "explainer_buy", "explainer_render")   # 0067 체크와 같다
+# 대본이 이어짐을 선언하지 않은 같은 역할 장면 사이의 보통 컷. §3-5 표에는 없는 값이다 — 앞 장면 선택을 기다리지 않고 살 수 있고, 연속성 사람 검사 대상이 아니다.
+DRINKS_EXPLAINER_BOUNDARY_KINDS = DRINKS_EXPLAINER_BOUNDARY_KINDS + ("cut",)
+DRINKS_EXPLAINER_CLIP_SEC_TIERS: dict[str, tuple[int, ...]] = {"omni": (4, 6, 8, 10), "veo_fast": (4, 6, 8)}   # 주문 길이. omni 는 3~10초 안에서 짝수만 — 실제 길이는 받은 뒤 잰다(E5)
+DRINKS_EXPLAINER_HOOK_CANDIDATES: int = 2          # 훅 자산의 후보 수(§3-6-2: 후보 2발은 첫 도해 하나에만). 나머지는 1
+DRINKS_EXPLAINER_HOOK_RAW_MS: int = 1800           # 훅으로 앞당겨 보여 주는 길이(배속 전, §3-6-2 B1)
+DRINKS_EXPLAINER_HOOK_END_GAP_MS: int = 300        # 훅 구간이 그 자산의 사용 끝보다 이만큼 앞에서 끝난다(§3-6: 5,400~7,200 / 사용 끝 7,460). 결정적 순간을 지정하는 칸이 대본에 없어 근사한다
+DRINKS_EXPLAINER_TAIL_MS: int = 600                # 말 없는 꼬리(배속 전, §3-6)
+DRINKS_EXPLAINER_ASPECT_TOLERANCE: float = 0.02    # 후보 자동 판정의 9:16 허용 오차(폭/높이 비)
+DRINKS_EXPLAINER_SEND_TIMEOUT_SEC: float = _get_float("DRINKS_EXPLAINER_SEND_TIMEOUT_SEC", 300.0)   # 동기 응답(§3-2 ①) 대기. [미검증] 끊기면 unknown_billed 로 멈춘다
+DRINKS_EXPLAINER_STALE_ATTEMPT_SEC: int = 1800     # 이만큼 멈춘 시도는 워커가 죽은 것으로 본다(0053 임대 시간과 같다)
+DRINKS_EXPLAINER_PLACEHOLDER_SYL_PER_SEC: float = 5.9   # tts=placeholder 의 길이 추정(§3-6-2 말 속도). 무음 시험 전용

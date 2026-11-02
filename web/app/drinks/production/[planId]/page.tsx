@@ -4,6 +4,7 @@
 import Link from "next/link";
 
 import { CancelRender, CloseSpendApproval, OpenSpendApproval, OutputReview, PaidRenderRequest, RenderRequest } from "@/components/drinks/ProductionControls";
+import ExplainerProduction from "@/components/drinks/ExplainerProduction";
 import QaPanel from "./QaPanel";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { fmtTime } from "@/components/drinks/RunPill";
@@ -13,10 +14,12 @@ import { loadPlanProduction } from "@/lib/drinks/productionQueries";
 export const dynamic = "force-dynamic";
 
 const JOB_LABEL = { queued: "대기", running: "렌더 중", succeeded: "파일 생성됨", failed: "실패", canceled: "취소" } as const;
+// 설명형 지시서·구매 작업은 파일 없이 끝난다(사람 차례에서 닫힌다).
+const JOB_DONE_LABEL: Record<string, string> = { explainer_plan: "지시서 완료", explainer_buy: "구매 단계 끝" };
 const REVIEW_LABEL = { pending: "검수 대기", approved: "파일 승인", changes_requested: "고칠 점 있음", blocked: "차단" } as const;
 const BLOCK_TEXT: Record<string, string> = {
   plan_not_approved: "제작안이 승인 상태가 아님", plan_blocked: "제작안 차단(근거 철회·권리 변경)", evidence_invalid: "근거를 지금 쓸 수 없음",
-  not_found: "제작안 없음", explainer_engine_not_wired: "설명형은 전부 영상이어야 해서 옛 그림 나열식으로 만들지 않습니다(전용 제작 연결 전)",
+  not_found: "제작안 없음", explainer_engine_not_wired: "설명형은 전부 영상이어야 해서 옛 그림 나열식으로 만들지 않습니다(0067 적용 전)",
 };
 
 export default async function PlanProductionPage(props: { params: Promise<{ planId: string }> }) {
@@ -24,7 +27,8 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
   const v = await loadPlanProduction(planId);
   if (v.state === "not_found") return <main className="container"><p className="banner-warn">제작안을 찾지 못했습니다.</p></main>;
   if (v.state !== "ok") return <main className="container"><LoadProblem state={v.state} error={v.state === "failed" ? v.error : undefined} /></main>;
-  const { plan, topic, review, renderable, jobs, manifests, costs, spend } = v.data;
+  const { plan, topic, review, renderable, jobs, manifests, costs, spend, explainer } = v.data;
+  const isExplainer = explainer.is_explainer;
   const f = plan.format as Format;
   const active = jobs.find((j) => j.status === "queued" || j.status === "running");
   const lastFailed = jobs.find((j) => j.status === "failed" || j.status === "canceled");
@@ -44,14 +48,18 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         <h2>{topic.title}</h2>
         <p className="dk-kv">제작안 버전 <b>{plan.revision_no}</b> ({VERSION_STATUS_LABEL[plan.plan_status]}) · 근거 버전 <b>{review.revision_no}</b>{" "}
           {review.currently_valid === false ? <span className="dk-bad">· 근거 지금 사용 불가</span> : <span className="dk-ok">· 근거 유효</span>}</p>
+        {isExplainer ? (
+          <p className="banner-info"><b>설명형</b>은 전부 영상입니다 — 옛 그림 나열식 렌더 요청은 쓰지 않습니다. 아래 순서대로 진행합니다.</p>
+        ) : (
         <p className="banner-info"><b>렌더 요청</b>은 로컬·무료입니다 — 대체 이미지(장면 유형 표기 카드)와 무료 TTS 로 흐름을 확인합니다. 목표 화풍(3D 도해·무광 CG)
           그림은 <b>유료 렌더</b>로만 나오고, 결재(아래)가 있어야 하며 결재 금액이 상한입니다.</p>
+        )}
         {renderable ? (
           <p className="banner-block">렌더할 수 없습니다 — {BLOCK_TEXT[renderable] ?? renderable}</p>
         ) : active ? (
           <p className="dk-kv">진행 중: {JOB_LABEL[active.status]} (시도 {active.attempt_no}) <CancelRender jobId={active.id} />
             {active.cancel_requested && <span className="muted"> · 취소 요청됨(워커가 다음 확인 때 멈춥니다)</span>}</p>
-        ) : (
+        ) : isExplainer ? null : (
           <div className="actions">
             <RenderRequest planId={plan.id} label={manifests.length ? "다시 렌더" : "렌더 요청"} />
             {lastFailed && <RenderRequest planId={plan.id} retryOf={lastFailed.id} label="실패한 작업 재시도" />}
@@ -60,7 +68,11 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         <p className="muted">비용 합계(이 제작안): ${total.toFixed(4)} — 공급자·모델별 기록 {costs.length}건</p>
       </section>
 
-      {f === "video" && (
+      {isExplainer && !renderable && (
+        <ExplainerProduction planId={plan.id} status={explainer} activeJob={active ? { renderer: active.renderer, status: active.status } : null} />
+      )}
+
+      {f === "video" && !isExplainer && (
         <section className="section">
           <h3>유료 그림(결재)</h3>
           <p className="muted">지금 유료 렌더하면 새로 드는 예상(그림만, 정가표): <b>${estimate.toFixed(3)}</b> — 새로 살 그림 {spend.estimate.images}장
@@ -98,7 +110,7 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         {jobs.length === 0 ? <p className="muted">아직 요청한 렌더가 없습니다.</p> : jobs.map((j) => (
           <div key={j.id} className="list-row">
             <span>
-              <span className={j.status === "failed" ? "pill dk-bad" : j.status === "succeeded" ? "pill dk-ok" : "pill"}>{JOB_LABEL[j.status]}</span>{" "}
+              <span className={j.status === "failed" ? "pill dk-bad" : j.status === "succeeded" ? "pill dk-ok" : "pill"}>{j.status === "succeeded" ? (JOB_DONE_LABEL[j.renderer] ?? JOB_LABEL[j.status]) : JOB_LABEL[j.status]}</span>{" "}
               시도 {j.attempt_no} · {j.renderer}({j.renderer_version}) · 요청 {fmtTime(j.created_at)} · 끝 {fmtTime(j.finished_at)}
               {j.error_code && <span className="muted"> · {j.error_code}: {j.error_message}</span>}
             </span>
@@ -144,7 +156,7 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
                 </div>
               ))}
             </div>
-            {m.review && <OutputReview review={m.review} format={f} usableNow={!m.currentBlock} hasReel={f === "carousel" && m.files.some((x) => x.role === "final_video")} />}
+            {m.review && (!isExplainer || ["quality_review_pass", "ready_to_publish"].includes(explainer.episode?.state ?? "")) && <OutputReview review={m.review} format={f} usableNow={!m.currentBlock} hasReel={f === "carousel" && m.files.some((x) => x.role === "final_video")} />}
           </article>
         ))}
       </section>

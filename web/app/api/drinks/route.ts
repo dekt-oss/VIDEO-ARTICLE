@@ -30,7 +30,9 @@ export async function POST(request: Request) {
     // 실행은 큐에 들어갔다. 토큰이 없으면 다음 일일 실행(KST 06:30)이 가져간다 — 화면이 그 사실을 보여준다.
     res.body.dispatch = await triggerWorkflow("drinks-collect.yml", null);
   }
-  if (res.status === 200 && (body as { action?: unknown } | null)?.action === "request_render"
+  // 설명형 지시서·조립도 0원 작업이라 같은 제작 워커를 깨운다. 구매(explainer_request_buy)는 깨우지 않는다 — 실호출 스위치를 켠 워커만 처리할 수 있다.
+  const renderAction = (body as { action?: unknown } | null)?.action;
+  if (res.status === 200 && (renderAction === "request_render" || renderAction === "explainer_request_plan" || renderAction === "explainer_request_assemble")
       && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
     res.body.dispatch = await triggerWorkflow("drinks-produce.yml", null);
   }

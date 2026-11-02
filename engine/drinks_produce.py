@@ -10,6 +10,8 @@
   · 유료 작업(renderer=paid, 0054)은 장면 그림만 결재 안에서 산다(engine/drinks_paid.py — 그림마다 DB 가 상한을 잰다).
     음성·조립은 그대로 무료. 장면에 영어 그림 지시문이 없으면 아무것도 사기 전에 실패한다.
     ★ GitHub Actions 의 drinks-produce.yml 에는 그림 생성 키가 없다 — 거기서 집은 유료 작업은 가잡기 전에 api_key_missing 으로 멈춘다.
+  · 설명형(renderer=explainer_*, 0067)은 engine/drinks_explainer_queue.py 로 간다. 공급자 실호출은 스위치 + 결재가 둘 다 있어야 하고,
+    GitHub Actions 에는 스위치도 키도 없어 구매 작업은 아무것도 사지 않고 실패로 닫힌다.
   · 저장: DRINKS_STORAGE=supabase → 비공개 버킷 'drinks' 의 drinks/{job}/… (논문·리포트 GC 가 걷지 않는 접두어)
           DRINKS_STORAGE=local(기본) → DRINKS_LOCAL_STORAGE_DIR 아래 같은 경로(검증용, 대시보드 미리보기는 안 됨)
 """
@@ -164,7 +166,12 @@ def free_script_check(job: dict[str, Any]) -> Optional[script_check.Report]:
         return None
 
 
-def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "edge") -> dict[str, Any]:
+def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "edge", explainer_deps: Any = None) -> dict[str, Any]:
+    # 설명형은 전용 경로로만 간다(explainer_*). 옛 그림 나열식 렌더(render_video)에는 닿지 않는다. 0067 이 옛 작업을 DB 에서 막는다.
+    if str(job.get("renderer") or "").startswith("explainer_"):
+        from .drinks_explainer_queue import process_explainer_job
+
+        return process_explainer_job(job, rpc, storage, tts=tts, deps=explainer_deps)
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     work = tempfile.mkdtemp(prefix=f"drinks_{job['job_id'][:8]}_")
     try:
@@ -252,7 +259,7 @@ def attach_script_check(qa: dict[str, Any], rep: Optional[script_check.Report]) 
         warnings.append("script_check_warned")
 
 
-def run_queue(rpc: Rpc, storage: Storage, *, worker_id: str, tts: str = "edge", max_jobs: int = 5) -> list[dict[str, Any]]:
+def run_queue(rpc: Rpc, storage: Storage, *, worker_id: str, tts: str = "edge", max_jobs: int = 5, explainer_deps: Any = None) -> list[dict[str, Any]]:
     out = []
     for _ in range(max_jobs):
         got = rpc("drinks_start_render", {"worker_id": worker_id}) or {}
@@ -260,7 +267,7 @@ def run_queue(rpc: Rpc, storage: Storage, *, worker_id: str, tts: str = "edge", 
         if not job:
             break
         log.info("drinks: 제작 %s 시작 (%s, %s)", job["job_id"], job["format"], job["topic"].get("title"))
-        res = process_job(job, rpc, storage, tts=tts)
+        res = process_job(job, rpc, storage, tts=tts, explainer_deps=explainer_deps)
         log.info("drinks: 제작 %s → %s", job["job_id"], (res or {}).get("status"))
         out.append({"job_id": job["job_id"], **(res or {})})
     return out

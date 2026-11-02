@@ -4,7 +4,7 @@
 // ★ 주장별 뒷받침 확인(support_review)은 사람이 이 화면에서 한다. 자동으로 채우지 않는다.
 // ★ 근거 문장을 고치거나 주장을 빼면 그 근거로 쓴 대본은 서버가 무효로 만든다 — [이 근거로 대본 다시 만들기] 뒤에야 승인할 수 있다.
 // ★ 버튼 잠금은 편의다. 막는 것은 DB(drinks_approve_content + 기존 승인 함수들)다.
-// ★ 승인 금액은 기록만 한다. 결재를 열지 않고 돈이 나가지 않는다 — 영상 구매가 연결되면 이 금액이 그 편의 결재 금액이 된다.
+// ★ 승인 금액은 기록만 한다. 결재를 열지 않고 돈이 나가지 않는다 — 제작 화면의 결재는 지시서의 실측 금액을 보고 따로 연다(docs/deviation-drinks-explainer-queue.md).
 // ★ 카드뉴스(0065)도 같은 화면이다. 금액을 받지 않는다 — 렌더가 로컬 0원이다.
 import { useState } from "react";
 
@@ -110,7 +110,7 @@ export default function ContentApprovalTab({
         <p className="muted">
           {pick?.approved_at ? `이 소재는 내용 승인을 마쳤습니다${pick.approved_amount_usd ? `(승인 금액 기록 $${Number(pick.approved_amount_usd).toFixed(2)})` : ""}. ` : "이 소재는 이미 근거가 승인됐습니다. "}
           이어지는 일은 공통 기획·영상·카드뉴스 탭과 제작 화면에서 합니다.
-          {isCard ? " 카드뉴스는 제작 화면에서 [렌더 요청]을 누르면 카드와 릴스 영상이 함께 나옵니다(로컬·0원)." : " 설명형은 전부 영상이어야 해서, 전용 제작을 연결하기 전까지 옛 그림 나열식 렌더가 막혀 있습니다."}
+          {isCard ? " 카드뉴스는 제작 화면에서 [렌더 요청]을 누르면 카드와 릴스 영상이 함께 나옵니다(로컬·0원)." : " 설명형은 전부 영상이어야 해서 옛 그림 나열식 렌더는 막혀 있고, 제작 화면의 설명형 제작으로 진행합니다."}
         </p>
       </section>
     );
@@ -289,7 +289,7 @@ export default function ContentApprovalTab({
           <input value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} />
         </label>
         <p className="muted">
-          지금은 금액을 기록만 합니다. 승인해도 결재가 열리지 않고 돈이 나가지 않습니다 — 영상 구매는 아직 연결되지 않았고, 유료 렌더는 제작 화면의 결재를 따로 거칩니다.
+          이 금액은 기록만 합니다. 승인해도 결재가 열리지 않고 돈이 나가지 않습니다 — 영상 구매는 제작 화면에서 장면별 지시서와 실측 금액을 본 뒤 결재를 따로 엽니다.
           근거·대본을 만드는 데 든 비용은 개발 카드에 있습니다.
         </p>
       </section>}

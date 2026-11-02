@@ -139,13 +139,14 @@ CLAIMS = [{"claim_id": "c1", "original_quote": "Ethanol at 40% inhibits growth"}
 
 def scene(**kw):
     base = {"narration": "왜일까?", "visual_role": "mechanism", "claim_ids": ["c1"], "visual_claim_ko": "에탄올이 미생물을 억제한다",
-            "allowed_simplification": "미생물 = 초록 알갱이", "forbidden_misreading": "미생물이 죽어 사라진다", "depiction_label": "설명용 도해"}
+            "allowed_simplification": "미생물 = 초록 알갱이", "forbidden_misreading": "미생물이 죽어 사라진다", "depiction_label": "설명용 도해", "motion_prompt": "the microbes approach and stop"}
     base.update(kw)
     return base
 
 
 @pytest.mark.parametrize("sc, code", [
     (scene(), None),
+    (scene(motion_prompt=" "), "motion_prompt_missing"),
     (scene(visual_claim_ko=""), "visual_claim_missing"),
     (scene(forbidden_misreading=None), "visual_claim_missing"),
     (scene(depiction_label="CG 연출"), "depiction_label_mismatch"),
@@ -332,7 +333,8 @@ def test_limits_match_the_migration():
 
 def test_boundary_kinds_match_the_migration():
     allowed = re.search(r"boundary_in\s+text check \(boundary_in in \(([^)]*)\)\)", SQL).group(1)
-    assert set(re.findall(r"'(\w+)'", allowed)) == set(config.DRINKS_EXPLAINER_BOUNDARY_KINDS)
+    # 'cut' 은 0067 이 더했다(tests/test_drinks_explainer_queue.py 가 그 체크를 대조).
+    assert set(re.findall(r"'(\w+)'", allowed)) | {"cut"} == set(config.DRINKS_EXPLAINER_BOUNDARY_KINDS)
 
 
 def test_quote_matches_the_document_table():
@@ -369,7 +371,9 @@ def test_render_module_has_no_still_or_stretch_route():
 
 def test_render_uses_only_named_assemble_helpers():
     used = {n.attr for n in ast.walk(ast.parse(SRC)) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "assemble"}
-    assert used == {"build_concat_clips_command", "build_loudnorm_command", "build_speed_command", "filter_path"}, used
+    # build_last_frame_command 는 다음 슬롯 시작 그림의 참고 프레임을 뽑을 뿐이다(§3-5, last_frame). 편집표·타임라인에 들어가지 않는다.
+    assert used == {"build_concat_clips_command", "build_loudnorm_command", "build_speed_command", "filter_path", "build_last_frame_command"}, used
+    assert "last_frame(" not in SRC[SRC.index("def render_explainer"):SRC.index("def _measure_black")], "렌더는 마지막 프레임을 쓰지 않는다"
 
 
 def test_cut_filter_touches_no_time_and_caps_zoom():
@@ -827,6 +831,7 @@ def test_gold_plan_stretched_to_explainer_shape_passes_all_checks():
         s["timing_sec"] = 6.4
         s.pop("card_page", None)
         s.update(allowed_simplification="없음", forbidden_misreading="실제 제품 촬영으로 오해", depiction_label=config.DRINKS_EXPLAINER_DEPICTION_LABELS[s.get("visual_role") or "reality"])
+        s.setdefault("motion_prompt", "the camera slowly pushes in")
         s["visual_claim_ko"] = "화면이 나레이션을 보여 준다" if s.get("claim_ids") else f"{config.DRINKS_EXPLAINER_MOOD_PREFIX}: 도입"
     plan = {"scenes": scenes, "viewer_conclusion": GOLD.get("viewer_conclusion")}
     review = {"claims": GOLD["claims"], "brief": {"audience_question": "질문"}, "sources": [GOLD.get("source")]}
