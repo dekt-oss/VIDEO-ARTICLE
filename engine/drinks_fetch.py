@@ -36,17 +36,19 @@ HTML_TYPES = ("text/html", "application/xhtml+xml")
 TEXT_TYPES = ("text/plain",)
 JSON_TYPES = ("application/json",)
 
+ERROR_BODY_MAX_BYTES = 16_384
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal", ".lan", ".home", ".corp", ".intranet", ".arpa")
 
 
 class FetchError(Exception):
     """요청을 하지 않았거나 실패했다. code 는 실행 기록(drink_collection_items.error_code)에 그대로 남는다."""
 
-    def __init__(self, code: str, message: str, http_status: Optional[int] = None):
+    def __init__(self, code: str, message: str, http_status: Optional[int] = None, error_body: Optional[bytes] = None):
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
         self.http_status = http_status
+        self.error_body = error_body   # 4xx·5xx 응답 본문 앞부분(공급자 오류 코드를 읽을 때만 쓴다. 로그에 넣지 않는다)
 
 
 @dataclass
@@ -226,7 +228,7 @@ class SafeFetcher:
                         current = urljoin(current, loc)
                         continue
                     if resp.status_code >= 400:
-                        raise FetchError("http_error", f"HTTP {resp.status_code}", resp.status_code)
+                        raise FetchError("http_error", f"HTTP {resp.status_code}", resp.status_code, _error_body(resp))
                     ctype, charset = _content_type(resp.headers.get("content-type", ""))
                     if ctype not in accept:
                         raise FetchError("unsupported_type", f"본문으로 읽지 않는 형식입니다: {ctype or '없음'}", resp.status_code)
@@ -263,6 +265,21 @@ class SafeFetcher:
             raise FetchError("peer_unknown", "연결된 상대 주소를 확인하지 못했습니다")
         if not ip_is_public(str(addr[0])):
             raise FetchError("private_address", "연결된 상대가 공개 주소가 아닙니다")
+
+
+def _error_body(resp: httpx.Response) -> Optional[bytes]:
+    """오류 응답 본문을 ERROR_BODY_MAX_BYTES 까지만 읽는다. 못 읽어도 오류 판정은 그대로 간다."""
+    try:
+        chunks: list[bytes] = []
+        size = 0
+        for chunk in resp.iter_bytes():
+            chunks.append(chunk)
+            size += len(chunk)
+            if size >= ERROR_BODY_MAX_BYTES:
+                break
+        return b"".join(chunks)[:ERROR_BODY_MAX_BYTES]
+    except httpx.HTTPError:
+        return None
 
 
 def _content_type(raw: str) -> tuple[str, Optional[str]]:

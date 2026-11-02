@@ -4633,6 +4633,42 @@ DRINKS_DEVELOP_SECONDS: tuple[float, float] = (30.0, 40.0)   # 장면 timing_sec
 
 
 # ── ⓑ 인스타 트렌드 보드 ──
+# 기획 v2 §6·§8, 총괄 계획 §2·§4-3·§5. 수집은 engine/drinks_ig_trends.py, 표는 0063. 돈이 나가는 호출은 없다(공식 API 읽기만).
+# 문턱은 전부 첫 값이다 - 2주 관측 뒤 다시 정한다(§6-3·§6-4). SQL(0063)·화면(web/lib/drinks/igTrends.ts)과 같은지는 tests/test_drinks_ig_trends.py 가 대조한다.
+DRINKS_IG_TOKEN_ENV: str = "SOOLJJERIGO_FB_TOKEN"     # 페이스북 로그인 토큰의 환경변수 **이름**. 값은 헤더로만 보내고 저장·로그 금지
+# 우리 인스타 계정 ID(비밀 아님 - docs/안내_페이스북로그인전환_2026-10-30.md). 다른 계정으로 돌릴 때만 환경변수로 바꾼다.
+DRINKS_IG_USER_ID: str = os.getenv("DRINKS_IG_USER_ID", "17841473765861006")
+DRINKS_IG_GRAPH_HOST: str = "graph.facebook.com"
+DRINKS_IG_INTERVAL_SEC: float = 3.0                   # 요청 간격
+DRINKS_IG_MAX_REQUESTS: int = 150                     # 실행 1회 요청 상한 = 토큰 1 + 음원 8 + 계정 80 + 링크 20 + 재시도 여유
+DRINKS_IG_AUDIO_TYPES: tuple[str, ...] = ("music", "original_sound")   # GET /ig_audio 의 audio_type. 문서 2026-11-02 확인
+DRINKS_IG_AUDIO_PAGES: int = 4                        # 종류별 앞 4쪽(약 100개, 기획 v1 §6-2)
+DRINKS_IG_MEDIA_LIMIT: int = 25                       # 계정당 최근 게시물 수
+# Business Discovery 의 media 칸. ★ 없는 칸을 하나라도 물으면 그 요청이 통째로 거부될 수 있어(미검증) 코드가 아니라 여기 둔다.
+DRINKS_IG_MEDIA_FIELDS: tuple[str, ...] = (
+    "id", "caption", "media_type", "media_product_type", "permalink", "timestamp",
+    "like_count", "comments_count", "view_count", "thumbnail_url", "media_url", "media_audio_type",
+)
+DRINKS_IG_ACTIVE_LIMIT: int = 80                      # 관찰 계정 상한(SQL 0063 drinks_ig_watch_action)
+DRINKS_IG_NORMAL_T2_MIN_RATE: float = 0.8             # 정상 관측일: T2 계정 성공률 하한(SQL 0063 drinks_ig_is_normal_day)
+DRINKS_IG_FREEZE_MISSING_DAYS: int = 3                # 정상 관측일이 이만큼 끊기면 '관측 중단 — 상태 고정'
+DRINKS_IG_COOLED_NORMAL_DAYS: int = 7                 # 식음 = 정상 관측일 7일 동안 새 예시 없음(SQL 0063 drinks_ig_apply_lifecycle)
+DRINKS_IG_RISING_STREAK_DAYS: int = 2                 # 오르는 중 = 정상 관측일 연속 2일 예시 증가
+DRINKS_IG_AUDIO_CONSECUTIVE_DAYS: int = 3             # 오르는 음원 = 목록에 처음 들어옴 또는 3일 연속 남음
+DRINKS_IG_BASELINE_MIN_SAMPLE: int = 8                # 기준선 표본 하한. 미만이면 insufficient_sample
+DRINKS_IG_RISING_MULTIPLE: float = 3.0                # 뜨는 릴스 = 같은 나이 구간 기준선의 3배 이상
+DRINKS_IG_BASELINE_LOOKBACK_DAYS: int = 60            # 기준선에 쓰는 과거 관측 범위
+DRINKS_IG_TOKEN_WARN_DAYS: int = 14                   # 토큰 만료 경고(§8)
+DRINKS_IG_NOT_RUN_FILL_MAX_DAYS: int = 30             # 빈 날짜를 not_run 으로 채우는 최대 일수(그 앞은 화면이 '기록 없음'으로 본다)
+DRINKS_IG_LINKS_PER_RUN: int = 20                     # T3 링크 한 번에 처리하는 수
+DRINKS_IG_LINK_MAX_ATTEMPTS: int = 3                  # 일시 실패한 링크를 다시 시도하는 횟수
+DRINKS_IG_HOOK_SIMILAR_MIN: float = 0.5               # 병합 키 3순위(구조 + 훅 문장) 유사도 문턱. 글자 2개 조각의 Jaccard
+DRINKS_IG_MAX_NEW_CARDS_PER_RUN: int = 30             # 실행 1회에 새로 만드는 카드 상한. 넘친 수는 실행 기록에 남고 다음 날 다시 판정한다
+DRINKS_IG_CARD_AUDIO_TYPES: tuple[str, ...] = ("original_sound",)   # 카드를 만드는 음원 종류. 노래는 '오르는 음원' 목록에만 나온다
+DRINKS_IG_GENERIC_AUDIO_TITLE: str = r"^\W*(original\s+(audio|sound)|오리지널\s*(오디오|사운드)|원본\s*(오디오|소리|사운드))"   # 음원마다 겹치는 이름 - 밈 이름으로 쓰지 않는다
+DRINKS_IG_CHALLENGE_WORD: str = r"(챌린지|challenge)"  # 원본 소리 제목이 챌린지 이름인지 보는 낱말
+DRINKS_IG_HOOK_MAX_CHARS: int = 200
+DRINKS_IG_VIDEO_ONLY_FIELDS: tuple[str, ...] = ("beat_count", "cut_lengths", "twist_at", "first_1_5s", "music_sync")   # §6-5: 영상을 봐야만 채울 수 있는 칸(SQL 0063)
 
 
 # ── ⓒⓓ 형식 추천·내용 승인 ──

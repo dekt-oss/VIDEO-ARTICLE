@@ -1,0 +1,41 @@
+# 주류 공장 인스타 트렌드 보드 수집 (2026-11-02). docs/deviation-drinks-ig-trend-board.md
+#
+# 매일 KST 07:30 인기 음원(T1)·관찰 계정(T2)·운영자 링크(T3)를 공식 API 로 읽어 기록하고, 정상 관측일이면 밈 카드를 갱신한다.
+# ★ main 에 머지된 뒤에만 크론이 돈다. 0063 마이그레이션 적용과 비밀 등록이 먼저다 — 없으면 이 실행은 실패로 끝난다(조용히 0건이 되지 않는다).
+# ★ 0원. LLM·Apify·유료 호출 없음. 공식 API 읽기만. 남의 영상을 받거나 저장하지 않는다.
+# ★ 토큰이 없거나 만료되면 그날을 failed 로 기록하고 카드 상태를 멈춘 뒤 이 실행을 실패로 끝낸다(운영자가 알아채게).
+name: drinks-trend-board
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 22 * * *"   # KST 07:30
+
+concurrency:
+  group: drinks-trend-board
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # 요청 간격 3초 × 요청 상한 150회 = 7.5분 + 설치·여유
+    timeout-minutes: 25
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      ARXIV_CONTACT: ${{ secrets.ARXIV_CONTACT }}
+      OPENALEX_MAILTO: ${{ secrets.OPENALEX_MAILTO }}
+      SOOLJJERIGO_FB_TOKEN: ${{ secrets.SOOLJJERIGO_FB_TOKEN }}
+      TIMEZONE: "Asia/Seoul"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -r engine/requirements.txt
+      - name: trend board
+        run: python -m engine.drinks_ig_trends
