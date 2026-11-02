@@ -62,6 +62,10 @@ export const DRINKS_ACTIONS = {
   ig_set_card_field: "drinks_ig_set_card_field",
   ig_watch_action: "drinks_ig_watch_action",
   ig_add_link: "drinks_ig_add_link",
+  // Apify 정밀화(0070, 총괄 §3 결정 1): [쓰자] 클릭 1회 = Apify 실행 1회 승인(상한 $0.02, 월 $3 — DB 가 센다). 결정 기록 + 요청 큐를 한 트랜잭션으로.
+  // 실행(점유·끝내기)은 워커 전용이라 여기 없다. 손으로 만드는 정밀 틀 카드(정상 관측일 전 제작 경로)도 여기.
+  ig_card_use_refine: "drinks_ig_card_use_refine",
+  ig_manual_card: "drinks_ig_create_manual_card",
   // 내용 승인 한 번(0064): [이걸로](후보→소재·형식 의도·이어 만들기 요청), [승인](근거·편성·제작안을 한 트랜잭션으로).
   // 이어 만들기의 저장·끝내기(워커 전용)는 여기 없다. 워커는 승인 함수를 부르지 않는다.
   pick_topic: "drinks_pick_topic",
@@ -196,6 +200,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   meme_invalid: 422, meme_duration: 422, meme_sync_blocked: 422, meme_foreign_media: 422, meme_ai_label_missing: 422, meme_info_undeclared: 422,
   meme_evidence_missing: 422, meme_encourages_drinking: 422, meme_minor: 422, meme_overdrinking: 422, meme_drunk_driving: 422, meme_pregnancy: 422,
   card_not_precise: 422,
+  // Apify 정밀화(0070)
+  apify_budget_exhausted: 422, request_exists: 409, no_reels: 422, media_url_rejected: 422,
   // 설명형 제작(0067·0062)
   directive_missing: 422, selection_incomplete: 422, order_changed: 409, unknown_billed_open: 409, not_passed: 422, no_pass: 422, attempt_cap: 429, attempt_open: 409,
 };
