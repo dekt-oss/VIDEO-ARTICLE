@@ -252,9 +252,10 @@ test("[승인] 한 번: 근거·편성·대본이 함께 승인되고, 설명형
   assert.equal(Number((await row("select approved_amount_usd from drink_topic_picks where topic_id = $1", [topic])).approved_amount_usd), 8.9);
   assert.equal((await row("select count(*)::int n from drink_spend_approvals where plan_revision_id = $1", [planId])).n, 0, "승인은 지출 결재를 열지 않는다");
   assert.equal((await row("select count(*)::int n from drink_production_jobs where plan_revision_id = $1", [planId])).n, 0, "승인은 제작을 시작하지 않는다");
-  // 승인해도 옛 그림 나열식 렌더 큐에는 못 들어간다(설명형은 전부 영상, 사진 대체 금지). 전용 제작을 잇기 전까지 막힌다.
+  // 승인해도 옛 그림 나열식 렌더 큐에는 못 들어간다(설명형은 전부 영상, 사진 대체 금지). 0067 부터 표 트리거가 막는다.
   await fails("request_render", { plan_revision_id: planId }, "not_renderable");
-  assert.equal((await row("select drinks_plan_renderable($1) as v", [planId])).v, "explainer_engine_not_wired");
+  assert.equal((await row("select count(*)::int n from drink_production_jobs where plan_revision_id = $1", [planId])).n, 0);
+  assert.equal((await row("select drinks_plan_is_explainer($1) as v", [planId])).v, true);
   // 두 번 승인할 수 없다
   await fails("approve_content", await approvePayload(topic, reviewId, planId), "invalid_state");
 });
@@ -626,8 +627,8 @@ test("기존 탭으로 승인해도 앞뒤가 맞는다 — 이어 만든 대본
   p = await planRow(planId);
   await ok("plan_action", { revision_id: p.id, expected_version: p.version, action: "approve" });
   assert.equal((await planRow(planId)).plan_status, "approved");
-  // 승인돼도 설명형은 옛 그림 나열식 렌더로 못 간다(사진 대체 금지) — 전용 제작을 잇기 전까지 막힌다.
-  assert.equal((await row("select drinks_plan_renderable($1) as v", [planId])).v, "explainer_engine_not_wired");
+  // 승인돼도 설명형은 옛 그림 나열식 렌더로 못 간다(사진 대체 금지). 0067 부터 표 트리거가 막는다.
+  assert.equal((await row("select drinks_plan_is_explainer($1) as v", [planId])).v, true);
   await fails("request_render", { plan_revision_id: planId }, "not_renderable");
 });
 

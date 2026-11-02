@@ -64,6 +64,15 @@ export const DRINKS_ACTIONS = {
   // 이어 만들기의 저장·끝내기(워커 전용)는 여기 없다. 워커는 승인 함수를 부르지 않는다.
   pick_topic: "drinks_pick_topic",
   approve_content: "drinks_approve_content",
+  // 설명형 제작(0067): 지시서·구매·조립 요청, 후보 사람 판정·선택, 결과 불명 닫기, 사람 검수. 시도 기록·가잡기·자동 판정·파일 등록(워커 전용)은 여기 없다 —
+  // 화면은 큐에 넣고 사람 판정만 적는다. 공급자를 부르는 길이 없다.
+  explainer_request_plan: "drinks_explainer_request_plan",
+  explainer_request_buy: "drinks_explainer_request_buy",
+  explainer_request_assemble: "drinks_explainer_request_assemble",
+  explainer_verdict: "drinks_explainer_verdict",
+  explainer_select: "drinks_explainer_select",
+  explainer_close_unknown: "drinks_explainer_close_unknown",
+  explainer_review: "drinks_explainer_review",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -174,6 +183,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   not_normal_day: 409,
   // 내용 승인 한 번(0064)
   evidence_not_usable: 422, review_not_draft: 422, plan_stale: 409,
+  // 설명형 제작(0067·0062)
+  directive_missing: 422, selection_incomplete: 422, order_changed: 409, unknown_billed_open: 409, not_passed: 422, no_pass: 422, attempt_cap: 429, attempt_open: 409,
 };
 
 export interface DbError {
@@ -329,6 +340,21 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
   }
   if (action === "pick_topic" && p.format !== "explainer" && p.format !== "card" && p.format !== "meme") {
     return { status: 400, body: { error: "형식(설명형·카드뉴스·밈형)을 고르세요", code: "invalid_input" } };
+  }
+  if (action === "explainer_verdict") {
+    // 화면에서 오는 판정은 사람 판정뿐이다. 자동 판정 칸은 입력을 믿지 않고 지운다.
+    delete p.auto_verdict;
+    delete p.auto_report;
+    if (p.human_verdict !== "pass" && p.human_verdict !== "fail") {
+      return { status: 400, body: { error: "사람 판정(합격·불합격)을 고르세요", code: "invalid_input" } };
+    }
+  }
+  if (action === "explainer_select") p.selected_by = "operator"; // 고른 사람·닫은 사람 이름은 입력값을 믿지 않는다(운영자 키 게이트를 통과한 사람)
+  if (action === "explainer_close_unknown") p.closed_by = "operator";
+  if (action === "explainer_request_buy" && p.through_n !== undefined && p.through_n !== null) {
+    const n = Number(p.through_n);
+    if (!Number.isInteger(n) || n < 1) return { status: 400, body: { error: "슬롯 번호는 1 이상의 정수입니다", code: "invalid_input" } };
+    p.through_n = n;
   }
   if (action === "open_develop_budget") {
     // 개발 결재도 운영자 키를 가진 사람만 연다. 결재자 이름은 입력값을 믿지 않고, 결재 문장은 필수(DB 도 검사).
