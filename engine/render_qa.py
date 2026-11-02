@@ -21,6 +21,34 @@ from . import config
 from .util import log
 
 
+def parse_freeze_spans(stderr: str, duration: float) -> list[tuple[float, float]]:
+    """ffmpeg freezedetect 로그 → [(시작 초, 길이 초)]. 설명형 자동 검사(drinks_explainer)도 이 함수를 쓴다.
+
+    ★★ freeze_duration 만 보면 **끝까지 얼어 있는 영상을 놓친다**(2026-09-03 실측).
+      freezedetect 는 정지가 **끝날 때** freeze_end·freeze_duration 을 찍는다.
+      영상 끝까지 멈춰 있으면 freeze_start 하나만 나오고 duration 은 영영 안 나온다 —
+      즉 **가장 나쁜 경우가 조용히 0 으로 잡혔다.** 실측: 8초 정지 영상이 0.00s.
+      그래서 start 를 따로 모으고, 짝이 없으면 영상 끝까지로 친다.
+    """
+    pending: list[float] = []
+    spans: list[tuple[float, float]] = []
+    for line in (stderr or "").splitlines():
+        if "freeze_start:" in line:
+            try:
+                pending.append(float(line.split("freeze_start:")[1].split()[0]))
+            except (ValueError, IndexError):
+                pass
+        if "freeze_duration:" in line:
+            try:
+                dur = float(line.split("freeze_duration:")[1].split()[0])
+                spans.append((pending.pop(0) if pending else 0.0, dur))      # 짝이 맞은 start 는 소비한다
+            except (ValueError, IndexError):
+                pass
+    # 짝 없는 freeze_start = 영상 끝까지 얼어 있었다는 뜻이다.
+    spans.extend((st, max(0.0, float(duration) - st)) for st in pending if duration)
+    return spans
+
+
 def evaluate_qa(signals: dict[str, Any]) -> dict[str, Any]:
     """ffprobe/ffmpeg 로 뽑은 신호 → {passed, hard_fail[], warnings[], signals}(순수 함수).
 
@@ -210,7 +238,6 @@ def probe_signals(mp4_path: str) -> dict[str, Any]:
     max_silence_ms = 0
     end_black_sec = 0.0
     max_freeze_sec = 0.0
-    freeze_starts: list[float] = []
     audio_peak_db: float | None = None
     try:
         det = subprocess.run(
@@ -238,33 +265,12 @@ def probe_signals(mp4_path: str) -> dict[str, Any]:
                         end_black_sec = max(end_black_sec, duration - start)
                 except (ValueError, IndexError):
                     pass
-            # ★★ freeze_duration 만 보면 **끝까지 얼어 있는 영상을 놓친다**(2026-09-03 실측).
-            #   freezedetect 는 정지가 **끝날 때** freeze_end·freeze_duration 을 찍는다.
-            #   영상 끝까지 멈춰 있으면 freeze_start 하나만 나오고 duration 은 영영 안 나온다 —
-            #   즉 **가장 나쁜 경우가 조용히 0 으로 잡혔다.** 실측: 8초 정지 영상이 0.00s.
-            #   그래서 start 를 따로 모으고, 짝이 없으면 영상 끝까지로 친다.
-            if "freeze_start:" in line:
-                try:
-                    freeze_starts.append(float(line.split("freeze_start:")[1].split()[0]))
-                except (ValueError, IndexError):
-                    pass
-            if "freeze_duration:" in line:
-                try:
-                    dur_f = float(line.split("freeze_duration:")[1].split()[0])
-                    max_freeze_sec = max(max_freeze_sec, dur_f)
-                    if freeze_starts:
-                        freeze_starts.pop(0)      # 짝이 맞은 start 는 소비한다
-                except (ValueError, IndexError):
-                    pass
             if "Peak level dB:" in line:
                 try:
                     audio_peak_db = float(line.split("Peak level dB:")[1].strip())
                 except (ValueError, IndexError):
                     pass
-        # 짝 없는 freeze_start = 영상 끝까지 얼어 있었다는 뜻이다.
-        for st in freeze_starts:
-            if duration:
-                max_freeze_sec = max(max_freeze_sec, max(0.0, duration - st))
+        max_freeze_sec = max((d for _, d in parse_freeze_spans(stderr, duration)), default=0.0)
     except (subprocess.SubprocessError, OSError) as exc:  # ffmpeg 없거나 실패 → 신호 일부 결측
         log.warning("렌더 QA 신호 추출 실패(부분): %s", exc)
 
