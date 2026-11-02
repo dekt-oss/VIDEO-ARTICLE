@@ -354,10 +354,17 @@ def jev_unsupported_p(narration: str, source: str) -> Optional[float]:
         return None
 
 
+def _llm_write_card_plan(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    from . import drinks_card_plan
+
+    return drinks_card_plan.llm_write_card_plan(*args, **kwargs)
+
+
 @dataclass
 class Deps:
     extract_claims: Callable[[str, str], list[dict[str, Any]]] = llm_extract_claims
     write_plan: Callable[..., dict[str, Any]] = llm_write_plan
+    write_card_plan: Callable[..., dict[str, Any]] = _llm_write_card_plan   # 카드뉴스(0065, engine/drinks_card_plan.py)
     jev_check: Callable[[str, str], Optional[float]] = jev_unsupported_p
     fetcher_factory: Optional[Callable[[list[str]], Any]] = None   # hosts → SafeFetcher 같은 것(get 메서드)
 
@@ -863,7 +870,14 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
         if not job.get("budget_id"):
             raise DevelopError("budget_missing", "결재(예산)가 없는 요청입니다 — 대시보드에서 개발 결재를 열고 다시 요청하세요")
         beat("start")
-        run = run_evidence if job["kind"] == "evidence" else run_plan
+        if job["kind"] == "evidence":
+            run = run_evidence
+        elif job.get("draft_evidence") and job.get("format_intent") == "card":
+            from .drinks_card_plan import run_card_plan   # 카드뉴스 제작안(0065). 승인 전 근거 경로에서만 — 표시 없는 요청은 그대로 영상 대본이다
+
+            run = run_card_plan
+        else:
+            run = run_plan
         result = run(job, rpc, lease, ledger, deps, beat)
         result["cost"] = {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}
         done = finish("succeeded", result=result)

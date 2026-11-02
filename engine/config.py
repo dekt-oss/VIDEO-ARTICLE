@@ -4813,3 +4813,32 @@ DRINKS_FORMAT_EVIDENCE_MAX_CANDIDATES: int = 50
 DRINKS_EXPLAINER_ESTIMATE_USD: float = 7.95
 DRINKS_EXPLAINER_APPROVAL_CAP_USD: float = 8.90
 
+
+# ── 카드뉴스 형식 엔진 (총괄계획 §4-2, 기획 v2 §2-2·§2-3·§4·§7, 마이그레이션 0065). docs/deviation-drinks-card-reels.md ──
+# 카드 제작안 초안. 글자 수 상한은 렌더(1080×1920)에서 잘리지 않는 값으로 잡았다 — 샘플 렌더로 정한 첫 값이다.
+DRINKS_CARD_PLAN_MODEL: str = os.getenv("DRINKS_CARD_PLAN_MODEL", DRINKS_DEVELOP_PLAN_MODEL)
+DRINKS_CARD_PLAN_MAX_TOKENS: int = 8_000
+DRINKS_CARD_PAGES: tuple[int, int] = (5, 8)          # 표지 1 + 설명 + 출처 1. 페이지당 2.5~4초면 15~30초에 든다
+DRINKS_CARD_HEADING_MAX_CHARS: int = 26              # 페이지 제목(공백 포함)
+DRINKS_CARD_BODY_MAX_CHARS: int = 110                # 페이지 본문(공백·줄바꿈 제외)
+DRINKS_CARD_LINE_MAX_CHARS: int = 22                 # 본문 한 줄 — 넘으면 뜻 단위로 끊으라고 알린다(차단 아님)
+DRINKS_CARD_HOOK_MAX_CHARS: int = 24                 # 첫 페이지 큰 훅 제목. 워커가 쓰는 초안의 상한이다(DB 상한은 아래 LIMITS)
+DRINKS_CARD_SHARE_MAX_CHARS: int = 34                # 마지막 페이지 저장/보내기 한 줄. 위와 같다
+# 릴스 묶음 — SQL drinks_card_reel_limits() 와 같아야 한다(tests/test_drinks_card_reel.py 가 대조).
+DRINKS_CARD_REEL_LIMITS: dict = {"min_pages": 4, "max_pages": 12, "hook_max": 40, "share_max": 60}
+# 카드뉴스 릴스 렌더(로컬·0원). 길이·페이지당 시간은 기획 v2 §2-2.
+DRINKS_CARD_REEL_SECONDS: tuple[float, float] = (15.0, 30.0)
+DRINKS_CARD_REEL_PAGE_SECONDS: tuple[float, float] = (2.5, 4.0)
+DRINKS_CARD_REEL_READ_CHARS_PER_SEC: float = 10.0    # 글자를 읽는 속도 가정(실측 없음). 페이지 시간을 글 길이에 비례시키는 데만 쓴다
+DRINKS_CARD_REEL_TRANSITION: str = "slideleft"       # ffmpeg xfade 전환. 정지 화면을 밀어 넘긴다 — 글자 위 확대(zoompan)는 떨림이 나서 쓰지 않는다
+DRINKS_CARD_REEL_TRANSITION_SEC: float = 0.35
+DRINKS_CARD_REEL_FPS: int = 30
+# 안전 영역 설계값(기획 v2 §2-3 [미검증] — 앱 확인 전 업계 관행값). 이 밖으로 나가는 글자가 있으면 렌더가 멈춘다.
+DRINKS_REEL_SAFE_BOTTOM_PX: int = 340
+DRINKS_REEL_SAFE_RIGHT_PX: int = 120
+DRINKS_CARD_REEL_HOOK_TOP_RATIO: float = 0.20        # 훅 제목 시작 높이(위 20~25%)
+# 음원(기획 v2 §7-4) — 나레이션 없음의 기본값. 화면이 미리 채워 보내고, 워커는 저장된 값을 그대로 쓴다. 첫 시험 게시에서 귀로 판정한다.
+DRINKS_CARD_REEL_AUDIO_VOLUME: int = 90
+DRINKS_CARD_REEL_VIDEO_VOLUME: int = 10
+DRINKS_IG_AUDIO_POLL_SEC: float = 60.0               # 음원 붙인 컨테이너 상태 조회 간격(문서: 1분 간격, 최대 5분)
+
