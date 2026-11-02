@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { PickRow } from "@/lib/drinks/contentApproval";
 import { isSchemaMissing, type DevelopBudgetRow, type DevelopRequestRow } from "@/lib/drinks/develop";
 import type { Loaded } from "@/lib/drinks/model";
 import { fetchAllIn, fetchAllPages, missingIds, PAGE_SIZE, type PageResult } from "@/lib/drinks/paging";
@@ -54,8 +55,14 @@ export interface DrinksBoard {
   plans: Map<string, PlanRow>;
   /** topic_id → 연결된 스냅샷(발행일 필터·원출처 수 표시용) */
   sources: Map<string, SnapshotRow[]>;
+  /** topic_id → [이걸로]로 고른 형식(0064). 0064 전 DB 에서는 비어 있다 */
+  picks: Map<string, PickRow>;
   totalTopics: number;
 }
+
+/** 0064 가 아직 없다는 오류인가(그때는 형식 선택이 없는 것으로 읽는다). 그 밖의 오류는 실패로 돌려준다. */
+const picksMissing = (err: { code?: string | null; message?: string | null }) =>
+  ["42P01", "PGRST205"].includes(err.code ?? "") || /drink_topic_picks/.test(err.message ?? "");
 
 /** 소재 목록을 최신순으로 limit 건까지(쪽 단위로) 읽는다. 전체 건수도 함께 돌려준다. */
 async function loadTopics(db: SupabaseClient, limit: number): Promise<PageResult<TopicRow> | { ok: false; error: string }> {
@@ -118,6 +125,11 @@ export async function loadBoard(limit: number = TOPIC_LIST_LIMIT): Promise<Loade
   }
   const va = await attachValidity(db, rv.rows);
   if (!va.ok) return fail(va);
+  const pk = await fetchAllIn<PickRow>(ids, (c, f, to) => db.from("drink_topic_picks").select("*", { count: "exact" })
+    .in("topic_id", c).order("topic_id").range(f, to), "형식 선택");
+  // 0064 적용 전에는 표가 없다 — 형식 선택이 없는 것으로 읽는다. 다른 실패는 "선택 없음"으로 바꾸지 않는다.
+  if (!pk.ok && !picksMissing({ message: pk.error })) return fail(pk);
+  const picks = new Map<string, PickRow>(pk.ok ? pk.rows.map((x) => [x.topic_id, x]) : []);
   // 포인터가 가리키는 행이 하나라도 없으면 화면이 "초안 없음·미승인"으로 오판한다 → 실패로 돌려준다.
   // 포인터 + 각 제작안이 참조하는 근거 버전까지 — 하나라도 없으면 유효성을 추정하지 않는다.
   const lostReviews = missingIds([...reviewIds, ...pl.rows.map((p) => p.topic_review_id)], rv.rows.map((r) => r.id));
@@ -145,6 +157,7 @@ export async function loadBoard(limit: number = TOPIC_LIST_LIMIT): Promise<Loade
       deliverables: dl.rows,
       plans: new Map(pl.rows.map((p) => [p.id, p])),
       sources,
+      picks,
       totalTopics: tr.total,
     },
   };
@@ -172,6 +185,8 @@ export interface TopicDetail {
   sameBody: Map<string, SameBodyCandidate[]>;
   /** snapshot_id → 이 출처를 함께 쓰는 다른 소재 수 */
   sharedWith: Map<string, number>;
+  /** [이걸로]로 고른 형식(0064). 없거나 0064 전이면 null */
+  pick: PickRow | null;
 }
 
 export async function loadTopic(
@@ -232,6 +247,8 @@ export async function loadTopic(
   if (ev.error || !ev.data || typeof ev.count !== "number") {
     return { state: "failed", error: `이력: ${ev.error?.message ?? "응답·전체 건수가 비었습니다"}` };
   }
+  const pk = await db.from("drink_topic_picks").select("*").eq("topic_id", id).maybeSingle();
+  if (pk.error && !picksMissing(pk.error)) return { state: "failed", error: `형식 선택: ${pk.error.message}` };
   let canonical: TopicDetail["canonical"] = null;
   if (topic.canonical_topic_id) {
     const c = await db.from("drink_topics").select("id, title, status").eq("id", topic.canonical_topic_id).maybeSingle();
@@ -263,6 +280,7 @@ export async function loadTopic(
       events: ev.data as EventRow[],
       eventsTotal: ev.count,
       canonical,
+      pick: (pk.data as PickRow | null) ?? null,
       attestations,
       sameBody,
       sharedWith,

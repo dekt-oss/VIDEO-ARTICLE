@@ -2,10 +2,14 @@
 
     python -m engine.drinks_develop      # 대기 중인 개발 요청을 처리(대시보드 [근거 초안 만들기]·[제작안 초안 만들기])
 
-두 단계 요청(승인은 사람이 기존 화면에서 따로 한다 — 이 워커는 초안까지만 쓰고 제출·승인 함수를 부르지 않는다):
+두 단계 요청(승인은 사람이 화면에서 한다 — 이 워커는 초안까지만 쓰고 제출·승인 함수를 부르지 않는다):
   evidence  소재 → 출처 찾기(무료) → 출처마다 주장 추출(모델) → **원문 인용을 코드가 글자 단위로 대조** → 근거 초안(drinks_develop_save_evidence)
   plan      운영자가 승인한 근거 버전의 핵심 주장만으로 30~40초 대본·화면 계획(모델) → 코드 검사(+Jev 근거 판정, 켜졌을 때) →
             막히면 딱 한 번 다시 쓴다 → 그래도 막히면 **저장하지 않고** 멈춘다(blocked)
+
+이어 만들기(0064, [이걸로]): 근거 요청에 chain 표시가 있으면 성공할 때 DB 가 대본 요청을 잇는다. 그 대본 요청은 draft_evidence 표시를 달고
+  **승인 전 근거**로 쓴다. 표시 없는 대본 요청에는 승인 전 근거를 주지 않는다(assert_review_usable, DB 도 같은 규칙).
+  쓸 주장을 고르는 규칙(brief.selected_claim_ids)은 같다. 승인 전 대본은 초안일 뿐 제작·지출로 넘어갈 수 없다.
 
 규칙:
   · 모델을 부르는 모든 곳은 [가잡기 → 호출 → 확정/해제] 를 거친다(Ledger). 결재(budget_id)가 없으면 호출 전에 budget_missing 으로 멈춘다.
@@ -583,8 +587,9 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
         claims.append(c)
     flags = _claim_flags(claims, deps)
     cids = [c["claim_id"] for c in claims]
-    brief = {"audience_question": question, "selected_claim_ids": cids, "proposed_formats": ["video"],
-             "required_claims": {"video": cids[: config.DRINKS_DEVELOP_REQUIRED_CLAIMS]}}
+    fmt = chain_format(job)
+    brief = {"audience_question": question, "selected_claim_ids": cids, "proposed_formats": [fmt],
+             "required_claims": {fmt: cids[: config.DRINKS_DEVELOP_REQUIRED_CLAIMS]}}
     beat("save")
     saved = rpc("drinks_develop_save_evidence", {**lease, "evidence_pack": {"claims": claims}, "brief": brief})
     qc = saved.get("quote_check") or {}
@@ -593,6 +598,11 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
             "dropped_total": sum(sum(r["dropped_by"].values()) for r in report),
             "needs_operator": ["핵심 메시지(core_takeaway) 한 줄", "주장별 지지 검토(support_review)", "출처 사용 조건 확인"]
             + (["DB 인용 대조가 일치하지 않은 인용이 있음 — 화면에서 확인"] if qc.get("unmatched") else [])}
+
+
+def chain_format(job: dict[str, Any]) -> str:
+    """[이걸로]에서 고른 형식 → 브리프의 형식 칸(0064 머리말의 대응표). 형식을 고르지 않은 요청은 0단계 그대로 영상이다."""
+    return "carousel" if job.get("format_intent") == "card" else "video"
 
 
 def _claim_flags(claims: list[dict[str, Any]], deps: Deps) -> list[dict[str, Any]]:
@@ -687,6 +697,16 @@ def source_table(plan: dict[str, Any], review: dict[str, Any]) -> list[dict[str,
     return rows
 
 
+def core_takeaway_draft(job: dict[str, Any], plan: dict[str, Any]) -> dict[str, str]:
+    """승인 전 근거로 쓴 대본이면 그 결론 한 줄을 핵심 메시지 초안으로 넘긴다(비어 있을 때만 DB 가 채운다). 운영자가 승인 화면에서 고친다.
+    주장별 지지 확인(support_review)은 여기서도 어디서도 채우지 않는다."""
+    if not job.get("draft_evidence"):
+        return {}
+    concl = plan.get("viewer_conclusion")
+    text = str(concl.get("text") or "").strip() if isinstance(concl, dict) else ""
+    return {"core_takeaway_draft": text} if text else {}
+
+
 def clean_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """저장용: DB 가 보존하는 칸만(viewer_conclusion 은 notes 한 줄로 옮긴다 — 0050·0054·0057 검증기는 scenes·notes 만 남긴다)."""
     concl = plan.get("viewer_conclusion") if isinstance(plan.get("viewer_conclusion"), dict) else {}
@@ -695,7 +715,16 @@ def clean_plan(plan: dict[str, Any]) -> dict[str, Any]:
     return {"scenes": plan.get("scenes") or [], "notes": notes}
 
 
+def assert_review_usable(job: dict[str, Any]) -> None:
+    """대본에 쓸 수 있는 근거인가. 승인 전 근거는 요청에 표시(draft_evidence)가 있을 때만 받는다 — DB 도 같은 규칙으로 막는다(0064).
+    0060 의 작업 묶음에는 status 칸이 없는데 그쪽은 승인된 근거만 내주므로, 칸이 없으면 approved 로 읽는다."""
+    status = (job.get("review") or {}).get("status", "approved")
+    if status != "approved" and not job.get("draft_evidence"):
+        raise DevelopError("review_not_approved", "승인되지 않은 근거 버전입니다 — 이 요청은 승인 전 근거를 쓸 수 없습니다")
+
+
 def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledger, deps: Deps, beat: Callable[[str], None]) -> dict[str, Any]:
+    assert_review_usable(job)
     topic, review = job["topic"], job["review"]
     claims = review.get("claims") or []
     if not claims:
@@ -730,7 +759,7 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
                            {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "rejected_plan": plan})
     beat("save")
     try:
-        saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan)})
+        saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan), **core_takeaway_draft(job, plan)})
     except DbError as exc:
         if exc.code == "lease_lost":
             raise
@@ -767,7 +796,9 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
         run = run_evidence if job["kind"] == "evidence" else run_plan
         result = run(job, rpc, lease, ledger, deps, beat)
         result["cost"] = {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}
-        return finish("succeeded", result=result)
+        done = finish("succeeded", result=result)
+        log_chain(job, done)
+        return done
     except DbError as exc:
         if exc.code == "lease_lost":
             log.warning("drinks: 개발 요청 %s 임대를 잃어 결과를 저장하지 않습니다", job["request_id"])
@@ -790,6 +821,18 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
                           result={"cost": {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}})
         except DbError:
             return {"status": "lease_lost"}
+
+
+def log_chain(job: dict[str, Any], done: Any) -> None:
+    """이어 만들기는 DB 가 끝내기와 같은 트랜잭션에서 넣는다(drinks_finish_develop) — 근거만 끝나고 대본 요청이 빠지는 틈이 없다.
+    여기서는 어떻게 됐는지 로그에 남길 뿐이다. 막힌 이유는 요청 기록(result.chain)으로 화면에 나간다."""
+    chain = ((done or {}).get("result") or {}).get("chain") if isinstance(done, dict) else None
+    if not job.get("chain") or not isinstance(chain, dict):
+        return
+    if chain.get("queued"):
+        log.info("drinks: 개발 %s 이어서 대본 요청 %s", job["request_id"], chain.get("request_id"))
+    else:
+        log.warning("drinks: 개발 %s 근거에서 멈춤 — %s: %s", job["request_id"], chain.get("code"), chain.get("message"))
 
 
 def run_queue(rpc: Rpc, deps: Deps, *, worker_id: str, max_jobs: int = 5) -> list[dict[str, Any]]:

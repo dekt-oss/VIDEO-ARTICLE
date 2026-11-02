@@ -6,6 +6,10 @@ import { CandidateActions, DiscoverySourceForm, ManualDiscoveryForm, ReopenCandi
 import LoadProblem from "@/components/drinks/LoadProblem";
 import RunPill, { fmtTime } from "@/components/drinks/RunPill";
 import { errorText } from "@/lib/drinks/collect";
+import { pickBudget } from "@/lib/drinks/develop";
+import { RECOMMENDED_LABEL, recommendFormat } from "@/lib/drinks/formatRecommend";
+import { nextMonday } from "@/lib/drinks/model";
+import { todayInSeoul } from "@/lib/date";
 import {
   CHANNEL_STATE_LABEL, CHANNELS, COVERAGE_LABEL, PLATFORM_LABEL, SIGNAL_LABEL, interestText, metricText, type DiscoveryItemRow,
 } from "@/lib/drinks/discovery";
@@ -38,6 +42,7 @@ export default async function DrinksDiscoverPage(props: { searchParams: Promise<
   const sp = await props.searchParams;
   const tab: Tab = sp.tab && sp.tab in TABS ? (sp.tab as Tab) : "suggested";
   const v = await loadDiscovery(tab);
+  const week = nextMonday(todayInSeoul());
   return (
     <main className="container">
       <div className="header">
@@ -80,13 +85,20 @@ export default async function DrinksDiscoverPage(props: { searchParams: Promise<
           </nav>
           {v.truncated && <p className="banner-warn">전체 {v.data.candidateTotal}건 중 점수 높은 {v.data.candidates.length}건만 보여줍니다.</p>}
           {v.data.candidates.length === 0 && <p className="muted">이 상태의 후보가 없습니다(정상 0건).</p>}
+          {tab === "suggested" && v.data.candidates.length > 0 && !pickBudget(v.data.budgets, Date.now()) && (
+            <p className="banner-warn">열린 개발 결재가 없습니다 — [이걸로]를 눌러도 근거 단계에서 모델을 부르지 않고 멈춥니다. 결재는 소재 화면의 개발 카드에서 엽니다.</p>
+          )}
           {v.data.candidates.map((c) => {
             const items = v.data.itemsByCandidate.get(c.id) ?? [];
             const others = tab === "suggested" ? v.data.candidates.filter((o) => o.id !== c.id) : [];
+            const ev = v.data.evidence.get(c.id);
+            const rec = recommendFormat({ origin: "discovery", question: c.key_question, signals: c.signals,
+              evidenceCount: ev?.count ?? null, evidenceChars: ev?.chars ?? null });
             return (
               <article key={c.id} className="card">
                 <div className="dk-row">
                   <span className="status-pill">임시 {c.provisional_score ?? "—"}점 ({c.rubric})</span>
+                  {c.status === "suggested" && <span className={rec.format === "unknown" ? "pill dk-warn" : "pill dk-ok"}>추천 형식 · {RECOMMENDED_LABEL[rec.format]}</span>}
                   {c.signals.map((s) => <span key={s} className="pill">{SIGNAL_LABEL[s] ?? s}</span>)}
                   {c.duplicate_topic_ids.length > 0 && <span className="pill dk-warn">비슷한 기존 소재 {c.duplicate_topic_ids.length}</span>}
                 </div>
@@ -104,7 +116,9 @@ export default async function DrinksDiscoverPage(props: { searchParams: Promise<
                   })}</p>
                 )}
                 <details><summary className="muted">발견 자료 {items.length}건(원문 링크)</summary>{items.map((it) => <ItemLine key={it.id} it={it} />)}</details>
-                {c.status === "suggested" && <CandidateActions c={c} others={others} />}
+                {c.status === "suggested" && <p className="dk-kv">형식 추천 이유: {rec.reason}</p>}
+                {c.status === "suggested" && <CandidateActions c={c} others={others} recommended={rec} defaultWeek={week}
+                  budgetId={pickBudget(v.data.budgets, Date.now())?.budget_id ?? null} />}
                 {c.status === "promoted" && c.promoted_topic_id && <p>→ <Link href={`/drinks/review/${c.promoted_topic_id}`}>올린 소재 보기</Link></p>}
                 {c.status === "dismissed" && <p className="muted">기각 사유: {c.decision_reason} <ReopenCandidate id={c.id} version={c.version} /></p>}
               </article>

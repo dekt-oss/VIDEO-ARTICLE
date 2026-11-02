@@ -4672,4 +4672,16 @@ DRINKS_IG_VIDEO_ONLY_FIELDS: tuple[str, ...] = ("beat_count", "cut_lengths", "tw
 
 
 # ── ⓒⓓ 형식 추천·내용 승인 ──
+# 형식 추천 문턱(0원 규칙). web/lib/drinks/formatRecommend.ts 와 같아야 한다(tests/test_drinks_develop.py 가 대조).
+#   §2 "처음 값이고 운영자 선택 기록으로 고친다" — 실측 전 값이다. 근거 개수는 낱말이 걸린 글을 대강 센 것이다.
+DRINKS_FORMAT_EXPLAINER_MIN_EVIDENCE: int = 2       # 설명형: 승인된 수집원에서 걸린 글이 이만큼
+DRINKS_FORMAT_CARD_MIN_EVIDENCE: int = 1            # 카드뉴스: 이만큼
+# 설명형: 걸린 글의 글자 수가 이보다 적으면 40초를 못 채운다고 보고 카드뉴스로 내린다. ★ 실측 없는 첫 값이다
+#   (40초 대본 ≈ 300자, 주장 3건 이상을 뽑을 원문으로 그 네 배쯤을 잡았다).
+DRINKS_FORMAT_EXPLAINER_MIN_EVIDENCE_CHARS: int = 1200
+# 한 화면에서 근거 개수를 재는 후보 수 — 0064 drinks_candidate_evidence_counts 의 limit 과 같다. 넘는 후보는 '못 쟀음'(unknown).
+DRINKS_FORMAT_EVIDENCE_MAX_CANDIDATES: int = 50
+# 내용 승인 화면의 설명형 금액 — 기획 v2 §3-7(48초·Omni 720p 계획값). 이 편의 실측이 아니다. 승인은 금액을 기록만 한다(영상 구매 연결 전).
+DRINKS_EXPLAINER_ESTIMATE_USD: float = 7.95
+DRINKS_EXPLAINER_APPROVAL_CAP_USD: float = 8.90
 

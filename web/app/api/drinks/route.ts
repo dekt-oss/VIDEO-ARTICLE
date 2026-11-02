@@ -33,9 +33,13 @@ export async function POST(request: Request) {
       && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
     res.body.dispatch = await triggerWorkflow("drinks-produce.yml", null);
   }
-  if (res.status === 200 && (body as { action?: unknown } | null)?.action === "request_develop"
-      && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
-    // 소재 개발 워커(근거 초안·대본 초안). 토큰이 없으면 큐에만 남고 화면이 그 사실을 보여준다.
+  const action = (body as { action?: unknown } | null)?.action;
+  const queued = action === "pick_topic"
+    // [이걸로]: 이어 만들기 요청이 새로 들어갔을 때만 깨운다(밈·이미 있는 초안은 큐에 안 들어간다).
+    ? (res.body.result as { chain?: { queued?: boolean; existing?: boolean } } | undefined)?.chain
+    : action === "request_develop" ? { queued: true, existing: (res.body.result as { existing?: boolean } | undefined)?.existing } : null;
+  if (res.status === 200 && queued?.queued && queued.existing !== true) {
+    // 소재 개발 워커(근거 초안·대본 초안). 토큰이 없으면 큐에만 남고 화면이 그 사실을 보여준다. 돈은 워커가 결재 안에서만 쓴다.
     res.body.dispatch = await triggerWorkflow("drinks-develop.yml", null);
   }
   return NextResponse.json(res.body, { status: res.status });

@@ -49,7 +49,7 @@ function Body({ topicId, topicStatus, approvedEvidence, plans, develop }: {
       <AutoRefresh active={anyActive} />
       <p className="muted" style={{ marginTop: 0 }}>
         소재의 출처로 근거 초안을, 승인된 근거로 대본·장면 초안을 만듭니다. 만든 초안은 기존 <b>근거</b> 탭·제작안 탭에 <b>작성 중</b>으로 들어오고,
-        승인은 사람이 합니다.
+        승인은 사람이 합니다. 발견함의 <b>[이걸로]</b>로 고른 소재는 근거 → 대본을 이어 만들고 <b>내용 승인</b> 탭에서 한 번에 승인합니다.
       </p>
 
       <div className="dk-sub">

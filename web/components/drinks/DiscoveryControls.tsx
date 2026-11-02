@@ -1,11 +1,14 @@
 "use client";
 
 // 소재 발견 운영자 동작 — 수동 링크 등록, 후보 → 소재(사람이 한국어 질문을 쓴다), 기각·병합, 발견 수집원 등록.
-// ★ 후보는 규칙이 묶은 제안일 뿐이다. 소재로 올려도 경량 평가·조사·근거 승인·편성은 A단계 흐름에서 사람이 한다.
+// ★ 후보는 규칙이 묶은 제안일 뿐이다. [이걸로]는 소재로 올리고 형식·편성 주차(의도)를 적고 근거 → 대본 초안을 이어 만들 뿐이다 —
+//   승인은 내용 승인 화면에서 사람이 한다. [소재로만 올리기]는 기존 흐름(경량 평가·조사·근거 승인·편성)이다.
 import { useState } from "react";
 
 import { CATEGORIES, CATEGORY_LABEL, QUESTION_KIND_LABEL } from "@/lib/drinks/model";
 import { PLATFORM_LABEL } from "@/lib/drinks/discovery";
+import { requestNote } from "@/lib/drinks/develop";
+import { FORMAT_INTENT_LABEL, type FormatIntent, type Recommendation } from "@/lib/drinks/formatRecommend";
 import { useDrinksAction } from "./useDrinksAction";
 
 export function ManualDiscoveryForm() {
@@ -71,12 +74,19 @@ export function DiscoverySourceForm() {
   );
 }
 
-export function CandidateActions({ c, others }: {
+export function CandidateActions({ c, others, recommended, defaultWeek, budgetId }: {
   c: { id: string; version: number; key_question: string; reader_value: string | null };
   others: { id: string; key_question: string }[];
+  recommended: Recommendation;
+  defaultWeek: string;
+  budgetId: string | null;
 }) {
   const { run, busy } = useDrinksAction();
-  const [mode, setMode] = useState<"none" | "promote" | "dismiss" | "merge">("none");
+  const [mode, setMode] = useState<"none" | "pick" | "promote" | "dismiss" | "merge">("none");
+  // 추천이 없으면 비워 둔다 — 운영자가 고르기 전에는 [이걸로]를 누를 수 없다. 밈은 밈 보드에서 온 후보에만 고를 수 있다.
+  const [format, setFormat] = useState<FormatIntent | "">(recommended.format === "unknown" ? "" : recommended.format);
+  const [week, setWeek] = useState(defaultWeek);
+  const [note, setNote] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [question, setQuestion] = useState("");
   const [value, setValue] = useState(c.reader_value ?? "");
@@ -89,13 +99,59 @@ export function CandidateActions({ c, others }: {
       categories: cats, lane: "reader_question", confirm_not_duplicate: confirm, ...(kind ? { question_kind: kind } : {}) }, "소재로 올렸습니다(발견 자료는 질문·인기 신호로 연결)", "소재로 올리기");
     if (!r.ok && r.code === "duplicate_suggested" && window.confirm("같은 질문의 소재가 이미 있습니다. 그래도 새로 만들까요?")) await promote(true);
   };
+  const pick = async (confirm = false) => {
+    if (!format) return;
+    const r = await run("pick_topic", {
+      candidate_id: c.id, expected_version: c.version, format, editorial_week: week, title, question, reader_value: value, categories: cats,
+      lane: "reader_question", confirm_not_duplicate: confirm, recommended_format: recommended.format, recommended_reason: recommended.reason,
+      ...(kind ? { question_kind: kind } : {}), ...(budgetId ? { budget_id: budgetId } : {}),
+    }, "소재로 올렸습니다 — 이어 만들기 상태는 소재의 내용 승인 탭에 있습니다", "[이걸로]");
+    if (!r.ok && r.code === "duplicate_suggested" && window.confirm("같은 질문의 소재가 이미 있습니다. 그래도 새로 만들까요?")) return pick(true);
+    if (r.ok) {
+      const chain = (r.result as { chain?: { queued?: boolean; existing?: boolean; message?: string } } | undefined)?.chain;
+      setNote(chain?.queued ? requestNote({ existing: chain.existing, triggered: r.dispatch?.triggered }) : chain?.message ?? null);
+    }
+  };
   return (
     <div>
       <div className="actions">
-        <button className="btn pick" onClick={() => setMode(mode === "promote" ? "none" : "promote")}>소재로 올리기</button>
+        <button className="btn pick" onClick={() => setMode(mode === "pick" ? "none" : "pick")}>이걸로</button>
+        <button className="btn" onClick={() => setMode(mode === "promote" ? "none" : "promote")}>소재로만 올리기</button>
         <button className="btn" onClick={() => setMode(mode === "dismiss" ? "none" : "dismiss")}>기각</button>
         {others.length > 0 && <button className="btn" onClick={() => setMode(mode === "merge" ? "none" : "merge")}>다른 후보와 합치기</button>}
       </div>
+      {note && <p className="muted">{note}</p>}
+      {mode === "pick" && (
+        <div className="dk-sub">
+          <p className="muted">원문 질문: {c.key_question} — 남의 글을 옮기지 말고 술째리고의 질문·설명 각도로 다시 쓰세요.</p>
+          <label className="dk-field">소재 제목<input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} /></label>
+          <label className="dk-field">독자 질문(한국어)<input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={1000} /></label>
+          <div className="dk-row">
+            {CATEGORIES.map((k) => (
+              <label key={k}><input type="checkbox" checked={cats.includes(k)}
+                onChange={(e) => setCats(e.target.checked ? [...cats, k] : cats.filter((x) => x !== k))} /> {CATEGORY_LABEL[k]}</label>
+            ))}
+          </div>
+          <div className="dk-grid">
+            <label className="dk-field">형식
+              <select value={format} onChange={(e) => setFormat(e.target.value as FormatIntent | "")}>
+                <option value="">고르세요</option>
+                <option value="explainer">{FORMAT_INTENT_LABEL.explainer}</option>
+                <option value="card">{FORMAT_INTENT_LABEL.card}</option>
+                {recommended.format === "meme" && <option value="meme">{FORMAT_INTENT_LABEL.meme}</option>}
+              </select>
+            </label>
+            <label className="dk-field">편성 주차(그 주 월요일로 맞춥니다)<input type="date" value={week} onChange={(e) => setWeek(e.target.value)} /></label>
+          </div>
+          <button className="btn pick" disabled={busy || !format || !week || !title || !question || cats.length === 0} onClick={() => pick()}>이걸로</button>
+          <p className="muted">
+            {format === "explainer" && "근거 초안 → 대본 초안을 이어서 만들고, 내용 승인 화면에서 한 번에 승인합니다."}
+            {format === "card" && "근거 초안까지 만들고 멈춥니다(카드뉴스 대본 자동 작성은 아직 없습니다). 그다음은 기존 근거·공통 기획·카드뉴스 탭입니다."}
+            {format === "meme" && "형식만 적어 둡니다. 제작은 밈 보드에서 이어집니다."}
+            {" "}모델 호출은 열린 개발 결재 안에서만 일어납니다{budgetId ? "" : " — 지금 열린 결재가 없어 근거 단계에서 멈춥니다"}.
+          </p>
+        </div>
+      )}
       {mode === "promote" && (
         <div className="dk-sub">
           <p className="muted">원문 질문: {c.key_question} — 남의 글을 옮기지 말고 술째리고의 질문·설명 각도로 다시 쓰세요.</p>

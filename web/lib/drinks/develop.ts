@@ -29,6 +29,10 @@ export interface DevelopRequestRow {
   cost_usd: number | string | null;
   result_review_id: string | null;
   result_plan_revision_id: string | null;
+  /** 0064: 근거 성공 뒤 대본을 잇는 요청 / 승인 전 근거로 쓰는 대본 요청. result.chain 에 이어 만들기 결과(막힌 이유 포함)가 있다. 0064 전에는 오지 않는다 */
+  chain?: boolean;
+  draft_evidence?: boolean;
+  result?: Record<string, unknown> | null;
   created_at: string;
   finished_at: string | null;
 }
@@ -130,6 +134,7 @@ const ERROR_TEXT: Record<string, string> = {
   budget_missing: "개발 결재가 없어 멈췄습니다 — 결재를 등록한 뒤 다시 요청하세요",
   budget_exceeded: "결재 금액을 넘게 돼 멈췄습니다 — 남은 금액을 확인하거나 결재를 새로 등록하세요",
   script_check_failed: "대본 검사에서 두 번 막혔습니다 — 아래 사유를 보고 직접 고치세요",
+  evidence_not_usable: "근거에 고칠 곳이 있어 대본을 만들지 않았습니다 — 주장·인용을 먼저 고치세요",
 };
 
 export interface ErrorView {

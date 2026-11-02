@@ -1,7 +1,9 @@
 // 주류 소재 발견 읽기 — 서버 컴포넌트 전용(service key). 실패를 빈 목록으로 바꾸지 않는다.
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Loaded } from "@/lib/drinks/model";
+import type { DevelopBudgetRow } from "@/lib/drinks/develop";
 import type { CandidateRow, DiscoveryItemRow } from "@/lib/drinks/discovery";
+import { EVIDENCE_MAX_CANDIDATES } from "@/lib/drinks/formatRecommend";
 import { fetchAllIn, fetchAllPages } from "@/lib/drinks/paging";
 import type { RunRow, SourceRow, TopicRow } from "@/lib/drinks/types";
 
@@ -18,6 +20,10 @@ export interface DiscoveryView {
   /** source_id → 최근 실행 */
   lastRun: Map<string, RunRow>;
   topics: Pick<TopicRow, "id" | "title" | "status">[];
+  /** 후보별 승인 수집원 글 수·글자 수(형식 추천 입력). 못 잰 후보는 없다 — 화면이 '못 읽음'으로 말한다 */
+  evidence: Map<string, { count: number; chars: number }>;
+  /** 쓸 수 있는 개발 결재 후보. [이걸로]가 근거·대본 모델 호출에 쓴다. 0060 전이면 빈 목록 */
+  budgets: DevelopBudgetRow[];
 }
 
 export async function loadDiscovery(status: string): Promise<Loaded<DiscoveryView>> {
@@ -54,6 +60,19 @@ export async function loadDiscovery(status: string): Promise<Loaded<DiscoveryVie
   if (recent.error || !recent.data) return { state: "failed", error: `발견 자료: ${recent.error?.message ?? "응답 없음"}` };
   const loose = (recent.data as DiscoveryItemRow[]).filter((i) => !assignedIds.has(i.id));
   const srcRows = (srcs as { ok: true; rows: SourceRow[] }).rows;
+  // 형식 추천 입력·결재는 없어도 화면은 열린다(0064·0060 적용 전). 못 읽은 값은 비워 두고 추천이 그 사실을 말한다 — 0 으로 채우지 않는다.
+  const evidence = new Map<string, { count: number; chars: number }>();
+  const budgets: DevelopBudgetRow[] = [];
+  if (status === "suggested") {
+    const ev = await db.rpc("drinks_candidate_evidence_counts", { p: { candidate_ids: cands.slice(0, EVIDENCE_MAX_CANDIDATES).map((x) => x.id) } });
+    if (!ev.error && ev.data && typeof ev.data === "object") {
+      for (const [k, v] of Object.entries(ev.data as Record<string, { count: number; chars: number }>)) {
+        evidence.set(k, { count: Number(v.count), chars: Number(v.chars) });
+      }
+    }
+    const bd = await db.from("drink_develop_budget_state").select("*").eq("status", "open").order("expires_at", { ascending: false }).limit(20);
+    if (!bd.error && bd.data) budgets.push(...(bd.data as DevelopBudgetRow[]));
+  }
   const lastRun = new Map<string, RunRow>();
   for (const s of srcRows) {
     const r = await db.from("drink_collection_runs").select("*").eq("source_id", s.id).not("status", "in", "(queued,running)")
@@ -63,7 +82,7 @@ export async function loadDiscovery(status: string): Promise<Loaded<DiscoveryVie
   }
   return {
     state: "ok", truncated: c.count > cands.length,
-    data: { candidates: cands, candidateTotal: c.count, itemsByCandidate, loose, sources: srcRows, lastRun,
+    data: { candidates: cands, candidateTotal: c.count, itemsByCandidate, loose, sources: srcRows, lastRun, evidence, budgets,
       topics: (topics as { ok: true; rows: Pick<TopicRow, "id" | "title" | "status">[] }).rows },
   };
 }

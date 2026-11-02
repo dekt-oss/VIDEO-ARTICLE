@@ -1,4 +1,4 @@
-// 주류 소재 자동 개발(0060) DB 통합 테스트 — PGlite 위에 0050~0060.
+// 주류 소재 자동 개발(0060) DB 통합 테스트 — PGlite 위에 00(5x|6x)_drinks_*. 0064 가 얹혀도 옛 규칙이 그대로인지 함께 본다.
 // 운영자 동작(소재·근거·승인)은 기존 runDrinksAction 경로, 개발 큐·결재·워커 함수는 rpc 직접(화면이 못 부르는 함수는 워커 전용).
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6[01])_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0060_drinks_develop.sql"), "0060 이 목록에 있어야 한다");
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
