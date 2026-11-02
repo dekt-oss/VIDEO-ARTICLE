@@ -511,14 +511,12 @@ test("근거에 돈 쓰기 전에 고칠 곳이 있으면 이어 만들지 않�
   await rpcFails("drinks_request_develop", { topic_id: topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id }, "evidence_not_usable");
   assert.equal(saved.quote_check.unmatched, 1);
 
-  // 카드뉴스: 근거까지 하고 멈춘다
+  // 카드뉴스: 0065 부터 대본까지 이어 간다(자세한 것은 cardReel.db.test.ts)
   const card = await pickAndEvidence(b, "card");
-  assert.equal(card.fin.result.chain.queued, false);
-  assert.equal(card.fin.result.chain.code, "card_plan_not_built");
-  assert.match(card.fin.result.chain.message, /카드뉴스/);
+  assert.equal(card.fin.result.chain.queued, true);
   const rv = await reviewRow(card.reviewId);
   assert.deepEqual(rv.brief.proposed_formats, ["carousel"]);
-  await rpcFails("drinks_request_develop", { topic_id: card.topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id }, "format_not_selected");
+  await rpc("drinks_cancel_develop", { request_id: card.fin.result.chain.request_id });
 
   // 밈: 모델을 부르지 않는다. 의도만 적고 이유를 돌려준다
   const memeTopic = await researching();
@@ -535,7 +533,7 @@ test("근거에 돈 쓰기 전에 고칠 곳이 있으면 이어 만들지 않�
   await assert.rejects(db.query("update drink_topics set selected_formats = '{meme}' where id = $1", [memeTopic]), /check constraint/);
 });
 
-test("한 번 승인은 설명형·표시된 대본만 받는다", async () => {
+test("한 번 승인은 고른 형식의 표시된 대본만 받는다", async () => {
   const b = await budget();
   const { topic, reviewId } = await pickAndEvidence(b);
   const { planId } = await draftPlan();
