@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { canJudge, canSelect, nextStep, slotCosts, type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus } from "./explainerQueue.ts";
+import { canJudge, canSelect, kstMinute, nextStep, slotCosts, type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus } from "./explainerQueue.ts";
 
 const cand = (over: Partial<ExplainerCandidate> = {}): ExplainerCandidate => ({
   candidate_id: "P:A1#c1", k: 1, status: "stored", cost_usd: 0.81, auto_verdict: "pass", human_verdict: null, auto_report: null, asset: null, attempts: [], ...over,
@@ -56,4 +56,10 @@ test("다음 할 일", () => {
   assert.equal(nextStep(st("quality_review_pass")), "output_review");
   assert.equal(nextStep(st("ready_to_publish")), "none");
   assert.equal(nextStep(st("blocked_no_pass")), "none", "자동으로 다시 사는 길이 없다");
+});
+
+test("시각 표기는 지역 설정과 무관하다(hydration)", () => {
+  assert.equal(kstMinute("2026-11-09T00:00:00Z"), "2026-11-09 09:00");
+  assert.equal(kstMinute(null), "-");
+  assert.equal(kstMinute("엉뚱한 값"), "-");
 });

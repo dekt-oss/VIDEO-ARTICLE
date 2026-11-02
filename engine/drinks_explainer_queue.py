@@ -326,8 +326,8 @@ def _auto_check_stored(rpc: Rpc, storage: Any, cand: dict[str, Any], slot: dict[
 
 
 def _run_buy(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, deps: Deps) -> dict[str, Any]:
-    adapter = deps.adapter if deps.adapter is not None else dpaid.LiveAdapter()
     ctx = _context(job, rpc)
+    adapter = deps.adapter if deps.adapter is not None else dpaid.LiveAdapter((ctx.get("episode") or {}).get("provider"))
     try:
         adapter.check_ready(ctx.get("approval"))   # ★ 스위치·결재 게이트. 가잡기·시도 행보다 먼저다
     except dpaid.PaidError as exc:

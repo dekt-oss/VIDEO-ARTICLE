@@ -47,6 +47,13 @@ export interface ExplainerStatus {
   is_explainer: boolean; approved_amount_usd: number | string | null; episode: ExplainerEpisode | null; slots: ExplainerSlot[]; approvals: ExplainerApproval[]; unknown_attempts: string[];
 }
 
+/** 한국 시각 "YYYY-MM-DD HH:mm". 서버와 브라우저가 같은 글자를 내야 한다 — 지역 설정에 기대면 클라이언트 컴포넌트에서 hydration 이 깨진다(실측). */
+export function kstMinute(iso: string | null | undefined): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return "-";
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 16).replace("T", " ");
+}
+
 export interface SlotCost { n: number; imageUsd: number; clipsUsd: number; totalUsd: number; cumulativeUsd: number; unknownHeldUsd: number }
 
 const num = (v: unknown): number => {

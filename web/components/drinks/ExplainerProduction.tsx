@@ -5,9 +5,8 @@
 import { useState } from "react";
 
 import { useDrinksAction } from "./useDrinksAction";
-import { fmtTime } from "./RunPill";
 import {
-  EPISODE_LABEL, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, canSelect, nextStep, slotCosts,
+  EPISODE_LABEL, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, canSelect, kstMinute, nextStep, slotCosts,
   type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus,
 } from "@/lib/drinks/explainerQueue";
 
@@ -145,6 +144,7 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
           <summary><b>장면별 지시서</b> · 슬롯 {d.slots.length}개 · 최종 {(d.final_ms / 1000).toFixed(1)}초 · 편집 컷 {d.edit_cuts}개 · 훅 “{d.hook_text}”(장면 {d.hook_scene})</summary>
           <p className="banner-warn">단가 기준일 {d.price_as_of}, 청구서와 대조 전입니다. 공급자 {d.provider} {d.resolution} — <b>미검증:</b> {d.unverified.join(" · ")}</p>
           <p className="dk-kv">예상 {usd(d.estimate.estimate_usd, 2)} (그림 {usd(d.estimate.images_usd)} + 클립 {usd(d.estimate.clips_usd)}) · 재시도 예비 {usd(d.estimate.reserve_usd)} · 제안 상한 <b>{usd(d.estimate.suggested_cap_usd, 2)}</b></p>
+          <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
             <thead><tr>{["#", "역할·표기", "나레이션", "그림 문장", "움직임 문장", "시각 주장표", "길이", "금액"].map((h) => <th key={h} style={{ textAlign: "left", padding: 4 }}>{h}</th>)}</tr></thead>
             <tbody>
@@ -162,6 +162,7 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
               ))}
             </tbody>
           </table>
+          </div>
         </details>
       )}
 
@@ -171,7 +172,7 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
           {status.approvals.length === 0 ? <p className="muted">결재가 없습니다.</p> : status.approvals.map((a) => (
             <div key={a.approval_id} className="list-row">
               <span className={a.status === "open" && !a.expired ? "pill dk-ok" : "pill"}>{a.status === "open" ? (a.expired ? "기간 지남" : "열림") : "닫힘"}</span>{" "}
-              {a.stage} · {a.allowed_kinds.join("·")} · 상한 {usd(a.cap_usd, 2)} · 확정 {usd(a.spent_usd)} · 가잡힘 {usd(a.held_usd)} · 남음 <b>{usd(a.remaining_usd)}</b> · 기한 {fmtTime(a.expires_at)}
+              {a.stage} · {a.allowed_kinds.join("·")} · 상한 {usd(a.cap_usd, 2)} · 확정 {usd(a.spent_usd)} · 가잡힘 {usd(a.held_usd)} · 남음 <b>{usd(a.remaining_usd)}</b> · 기한 {kstMinute(a.expires_at)}
             </div>
           ))}
           {!open && <OpenApproval planId={planId} cap={Math.min(10, d.estimate.suggested_cap_usd)} orderHash={ep?.order_hash ?? null} />}
@@ -200,7 +201,7 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
                   <b>{s.n}번</b> <span className="pill">{ROLE[s.role]}</span> <span className={s.status === "selected" ? "pill dk-ok" : s.status === "no_pass" ? "pill dk-bad" : "pill"}>{s.status}</span>
                   <span className="muted">들어옴 {BOUNDARY[s.boundary_in ?? ""] ?? s.boundary_in} · 그림 {usd(c?.imageUsd)} + 클립 {usd(c?.clipsUsd)} = <b>{usd(c?.totalUsd)}</b> · 누적 {usd(c?.cumulativeUsd)}{c?.unknownHeldUsd ? ` · 결과 모름 ${usd(c.unknownHeldUsd)} 가잡힘` : ""}</span>
                 </div>
-                {s.selection && <p className="muted">선택: 후보 {s.selection.candidate_id.slice(-1)} — {s.selection.reason} ({s.selection.selected_by}, {fmtTime(s.selection.selected_at)})</p>}
+                {s.selection && <p className="muted">선택: 후보 {s.selection.candidate_id.slice(-1)} — {s.selection.reason} ({s.selection.selected_by}, {kstMinute(s.selection.selected_at)})</p>}
                 <div className="dk-row" style={{ alignItems: "flex-start" }}>{s.candidates.map((x) => <Candidate key={x.candidate_id} slot={s} c={x} />)}</div>
               </article>
             );
