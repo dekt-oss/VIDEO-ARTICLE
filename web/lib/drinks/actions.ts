@@ -54,6 +54,12 @@ export const DRINKS_ACTIONS = {
   cancel_develop: "drinks_cancel_develop",
   open_develop_budget: "drinks_open_develop_budget",
   close_develop_budget: "drinks_close_develop_budget",
+  // 밈 보드(0063): 카드 결정·칸 직접 입력·관찰 계정 체크·운영자 링크. 수집·카드 만들기·수명 계산(워커 전용)은 여기 없다.
+  // [쓰자]는 결정만 기록한다 - 분석·구매를 시작하는 함수가 이 목록에 없다.
+  ig_card_decide: "drinks_ig_card_decide",
+  ig_set_card_field: "drinks_ig_set_card_field",
+  ig_watch_action: "drinks_ig_watch_action",
+  ig_add_link: "drinks_ig_add_link",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -115,6 +121,25 @@ export function normalizeUrl(raw: string): UrlResult {
   return { ok: true, url: out };
 }
 
+// ── 인스타 릴스 링크(T3): 서버는 이 주소를 열지 않는다. 짧은 코드와(있으면) 계정 이름만 꺼낸다 ──
+
+export type IgLinkResult = { ok: true; url: string; shortcode: string; username: string | null } | { ok: false; error: string };
+
+export function parseIgReelLink(raw: string): IgLinkResult {
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return { ok: false, error: "릴스 주소 형식이 잘못됐습니다(https://www.instagram.com/reel/… 를 넣으세요)" };
+  }
+  if (u.protocol !== "https:" || !/^(www\.|m\.)?instagram\.com$/i.test(u.hostname)) {
+    return { ok: false, error: "인스타그램 릴스 주소만 넣을 수 있습니다" };
+  }
+  const m = /^\/(?:([A-Za-z0-9._]{1,30})\/)?(reel|reels|p)\/([A-Za-z0-9_-]{5,40})\/?$/.exec(u.pathname);
+  if (!m) return { ok: false, error: "릴스 주소에서 릴스 코드를 찾지 못했습니다" };
+  return { ok: true, url: `https://www.instagram.com/${m[2] === "p" ? "p" : "reel"}/${m[3]}/`, shortcode: m[3], username: m[1]?.toLowerCase() ?? null };
+}
+
 // ── DB 오류 → HTTP ──
 
 const STATUS_BY_CODE: Record<string, number> = {
@@ -141,6 +166,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   digest_mismatch: 409, not_publishable: 422, too_late: 422, stale_strategy: 409, insufficient_sample: 422,
   // 소재 개발(0060)
   budget_missing: 422, evidence_insufficient: 422, script_check_failed: 422, develop_in_progress: 409,
+  // 밈 보드(0063)
+  not_normal_day: 409,
 };
 
 export interface DbError {
@@ -322,6 +349,17 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     for (const k of ["access_token", "token", "refresh_token", "app_secret"]) {
       if (k in p) return { status: 400, body: { error: "토큰 원문은 넣지 않습니다 — 서버 비밀 이름만 적으세요", code: "invalid_input" } };
     }
+  }
+  if (action === "ig_add_link") {
+    const l = parseIgReelLink(typeof p.url === "string" ? p.url : "");
+    if (!l.ok) return { status: 400, body: { error: l.error, code: "invalid_input" } };
+    const typed = typeof p.username === "string" ? p.username.trim().replace(/^@/, "").toLowerCase() : "";
+    const username = typed || l.username;
+    if (!username) return { status: 400, body: { error: "이 주소에는 계정 이름이 없습니다 — 계정 이름을 같이 적으세요", code: "invalid_input" } };
+    p.canonical_url = l.url;
+    p.shortcode = l.shortcode;
+    p.username = username;
+    delete p.url;
   }
   if (action === "request_run") {
     // 화면에서는 운영자 요청만 만든다. 예약 실행은 워커(--schedule)만 만든다.
