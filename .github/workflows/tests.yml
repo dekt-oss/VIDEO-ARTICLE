@@ -58,6 +58,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r engine/requirements.txt
+      # ★ ffmpeg (2026-11-02): 설명형 강제 멈춤 시험(클립 누락·손상·길이 부족)은 실제 파일을 만들어야 돈다.
+      #   없으면 조용히 건너뛰어 1단계 합격 시험이 CI 에서 안 돈다 — 문턱을 올리지 않고 도구를 깐다.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       # ★ 폰트는 assets/fonts/ 에 커밋돼 있어 따로 설치할 것이 없다(Pretendard 4종 + Anton).
       #   이게 중요한 이유: 폰트가 없으면 보드 렌더 테스트가 **조용히 skip 된다** —
       #   골든 해시 대조가 CI 에서 안 도는 것이 가장 아깝다. 그 사고는 이제 건수가 아니라

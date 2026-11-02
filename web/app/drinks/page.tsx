@@ -87,7 +87,7 @@ function Board({ board, truncated, tab, sp, limit, health }: {
   board: DrinksBoard; truncated: boolean; tab: TabKey; sp: SP; limit: number; health: Health;
 }) {
   const derived = new Map<string, TopicDerived>(
-    board.topics.map((t) => [t.id, deriveTopic(t, board.reviews, board.deliverables, board.plans)])
+    board.topics.map((t) => [t.id, deriveTopic(t, board.reviews, board.deliverables, board.plans, board.picks.get(t.id))])
   );
   const dupKeys = new Map<string, number>();
   for (const t of board.topics) if (t.status !== "duplicate") dupKeys.set(t.dedupe_key, (dupKeys.get(t.dedupe_key) ?? 0) + 1);

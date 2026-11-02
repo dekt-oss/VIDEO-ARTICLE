@@ -2,10 +2,14 @@
 
     python -m engine.drinks_develop      # 대기 중인 개발 요청을 처리(대시보드 [근거 초안 만들기]·[제작안 초안 만들기])
 
-두 단계 요청(승인은 사람이 기존 화면에서 따로 한다 — 이 워커는 초안까지만 쓰고 제출·승인 함수를 부르지 않는다):
+두 단계 요청(승인은 사람이 화면에서 한다 — 이 워커는 초안까지만 쓰고 제출·승인 함수를 부르지 않는다):
   evidence  소재 → 출처 찾기(무료) → 출처마다 주장 추출(모델) → **원문 인용을 코드가 글자 단위로 대조** → 근거 초안(drinks_develop_save_evidence)
-  plan      운영자가 승인한 근거 버전의 핵심 주장만으로 30~40초 대본·화면 계획(모델) → 코드 검사(+Jev 근거 판정, 켜졌을 때) →
+  plan      운영자가 승인한 근거 버전의 핵심 주장만으로 설명형 길이(config.DRINKS_DEVELOP_SECONDS·_SCENES)의 대본·화면 계획(모델) → 코드 검사(+Jev 근거 판정, 켜졌을 때) →
             막히면 딱 한 번 다시 쓴다 → 그래도 막히면 **저장하지 않고** 멈춘다(blocked)
+
+이어 만들기(0064, [이걸로]): 근거 요청에 chain 표시가 있으면 성공할 때 DB 가 대본 요청을 잇는다. 그 대본 요청은 draft_evidence 표시를 달고
+  **승인 전 근거**로 쓴다. 표시 없는 대본 요청에는 승인 전 근거를 주지 않는다(assert_review_usable, DB 도 같은 규칙).
+  쓸 주장을 고르는 규칙(brief.selected_claim_ids)은 같다. 승인 전 대본은 초안일 뿐 제작·지출로 넘어갈 수 없다.
 
 규칙:
   · 모델을 부르는 모든 곳은 [가잡기 → 호출 → 확정/해제] 를 거친다(Ledger). 결재(budget_id)가 없으면 호출 전에 budget_missing 으로 멈춘다.
@@ -239,19 +243,58 @@ EXTRACT_SYSTEM = (
     "5. 최대 8개. 답은 JSON 만: {\"claims\": [{\"text\": \"…\", \"original_quote\": \"…\", \"claim_type\": \"process\"}]}"
 )
 
-PLAN_SYSTEM = (
-    "너는 술 숏폼(30~40초 릴스) 대본과 화면 계획을 쓴다. 입력으로 받은 '승인된 근거'(주장과 원문 인용)만 쓴다. JSON 만 낸다.\n"
-    "엄격한 규칙:\n"
-    "- 근거에 없는 숫자·양(방울·티스푼·ml·잔)·처방('~해 보세요')·결론·인과를 만들지 않는다. 인용에 있는 숫자만 쓴다. 근거의 claim_id 만 쓴다.\n"
-    "- 대본은 대중이 한 번에 알아듣는 쉬운 구어체(말하듯 ~해요/~예요). 문어체(-습니다) 금지. 한 장면 나레이션은 한두 문장, 짧게.\n"
-    "- 장면은 5~7개, 장면 timing_sec 합계 30~40초. 1번 장면은 소재의 질문을 던진다(물음표). 마지막은 근거가 말하는 선에서 마무리.\n"
-    "- 사실을 말하는 장면(content_kind=fact)은 claim_ids 에 근거를 단다. 도입·전환(transition)은 비워도 된다.\n"
-    "- 각 장면: narration, visual_role(reality|mechanism|text_card), content_kind, claim_ids, timing_sec, answers_ko(이 장면이 답하는 질문), "
-    "staging_ko(화면에서 무슨 일이 일어나나), explanation, visual_prompt(영어, 글자·라벨·화살표·범례를 그리라고 하지 않는다), "
-    "continuity(앞 장면 이어 그리기면 'ref:N'), motion_prompt(영어, 선택). mechanism 장면은 mechanism 객체(무엇이 보이고 무엇이 바뀌나)를 단다.\n"
-    "- viewer_conclusion: {\"text\": \"시청자가 이어 들으면 내리는 결론 한 줄\", \"claim_ids\": [근거 id…]} — 결론도 인용 안에서만.\n"
-    "- 출력 형식: {\"scenes\": [...], \"viewer_conclusion\": {...}}"
-)
+def _visual_claim_rules() -> str:
+    """설명형 시각 주장표(기획 v2 §3-4) — 화면이 사실이라고 말하는 것을 장면마다 적게 한다. 코드 검사(visual_claim_checks)와 같은 말이다."""
+    labels = config.DRINKS_EXPLAINER_DEPICTION_LABELS
+    return (
+        "- 설명형은 모든 화면이 영상이다. visual_role 은 reality 또는 mechanism 만 쓴다(text_card 금지). 글자가 꼭 필요한 정보(날짜 종류·규칙 이름)는 "
+        "reality 장면의 overlays 칸에 쓴다 — 코드가 영상 위에 글자 카드로 얹는다.\n"
+        "- 모든 장면에 시각 주장표 네 칸을 쓴다(한국어): visual_claim_ko(이 화면이 시청자에게 사실이라고 말하는 것 한 줄), "
+        "allowed_simplification(허용한 단순화. 없으면 '없음'), forbidden_misreading(시청자가 오해하면 안 되는 것), "
+        f"depiction_label(mechanism 은 '{labels['mechanism']}', reality 는 '{labels['reality']}').\n"
+        f"- claim_ids 가 없는 장면의 visual_claim_ko 는 '{config.DRINKS_EXPLAINER_MOOD_PREFIX}'로 시작하고 사실 주장·숫자를 담지 않는다. "
+        "visual_claim_ko 의 숫자도 인용에 있는 것만 쓴다.\n"
+    )
+
+
+def plan_system() -> str:
+    """대본 지시문. 길이·장면 수는 config 에서 읽는다 — 코드 검사(develop_checks)와 같은 값이어야 모델이 헛걸음하지 않는다."""
+    (lo, hi), (slo, shi) = config.DRINKS_DEVELOP_SCENES, config.DRINKS_DEVELOP_SECONDS
+    contract = config.DRINKS_DEVELOP_EXPLAINER_CONTRACT
+    return (
+        f"너는 술 숏폼 릴스(말 길이 {slo:g}~{shi:g}초) 대본과 화면 계획을 쓴다. 입력으로 받은 '승인된 근거'(주장과 원문 인용)만 쓴다. JSON 만 낸다.\n"
+        "엄격한 규칙:\n"
+        "- 근거에 없는 숫자·양(방울·티스푼·ml·잔)·처방('~해 보세요')·결론·인과를 만들지 않는다. 인용에 있는 숫자만 쓴다. 근거의 claim_id 만 쓴다.\n"
+        "- 대본은 대중이 한 번에 알아듣는 쉬운 구어체(말하듯 ~해요/~예요). 문어체(-습니다) 금지. 한 장면 나레이션은 한두 문장, 짧게.\n"
+        f"- 장면은 {lo}~{hi}개, 장면 timing_sec 합계 {slo:g}~{shi:g}초. 1번 장면은 소재의 질문을 던진다(물음표). 마지막은 근거가 말하는 선에서 마무리. "
+        "근거가 모자라면 길이를 채우려고 말을 지어내지 않는다.\n"
+        "- 사실을 말하는 장면(content_kind=fact)은 claim_ids 에 근거를 단다. 도입·전환(transition)은 비워도 된다.\n"
+        + ("- 각 장면: narration, visual_role(reality|mechanism), content_kind, claim_ids, timing_sec, answers_ko(이 장면이 답하는 질문), "
+           "staging_ko(화면에서 무슨 일이 일어나나), explanation, visual_prompt(영어), overlays(선택), "
+           "continuity(앞 장면 이어 그리기면 'ref:N'), motion_prompt(영어, 선택), visual_claim_ko, allowed_simplification, forbidden_misreading, depiction_label.\n"
+           if contract else
+           "- 각 장면: narration, visual_role(reality|mechanism|text_card), content_kind, claim_ids, timing_sec, answers_ko(이 장면이 답하는 질문), "
+           "staging_ko(화면에서 무슨 일이 일어나나), explanation, visual_prompt(영어), "
+           "continuity(앞 장면 이어 그리기면 'ref:N'), motion_prompt(영어, 선택).\n")
+        + (_visual_claim_rules() if contract else "")
+        # ★ 2026-10-30 1단계 실측: "무엇이 보이고 무엇이 바뀌나"라고만 적었더니 모델이 {visible, changes} 두 칸만 만들어
+        #   엔진 게이트(photo_contract.mechanism_spec_complete)에 두 편 모두 막혔다 — 지시문을 검사 규칙과 같은 말로 맞춘다.
+        + "- visual_role=mechanism 은 **눈에 보이는 과정(채우기·밀봉·섞기·떠오르기처럼 무언가가 바뀌는 장면)**에만 쓴다. 표시 규칙·분류처럼 과정이 아닌 사실은 "
+        + ("reality(실제 사물·행동 장면)로 한다. " if contract else "reality(실제 사물·행동 장면) 또는 text_card 로 한다. ")
+        + "mechanism 장면에는 반드시 이 다섯 칸을 모두 채운 mechanism 객체를 단다(영어): "
+        "{\"subject\": \"장면의 주인공 사물\", \"components\": [\"알아볼 수 있는 실제 물건 2개 이상\"], \"relationship\": \"부품끼리의 관계\", "
+        "\"initial_state\": \"처음 상태\", \"transformation\": \"무엇이 어떻게 바뀌나\", \"final_state\": \"끝 상태\", \"highlighted_element\": \"설명 대상\", "
+        "\"claim_ids\": [근거 id]}.\n"
+        # ★ 같은 실측: 라벨이 소재라 "label·letters·inscription·no text" 를 쓴 지시문이 전부 '화면에 글자 요구'로 막혔다
+        #   (부정어로는 못 막는다 — 엔진 교훈). 낱말 자체를 쓰지 않게 하고, 무엇을 보여 줄지를 긍정으로 쓰게 한다.
+        "- visual_prompt 에는 label, text, letters, words, numbers, inscription, sign, caption, chart, diagram, arrow, legend 같은 낱말을 "
+        "**쓰지 않는다**('no text' 같은 부정도 쓰지 않는다). 라벨·날짜·표시 규칙이 주제여도 그림은 병을 옆이나 뒤에서 보거나, 담기·밀봉·고르기 같은 "
+        "손의 행동으로 보여 준다. "
+        + ("글자가 꼭 필요한 정보(날짜 종류·규칙 이름)는 overlays 칸으로만 쓴다.\n" if contract
+           else "글자가 꼭 필요한 정보(날짜 종류·규칙 이름)는 text_card 장면의 explanation 으로만 쓴다.\n")
+        + "- viewer_conclusion: {\"text\": \"시청자가 이어 들으면 내리는 결론 한 줄\", \"claim_ids\": [근거 id…]} — 결론도 인용 안에서만.\n"
+        "- 출력 형식: {\"scenes\": [...], \"viewer_conclusion\": {...}}"
+    )
 
 
 def _gold_example() -> str:
@@ -260,7 +303,9 @@ def _gold_example() -> str:
         path = Path(__file__).resolve().parents[1] / "docs" / "drinks-pilot" / "whisky-water-v1.json"
         d = json.loads(path.read_text(encoding="utf-8"))
         ex = {"claims": [{k: c[k] for k in ("claim_id", "text", "original_quote") if k in c} for c in d["claims"][:3]],
-              "scenes": d["scenes"][:3], "viewer_conclusion": d.get("viewer_conclusion")}
+              # ★ 2026-10-30: 앞 3개만 보여 줬더니 도해(mechanism) 장면 예시가 하나도 없었다 — 완전한 구조를 가진 첫 도해 장면을 함께 보인다.
+              "scenes": d["scenes"][:3] + [s for s in d["scenes"] if isinstance(s.get("mechanism"), dict)][:1],
+              "viewer_conclusion": d.get("viewer_conclusion")}
         return json.dumps(ex, ensure_ascii=False)
     except Exception:  # noqa: BLE001
         return ""
@@ -282,7 +327,8 @@ def plan_user_prompt(question: str, claims: list[dict[str, Any]], brief: dict[st
              "승인된 근거:\n" + json.dumps(rows, ensure_ascii=False)]
     ex = _gold_example()
     if ex:
-        parts.append("통과한 사례의 모양(내용을 베끼지 말고 형식만 참고):\n" + ex)
+        parts.append(("통과한 사례의 모양(내용을 베끼지 말고 형식만 참고. 옛 길이의 사례라 장면 수·길이·시각 주장표는 위 규칙을 따른다):\n"
+                      if config.DRINKS_DEVELOP_EXPLAINER_CONTRACT else "통과한 사례의 모양(내용을 베끼지 말고 형식만 참고):\n") + ex)
     if feedback:
         parts.append("직전 초안이 아래 검사에 막혔다. 같은 문제를 고쳐서 처음부터 다시 쓴다:\n" + "\n".join(f"- {m}" for m in feedback))
     return "\n\n".join(parts)
@@ -292,7 +338,7 @@ def llm_write_plan(question: str, claims: list[dict[str, Any]], brief: dict[str,
     from . import llm
 
     llm.set_text_purpose("drinks_develop_plan")
-    return llm.call_json(model=config.DRINKS_DEVELOP_PLAN_MODEL, system=PLAN_SYSTEM,
+    return llm.call_json(model=config.DRINKS_DEVELOP_PLAN_MODEL, system=plan_system(),
                          user=plan_user_prompt(question, claims, brief, feedback), max_tokens=config.DRINKS_DEVELOP_PLAN_MAX_TOKENS)
 
 
@@ -569,8 +615,9 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
         claims.append(c)
     flags = _claim_flags(claims, deps)
     cids = [c["claim_id"] for c in claims]
-    brief = {"audience_question": question, "selected_claim_ids": cids, "proposed_formats": ["video"],
-             "required_claims": {"video": cids[: config.DRINKS_DEVELOP_REQUIRED_CLAIMS]}}
+    fmt = chain_format(job)
+    brief = {"audience_question": question, "selected_claim_ids": cids, "proposed_formats": [fmt],
+             "required_claims": {fmt: cids[: config.DRINKS_DEVELOP_REQUIRED_CLAIMS]}}
     beat("save")
     saved = rpc("drinks_develop_save_evidence", {**lease, "evidence_pack": {"claims": claims}, "brief": brief})
     qc = saved.get("quote_check") or {}
@@ -579,6 +626,11 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
             "dropped_total": sum(sum(r["dropped_by"].values()) for r in report),
             "needs_operator": ["핵심 메시지(core_takeaway) 한 줄", "주장별 지지 검토(support_review)", "출처 사용 조건 확인"]
             + (["DB 인용 대조가 일치하지 않은 인용이 있음 — 화면에서 확인"] if qc.get("unmatched") else [])}
+
+
+def chain_format(job: dict[str, Any]) -> str:
+    """[이걸로]에서 고른 형식 → 브리프의 형식 칸(0064 머리말의 대응표). 형식을 고르지 않은 요청은 0단계 그대로 영상이다."""
+    return "carousel" if job.get("format_intent") == "card" else "video"
 
 
 def _claim_flags(claims: list[dict[str, Any]], deps: Deps) -> list[dict[str, Any]]:
@@ -627,6 +679,44 @@ def develop_checks(plan: dict[str, Any], allowed_ids: set[str]) -> list[script_c
     return out
 
 
+VISUAL_CLAIM_FIELDS = ("visual_claim_ko", "allowed_simplification", "forbidden_misreading", "depiction_label")
+
+
+def visual_claim_checks(plan: dict[str, Any], claims: list[dict[str, Any]]) -> list[script_check.Finding]:
+    """설명형 시각 주장표 검사(기획 v2 §3-4, 차단). 칸이 있는지·표기가 역할과 맞는지·근거 없는 화면이 사실을 말하지 않는지·숫자가 인용에 있는지만 본다.
+    ★ 화면이 실제로 그 주장을 지키는지는 코드가 못 본다 — 사람 검수(§3-8 B)의 몫이다."""
+    out: list[script_check.Finding] = []
+    by_id = {str(c.get("claim_id")): c for c in claims or []}
+    labels = config.DRINKS_EXPLAINER_DEPICTION_LABELS
+    for i, sc in enumerate((plan or {}).get("scenes") or [], 1):
+        role = sc.get("visual_role") or "reality"
+        if role not in labels:
+            out.append(script_check.Finding("explainer_still_card", i, f"설명형은 모든 화면이 영상입니다 — 화면 역할 '{role}' 은 쓸 수 없습니다(글자는 overlays 칸으로)"))
+            continue
+        missing = [k for k in VISUAL_CLAIM_FIELDS if not str(sc.get(k) or "").strip()]
+        if missing:
+            out.append(script_check.Finding("visual_claim_missing", i, f"시각 주장표 칸이 비었습니다: {', '.join(missing)}"))
+            continue
+        if str(sc["depiction_label"]).strip() != labels[role]:
+            out.append(script_check.Finding("depiction_label_mismatch", i, f"{role} 장면의 화면 표기는 '{labels[role]}' 입니다"))
+        claim = str(sc["visual_claim_ko"]).strip()
+        cids = [str(x) for x in sc.get("claim_ids") or []]
+        if not cids and not claim.startswith(config.DRINKS_EXPLAINER_MOOD_PREFIX):
+            out.append(script_check.Finding("visual_claim_no_evidence", i, f"근거 없는 장면의 시각 주장은 '{config.DRINKS_EXPLAINER_MOOD_PREFIX}'로만 쓸 수 있습니다"))
+        quotes = " ".join(q for c in cids if c in by_id for q in script_check._quotes(by_id[c]))
+        extra = sorted(script_check._nums(claim) - script_check._nums(quotes))
+        if extra:
+            out.append(script_check.Finding("visual_claim_number_unsupported", i, f"시각 주장에 인용에 없는 숫자: {', '.join(extra)}"))
+    return out
+
+
+def visual_claim_table(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """장면별 시각 주장표. ★ DB 검증기(0057 drinks_validate_plan)는 이 칸들을 보존하지 않는다 — source_table 처럼 요청 결과(result)에 남긴다.
+    제작안을 사람이 고쳐 새 버전을 저장하면 그 버전에는 이 표가 없다: 이어 쓰는 쪽은 표가 없으면 멈춰야 한다(근거·이유 docs/deviation-drinks-explainer-stage1.md)."""
+    return [{"scene": i, "claim_ids": list(sc.get("claim_ids") or []), **{k: sc.get(k) for k in VISUAL_CLAIM_FIELDS}}
+            for i, sc in enumerate((plan or {}).get("scenes") or [], 1)]
+
+
 def check_plan(plan: dict[str, Any], review: dict[str, Any], topic: dict[str, Any]) -> script_check.Report:
     claims = review.get("claims") or []
     allowed = {str(c.get("claim_id")) for c in claims}
@@ -637,6 +727,8 @@ def check_plan(plan: dict[str, Any], review: dict[str, Any], topic: dict[str, An
     spec["source"] = {str(i): " ".join(str(v) for v in (s or {}).values()) for i, s in enumerate(review.get("sources") or [])}
     rep = script_check.check(spec)
     rep.blocks.extend(develop_checks(plan, allowed))
+    if config.DRINKS_DEVELOP_EXPLAINER_CONTRACT:
+        rep.blocks.extend(visual_claim_checks(plan, claims))
     return rep
 
 
@@ -673,6 +765,16 @@ def source_table(plan: dict[str, Any], review: dict[str, Any]) -> list[dict[str,
     return rows
 
 
+def core_takeaway_draft(job: dict[str, Any], plan: dict[str, Any]) -> dict[str, str]:
+    """승인 전 근거로 쓴 대본이면 그 결론 한 줄을 핵심 메시지 초안으로 넘긴다(비어 있을 때만 DB 가 채운다). 운영자가 승인 화면에서 고친다.
+    주장별 지지 확인(support_review)은 여기서도 어디서도 채우지 않는다."""
+    if not job.get("draft_evidence"):
+        return {}
+    concl = plan.get("viewer_conclusion")
+    text = str(concl.get("text") or "").strip() if isinstance(concl, dict) else ""
+    return {"core_takeaway_draft": text} if text else {}
+
+
 def clean_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """저장용: DB 가 보존하는 칸만(viewer_conclusion 은 notes 한 줄로 옮긴다 — 0050·0054·0057 검증기는 scenes·notes 만 남긴다)."""
     concl = plan.get("viewer_conclusion") if isinstance(plan.get("viewer_conclusion"), dict) else {}
@@ -681,7 +783,16 @@ def clean_plan(plan: dict[str, Any]) -> dict[str, Any]:
     return {"scenes": plan.get("scenes") or [], "notes": notes}
 
 
+def assert_review_usable(job: dict[str, Any]) -> None:
+    """대본에 쓸 수 있는 근거인가. 승인 전 근거는 요청에 표시(draft_evidence)가 있을 때만 받는다 — DB 도 같은 규칙으로 막는다(0064).
+    0060 의 작업 묶음에는 status 칸이 없는데 그쪽은 승인된 근거만 내주므로, 칸이 없으면 approved 로 읽는다."""
+    status = (job.get("review") or {}).get("status", "approved")
+    if status != "approved" and not job.get("draft_evidence"):
+        raise DevelopError("review_not_approved", "승인되지 않은 근거 버전입니다 — 이 요청은 승인 전 근거를 쓸 수 없습니다")
+
+
 def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledger, deps: Deps, beat: Callable[[str], None]) -> dict[str, Any]:
+    assert_review_usable(job)
     topic, review = job["topic"], job["review"]
     claims = review.get("claims") or []
     if not claims:
@@ -695,7 +806,7 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
     rewrites = 0
     for attempt in range(config.DRINKS_DEVELOP_MAX_REWRITES + 1):
         beat(f"write:{attempt}")
-        in_chars = len(PLAN_SYSTEM) + len(plan_user_prompt(question, claims, brief, feedback))
+        in_chars = len(plan_system()) + len(plan_user_prompt(question, claims, brief, feedback))
         est = estimate_usd(config.DRINKS_DEVELOP_PLAN_MODEL, in_chars, config.DRINKS_DEVELOP_PLAN_MAX_TOKENS)
         plan = ledger.run(config.DRINKS_DEVELOP_PLAN_MODEL, est, lambda fb=feedback: deps.write_plan(question, claims, brief, fb),
                           "대본·화면 계획 초안" if attempt == 0 else "대본·화면 계획 다시 쓰기")
@@ -715,9 +826,18 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
         raise DevelopError("script_check_failed", "대본 검사에서 막혔습니다(다시 쓴 뒤에도).\n" + script_check.summary_ko(rep), "blocked",
                            {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "rejected_plan": plan})
     beat("save")
-    saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan)})
+    try:
+        saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan), **core_takeaway_draft(job, plan)})
+    except DbError as exc:
+        if exc.code == "lease_lost":
+            raise
+        # ★ 2026-10-30 실측: 저장이 DB 에서 거부되자(version_conflict) 돈을 낸 대본이 어디에도 남지 않았다($0.045).
+        #   저장에 실패해도 만든 대본과 검사 결과를 요청 기록에 남긴다 — 운영자가 손으로 옮기거나, 고친 뒤 다시 쓰지 않고 저장할 수 있게.
+        raise DevelopError(exc.code, f"대본은 만들었지만 저장이 거부됐습니다: {exc.message}", "failed",
+                           {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "unsaved_plan": clean_plan(plan),
+                            "source_table": source_table(plan, review), "visual_claims": visual_claim_table(plan)}) from exc
     return {"revision_id": saved.get("revision_id"), "checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags,
-            "source_table": source_table(plan, review), "viewer_conclusion": plan.get("viewer_conclusion"),
+            "source_table": source_table(plan, review), "visual_claims": visual_claim_table(plan), "viewer_conclusion": plan.get("viewer_conclusion"),
             "coverage": saved.get("coverage")}
 
 
@@ -744,7 +864,9 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
         run = run_evidence if job["kind"] == "evidence" else run_plan
         result = run(job, rpc, lease, ledger, deps, beat)
         result["cost"] = {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}
-        return finish("succeeded", result=result)
+        done = finish("succeeded", result=result)
+        log_chain(job, done)
+        return done
     except DbError as exc:
         if exc.code == "lease_lost":
             log.warning("drinks: 개발 요청 %s 임대를 잃어 결과를 저장하지 않습니다", job["request_id"])
@@ -767,6 +889,18 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
                           result={"cost": {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}})
         except DbError:
             return {"status": "lease_lost"}
+
+
+def log_chain(job: dict[str, Any], done: Any) -> None:
+    """이어 만들기는 DB 가 끝내기와 같은 트랜잭션에서 넣는다(drinks_finish_develop) — 근거만 끝나고 대본 요청이 빠지는 틈이 없다.
+    여기서는 어떻게 됐는지 로그에 남길 뿐이다. 막힌 이유는 요청 기록(result.chain)으로 화면에 나간다."""
+    chain = ((done or {}).get("result") or {}).get("chain") if isinstance(done, dict) else None
+    if not job.get("chain") or not isinstance(chain, dict):
+        return
+    if chain.get("queued"):
+        log.info("drinks: 개발 %s 이어서 대본 요청 %s", job["request_id"], chain.get("request_id"))
+    else:
+        log.warning("drinks: 개발 %s 근거에서 멈춤 — %s: %s", job["request_id"], chain.get("code"), chain.get("message"))
 
 
 def run_queue(rpc: Rpc, deps: Deps, *, worker_id: str, max_jobs: int = 5) -> list[dict[str, Any]]:

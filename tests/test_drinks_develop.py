@@ -130,6 +130,16 @@ def boom(*a, **k):
     raise AssertionError("모델을 부르면 안 됩니다")
 
 
+@pytest.fixture(autouse=True)
+def _old_short_shape(monkeypatch):
+    """이 파일의 금본위 사례(whisky-water-v1)와 사고 사례들은 2026-11-02 이전 모양(5~7장면·30~40초·시각 주장표 없음)이다.
+    그 사례들로 재는 규칙(인용·근거·재작성·결재)은 길이와 무관하므로 옛 모양으로 고정해 그대로 잰다.
+    설명형 길이·시각 주장표는 tests/test_drinks_explainer.py 가 기본값으로 잰다."""
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_SCENES", (5, 7))
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_SECONDS", (30.0, 40.0))
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_EXPLAINER_CONTRACT", False)
+
+
 def deps(**kw):
     base = {"extract_claims": boom, "write_plan": boom, "jev_check": lambda n, s: None, "fetcher_factory": lambda hosts: boom()}
     base.update(kw)
@@ -557,3 +567,172 @@ def test_workflow_is_manual_only_and_has_the_keys_it_needs():
         assert k in y
     assert "GITHUB_DISPATCH_TOKEN" in y
     assert "DRINKS_DEVELOP_EUROPEPMC_ENABLED:" not in y, "Europe PMC 는 켜지 않는다(env 로 주지 않는다)"
+
+
+def test_plan_save_refused_keeps_the_paid_plan_in_the_request_result():
+    """2026-10-30 운영 실측: 저장이 version_conflict 로 거부되자 돈을 낸 대본이 어디에도 남지 않았다 — 이제 요청 기록에 남긴다."""
+    class Refusing(FakeRpc):
+        def drinks_develop_save_plan(self, p):
+            raise DbError("version_conflict", "다른 곳에서 먼저 저장됐습니다")
+
+    rpc = Refusing()
+    dd.process_job(plan_job(), rpc, deps(write_plan=lambda q, c, b, f=None: gold_plan()))
+    assert rpc.finish["outcome"] == "failed" and rpc.finish["error_code"] == "version_conflict"
+    kept = rpc.finish["result"]["unsaved_plan"]
+    assert kept["scenes"] and len(kept["scenes"]) == len(GOLD_WHISKY["scenes"]), "만든 대본을 버리지 않는다"
+    assert rpc.finish["result"]["source_table"], "장면별 원문 대조표도 함께 남긴다"
+    assert "cost" in rpc.finish["result"]
+
+
+# ── 내용 승인 한 번(0064): 이어 만들기 ─────────────────────────
+
+SQL_64 = (ROOT / "supabase" / "migrations" / "0064_drinks_single_approval.sql").read_text(encoding="utf-8")
+FORMAT_TS = (ROOT / "web" / "lib" / "drinks" / "formatRecommend.ts").read_text(encoding="utf-8")
+APPROVAL_TS = (ROOT / "web" / "lib" / "drinks" / "contentApproval.ts").read_text(encoding="utf-8")
+
+
+def ts_const(src, name):
+    return float(re.search(rf"export const {name} = ([0-9.]+);", src).group(1))
+
+
+def test_format_thresholds_match_web_and_sql():
+    assert ts_const(FORMAT_TS, "EXPLAINER_MIN_EVIDENCE") == config.DRINKS_FORMAT_EXPLAINER_MIN_EVIDENCE
+    assert ts_const(FORMAT_TS, "CARD_MIN_EVIDENCE") == config.DRINKS_FORMAT_CARD_MIN_EVIDENCE
+    assert ts_const(FORMAT_TS, "EXPLAINER_MIN_EVIDENCE_CHARS") == config.DRINKS_FORMAT_EXPLAINER_MIN_EVIDENCE_CHARS
+    assert ts_const(FORMAT_TS, "EVIDENCE_MAX_CANDIDATES") == config.DRINKS_FORMAT_EVIDENCE_MAX_CANDIDATES
+    assert f"limit {config.DRINKS_FORMAT_EVIDENCE_MAX_CANDIDATES}\n" in SQL_64.split("drinks_candidate_evidence_counts(p jsonb)")[1], "SQL 후보 상한도 같다"
+    kinds = ",".join(f"'{k}'" for k in config.DRINKS_DEVELOP_SOURCE_KINDS_AUTO)
+    assert f"s.source_kind in ({kinds})" in SQL_64, "근거 개수는 워커가 자동으로 쓰는 출처 종류만 센다"
+
+
+def test_explainer_amounts_match_web():
+    assert ts_const(APPROVAL_TS, "EXPLAINER_ESTIMATE_USD") == config.DRINKS_EXPLAINER_ESTIMATE_USD
+    assert ts_const(APPROVAL_TS, "EXPLAINER_APPROVAL_CAP_USD") == config.DRINKS_EXPLAINER_APPROVAL_CAP_USD
+    assert ts_const(APPROVAL_TS, "MAX_APPROVAL_USD") == 10, "0054 max_cap_usd"
+    assert "'max_cap_usd', 10," in (ROOT / "supabase" / "migrations" / "0054_drinks_spend.sql").read_text(encoding="utf-8")
+
+
+def draft_review(**kw):
+    return {**review_from_gold(), "status": "draft", **kw}
+
+
+def test_plan_refuses_unapproved_evidence_without_the_flag_and_never_calls_the_model():
+    rpc = FakeRpc()
+    res = dd.process_job(plan_job(review=draft_review()), rpc, deps())   # boom: 모델을 부르면 실패
+    assert res["status"] == "blocked"
+    assert rpc.finish["error_code"] == "review_not_approved"
+    assert rpc.saved_plan is None and rpc.holds == 0
+
+
+def test_plan_accepts_draft_evidence_only_when_flagged_with_the_same_claims_and_prefills_the_core_message():
+    rpc = FakeRpc()
+    seen = {}
+
+    def write(question, claims, brief, feedback=None):
+        seen["ids"] = [c["claim_id"] for c in claims]
+        return gold_plan()
+
+    res = dd.process_job(plan_job(review=draft_review(), draft_evidence=True), rpc, deps(write_plan=write))
+    assert res["status"] == "succeeded", rpc.finish
+    assert seen["ids"] == [c["claim_id"] for c in GOLD_WHISKY["claims"]], "쓸 주장을 고르는 규칙은 승인된 근거와 같다"
+    assert rpc.saved_plan["core_takeaway_draft"] == GOLD_WHISKY["viewer_conclusion"]["text"], "핵심 메시지는 대본 결론을 초안으로"
+    assert "support_review" not in json.dumps({k: v for k, v in rpc.saved_plan.items() if k != "plan_json"}), "주장별 확인은 자동으로 채우지 않는다"
+    assert not any(re.search(r"approve|submit|review_action|plan_action|select", n) for n in rpc.names), "워커는 승인·제출·편성을 부르지 않는다"
+
+
+def test_normal_plan_does_not_send_a_core_message_draft():
+    rpc = FakeRpc()
+    dd.process_job(plan_job(), rpc, deps(write_plan=lambda q, c, b, f=None: gold_plan()))
+    assert "core_takeaway_draft" not in rpc.saved_plan
+
+
+def test_blocked_chain_plan_saves_nothing_and_core_message_stays_empty():
+    rpc = FakeRpc()
+    res = dd.process_job(plan_job(review=draft_review(), draft_evidence=True), rpc, deps(write_plan=lambda q, c, b, f=None: invented_dosing_plan()))
+    assert res["status"] == "blocked"
+    assert rpc.finish["error_code"] == "script_check_failed", "처방을 지어낸 대본은 승인 전 근거 경로에서도 막힌다"
+    assert rpc.saved_plan is None
+
+
+def test_chain_without_budget_stops_before_any_model_call():
+    rpc = FakeRpc(sources=[src_row()])
+    res = dd.process_job(job(budget=None, chain=True, format_intent="explainer"), rpc, deps())
+    assert res["status"] == "blocked"
+    assert rpc.finish["error_code"] == "budget_missing"
+    assert rpc.holds == 0 and rpc.saved_evidence is None
+
+
+def test_chain_evidence_brief_follows_the_chosen_format():
+    for intent, fmt in (("explainer", "video"), ("card", "carousel"), (None, "video")):
+        rpc = FakeRpc(sources=[src_row()])
+        res = dd.process_job(job(chain=True, format_intent=intent), rpc, deps(extract_claims=fake_extract(QUOTES[:3])))
+        assert res["status"] == "succeeded", rpc.finish
+        brief = rpc.saved_evidence["brief"]
+        assert brief["proposed_formats"] == [fmt] and list(brief["required_claims"]) == [fmt]
+        assert brief.get("core_takeaway") is None, "근거 단계에서 핵심 메시지를 지어내지 않는다"
+        assert all(c["support_review"] == "not_reviewed" for c in rpc.saved_evidence["evidence_pack"]["claims"])
+
+
+class ChainRpc(FakeRpc):
+    """DB 처럼: chain 표시가 있는 근거 요청이 성공하면 끝내기 응답에 이어 만들기 결과가 실리고, 다음 시작에서 대본 요청을 내준다."""
+
+    def __init__(self, jobs, *, chain_result, **kw):
+        super().__init__(**kw)
+        self.jobs = list(jobs)
+        self.chain_result = chain_result
+        self.finishes = []
+
+    def drinks_start_develop(self, p):
+        return {"job": self.jobs.pop(0) if self.jobs else None}
+
+    def drinks_finish_develop(self, p):
+        self.finish = p
+        self.finishes.append(p)
+        return {"status": p["outcome"], "result": {**(p.get("result") or {}), "chain": self.chain_result}}
+
+
+def test_run_queue_carries_on_to_the_chained_plan_in_the_same_run():
+    plan_step = plan_job(review=draft_review(), draft_evidence=True, request_id="q2")
+    rpc = ChainRpc([job(chain=True, format_intent="explainer", request_id="q1"), plan_step],
+                   chain_result={"queued": True, "request_id": "q2"}, sources=[src_row()])
+    out = dd.run_queue(rpc, deps(extract_claims=fake_extract(QUOTES[:3]), write_plan=lambda q, c, b, f=None: gold_plan()), worker_id="t")
+    assert [r["request_id"] for r in out] == ["q1", "q2"]
+    assert all(r["status"] == "succeeded" for r in out)
+    assert rpc.saved_evidence is not None and rpc.saved_plan is not None
+    assert not any(re.search(r"approve|submit|review_action|plan_action|select", n) for n in rpc.names)
+
+
+def test_chain_stop_is_reported_not_retried(caplog):
+    rpc = ChainRpc([job(chain=True, format_intent="card", request_id="q1")],
+                   chain_result={"queued": False, "code": "card_plan_not_built", "message": "카드뉴스 대본 자동 작성은 아직 없습니다"}, sources=[src_row()])
+    with caplog.at_level("WARNING"):
+        out = dd.run_queue(rpc, deps(extract_claims=fake_extract(QUOTES[:3])), worker_id="t")
+    assert len(out) == 1 and out[0]["result"]["chain"]["code"] == "card_plan_not_built"
+    assert rpc.saved_plan is None
+    assert "card_plan_not_built" in caplog.text
+
+
+def test_engine_never_calls_the_content_approval_function():
+    src = (ROOT / "engine" / "drinks_develop.py").read_text(encoding="utf-8")
+    for name in ("drinks_approve_content", "drinks_pick_topic", "drinks_review_action", "drinks_plan_action", "drinks_select"):
+        assert f'"{name}"' not in src
+
+
+def test_migration_0064_keeps_the_safety_rules():
+    for f in re.findall(r"create or replace function (drinks_\w+)\(", SQL_64):
+        if f in ("drinks_approve_content", "drinks_pick_topic"):
+            continue
+        body = SQL_64.split(f"create or replace function {f}(")[1].split("$$;")[0]
+        for forbidden in ("drinks_review_action", "drinks_plan_action", "drinks_select(", "drinks_approve_content"):
+            assert forbidden not in body, f"{f} 는 {forbidden} 를 부르면 안 된다"
+    # 승인 경로는 기존 함수를 그대로 거친다 — 검사가 새로 쓰이거나 줄지 않는다
+    approve = SQL_64.split("create or replace function drinks_approve_content(")[1].split("$$;")[0]
+    for must in ("drinks_review_action", "drinks_select(", "drinks_plan_action", "drinks_evidence_content_hash", "plan_stale"):
+        assert must in approve
+    approve_code = "\n".join(line.split("--")[0] for line in approve.splitlines())
+    assert "support_review" not in approve_code, "주장별 확인을 이 함수가 채우지 않는다"
+    assert "drinks_open_spend_approval" not in SQL_64 and "drink_spend_approvals" not in SQL_64.split("-- 표·칸")[1], "승인이 지출 결재를 열지 않는다"
+    assert "alter function %s set search_path = public, pg_temp" in SQL_64
+    # 옛 파일은 고치지 않았다(0060 규칙은 표시 없는 요청에 그대로)
+    assert "review_not_approved" in SQL
+    assert "되돌리기" in SQL_64
