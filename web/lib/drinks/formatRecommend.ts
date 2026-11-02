@@ -24,7 +24,7 @@ export interface FormatInput {
   question: string | null;
   /** 후보 신호(0052): question·debate·misconception·selection·storage·new_product·event */
   signals: readonly string[] | null;
-  /** 승인된 수집원에서 걸린 글 수. 못 읽었으면 null */
+  /** 승인된 출처(수집원 + 공식 출처 목록)에서 걸린 글 수. 못 읽었으면 null */
   evidenceCount: number | null;
   /** 그 글들의 글자 수 합. 못 읽었으면 null */
   evidenceChars: number | null;
@@ -72,11 +72,11 @@ export function recommendFormat(i: FormatInput): Recommendation {
   if (i.evidenceCount < CARD_MIN_EVIDENCE) {
     return {
       format: "unknown",
-      reason: `${what}. 승인된 수집원에서 걸린 글이 없어 어느 형식도 추천하지 않습니다 — 고르면 근거 초안 단계에서 부족 여부를 다시 잽니다.`,
+      reason: `${what}. 승인된 출처에서 걸린 글이 없어 어느 형식도 추천하지 않습니다 — 고르면 근거 초안 단계에서 부족 여부를 다시 잽니다.`,
     };
   }
   if (shape === "card") {
-    return { format: "card", reason: `${what}. 승인된 수집원에서 글 ${i.evidenceCount}개가 걸렸습니다.` };
+    return { format: "card", reason: `${what}. 승인된 출처에서 글 ${i.evidenceCount}개가 걸렸습니다.` };
   }
   if (i.evidenceCount < EXPLAINER_MIN_EVIDENCE) {
     return { format: "card", reason: `${what}. 그런데 걸린 글이 ${i.evidenceCount}개뿐이라(설명형은 ${EXPLAINER_MIN_EVIDENCE}개 이상) 카드뉴스로 내립니다.` };
@@ -90,5 +90,5 @@ export function recommendFormat(i: FormatInput): Recommendation {
       reason: `${what}. 걸린 글 ${i.evidenceCount}개를 합쳐 ${i.evidenceChars.toLocaleString()}자라 40초 분량에 못 미칠 것 같아 카드뉴스로 내립니다.`,
     };
   }
-  return { format: "explainer", reason: `${what}. 승인된 수집원에서 글 ${i.evidenceCount}개(${i.evidenceChars.toLocaleString()}자)가 걸렸습니다.` };
+  return { format: "explainer", reason: `${what}. 승인된 출처에서 글 ${i.evidenceCount}개(${i.evidenceChars.toLocaleString()}자)가 걸렸습니다.` };
 }

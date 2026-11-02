@@ -499,9 +499,9 @@ class FakeFetcher:
         return SimpleNamespace(body=body, charset="utf-8", url=url)
 
 
-def test_europepmc_is_off_by_default_so_no_fetcher_is_created():
+def test_europepmc_is_off_by_default_so_no_fetcher_is_created(monkeypatch):
     assert config.DRINKS_DEVELOP_EUROPEPMC_ENABLED is False
-    assert config.DRINKS_DEVELOP_OFFICIAL_SOURCES == []
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_OFFICIAL_SOURCES", [])
     rpc = FakeRpc(sources=[])
     called = []
     dd.gather_sources(job(), rpc, {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: called.append(h)))
@@ -537,6 +537,52 @@ def test_official_sources_without_operator_verified_terms_are_ignored(monkeypatc
     monkeypatch.setattr(config, "DRINKS_DEVELOP_OFFICIAL_SOURCES", [{"name": "x", "url": "https://example.gov/a", "terms_verified": False}])
     out, notes = dd.find_official(TOPIC, deps())
     assert out == [] and notes == []
+
+
+def test_registered_official_sources_are_complete_and_https():
+    assert len(config.DRINKS_DEVELOP_OFFICIAL_SOURCES) == 13
+    for ent in config.DRINKS_DEVELOP_OFFICIAL_SOURCES:
+        assert ent["url"].startswith("https://") and ent["terms_url"].startswith("https://"), ent["name"]
+        assert ent["terms_verified"] is True and ent["usage_terms"] and ent["publisher"] and ent["keywords"], ent["name"]
+        assert ent["source_kind"] in ("official", "expert") and ent["rights_status"] == "quote_ok", ent["name"]
+
+
+def _official(topic):
+    from engine import drinks_fetch
+
+    class Fetcher:
+        def get(self, url, accept=None, params=None):
+            body = b"" if url.endswith("robots.txt") else "<html><title>t</title><body><p>본문 문장입니다.</p></body></html>".encode()
+            return SimpleNamespace(body=body, charset="utf-8", url=url, status=200, content_type="text/html")
+
+    assert drinks_fetch.Robots(Fetcher()).allowed("https://example.gov/a")
+    return dd.find_official(topic, dd.Deps(fetcher_factory=lambda hosts: Fetcher()))[0]
+
+
+def test_official_sources_pick_by_keyword_and_skip_questions_they_cannot_answer():
+    urls = lambda title, q: [s.url for s in _official({"title": title, "question": q})]
+    # 답이 있는 소재는 집어 든다
+    assert any("E0017498" in u for u in urls("막걸리는 어떻게 만드나", "누룩이 뭔가"))
+    assert any("regulation/3" in u for u in urls("버번 스카치 차이", "뭐가 다른가"))
+    assert any("hangovers" in u for u in urls("숙취는 왜 생기나", "왜 머리가 아픈가"))
+    # 낱말은 걸려도 답이 없는 소재는 모델 호출 전에 뺀다
+    assert urls("막걸리 유통기한", "언제까지 마시나") == []
+    assert urls("막걸리는 왜 시큼한가", "왜 그런가") == []
+    assert urls("스카치 개봉 후 보관", "얼마나 가나") == []
+    # 아무 낱말도 안 걸리면 쓰지 않는다
+    assert urls("와인 잔 고르기", "뭐가 좋나") == []
+
+
+def test_official_source_language_reaches_the_saved_source():
+    src = _official({"title": "사케 라벨", "question": "정미보합이 뭔가"})[0]
+    assert src.new_source["original_language"] == "ja" and src.source_kind == "official"
+
+
+def test_official_source_hints_match_config():
+    ts = (ROOT / "web" / "lib" / "drinks" / "officialSources.ts").read_text(encoding="utf-8")
+    rows = re.findall(r'\{ name: "([^"]+)", keywords: \[([^\]]*)\], notFor: \[([^\]]*)\], chars: \d+ \}', ts)
+    web = {n: (re.findall(r'"([^"]+)"', k), re.findall(r'"([^"]+)"', a)) for n, k, a in rows}
+    assert web == {e["name"]: (e["keywords"], e["not_for"]) for e in config.DRINKS_DEVELOP_OFFICIAL_SOURCES}
 
 
 # ── 제한값 · 파일 점검 ─────────────────────────────────────────

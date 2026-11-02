@@ -4612,11 +4612,65 @@ DRINKS_DEVELOP_CHARS_PER_TOKEN: float = 2.0          # 입력 토큰 추정(한�
 DRINKS_DEVELOP_EUROPEPMC_ENABLED: bool = _get_bool("DRINKS_DEVELOP_EUROPEPMC_ENABLED", False)
 DRINKS_DEVELOP_EUROPEPMC_HOSTS: tuple[str, ...] = ("www.ebi.ac.uk",)
 DRINKS_DEVELOP_EUROPEPMC_PAGE_SIZE: int = 5
-# 운영자가 이용 약관을 직접 확인한 공식·전문 출처. 비어 있다 — 후보 조사는 끝났지만 확인된 곳이 아직 없다.
+# 운영자가 이용 조건을 확인한 공식·전문 출처(2026-11-02 등록, 운영자 "등록하고" — 약관 판정·근거: docs/주류_근거출처_후보_2026-11-02.md).
 #   항목: {"name","publisher","url"(https),"source_kind"(official|expert),"rights_status"(quote_ok|summary_only),
-#          "usage_terms","terms_verified": True, "terms_url", "keywords": [..](소재 낱말이 하나라도 있으면 사용)}
+#          "usage_terms","terms_verified": True, "terms_url", "keywords": [..](소재 낱말이 하나라도 있으면 사용),
+#          "not_for": [..](소재에 있으면 이 쪽에 답이 없으므로 쓰지 않는다 — 모델 호출 낭비 방지), "language"}
 #   terms_verified 가 True 가 아닌 항목은 쓰지 않는다.
-DRINKS_DEVELOP_OFFICIAL_SOURCES: list[dict] = []
+#   ★ 이름·낱말·not_for 를 바꾸면 web/lib/drinks/officialSources.ts 도 같이 바꾼다(tests/test_drinks_develop.py 가 대조).
+#   ★ 보관·개봉 후·왜 안 상하나·왜 시큼한가는 이 목록으로 안 채워진다 — 근거 부족으로 멈추는 것이 맞다.
+_DRINKS_NOT_AGING: tuple[str, ...] = ("보관", "개봉", "유통기한", "소비기한", "상하", "변질")
+_DRINKS_ENCYKOREA: dict = {
+    "publisher": "한국학중앙연구원", "source_kind": "expert", "rights_status": "quote_ok", "terms_verified": True, "language": "ko",
+    "usage_terms": "항목 본문 자유이용(저작권법 제24조의2). 출처 표기: [항목명], 한국민족문화대백과사전. 사진은 쓰지 않는다",
+    "terms_url": "https://encykorea.aks.ac.kr/Guide/ContentUse",
+}
+_DRINKS_NTA: dict = {
+    "publisher": "国税庁", "source_kind": "official", "rights_status": "quote_ok", "terms_verified": True, "language": "ja",
+    "usage_terms": "公共データ利用規約 1.0. 출처 표기: 国税庁ホームページ(해당 쪽 주소). 번역·요약했으면 가공 표시",
+    "terms_url": "https://www.nta.go.jp/chuijiko/copy.htm",
+}
+_DRINKS_UK_LAW: dict = {
+    "publisher": "legislation.gov.uk", "source_kind": "official", "rights_status": "quote_ok", "terms_verified": True, "language": "en",
+    "usage_terms": "Open Government Licence v3.0. 출처 표기 필요",
+    "terms_url": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+}
+_DRINKS_NIAAA: dict = {
+    "publisher": "NIAAA (미국 국립 알코올 연구소)", "source_kind": "official", "rights_status": "quote_ok", "terms_verified": True, "language": "en",
+    "usage_terms": "미국 정부 저작물(문구는 미국 내 복제 기준). NIAAA 출처 표기. 제3자 그림 제외. 건강 조언으로 쓰지 않는다",
+    "terms_url": "https://www.niaaa.nih.gov/disclaimer",
+}
+DRINKS_DEVELOP_OFFICIAL_SOURCES: list[dict] = [
+    {**_DRINKS_ENCYKOREA, "name": "한국민족문화대백과사전 — 탁주", "url": "https://encykorea.aks.ac.kr/Article/E0058756",
+     "keywords": ["탁주", "막걸리"], "not_for": [*_DRINKS_NOT_AGING, "시큼", "신맛", "숙취"]},
+    {**_DRINKS_ENCYKOREA, "name": "한국민족문화대백과사전 — 막걸리", "url": "https://encykorea.aks.ac.kr/Article/E0017498",
+     "keywords": ["막걸리"], "not_for": [*_DRINKS_NOT_AGING, "시큼", "신맛", "숙취"]},
+    {**_DRINKS_ENCYKOREA, "name": "한국민족문화대백과사전 — 막걸리 빚기", "url": "https://encykorea.aks.ac.kr/Article/E0079922",
+     "keywords": ["막걸리", "누룩"], "not_for": [*_DRINKS_NOT_AGING, "시큼", "신맛", "숙취"]},
+    {**_DRINKS_ENCYKOREA, "name": "한국민족문화대백과사전 — 청주", "url": "https://encykorea.aks.ac.kr/Article/E0056708",
+     "keywords": ["청주", "약주"], "not_for": [*_DRINKS_NOT_AGING, "숙취"]},
+    {**_DRINKS_ENCYKOREA, "name": "한국민족문화대백과사전 — 술", "url": "https://encykorea.aks.ac.kr/Article/E0032021",
+     "keywords": ["전통주", "누룩", "증류식", "소주"], "not_for": [*_DRINKS_NOT_AGING, "숙취"]},
+    {**_DRINKS_NTA, "name": "일본 국세청 — 清酒 표시기준 개요", "url": "https://www.nta.go.jp/taxes/sake/hyoji/seishu/gaiyo/02.htm",
+     "keywords": ["사케", "일본주", "준마이", "다이긴조", "긴조", "정미", "제조 시기"], "not_for": ["보관", "개봉", "숙취"]},
+    {**_DRINKS_NTA, "name": "일본 국세청 — 清酒 표시기준 고시", "url": "https://www.nta.go.jp/taxes/sake/hyoji/seishu/kokuji891122/03.htm",
+     "keywords": ["사케", "일본주", "준마이", "다이긴조", "긴조", "정미"], "not_for": ["보관", "개봉", "숙취"]},
+    {**_DRINKS_NTA, "name": "일본 국세청 — お酒 Q&A", "url": "https://www.nta.go.jp/taxes/sake/qa/01.htm",
+     "keywords": ["일본주", "주류 분류"], "not_for": ["보관", "개봉", "숙취"]},
+    {**_DRINKS_UK_LAW, "name": "영국 Scotch Whisky Regulations 제3조", "url": "https://www.legislation.gov.uk/uksi/2009/2890/regulation/3",
+     "keywords": ["스카치", "싱글몰트", "블렌디드"], "not_for": [*_DRINKS_NOT_AGING, "숙취"]},
+    {**_DRINKS_UK_LAW, "name": "영국 Scotch Whisky Regulations 제12조", "url": "https://www.legislation.gov.uk/uksi/2009/2890/regulation/12",
+     "keywords": ["스카치", "싱글몰트", "12년", "숙성 표기"], "not_for": [*_DRINKS_NOT_AGING, "숙취"]},
+    {"name": "미국 27 CFR §5.143 Whisky", "publisher": "eCFR (미국 연방 규정)", "source_kind": "official", "rights_status": "quote_ok", "terms_verified": True, "language": "en",
+     # 일반 쪽 주소는 다른 호스트로 넘겨져 요청기가 막는다 — 렌더러 API 주소로만 받힌다(2026-11-02 실측).
+     "url": "https://www.ecfr.gov/api/renderer/v1/content/enhanced/current/title-27?part=5&section=5.143",
+     "usage_terms": "미국 연방 규정. eCFR 쪽의 별도 약관 문구는 못 읽었다(미국 정부 저작물 일반 원칙). 출처 표기",
+     "terms_url": "https://www.ecfr.gov/", "keywords": ["버번", "라이 위스키", "테네시"], "not_for": [*_DRINKS_NOT_AGING, "숙취"]},
+    {**_DRINKS_NIAAA, "name": "미국 NIAAA — 숙취", "url": "https://www.niaaa.nih.gov/publications/brochures-and-fact-sheets/hangovers",
+     "keywords": ["숙취", "hangover"], "not_for": []},
+    {**_DRINKS_NIAAA, "name": "미국 NIAAA — 알코올 대사", "url": "https://www.niaaa.nih.gov/publications/alcohol-metabolism",
+     "keywords": ["숙취", "알코올 분해", "아세트알데히드", "얼굴 빨개", "대사"], "not_for": []},
+]
 DRINKS_DEVELOP_JEV_ENABLED: bool = _get_bool("DRINKS_DEVELOP_JEV_ENABLED", False)   # 대본 근거 판정(Jev). 0단계는 끔
 DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN: float = _get_float("DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN", 0.6)
 DRINKS_DEVELOP_SOURCE_KINDS_AUTO: tuple[str, ...] = ("official", "expert", "manufacturer")   # 운영자가 붙이지 않은 출처(수집원·공식 목록·논문)에서 자동으로 쓰는 종류
