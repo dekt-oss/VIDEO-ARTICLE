@@ -108,8 +108,10 @@ export function CandidateActions({ c, others, recommended, defaultWeek, budgetId
     }, "소재로 올렸습니다 — 이어 만들기 상태는 소재의 내용 승인 탭에 있습니다", "[이걸로]");
     if (!r.ok && r.code === "duplicate_suggested" && window.confirm("같은 질문의 소재가 이미 있습니다. 그래도 새로 만들까요?")) return pick(true);
     if (r.ok) {
-      const chain = (r.result as { chain?: { queued?: boolean; existing?: boolean; message?: string } } | undefined)?.chain;
-      setNote(chain?.queued ? requestNote({ existing: chain.existing, triggered: r.dispatch?.triggered }) : chain?.message ?? null);
+      const chain = (r.result as { chain?: { queued?: boolean; existing?: boolean; message?: string; code?: string } } | undefined)?.chain;
+      // 0064 의 밈 문장은 엔진이 생기기 전 것이라 화면에서 바꿔 말한다(그 함수를 다시 쓰지 않으려고).
+      const stopped = chain?.code === "meme_board" ? "형식만 적어 뒀습니다. 제작안은 밈 보드의 [밈 제작] 칸에서 씁니다." : chain?.message ?? null;
+      setNote(chain?.queued ? requestNote({ existing: chain.existing, triggered: r.dispatch?.triggered }) : stopped);
     }
   };
   return (
@@ -147,7 +149,7 @@ export function CandidateActions({ c, others, recommended, defaultWeek, budgetId
           <p className="muted">
             {format === "explainer" && "근거 초안 → 대본 초안을 이어서 만들고, 내용 승인 화면에서 한 번에 승인합니다."}
             {format === "card" && "근거 초안 → 카드 제작안 초안을 이어서 만들고, 소재의 내용 승인 탭에서 한 번에 승인합니다. 렌더는 로컬이라 0원이고, 초안을 쓰는 데 개발 결재가 필요합니다."}
-            {format === "meme" && "형식만 적어 둡니다. 제작은 밈 보드에서 이어집니다."}
+            {format === "meme" && "형식만 적어 둡니다. 제작안은 밈 보드의 [밈 제작] 칸에서 씁니다."}
             {" "}모델 호출은 열린 개발 결재 안에서만 일어납니다{budgetId ? "" : " — 지금 열린 결재가 없어 근거 단계에서 멈춥니다"}.
           </p>
         </div>

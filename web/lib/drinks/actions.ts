@@ -66,6 +66,11 @@ export const DRINKS_ACTIONS = {
   // 이어 만들기의 저장·끝내기(워커 전용)는 여기 없다. 워커는 승인 함수를 부르지 않는다.
   pick_topic: "drinks_pick_topic",
   approve_content: "drinks_approve_content",
+  // 밈 제작(0066): 제작안 저장·글 초안 요청·승인·되돌리기·버리기·앱 게시 링크 등록. 렌더·끝내기·가잡기(워커 전용)는 여기 없다.
+  // 게시 요청을 만드는 동작도 없다 - 게시 대기까지가 끝이다.
+  meme_save_draft: "drinks_meme_save_draft",
+  meme_request_text: "drinks_meme_request_text",
+  meme_draft_action: "drinks_meme_draft_action",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -178,6 +183,10 @@ const STATUS_BY_CODE: Record<string, number> = {
   evidence_not_usable: 422, review_not_draft: 422, plan_stale: 409,
   // 음원 계약(0065)
   audio_required: 422, audio_not_for_carousel: 422, audio_not_found: 422, audio_connection_unsupported: 422, licensed_mix_not_rendered: 422,
+  // 밈 제작(0066)
+  meme_invalid: 422, meme_duration: 422, meme_sync_blocked: 422, meme_foreign_media: 422, meme_ai_label_missing: 422, meme_info_undeclared: 422,
+  meme_evidence_missing: 422, meme_encourages_drinking: 422, meme_minor: 422, meme_overdrinking: 422, meme_drunk_driving: 422, meme_pregnancy: 422,
+  card_not_precise: 422,
 };
 
 export interface DbError {

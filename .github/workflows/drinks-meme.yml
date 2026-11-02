@@ -1,0 +1,37 @@
+# 주류 공장 밈 제작 워커 (2026-11-02). docs/deviation-drinks-meme-engine.md
+#
+# 밈 보드 [승인] 이 이 워크플로를 깨운다(GITHUB_DISPATCH_TOKEN 이 있으면). 예약 실행은 없다.
+# ★ 유료 호출 없음: 코드 배경 + 코드 글자 + ffmpeg. LLM·이미지·영상 키를 주지 않는다 — 글 초안(--text)은 여기서 돌지 않는다.
+# ★ 게시하지 않는다. 인스타 토큰을 주지 않는다. 파일은 비공개 버킷 'drinks' 의 drinks/memes/ 아래에만 올린다.
+name: drinks-meme
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: drinks-meme
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      TIMEZONE: "Asia/Seoul"
+      WORKER_ID: ${{ github.run_id }}
+      DRINKS_STORAGE: supabase
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install -r engine/requirements.txt
+      - name: produce
+        run: python -m engine.drinks_meme

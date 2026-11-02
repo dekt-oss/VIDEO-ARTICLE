@@ -15,6 +15,9 @@ import {
 } from "@/lib/drinks/igTrends";
 import { loadIgBoard } from "@/lib/drinks/igTrendsQueries";
 import { safeHref } from "@/lib/drinks/trends";
+import { MemeDraftActions, MemeDraftForm } from "@/components/drinks/MemeDraftControls";
+import { MEME_STATUS_LABEL, memeNextStep, type MemeDraftRow } from "@/lib/drinks/meme";
+import { loadMemeWork, type MemeWork, type MemeWorkLoaded } from "@/lib/drinks/memeQueries";
 
 export const dynamic = "force-dynamic";
 
@@ -155,6 +158,69 @@ function MemeCard({ c, today }: { c: IgCardRow; today: string }) {
   );
 }
 
+function MemeDraftItem({ d, work }: { d: MemeDraftRow; work: MemeWork }) {
+  const urls = work.urls[d.id] ?? {};
+  return (
+    <div className={d.status === "publish_waiting" ? "card picked" : d.status === "stopped" || d.status === "failed" ? "card rejected" : "card"}>
+      <div className="dk-row">
+        <b>{d.owner_name ?? "(이름 없음)"}</b>
+        <span className={d.status === "publish_waiting" ? "pill on" : d.status === "stopped" || d.status === "failed" ? "pill reject" : "pill"}>{MEME_STATUS_LABEL[d.status]}</span>
+        {d.sync_grade === "sync_required" && <span className="pill dk-warn">박자 맞춤 — 자동 게시 안 함</span>}
+      </div>
+      {d.spec.top_line && <p style={{ margin: "4px 0" }}><b>{d.spec.top_line}</b> <span className="muted">· {(d.spec.beats ?? []).map((b) => b.text).join(" / ")}</span></p>}
+      {memeNextStep(d.status) && <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>{memeNextStep(d.status)}</p>}
+      {d.error_message && <p className="dk-bad" style={{ fontSize: 13, margin: "4px 0" }}>{d.error_code}: {d.error_message}</p>}
+      {d.status === "draft" && d.blockers.map((b, i) => <p key={i} className="dk-bad" style={{ fontSize: 13, margin: "2px 0" }}>{b.message}</p>)}
+      {urls.final_video && <video src={urls.final_video} controls preload="metadata" style={{ width: 220, display: "block", marginTop: 6 }} />}
+      {d.guide && <details className="dk-sub"><summary>앱에서 음원 붙이는 안내</summary><pre style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{d.guide}</pre></details>}
+      {d.external_url && safeHref(d.external_url) && <p style={{ fontSize: 13 }}><a href={safeHref(d.external_url)!} target="_blank" rel="noreferrer noopener">앱으로 올린 릴스</a></p>}
+      <MemeDraftActions draft={d} />
+      {d.status === "draft" && <details className="dk-sub"><summary className="muted">제작안 고치기</summary><MemeDraftForm draft={d} budgets={work.budgets} reviews={work.reviews} /></details>}
+    </div>
+  );
+}
+
+function MemeWorkSection({ loaded, useCards }: { loaded: MemeWorkLoaded; useCards: IgCardRow[] }) {
+  if (loaded.state === "missing") {
+    return (
+      <section className="section">
+        <h3>밈 제작</h3>
+        <div className="banner-warn" role="status">0066 이 운영 DB 에 아직 없습니다 — 제작안이 0건인 것이 아니라 적용 전입니다. 운영자가 승인해 0066_drinks_meme_engine.sql 을 적용하면 이 칸이 열립니다.</div>
+      </section>
+    );
+  }
+  if (loaded.state !== "ok") {
+    return <section className="section"><h3>밈 제작</h3><LoadProblem state={loaded.state} error={loaded.state === "failed" ? loaded.error : undefined} /></section>;
+  }
+  const work = loaded.data;
+  const live = (d: MemeDraftRow) => !["rejected", "stopped", "failed", "posted_manual"].includes(d.status);
+  const openCards = useCards.filter((c) => !work.drafts.some((d) => d.card_id === c.id && live(d)));
+  const openPicks = work.picks.filter((p) => !work.drafts.some((d) => d.topic_id === p.topic_id && live(d)));
+  return (
+    <section className="section">
+      <h3>밈 제작 ({work.drafts.length})</h3>
+      <p className="muted" style={{ fontSize: 13 }}>카드·소재 → 제작안 초안 → 승인 → 로컬 제작(0원) → 게시 대기. 게시 워커는 아직 연결되지 않았습니다. 박자에 맞춰야 하는 밈은 자동 게시되지 않고, 앱에서 음원을 붙이는 안내만 나옵니다.</p>
+      {openCards.map((c) => (
+        <div key={c.id} className="card">
+          <b>{c.name}</b> <span className="pill pick">쓰자</span> <span className={c.precision === "precise" ? "pill on" : "pill"}>{PRECISION_LABEL[c.precision]}</span>
+          {c.precision === "precise"
+            ? <MemeDraftForm cardId={c.id} budgets={work.budgets} reviews={work.reviews} />
+            : <p className="muted" style={{ fontSize: 13 }}>참고 카드는 제작으로 넘어가지 않습니다. 위 카드에서 비트 수·컷 길이·반전 시점을 넣으면 정밀 틀이 됩니다.</p>}
+        </div>
+      ))}
+      {openPicks.map((p) => (
+        <div key={p.topic_id} className="card">
+          <b>{p.title ?? "(제목 없음)"}</b> <span className="pill">소재에서 밈으로 고름</span>
+          {p.question && <span className="muted"> · {p.question}</span>}
+          <MemeDraftForm topicId={p.topic_id} budgets={work.budgets} reviews={work.reviews} />
+        </div>
+      ))}
+      {openCards.length === 0 && openPicks.length === 0 && work.drafts.length === 0 && <p className="muted">[쓰자]로 고른 카드나 밈으로 고른 소재가 없습니다.</p>}
+      {work.drafts.map((d) => <MemeDraftItem key={d.id} d={d} work={work} />)}
+    </section>
+  );
+}
+
 function CardList({ rows, today, empty }: { rows: IgCardRow[]; today: string; empty?: string }) {
   if (rows.length === 0) return empty ? <p className="muted">{empty}</p> : null;
   return <>{rows.map((c) => <MemeCard key={c.id} c={c} today={today} />)}</>;
@@ -215,7 +281,7 @@ function AccountRow({ a }: { a: IgAccountRow }) {
 }
 
 export default async function DrinksMemesPage() {
-  const v = await loadIgBoard();
+  const [v, memeWork] = await Promise.all([loadIgBoard(), loadMemeWork()]);
   const nowMs = Date.now();
   const today = isoToday(nowMs);
   const header = (
@@ -266,6 +332,7 @@ export default async function DrinksMemesPage() {
         <CardList rows={groups.undecided} today={today} empty={health.neverRun ? "수집 전이라 카드가 없습니다." : "지금 결정할 카드가 없습니다. 첫 관측일의 릴스와 음원은 신호에 넣지 않으므로 처음 며칠은 비어 있는 것이 정상입니다."} />
       </section>
       {groups.use.length > 0 && <section className="section"><h3>쓰자 ({groups.use.length})</h3><CardList rows={groups.use} today={today} /></section>}
+      <MemeWorkSection loaded={memeWork} useCards={groups.use} />
       {groups.later.length > 0 && <section className="section"><h3>나중에 ({groups.later.length})</h3><CardList rows={groups.later} today={today} /></section>}
       {(groups.pass.length > 0 || groups.archived.length > 0) && (
         <section className="section">
