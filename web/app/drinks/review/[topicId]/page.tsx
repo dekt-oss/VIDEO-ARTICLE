@@ -1,14 +1,16 @@
-// 주류 소재 상세 (/drinks/review/[topicId]?tab=) — 요약 / 근거 / 공통 기획 / 영상 / 카드뉴스 / 이력(명세 §9.2).
+// 주류 소재 상세 (/drinks/review/[topicId]?tab=) — 요약 / 내용 승인 / 근거 / 공통 기획 / 영상 / 카드뉴스 / 이력(명세 §9.2).
 // 주 버튼(다음 행동)은 상태에서 계산한 하나만 위에 보여준다. 모든 승인·편성은 서버가 다시 검사한다.
 import Link from "next/link";
 
 import BriefTab from "@/components/drinks/BriefTab";
+import ContentApprovalTab from "@/components/drinks/ContentApprovalTab";
 import DevelopCard from "@/components/drinks/DevelopCard";
 import EvidenceTab from "@/components/drinks/EvidenceTab";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import PlanTab from "@/components/drinks/PlanTab";
 import TopicPanel from "@/components/drinks/TopicPanel";
 import { seoulDateTimeLabel, todayInSeoul } from "@/lib/date";
+import { pickBudget } from "@/lib/drinks/develop";
 import {
   CATEGORY_LABEL, FORMAT_LABEL, LANE_LABEL, QUESTION_KIND_LABEL, TOPIC_STATUS_LABEL, VERSION_STATUS_LABEL, deriveTopic, type Format,
 } from "@/lib/drinks/model";
@@ -19,6 +21,7 @@ export const dynamic = "force-dynamic";
 
 const TABS = [
   ["overview", "요약"],
+  ["approval", "내용 승인"],
   ["evidence", "근거"],
   ["brief", "공통 기획"],
   ["video", "영상"],
@@ -50,18 +53,21 @@ export default async function DrinksTopicPage(props: {
       </main>
     );
   }
-  const { topic, sources, reviews, deliverables, plans, events, eventsTotal, canonical } = res.data;
+  const { topic, sources, reviews, deliverables, plans, events, eventsTotal, canonical, pick } = res.data;
   // 클라이언트 컴포넌트로 넘기려고 Map 을 평범한 객체로 바꾼다.
   const attestations = Object.fromEntries(res.data.attestations);
   const sameBody = Object.fromEntries(res.data.sameBody);
   const sharedWith = Object.fromEntries(res.data.sharedWith);
-  const d = deriveTopic(topic, new Map(reviews.map((r) => [r.id, r])), deliverables, new Map(plans.map((p) => [p.id, p])));
+  const d = deriveTopic(topic, new Map(reviews.map((r) => [r.id, r])), deliverables, new Map(plans.map((p) => [p.id, p])), pick);
   const tab: Tab = TABS.some(([k]) => k === rawTab) ? (rawTab as Tab) : d.action.tab;
   const review = d.review;
   const reviewKey = `${review?.id ?? "none"}-${review?.version ?? 0}-${topic.version}`;
   const deliverableOf = (f: Format) => deliverables.find((x) => x.format === f) ?? null;
   // 소재 개발 카드: 초안이 들어오는 요약·근거·공통 기획 탭에서만 읽는다(0060 이 없으면 카드가 말한다).
-  const develop = tab === "overview" || tab === "evidence" || tab === "brief" ? await loadDevelop(topic.id) : null;
+  const develop = tab === "overview" || tab === "evidence" || tab === "brief" || tab === "approval" ? await loadDevelop(topic.id) : null;
+  const developOk = develop?.state === "ok" ? develop : null;
+  // 내용 승인으로 가는 소재에서 예전 탭을 열면 그 사실을 말한다 — 예전 탭의 승인은 그대로 되지만 같은 근거를 두 번 판단하지 않게 한다.
+  const oldTabNotice = d.action.tab === "approval" && (tab === "evidence" || tab === "brief" || tab === "video");
 
   return (
     <main className="container">
@@ -103,6 +109,28 @@ export default async function DrinksTopicPage(props: {
           </Link>
         ))}
       </nav>
+
+      {oldTabNotice && (
+        <p className="banner-info">
+          이 소재는 <Link href={`/drinks/review/${topic.id}?tab=approval`}>내용 승인</Link> 화면에서 근거와 대본을 한 번에 승인합니다.
+          이 탭에서 근거 문장을 고치면 그 근거로 쓴 대본은 무효가 됩니다.
+        </p>
+      )}
+
+      {tab === "approval" && (
+        <ContentApprovalTab
+          key={`${d.review?.id ?? "none"}-${d.review?.version ?? 0}-${d.plans.video?.id ?? "none"}-${d.plans.video?.version ?? 0}-${topic.version}`}
+          topic={topic}
+          review={d.review}
+          plan={d.plans.video ?? null}
+          pick={pick}
+          requests={developOk?.requests ?? []}
+          budget={developOk ? pickBudget(developOk.budgets, Date.now()) : null}
+          snapshots={Object.fromEntries(sources.map(({ snapshot: s }) => [s.id, { title: s.title, canonical_url: s.canonical_url, publisher: s.publisher, rights_status: s.rights_status }]))}
+          developProblem={develop && !developOk ? (develop.state === "failed" ? `개발 상태를 불러오지 못했습니다 — 요청 0건이 아닙니다. ${develop.error}` : "개발 상태를 읽을 수 없습니다(DB 미적용 또는 서버 키 없음).") : null}
+          today={todayInSeoul()}
+        />
+      )}
 
       {develop && (
         <DevelopCard topicId={topic.id} topicStatus={topic.status} approvedEvidence={d.approvalValid}

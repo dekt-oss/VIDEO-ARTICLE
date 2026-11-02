@@ -23,7 +23,7 @@ export default async function DrinksReviewListPage() {
         (() => {
           const rows = board.data.topics
             .filter((t) => ACTIVE.has(t.status))
-            .map((t) => ({ t, d: deriveTopic(t, board.data.reviews, board.data.deliverables, board.data.plans) }))
+            .map((t) => ({ t, d: deriveTopic(t, board.data.reviews, board.data.deliverables, board.data.plans, board.data.picks.get(t.id)) }))
             .sort((a, b) => a.d.rank - b.d.rank || b.t.updated_at.localeCompare(a.t.updated_at));
           if (rows.length === 0) return <p className="muted">진행 중인 소재가 없습니다(정상 0건). <Link href="/drinks">선별</Link>에서 등록하세요.</p>;
           return rows.map(({ t, d }) => (

@@ -45,9 +45,13 @@ export default async function DrinksProductionPage(props: { searchParams: Promis
         (() => {
           // 편성된 형식 + 편성이 풀렸어도(근거 철회 등) 이미 제작안이 있는 형식. 차단된 제작안을 목록에서 숨기지 않는다.
           const items = board.data.topics.flatMap((t) => {
-            const d = deriveTopic(t, board.data.reviews, board.data.deliverables, board.data.plans);
+            const d = deriveTopic(t, board.data.reviews, board.data.deliverables, board.data.plans, board.data.picks.get(t.id));
             const fmts = new Set<Format>(t.status === "selected" ? t.selected_formats ?? [] : []);
-            for (const f of Object.keys(d.plans) as Format[]) if (d.plans[f]) fmts.add(f);
+            for (const f of Object.keys(d.plans) as Format[]) {
+              const pl = d.plans[f];
+              // 승인 전 근거로 쓴 대본(0064)은 아직 제작 대상이 아니다 — 내용 승인 화면에 있다. "편성 해제됨"으로 보이면 틀린 말이 된다.
+              if (pl && !(t.status !== "selected" && pl.drafted_from_unapproved && pl.plan_status === "draft")) fmts.add(f);
+            }
             return [...fmts].map((f) => {
               const p = d.plans[f] ?? null;
               const rv = p ? board.data.reviews.get(p.topic_review_id) : undefined;
