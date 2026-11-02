@@ -332,7 +332,8 @@ def test_limits_match_the_migration():
 
 def test_boundary_kinds_match_the_migration():
     allowed = re.search(r"boundary_in\s+text check \(boundary_in in \(([^)]*)\)\)", SQL).group(1)
-    assert set(re.findall(r"'(\w+)'", allowed)) == set(config.DRINKS_EXPLAINER_BOUNDARY_KINDS)
+    # 'cut' 은 0067 이 더했다(tests/test_drinks_explainer_queue.py 가 그 체크를 대조).
+    assert set(re.findall(r"'(\w+)'", allowed)) | {"cut"} == set(config.DRINKS_EXPLAINER_BOUNDARY_KINDS)
 
 
 def test_quote_matches_the_document_table():
@@ -827,6 +828,7 @@ def test_gold_plan_stretched_to_explainer_shape_passes_all_checks():
         s["timing_sec"] = 6.4
         s.pop("card_page", None)
         s.update(allowed_simplification="없음", forbidden_misreading="실제 제품 촬영으로 오해", depiction_label=config.DRINKS_EXPLAINER_DEPICTION_LABELS[s.get("visual_role") or "reality"])
+        s.setdefault("motion_prompt", "the camera slowly pushes in")
         s["visual_claim_ko"] = "화면이 나레이션을 보여 준다" if s.get("claim_ids") else f"{config.DRINKS_EXPLAINER_MOOD_PREFIX}: 도입"
     plan = {"scenes": scenes, "viewer_conclusion": GOLD.get("viewer_conclusion")}
     review = {"claims": GOLD["claims"], "brief": {"audience_question": "질문"}, "sources": [GOLD.get("source")]}
