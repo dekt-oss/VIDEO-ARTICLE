@@ -38,8 +38,8 @@ WEB = ROOT / "web"
 BODY = "Whisky enthusiasts often also add a few drops of water to the spirit before drinking in order to further enhance the taste."
 QUOTE = "Whisky enthusiasts often also add a few drops of water to the spirit before drinking"
 SCORES = {"relevance": 4, "utility": 4, "curiosity": 3, "fit_video": 3, "fit_carousel": 4, "timeliness": 2}
-PROCESS_CHECKS = {"directive_matches_clips": True, "selection_reasons_ok": True, "cost_matches_approval": True}
-QUALITY_CHECKS = {"stops_in_first_1_5s": True, "no_photo_like_scene": True, "match_boundaries_connect": True, "mechanism_explains_why": True, "no_fake_text": True, "loop_natural": True}
+PROCESS_CHECKS = {k: True for k in dx.PROCESS_REVIEW_ITEMS}
+QUALITY_CHECKS = {k: True for k in dx.QUALITY_REVIEW_ITEMS}
 OUTPUT_CHECKS = {"scene_types_labeled": True, "no_real_product_implied": True, "claims_match_evidence": True, "audio_subtitles_ok": True, "vertical_ok": True}
 
 # (역할, TTS ms, 이어짐) — 기획 v2 §3-6-2 표와 같은 길이. 합계 57.6초(꼬리 포함) → 최종 48초.

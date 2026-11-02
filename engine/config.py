@@ -4915,3 +4915,25 @@ DRINKS_EXPLAINER_ASPECT_TOLERANCE: float = 0.02    # 후보 자동 판정의 9:1
 DRINKS_EXPLAINER_SEND_TIMEOUT_SEC: float = _get_float("DRINKS_EXPLAINER_SEND_TIMEOUT_SEC", 300.0)   # 동기 응답(§3-2 ①) 대기. [미검증] 끊기면 unknown_billed 로 멈춘다
 DRINKS_EXPLAINER_STALE_ATTEMPT_SEC: int = 1800     # 이만큼 멈춘 시도는 워커가 죽은 것으로 본다(0053 임대 시간과 같다)
 DRINKS_EXPLAINER_PLACEHOLDER_SYL_PER_SEC: float = 5.9   # tts=placeholder 의 길이 추정(§3-6-2 말 속도). 무음 시험 전용
+
+# ── 설명형 2단계(S0.5 → S2 → S3) 준비(2026-11-02) ── 근거·되돌리기: docs/deviation-drinks-explainer-stage2.md
+# ★ 이 절의 어떤 값도 호출을 켜지 않는다. 돈이 나가는 스크립트(scripts/explainer_s05·s2·s3)는 `--yes` 와 결재 문장이 있어야 하고,
+#   영상 구매는 그 위에 DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED(운영자 PC 한 회)까지 켜져야 한다.
+# 단계별 결재 상한(기획 v2 §3-10·총괄 §4-1). S3 는 "상한 − S2 사용액"이라 스크립트가 원장에서 뺀다.
+DRINKS_EXPLAINER_STAGE_CAPS_USD: dict[str, float] = {"s05": 0.30, "s2": 2.60, "s3": 8.90}
+DRINKS_EXPLAINER_S05_TOPIC_ID: str = "549a5721-5128-4e45-81a0-803226571108"   # 운영 소재 "위스키 병에는 왜 유통기한이 안 보일까?"(2026-11-02 읽기 조회)
+DRINKS_EXPLAINER_S2_EXTRA_CLIP_RETRY: int = 1      # S2 상한 계산에 넣는 재시도 예비(가장 긴 클립 1회)
+# 대본이 장면마다 선언하는 경계(기획 v2 §3-5 + 큐의 cut). 'match' 는 "바로 앞 장면이 이어진다"(= ref:(n-1))의 짧은 표기다.
+DRINKS_EXPLAINER_SCENE_CONTINUITY_KINDS: tuple[str, ...] = ("ref", "match", "cut")
+# 공급자(Gemini Omni, Interactions API) — 2026-11-02 공식 문서 대조. 검증됨/미검증 구분은 providers/video.py 머리 주석.
+DRINKS_EXPLAINER_OMNI_TASK: str = "image_to_video"             # generation_config.video_config.task — 첫 그림이 시작 프레임[문서]
+DRINKS_EXPLAINER_OMNI_DELIVERY: str = "inline"                 # response_format.delivery — base64 로 바로 받는다[문서]. uri 면 Files API 폴링이 필요
+DRINKS_EXPLAINER_OMNI_SEND_DURATION: bool = True               # response_format.duration(문자열)[문서에 칸만 있음]. 형식 "8s" 는 [미검증] — 400 이면 청구 없이 멈춘다
+DRINKS_EXPLAINER_OMNI_MODELS_URL: str = "https://generativelanguage.googleapis.com/v1beta/models"   # 사전 검증(무료 GET)
+DRINKS_EXPLAINER_OMNI_INTERACTIONS_URL: str = "https://generativelanguage.googleapis.com/v1beta/interactions"   # GET {id} 로 결과 불명을 정정한다[문서]
+DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED: bool = _get_bool("DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED", True)   # 구매 전 모델 조회(무료)로 이름·메서드를 대조한다
+DRINKS_EXPLAINER_OMNI_PREFLIGHT_TIMEOUT_SEC: float = 20.0
+# 사람 검수 6항목(§3-8 B)·과정 검수 3항목 — SQL 0067 required 배열·web QUALITY_CHECKS 와 같아야 한다(tests/test_drinks_explainer_stage2.py 가 대조)
+DRINKS_EXPLAINER_QUALITY_ITEMS: tuple[str, ...] = ("stops_in_first_1_5s", "no_photo_like_scene", "match_boundaries_connect", "mechanism_explains_why", "no_fake_text", "loop_natural")
+DRINKS_EXPLAINER_PROCESS_ITEMS: tuple[str, ...] = ("directive_matches_clips", "selection_reasons_ok", "cost_matches_approval")
+DRINKS_EXPLAINER_CAPTION_AI_LINE: str = "AI 생성 영상"       # §3-4: 인스타 "AI 정보" 표시가 API 로 켜지는지 확인 전까지 캡션 첫 줄 아래에 넣는다

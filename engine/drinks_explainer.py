@@ -51,6 +51,9 @@ FAILURE_STATES: dict[str, dict[str, str]] = {
     "review_fail": {"enter": "사람 검수 불합격", "exit": "운영자 지시대로(재렌더 / 재촬영 결재 / 폐기)"},
 }
 AUTO_REBUY: bool = False   # 상태 표의 '자동 재구매: 없음'. 켜는 코드를 만들지 않는다.
+# 사람 검수(§3-8 B). 과정 3항목 → 품질 6항목. 하나라도 거짓이면 SQL(0067 drinks_explainer_review)이 합격을 받지 않고 ready_to_publish 로 못 간다.
+PROCESS_REVIEW_ITEMS: tuple[str, ...] = config.DRINKS_EXPLAINER_PROCESS_ITEMS
+QUALITY_REVIEW_ITEMS: tuple[str, ...] = config.DRINKS_EXPLAINER_QUALITY_ITEMS
 BLOCKED_ASSET_CODES: tuple[str, ...] = ("clip_missing", "clip_corrupt", "clip_short")
 
 

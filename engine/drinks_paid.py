@@ -318,6 +318,13 @@ class LiveAdapter:
             raise PaidError("provider_not_wired", f"이 공급자({self.provider})의 전송은 아직 연결하지 않았습니다")
         if not config.SECRETS.gemini_api_key:
             raise PaidError("api_key_missing", "GEMINI_API_KEY 가 없습니다 — 아무것도 사지 않았습니다")
+        if config.DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED:
+            # 무료 조회(GET models/{model}) 한 번 — 모델이 없거나 이름이 다르면 생성 호출을 보내기 전에 멈춘다(unknown_billed 로 가지 않는다).
+            from .providers import video as video_provider
+
+            pre = video_provider.omni_preflight()
+            if not pre.ok:
+                raise PaidError("provider_preflight_failed", f"공급자 사전 검증 실패 — 아무것도 사지 않았습니다: {pre.reason}")
 
     def image(self, item: OrderItem, out: str, ref_path: Optional[str]) -> float:
         if not config.DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED:

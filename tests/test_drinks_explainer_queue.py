@@ -256,11 +256,19 @@ def test_live_adapter_needs_switch_and_open_approval_and_key(monkeypatch):
         a.check_ready(GOOD)
     assert e.value.code == "provider_send_disabled"
     monkeypatch.setattr(config, "DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED", True)
+    # 사전 검증(무료 GET)은 네트워크다 — 시험에서는 가짜로 바꾼다. 아래에서 실패도 한 번 본다.
+    pre = {"ok": True}
+    monkeypatch.setattr(pv, "omni_preflight", lambda client=None: pv.OmniPreflight(pre["ok"], config.DRINKS_EXPLAINER_OMNI_MODEL, "시험: 모델 없음"))
     for bad in (None, {}, {"status": "closed", "expired": False}, {"status": "open", "expired": True}):
         with pytest.raises(dpaid.PaidError) as e:
             a.check_ready(bad)
         assert e.value.code == "approval_closed"
     a.check_ready(GOOD)
+    pre["ok"] = False
+    with pytest.raises(dpaid.PaidError) as e:
+        a.check_ready(GOOD)
+    assert e.value.code == "provider_preflight_failed" and "시험: 모델 없음" in e.value.message
+    pre["ok"] = True
     with pytest.raises(dpaid.PaidError) as e:
         dpaid.LiveAdapter("veo_fast").check_ready(GOOD)
     assert e.value.code == "provider_not_wired"
@@ -318,15 +326,34 @@ class Resp:
         return self._data
 
 
+MODEL_OK = Resp(200, {"name": f"models/{config.DRINKS_EXPLAINER_OMNI_MODEL}", "displayName": "Gemini Omni Flash", "supportedGenerationMethods": ["interactions"]})
+
+
 class Client:
-    def __init__(self, resp=None, exc=None):
-        self.resp, self.exc, self.n = resp, exc, 0
+    """가짜 HTTP. GET(사전 검증·조회)과 POST(생성)를 따로 센다 — 생성은 한 번만 보내야 한다."""
+
+    def __init__(self, resp=None, exc=None, model=MODEL_OK):
+        self.resp, self.exc, self.n, self.gets, self.model = resp, exc, 0, 0, model
+
+    def get(self, url, headers=None, params=None):
+        self.gets += 1
+        assert "key=" not in url, "키를 주소에 싣지 않는다"
+        return self.model
 
     def post(self, url, headers, json):
         self.n += 1
         if self.exc:
             raise self.exc
         return self.resp
+
+
+def interaction(video_b64=None, *, status="completed", tokens=23168, iid="int-1", uri=None):
+    """문서 모양의 Interaction 자원(steps[].content[].type=video)."""
+    content = []
+    if video_b64 is not None or uri:
+        content.append({"type": "video", "mime_type": "video/mp4", **({"data": video_b64} if video_b64 is not None else {}), **({"uri": uri} if uri else {})})
+    return {"id": iid, "object": "interaction", "status": status, "model": config.DRINKS_EXPLAINER_OMNI_MODEL,
+            "steps": [{"type": "model_output", "content": content}], "usage": {"total_output_tokens": tokens, "output_tokens_by_modality": [{"modality": "video", "tokens": tokens}]}}
 
 
 @pytest.fixture
@@ -342,22 +369,63 @@ def live(monkeypatch):
     (Client(Resp(408, text="late")), pv.ExplainerOutcomeUnknown),
     (Client(exc=httpx.ReadTimeout("TEST-not-real 포함 문장")), pv.ExplainerOutcomeUnknown),
     (Client(Resp(200)), pv.ExplainerOutcomeUnknown),
-    (Client(Resp(200, {"outputs": [{"type": "text", "text": "거절"}]})), pv.ExplainerOutcomeUnknown),
-    (Client(Resp(200, {"id": "x", "outputs": [{"type": "video", "data": base64.b64encode(b"garbage" * 40).decode()}]})), pv.ExplainerBilledBadFile),
+    (Client(Resp(200, {"id": "x", "status": "completed", "steps": [{"type": "model_output", "content": [{"type": "text", "text": "거절"}]}]})), pv.ExplainerOutcomeUnknown),
+    (Client(Resp(200, {"id": "x", "status": "failed", "steps": []})), pv.ExplainerOutcomeUnknown),
+    (Client(Resp(200, interaction(status="in_progress"))), pv.ExplainerOutcomeUnknown),
+    (Client(Resp(200, {"id": "x", "outputs": [{"type": "video", "data": "QUJD"}]})), pv.ExplainerOutcomeUnknown),   # 옛 가정 모양 — 이제 영상으로 읽지 않는다
+    (Client(Resp(200, interaction(base64.b64encode(b"garbage" * 40).decode()))), pv.ExplainerBilledBadFile),
 ])
 def test_failures_are_sorted_by_whether_money_went(live, tmp_path, client, exc):
     clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="m", clip_sec=8)
     with pytest.raises(exc) as e:
         pv.generate_explainer_clip(clip, str(tmp_path / "o.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=client)
     assert client.n == 1, "재시도하지 않는다"
+    assert client.gets == 1, "생성 전에 무료 사전 검증 한 번"
     assert "TEST-not-real" not in str(e.value), "예외 문장에 비밀이 실리지 않는다"
+
+
+@pytest.mark.parametrize("model_resp,reason", [
+    (Resp(404, text="nf"), "404"),
+    (Resp(200, {"name": "models/gemini-omni-2-flash"}), "이름이 다릅니다"),
+    (Resp(503, text="down"), "503"),
+])
+def test_preflight_failure_refuses_before_sending(live, tmp_path, model_resp, reason):
+    client = Client(Resp(200, interaction("QUJD")), model=model_resp)
+    clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="m", clip_sec=8)
+    with pytest.raises(pv.ExplainerNotSent) as e:
+        pv.generate_explainer_clip(clip, str(tmp_path / "o.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=client)
+    assert client.n == 0 and client.gets == 1 and reason in str(e.value)
+
+
+def test_omni_request_shape_matches_the_documented_interactions_api():
+    clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="the glass tilts", clip_sec=8, end_image_b64="REVG")
+    req = pv.build_omni_request(clip)
+    b = req.body
+    assert req.url.endswith("/v1beta/interactions") and b["model"] == config.DRINKS_EXPLAINER_OMNI_MODEL
+    assert [p["type"] for p in b["input"]] == ["image", "image", "text"] and b["input"][0] == {"type": "image", "mime_type": "image/png", "data": "QUJD"}
+    assert b["generation_config"] == {"video_config": {"task": "image_to_video"}}, "첫 그림이 시작 프레임[문서]"
+    assert b["response_format"] == {"type": "video", "aspect_ratio": "9:16", "resolution": "720p", "delivery": "inline", "duration": "8s"}
+    assert b["background"] is False and b["store"] is False and b["stream"] is False
+    assert "seed" not in str(b) and "negative" not in str(b).lower(), "문서에 없는 칸은 보내지 않는다"
+    assert "8 seconds" in b["input"][-1]["text"], "길이는 문장에도 말한다(duration 형식이 미검증)"
+    assert pv.build_omni_fetch_request("abc").url.endswith("/v1beta/interactions/abc") and pv.build_omni_fetch_request("abc").method == "GET"
+    with pytest.raises(pv.ExplainerProviderError):
+        pv.build_omni_fetch_request("a/b")
+
+
+def test_fetch_interaction_corrects_unknown_outcome(live):
+    client = Client(model=Resp(200, interaction("QUJD", iid="int-9")))
+    parsed = pv.fetch_omni_interaction("int-9", approval_id="ap", client=client)
+    assert parsed.request_id == "int-9" and parsed.video_bytes == b"ABC" and parsed.billed_units == 23168.0 and client.n == 0
+    with pytest.raises(pv.ExplainerSendRefused):
+        pv.fetch_omni_interaction("int-9", approval_id="", client=client)
 
 
 @needs_ffmpeg
 def test_adapter_end_to_end_with_stub_client(live, tmp_path):
     src = tmp_path / "s.mp4"
     base.make_fake_clip(str(src), 4000)
-    client = Client(Resp(200, {"id": "int-1", "outputs": [{"type": "video", "data": base64.b64encode(src.read_bytes()).decode()}], "usage": {"total_output_tokens": 23168}}))
+    client = Client(Resp(200, interaction(base64.b64encode(src.read_bytes()).decode(), tokens=23168)))
     clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="m", clip_sec=4)
     out = pv.generate_explainer_clip(clip, str(tmp_path / "o.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=client)
     assert out.request_id == "int-1" and out.billed_units == 23168.0 and 3950 <= out.measured_ms <= 4050
