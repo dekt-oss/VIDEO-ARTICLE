@@ -373,7 +373,7 @@ def test_render_uses_only_named_assemble_helpers():
     used = {n.attr for n in ast.walk(ast.parse(SRC)) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "assemble"}
     # build_last_frame_command 는 다음 슬롯 시작 그림의 참고 프레임을 뽑을 뿐이다(§3-5, last_frame). 편집표·타임라인에 들어가지 않는다.
     assert used == {"build_concat_clips_command", "build_loudnorm_command", "build_speed_command", "filter_path", "build_last_frame_command"}, used
-    assert "last_frame(" not in SRC[SRC.index("def render_explainer"):SRC.index("def measure_final")], "렌더는 마지막 프레임을 쓰지 않는다"
+    assert "last_frame(" not in SRC[SRC.index("def render_explainer"):SRC.index("def _measure_black")], "렌더는 마지막 프레임을 쓰지 않는다"
 
 
 def test_cut_filter_touches_no_time_and_caps_zoom():
