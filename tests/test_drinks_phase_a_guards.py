@@ -44,8 +44,9 @@ def test_drinks_code_never_reaches_render_or_publish_paths():
     assert [f.relative_to(WEB).as_posix() for f in users] == ["app/api/drinks/route.ts"]
     calls = re.findall(r"triggerWorkflow\(([^)]*)\)", code(users[0]))
     # 2026-10-30: 소재 개발 워커(drinks-develop.yml, 근거·대본 초안 — 결재 상한 안에서만 LLM 호출)가 더해졌다.
-    assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null', '"drinks-develop.yml", null'], \
-        f"주류 라우트가 깨우는 워크플로는 수집·로컬 제작·소재 개발 워커뿐: {calls}"
+    # 2026-11-02: 밈 제작 워커(drinks-meme.yml, 유료 키 없는 로컬 렌더 — tests/test_drinks_meme.py 가 워크플로를 감시)가 더해졌다.
+    assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null', '"drinks-meme.yml", null', '"drinks-develop.yml", null'], \
+        f"주류 라우트가 깨우는 워크플로는 수집·로컬 제작·밈 제작·소재 개발 워커뿐: {calls}"
 
 
 def test_drinks_queries_are_server_only():

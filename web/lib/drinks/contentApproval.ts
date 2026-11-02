@@ -94,7 +94,7 @@ export function chainView(i: {
   }
   if (i.pick?.format_intent === "meme") {
     return { state: "stopped", label: "밈형은 근거·대본을 만들지 않습니다", code: "meme_board",
-      reason: "형식만 적어 두었습니다. 제작은 밈 보드에서 이어집니다(밈 제작 엔진은 아직 없습니다)." };
+      reason: "형식만 적어 두었습니다. 제작안은 밈 보드의 [밈 제작] 칸에서 씁니다(0066 적용 후)." };
   }
   const last = reqs[0];
   if (last && last.status !== "succeeded") {
