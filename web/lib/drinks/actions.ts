@@ -49,6 +49,8 @@ export const DRINKS_ACTIONS = {
   publication_action: "drinks_publication_action",
   // 음원 고르기·바꾸기(0065). 승인 뒤 바꾸면 승인이 풀린다. 게시 직전 재조회·컨테이너 음원 설정(워커 전용)은 여기 없다.
   set_publication_audio: "drinks_set_publication_audio",
+  // 밈 발행안(0068): 게시 대기(publish_waiting)·박자 무관 제작안만. 박자 맞춤은 DB 가 거부한다. 같은 승인·예약 경로(publication_action)를 탄다.
+  create_meme_publication: "drinks_create_meme_publication",
   strategy_action: "drinks_strategy_action",
   // 소재 개발(0060): 근거 초안·대본 초안 요청/취소, 개발 결재 열기·닫기. 초안을 쓰는 LLM 호출·결재 가잡기·확정(워커 전용)은
   // 여기 없다 — 화면은 요청을 큐에 넣을 뿐이다. 아래 PHASE_A_EXCLUDED 의 research_llm·generate_plan·generate_script 와는 다른 이름이다.
@@ -67,7 +69,7 @@ export const DRINKS_ACTIONS = {
   pick_topic: "drinks_pick_topic",
   approve_content: "drinks_approve_content",
   // 밈 제작(0066): 제작안 저장·글 초안 요청·승인·되돌리기·버리기·앱 게시 링크 등록. 렌더·끝내기·가잡기(워커 전용)는 여기 없다.
-  // 게시 요청을 만드는 동작도 없다 - 게시 대기까지가 끝이다.
+  // 게시 요청은 위의 create_meme_publication(0068)으로만 만든다 — 발행 화면에서, 다른 형식과 같은 승인·예약을 거친다.
   meme_save_draft: "drinks_meme_save_draft",
   meme_request_text: "drinks_meme_request_text",
   meme_draft_action: "drinks_meme_draft_action",
@@ -184,6 +186,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   // 순환(0055)
   duplicate_account: 409, output_not_usable: 422, capability_missing: 422, duplicate_publication: 409,
   digest_mismatch: 409, not_publishable: 422, too_late: 422, stale_strategy: 409, insufficient_sample: 422,
+  // 5단계 게시 연결(0068). meme_sync_blocked 는 아래 0066 묶음에 이미 있다
+  ai_label_missing: 422, audio_mismatch: 422,
   // 소재 개발(0060)
   budget_missing: 422, evidence_insufficient: 422, script_check_failed: 422, develop_in_progress: 409,
   // 밈 보드(0063)

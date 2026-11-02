@@ -161,7 +161,7 @@ function MemeCard({ c, today }: { c: IgCardRow; today: string }) {
 function MemeDraftItem({ d, work }: { d: MemeDraftRow; work: MemeWork }) {
   const urls = work.urls[d.id] ?? {};
   return (
-    <div className={d.status === "publish_waiting" ? "card picked" : d.status === "stopped" || d.status === "failed" ? "card rejected" : "card"}>
+    <div className={d.status === "publish_waiting" || d.status === "published" ? "card picked" : d.status === "stopped" || d.status === "failed" ? "card rejected" : "card"}>
       <div className="dk-row">
         <b>{d.owner_name ?? "(이름 없음)"}</b>
         <span className={d.status === "publish_waiting" ? "pill on" : d.status === "stopped" || d.status === "failed" ? "pill reject" : "pill"}>{MEME_STATUS_LABEL[d.status]}</span>
@@ -193,6 +193,7 @@ function MemeWorkSection({ loaded, useCards }: { loaded: MemeWorkLoaded; useCard
     return <section className="section"><h3>밈 제작</h3><LoadProblem state={loaded.state} error={loaded.state === "failed" ? loaded.error : undefined} /></section>;
   }
   const work = loaded.data;
+  // 게시된(published, 0068) 제작안도 '살아 있음' — 같은 카드·소재로 또 만들지 않는다(DB 고유 색인과 같다).
   const live = (d: MemeDraftRow) => !["rejected", "stopped", "failed", "posted_manual"].includes(d.status);
   const openCards = useCards.filter((c) => !work.drafts.some((d) => d.card_id === c.id && live(d)));
   const openPicks = work.picks.filter((p) => !work.drafts.some((d) => d.topic_id === p.topic_id && live(d)));

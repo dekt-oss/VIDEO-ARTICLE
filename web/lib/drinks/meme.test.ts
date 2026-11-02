@@ -50,9 +50,10 @@ test("0066 미적용 판별: 0건과 구별한다", () => {
   assert.equal(isMissingMemeTables("permission denied"), false);
 });
 
-test("게시 대기·앱 부착 안내가 게시 워커 미연결을 말한다", () => {
-  assert.match(memeNextStep("publish_waiting"), /연결되지/);
+test("게시 대기는 발행 화면으로 안내하고(0068 게시 연결), 앱 부착은 자동 게시 안 함을 말한다", () => {
+  assert.match(memeNextStep("publish_waiting"), /drinks\/publish/);
   assert.match(memeNextStep("manual_audio"), /자동으로 올라가지 않습니다/);
+  assert.match(memeNextStep("published"), /올렸습니다/);
 });
 
 test("동작 목록: 화면은 렌더·끝내기·가잡기를 못 부른다", () => {

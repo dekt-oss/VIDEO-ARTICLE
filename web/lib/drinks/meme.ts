@@ -11,7 +11,7 @@ export const MEME_PALETTES = ["amber", "wine", "night", "moss"] as const;
 
 export type MemeFrame = "top_text" | "full_title";
 export type MemeStatus = "text_requested" | "text_running" | "draft" | "approved" | "rendering" | "publish_waiting" | "manual_audio"
-  | "posted_manual" | "stopped" | "failed" | "rejected";
+  | "posted_manual" | "published" | "stopped" | "failed" | "rejected";
 export type MemeSound = "none" | "ambient_local" | "app_manual";
 
 export const FRAME_LABEL: Record<MemeFrame, string> = {
@@ -32,6 +32,7 @@ export const MEME_STATUS_LABEL: Record<MemeStatus, string> = {
   publish_waiting: "게시 대기",
   manual_audio: "앱에서 음원 붙이기 대기(자동 게시 안 함)",
   posted_manual: "앱으로 게시됨",
+  published: "게시됨(워커)",
   stopped: "멈춤",
   failed: "실패",
   rejected: "버림",
@@ -115,7 +116,8 @@ export function memeNextStep(status: MemeStatus): string {
   switch (status) {
     case "draft": return "글과 소리를 확인하고 승인하세요. 승인해도 돈은 나가지 않습니다(로컬 렌더).";
     case "approved": return "제작 워커가 가져가길 기다립니다.";
-    case "publish_waiting": return "완성본을 보세요. 게시 워커는 아직 연결되지 않아 여기서 멈춥니다.";
+    case "publish_waiting": return "완성본을 보세요. 발행 화면(/drinks/publish)의 '게시 대기 밈'에서 발행안을 만들어 승인·예약하면 워커가 올립니다.";
+    case "published": return "워커가 인스타에 올렸습니다. 성과는 /drinks/analytics 에서 봅니다.";
     case "manual_audio": return "자동으로 올라가지 않습니다. 안내대로 앱에서 음원을 붙여 올린 뒤 링크를 등록하세요.";
     case "stopped": return "막힌 이유를 고치려면 초안으로 되돌리세요.";
     case "failed": return "초안으로 되돌려 다시 승인하세요.";

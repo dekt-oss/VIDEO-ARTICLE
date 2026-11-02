@@ -4,10 +4,10 @@
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
-import { AccountActions, AudioControl, CreatePublication, RegisterAccount, RequestActions } from "@/components/drinks/PublishControls";
+import { AccountActions, AudioControl, CreateMemePublication, CreatePublication, RegisterAccount, RequestActions } from "@/components/drinks/PublishControls";
 import { audioSummary, pubBlockLabel } from "@/lib/drinks/audio";
 import {
-  ACCOUNT_STATUS_LABEL, CONNECTION_LABEL, PUB_STATUS_LABEL, PUB_TABS, kst, loadPublishBoard, pubTab, type PubTab,
+  ACCOUNT_STATUS_LABEL, CONNECTION_LABEL, CONTENT_FORMAT_LABEL, PUB_STATUS_LABEL, PUB_TABS, kst, loadPublishBoard, pubTab, type PubTab,
 } from "@/lib/drinks/publishQueries";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +33,8 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
         <LoadProblem state={board.state} error={board.state === "failed" ? board.error : undefined} />
       ) : (() => {
         const { accounts, requests, ready_outputs: ready, slot_weights: slots } = board.data;
+        const readyMemes = board.data.ready_memes ?? [];
+        const aiLabel = board.data.ai_label_text ?? "AI 생성 영상";
         const accLabel = new Map(accounts.map((a) => [a.id, `${a.display_name} (${a.external_account_id})`]));
         const publishable = accounts.filter((a) => a.status !== "disabled").map((a) => ({ id: a.id,
           label: `${a.display_name} · ${a.external_account_id}${a.connection === "fake" ? " · 시험" : ""}${a.publish_enabled ? "" : " · 발행 꺼짐"}`,
@@ -68,13 +70,32 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
                 <div key={`${o.output_review_id}-${postType}`} className="list-row" style={{ alignItems: "flex-start" }}>
                   <span>
                     <Link href={`/drinks/production/${o.plan_revision_id}`}>{o.topic_title}</Link>{" "}
-                    <span className="pill">{postType === "carousel" ? `카드뉴스 ${o.pages}장` : o.format === "carousel" ? "카드뉴스 릴스" : "릴스"}</span>
+                    <span className="pill">{postType === "carousel" ? `카드뉴스 ${o.pages}장` : o.format === "carousel" ? "카드뉴스 릴스" : o.content_format === "explainer" ? "설명형 릴스" : "릴스"}</span>
                     <span className="muted"> · 검수 {kst(o.reviewed_at)}</span>
+                    {o.content_format === "explainer" && <div className="muted">설명형은 캡션에 &apos;{aiLabel}&apos; 한 줄이 있어야 발행안을 만들 수 있습니다(기획 v2 §3-4).</div>}
                   </span>
                   <CreatePublication outputReviewId={o.output_review_id} accounts={publishable} postType={postType} slotHint={slotHint}
                     audioOptions={board.data.audio_options} audioRequired={postType === "reel" && o.format === "carousel"} />
                 </div>
               )))}
+
+            <h2>게시 대기 밈 ({readyMemes.length})</h2>
+            <p className="muted">밈 보드에서 제작이 끝난 박자 무관 밈입니다. 박자 맞춤 밈은 자동 게시하지 않아 여기 오지 않습니다(앱에서 붙입니다).
+              발행안을 만들면 다른 형식과 같은 승인·예약을 거쳐 워커가 올립니다.</p>
+            {readyMemes.length === 0 ? <p className="muted">게시 대기 중인 밈 제작안이 없습니다.</p>
+              : readyMemes.map((m) => (
+                <div key={m.draft_id} className="list-row" style={{ alignItems: "flex-start" }}>
+                  <span style={{ maxWidth: 640 }}>
+                    <Link href="/drinks/memes">{m.owner_name}</Link>{" "}
+                    <span className="pill">밈 릴스{m.duration_ms ? ` ${(m.duration_ms / 1000).toFixed(1)}초` : ""}</span>
+                    <span className="muted"> · 승인 {kst(m.approved_at)}</span>
+                    <div className="muted">{m.top_line}</div>
+                    {m.audio_mode === "ig_audio" && <div className="muted">제작안이 정한 인스타 음원({m.audio_id})을 붙여야 합니다 — Facebook 로그인 계정으로만.</div>}
+                  </span>
+                  <CreateMemePublication draftId={m.draft_id} accounts={publishable} defaultCaption={m.caption ?? ""} slotHint={slotHint}
+                    audioOptions={board.data.audio_options} audioRequired={m.audio_mode === "ig_audio"} boughtScene={!!m.bought_scene} />
+                </div>
+              ))}
 
             <h2 style={{ marginTop: 20 }}>발행 요청</h2>
             <nav className="dk-tabs" aria-label="발행 탭">
@@ -86,7 +107,8 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
             {rows.length === 0 ? <p className="muted">{requests.length === 0 ? "발행 요청이 없습니다(정상 0건)." : "이 탭에 해당하는 요청이 없습니다."}</p>
               : rows.map((r) => {
                 const pages = (r.files ?? []).filter((f) => f.role === "page").length;
-                const what = r.post_type === "carousel" ? `카드뉴스 ${pages}장` : "릴스(영상 + 커버)";
+                const fmt = r.content_format ?? "card";
+                const what = r.post_type === "carousel" ? `카드뉴스 ${pages}장` : `${fmt === "card" ? "" : CONTENT_FORMAT_LABEL[fmt] + " "}릴스(영상 + 커버)`;
                 const audioText = audioSummary(r.audio);
                 const summary = `계정: ${accLabel.get(r.account_id) ?? r.target_external_account_id}\n파일: ${what}\n시각: ${kst(r.publish_at)} (한국)\n캡션: ${r.caption || "(없음)"}${r.post_type === "reel" ? `\n음원: ${audioText}` : ""}`;
                 return (
