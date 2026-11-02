@@ -9,6 +9,7 @@ import { useState } from "react";
 
 import {
   EXPLAINER_APPROVAL_CAP_USD, EXPLAINER_ESTIMATE_USD, approvalLocks, chainView, evidenceContentChanged, sceneDirective, type PickRow,
+  visualClaimsOf,
 } from "@/lib/drinks/contentApproval";
 import type { DevelopBudgetRow, DevelopRequestRow } from "@/lib/drinks/develop";
 import { requestNote } from "@/lib/drinks/develop";
@@ -104,7 +105,7 @@ export default function ContentApprovalTab({
         <h3>내용 승인</h3>
         <p className="muted">
           {pick?.approved_at ? `이 소재는 내용 승인을 마쳤습니다(승인 금액 기록 $${Number(pick.approved_amount_usd ?? 0).toFixed(2)}). ` : "이 소재는 이미 근거가 승인됐습니다. "}
-          이어지는 일은 공통 기획·영상·카드뉴스 탭과 제작 화면에서 합니다.
+          이어지는 일은 공통 기획·영상·카드뉴스 탭과 제작 화면에서 합니다. 설명형은 전부 영상이어야 해서, 전용 제작을 연결하기 전까지 옛 그림 나열식 렌더가 막혀 있습니다.
         </p>
       </section>
     );
@@ -114,6 +115,7 @@ export default function ContentApprovalTab({
   }
 
   const scenes = plan?.plan_json?.scenes ?? [];
+  const visualClaims = visualClaimsOf(requests, plan?.id);
   const totalSec = scenes.reduce((n, s) => n + (typeof s.timing_sec === "number" ? s.timing_sec : 0), 0);
   const claimOf = (id: string) => claims.find((c) => c.claim_id === id);
   const canRegenerate = review?.status === "draft" && pick?.format_intent === "explainer"
@@ -220,7 +222,7 @@ export default function ContentApprovalTab({
           <h3>대본 — 버전 {plan.revision_no} · {scenes.length}장면 · 합계 {totalSec}초{plan.blocked_at ? " · 무효" : ""}</h3>
           {plan.plan_json?.notes && <p className="dk-kv">{plan.plan_json.notes}</p>}
           {scenes.map((sc: VideoScene, i) => {
-            const directive = sceneDirective(sc as unknown as Record<string, unknown>);
+            const directive = sceneDirective({ ...(sc as unknown as Record<string, unknown>), ...visualClaims[i + 1] });
             return (
               <div key={i} className="dk-sub" style={plan.blocked_at ? { opacity: 0.6 } : undefined}>
                 <div className="dk-row">

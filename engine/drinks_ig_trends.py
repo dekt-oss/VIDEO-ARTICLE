@@ -32,7 +32,6 @@ import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Optional
-from urllib.parse import parse_qsl, urlsplit
 
 from . import config
 from .drinks_collect import DbError
@@ -491,19 +490,16 @@ class GraphClient:
 
 
 def next_page_params(body: dict[str, Any]) -> Optional[dict[str, str]]:
-    """다음 쪽을 부를 값. paging.next 주소를 따라가지 않고 값만 꺼낸다(주소에 토큰이 들어 있을 수 있다)."""
+    """다음 쪽을 부를 값. 주소(paging.next)는 따라가지 않는다(주소에 토큰이 들어 있을 수 있다).
+
+    ★ 2026-11-02 실측: ig_audio 응답에는 paging.next 가 없고 paging.cursors.after 만 있다(노래 6쪽·원본 소리 5쪽까지 실제로 넘어갔다).
+      끝을 알리는 표시도 없어서 마지막 쪽에도 커서가 온다 — 호출부는 빈 쪽 또는 쪽 상한에서 멈춘다."""
     paging = body.get("paging")
-    if not isinstance(paging, dict) or not paging.get("next"):
+    if not isinstance(paging, dict):
         return None
-    try:
-        q = dict(parse_qsl(urlsplit(str(paging["next"])).query))
-    except ValueError:
-        return None
-    q.pop("access_token", None)
-    cursor = (paging.get("cursors") or {}).get("after") if isinstance(paging.get("cursors"), dict) else None
-    if cursor:
-        q["after"] = str(cursor)
-    return q or None
+    cursors = paging.get("cursors")
+    cursor = cursors.get("after") if isinstance(cursors, dict) else None
+    return {"after": str(cursor)} if cursor else None
 
 
 def business_discovery_fields(username: str) -> str:

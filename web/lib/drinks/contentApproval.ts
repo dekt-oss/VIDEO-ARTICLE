@@ -171,6 +171,25 @@ export const SCENE_DIRECTIVE_FIELDS: readonly { key: string; label: string }[] =
   { key: "staging_ko", label: "화면에서 일어나는 일" },
 ];
 
+/**
+ * 이 제작안을 만든 요청이 남긴 시각 주장표 → 장면 번호별 칸. DB 검증기가 이 칸을 제작안 본문에 보존하지 않아 요청 결과에 있다.
+ * 사람이 고쳐 저장한 새 버전에는 표가 없다(빈 객체) — 없는 것을 있는 척하지 않는다.
+ */
+export function visualClaimsOf(
+  requests: readonly { result_plan_revision_id: string | null; result?: Record<string, unknown> | null }[],
+  planId: string | null | undefined,
+): Record<number, Record<string, unknown>> {
+  if (!planId) return {};
+  const table = requests.find((r) => r.result_plan_revision_id === planId)?.result?.visual_claims;
+  if (!Array.isArray(table)) return {};
+  const out: Record<number, Record<string, unknown>> = {};
+  for (const row of table) {
+    const scene = (row as { scene?: unknown } | null)?.scene;
+    if (typeof scene === "number") out[scene] = row as Record<string, unknown>;
+  }
+  return out;
+}
+
 export function sceneDirective(scene: Record<string, unknown>): { label: string; value: string }[] {
   return SCENE_DIRECTIVE_FIELDS.flatMap((f) => {
     const v = scene[f.key];

@@ -87,7 +87,6 @@ insert into drink_ig_watch_accounts (username, status, kind, origin, note) value
   ('memezar',      'candidate', 'meme',      'doc_measured', '공식 API 조회 확인, 가운데값 52초(검토_Apify §6 시험 2)'),
   ('daquan',       'candidate', 'meme',      'doc_measured', '공식 API 조회 확인, 가운데값 11초(검토_Apify §6 시험 2)'),
   ('ladbible',     'candidate', 'meme',      'doc_measured', '공식 API 조회 확인. Apify 는 연령 제한으로 6/6 막힘(검토_Apify §6 시험 2)'),
-  ('dailyshot',    'candidate', 'drinks',    'doc_measured', '공식 API 조회 확인(검토_Apify §1). 술 계정'),
   ('masterofmalt', 'candidate', 'drinks',    'doc_measured', '공식 API 조회 확인(검토_Apify §1). 술 계정'),
   ('winefolly',    'candidate', 'drinks',    'doc_measured', '검토_Apify §0·§1 조사 대상. 술 계정'),
   ('vinepair',     'candidate', 'drinks',    'doc_measured', '검토_Apify §0·§1 조사 대상. 술 계정'),

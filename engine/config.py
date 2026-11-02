@@ -4720,7 +4720,8 @@ DRINKS_IG_MEDIA_LIMIT: int = 25                       # 계정당 최근 게시�
 # Business Discovery 의 media 칸. ★ 없는 칸을 하나라도 물으면 그 요청이 통째로 거부될 수 있어(미검증) 코드가 아니라 여기 둔다.
 DRINKS_IG_MEDIA_FIELDS: tuple[str, ...] = (
     "id", "caption", "media_type", "media_product_type", "permalink", "timestamp",
-    "like_count", "comments_count", "view_count", "thumbnail_url", "media_url", "media_audio_type",
+    "like_count", "comments_count", "view_count", "thumbnail_url", "media_url",
+    # ★ media_audio_type 은 넣지 않는다 — Business Discovery 가 #100 으로 요청 전체를 거절한다(2026-11-02 실측, 칸별 호출로 확인).
 )
 DRINKS_IG_ACTIVE_LIMIT: int = 80                      # 관찰 계정 상한(SQL 0063 drinks_ig_watch_action)
 DRINKS_IG_NORMAL_T2_MIN_RATE: float = 0.8             # 정상 관측일: T2 계정 성공률 하한(SQL 0063 drinks_ig_is_normal_day)

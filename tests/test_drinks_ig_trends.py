@@ -475,7 +475,8 @@ def reel(mid, views=100, hours=100, **kw):
 class Graph:
     """가짜 Graph API. 받은 요청을 기록하고, 토큰이 URL 에 들어가는지 함께 본다."""
 
-    def __init__(self, *, accounts=None, audio_pages=1, token_body=None, token_status=200, audio_error=None, audio_map=None):
+    def __init__(self, *, accounts=None, audio_pages=1, token_body=None, token_status=200, audio_error=None, audio_map=None, next_url=False):
+        self.next_url = next_url
         self.accounts = accounts or {}
         self.audio_pages = audio_pages
         self.token_body = token_body if token_body is not None else {"data": {"is_valid": True, "expires_at": int((NOW + timedelta(days=50)).timestamp()),
@@ -501,8 +502,10 @@ class Graph:
             rows = self.audio_map[kind] if self.audio_map else [audio_row(page * 2 + i, kind) for i in range(2)]
             body = {"audio": rows}
             if page + 1 < self.audio_pages:
-                body["paging"] = {"cursors": {"after": str(page + 1)},
-                                  "next": f"https://graph.facebook.com/x?access_token=LEAK&after={page + 1}&audio_type={kind}"}
+                # 2026-11-02 실측 모양: next 없이 cursors.after 만 온다. next 가 와도 따라가지 않는지는 아래 next_url 로 본다.
+                body["paging"] = {"cursors": {"after": str(page + 1)}}
+                if self.next_url:
+                    body["paging"]["next"] = f"https://graph.facebook.com/x?access_token=LEAK&after={page + 1}&audio_type={kind}"
             return jr(body)
         assert TOKEN not in str(req.url), "토큰은 헤더로만"
         fields = q["fields"][0]
@@ -540,8 +543,28 @@ def test_normal_day_records_all_sources_and_fills_position_across_pages():
     assert "t4" not in {c[1].get("source") for c in db.calls if c[0] == "drinks_ig_record_run"}
 
 
-def test_paging_uses_values_not_the_next_url_and_stops_at_page_cap():
+def test_next_page_uses_cursor_alone_as_measured():
+    assert ig.next_page_params({"paging": {"cursors": {"after": "abc"}}}) == {"after": "abc"}
+    assert ig.next_page_params({"paging": {"cursors": {"after": "abc"}, "next": "https://x/?access_token=LEAK&after=abc"}}) == {"after": "abc"}
+    assert ig.next_page_params({"paging": {}}) is None
+    assert ig.next_page_params({}) is None
+
+
+def test_business_discovery_never_asks_for_the_field_it_rejects():
+    # 2026-11-02 실측: 이 칸 하나 때문에 요청 전체가 #100 으로 거절돼 T2 가 통째로 실패한다.
+    assert "media_audio_type" not in config.DRINKS_IG_MEDIA_FIELDS
+    assert "media_audio_type" not in ig.business_discovery_fields("9gag")
+
+
+def test_paging_follows_cursor_to_the_page_cap_without_a_next_url():
     g = Graph(accounts={}, audio_pages=9)
+    go(FakeDb(), g)
+    audio_reqs = [r for r in g.requests if urlsplit(str(r.url)).path.endswith("/ig_audio")]
+    assert len(audio_reqs) == config.DRINKS_IG_AUDIO_PAGES * 2, "next 가 없어도 커서로 쪽 상한까지 간다"
+
+
+def test_paging_uses_values_not_the_next_url_and_stops_at_page_cap():
+    g = Graph(accounts={}, audio_pages=9, next_url=True)
     go(FakeDb(), g)
     audio_reqs = [r for r in g.requests if urlsplit(str(r.url)).path.endswith("/ig_audio")]
     assert len(audio_reqs) == config.DRINKS_IG_AUDIO_PAGES * 2

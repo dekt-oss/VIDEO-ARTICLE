@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  INTENT_TO_FORMAT, approvalLocks, chainView, evidenceContentChanged, sceneDirective, usableDraftPlan, type ApprovalInput,
+  INTENT_TO_FORMAT, approvalLocks, chainView, evidenceContentChanged, sceneDirective, usableDraftPlan, visualClaimsOf, type ApprovalInput,
 } from "./contentApproval.ts";
 import { blockerLabel, contentApprovalState, nextAction, type NextActionInput } from "./model.ts";
 
@@ -11,6 +11,17 @@ const plan = { plan_status: "draft", blocked_at: null, topic_review_id: "r1", dr
 const pick = { format_intent: "explainer" as const };
 const req = (kind: "evidence" | "plan", status: string, o: Record<string, unknown> = {}) =>
   ({ kind, status, created_at: "2026-11-02T00:00:00Z", error_code: null, error_message: null, result: {}, ...o }) as never;
+
+test("시각 주장표는 그 제작안을 만든 요청의 결과에서 장면 번호로 찾는다", () => {
+  const requests = [
+    { result_plan_revision_id: "old", result: { visual_claims: [{ scene: 1, visual_claim_ko: "옛 표" }] } },
+    { result_plan_revision_id: "p1", result: { visual_claims: [{ scene: 2, visual_claim_ko: "새 표" }] } },
+  ];
+  assert.equal(visualClaimsOf(requests, "p1")[2].visual_claim_ko, "새 표");
+  assert.equal(visualClaimsOf(requests, "p1")[1], undefined);
+  assert.deepEqual(visualClaimsOf(requests, "손으로 고친 새 버전"), {}, "표가 없는 버전은 비어 있다");
+  assert.deepEqual(visualClaimsOf(requests, null), {});
+});
 
 test("이어 만들기 상태: 진행 중 → 준비 → 무효", () => {
   assert.equal(chainView({ pick, requests: [req("evidence", "running")], review: null, plan: null }).state, "running");

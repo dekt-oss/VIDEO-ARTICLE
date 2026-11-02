@@ -16,7 +16,7 @@ const JOB_LABEL = { queued: "대기", running: "렌더 중", succeeded: "파일 
 const REVIEW_LABEL = { pending: "검수 대기", approved: "파일 승인", changes_requested: "고칠 점 있음", blocked: "차단" } as const;
 const BLOCK_TEXT: Record<string, string> = {
   plan_not_approved: "제작안이 승인 상태가 아님", plan_blocked: "제작안 차단(근거 철회·권리 변경)", evidence_invalid: "근거를 지금 쓸 수 없음",
-  not_found: "제작안 없음",
+  not_found: "제작안 없음", explainer_engine_not_wired: "설명형은 전부 영상이어야 해서 옛 그림 나열식으로 만들지 않습니다(전용 제작 연결 전)",
 };
 
 export default async function PlanProductionPage(props: { params: Promise<{ planId: string }> }) {

@@ -39,6 +39,7 @@
 --   3. drop function drinks_pick_topic(jsonb); drop function drinks_approve_content(jsonb); drop function drinks_candidate_evidence_counts(jsonb);
 --      drop function drinks_develop_chain_next(drink_develop_requests); drop function drinks_chain_stop_blockers(uuid);
 --      drop function drinks_evidence_content_hash(jsonb, jsonb); drop function drinks_intent_format(text);
+--      0053 의 drinks_plan_renderable 을 다시 실행한다(설명형 옛 렌더 차단을 푼다).
 --   4. drop table drink_topic_picks;
 --      alter table drink_develop_requests drop column chain, drop column draft_evidence, drop column evidence_hash;
 --      alter table drink_plan_revisions drop column drafted_from_unapproved, drop column evidence_content_hash;
@@ -644,6 +645,25 @@ create or replace function drinks_candidate_evidence_counts(p jsonb) returns jso
   )
   select coalesce(jsonb_object_agg(c.id, jsonb_build_object('count', coalesce(h.n, 0), 'chars', coalesce(h.chars, 0))), '{}'::jsonb)
   from cand c left join hit h on h.candidate_id = c.id
+$$;
+
+-- ─────────────────────────────────────────────────────────────
+-- 설명형은 옛 렌더(그림 나열식)로 못 간다
+-- ─────────────────────────────────────────────────────────────
+-- 운영자 규칙 "사진에 설명 하는건 안돼". 옛 경로는 영상이 없으면 사진·대체 카드로 내보낸다. 설명형 전용 제작
+-- (engine/drinks_explainer.py + 클립 구매)을 제작 큐에 잇기 전까지, 설명형으로 고른 소재의 영상 제작안은 제작을 시작할 수 없다.
+-- 요청·시작·끝내기가 전부 이 함수를 지나므로 한 곳에서 막힌다. 고르기 기록이 없는 옛 소재는 그대로다.
+create or replace function drinks_plan_renderable(p_plan uuid) returns text language sql stable as $$
+  select case
+    when pl.id is null then 'not_found'
+    when pl.plan_status <> 'approved' then 'plan_not_approved'
+    when pl.blocked_at is not null then 'plan_blocked'
+    when pl.revoked_at is not null then 'plan_revoked'
+    when not drinks_approval_valid(pl.topic_review_id) then 'evidence_invalid'
+    when exists (select 1 from drink_deliverables d join drink_topic_picks tp on tp.topic_id = d.topic_id
+                 where d.id = pl.deliverable_id and d.format = 'video' and tp.format_intent = 'explainer') then 'explainer_engine_not_wired'
+    else null end
+  from (select 1) x left join drink_plan_revisions pl on pl.id = p_plan
 $$;
 
 -- ─────────────────────────────────────────────────────────────
