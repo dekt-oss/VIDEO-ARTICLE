@@ -254,6 +254,7 @@ def _visual_claim_rules() -> str:
         f"depiction_label(mechanism 은 '{labels['mechanism']}', reality 는 '{labels['reality']}').\n"
         f"- claim_ids 가 없는 장면의 visual_claim_ko 는 '{config.DRINKS_EXPLAINER_MOOD_PREFIX}'로 시작하고 사실 주장·숫자를 담지 않는다. "
         "visual_claim_ko 의 숫자도 인용에 있는 것만 쓴다.\n"
+        "- 모든 장면에 motion_prompt 를 쓴다(영어). 시작 그림에서 무엇이 어떻게 움직이는지만 적는다 — 설명형은 이 문장으로 클립을 산다.\n"
     )
 
 
@@ -699,6 +700,8 @@ def visual_claim_checks(plan: dict[str, Any], claims: list[dict[str, Any]]) -> l
         if missing:
             out.append(script_check.Finding("visual_claim_missing", i, f"시각 주장표 칸이 비었습니다: {', '.join(missing)}"))
             continue
+        if not str(sc.get("motion_prompt") or "").strip():
+            out.append(script_check.Finding("motion_prompt_missing", i, "설명형은 전부 영상입니다 — 영어 움직임 지시문(motion_prompt)이 없으면 클립을 살 수 없습니다"))
         if str(sc["depiction_label"]).strip() != labels[role]:
             out.append(script_check.Finding("depiction_label_mismatch", i, f"{role} 장면의 화면 표기는 '{labels[role]}' 입니다"))
         claim = str(sc["visual_claim_ko"]).strip()

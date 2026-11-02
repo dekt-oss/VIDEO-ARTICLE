@@ -243,8 +243,20 @@ class ExplainerProviderError(RuntimeError):
     """요청을 만들 수 없거나(규격 밖), 응답을 해석할 수 없다. 조용히 넘기지 않는다."""
 
 
-class ExplainerSendRefused(ExplainerProviderError):
+class ExplainerNotSent(ExplainerProviderError):
+    """청구 없음이 확실한 실패 — 보내지 않았거나 공급자가 명시적으로 거절했다(4xx). 시도는 failed_unbilled."""
+
+
+class ExplainerSendRefused(ExplainerNotSent):
     """실제 전송 거절 — 스위치·결재가 없다. 렌더 경로에서는 절대 열리지 않는다."""
+
+
+class ExplainerOutcomeUnknown(ExplainerProviderError):
+    """보냈는데 결과를 모른다(끊김·제한시간·5xx·읽을 수 없는 200 응답). 시도는 unknown_billed — 자동으로 다시 부르지 않는다(§3-3)."""
+
+
+class ExplainerBilledBadFile(ExplainerProviderError):
+    """받았는데 파일로 쓸 수 없다 — 청구 유력. 시도는 failed_billed, 재시도는 새 결재로만(§3-3)."""
 
 
 @dataclass(frozen=True)
@@ -416,15 +428,48 @@ def send_explainer_request(req: ExplainerRequest, *, approval_id: str, client: A
     else:
         raise ExplainerSendRefused(f"이 인증({req.auth})의 전송은 아직 연결하지 않았습니다 — 비밀값은 운영자가 넣습니다(§10-3)")
     own = client is None
-    http = client or httpx.Client(timeout=config.HTTP_TIMEOUT_SEC, follow_redirects=True)
+    http = client or httpx.Client(timeout=config.DRINKS_EXPLAINER_SEND_TIMEOUT_SEC, follow_redirects=True)
     try:
         resp = http.post(req.url, headers=headers, json=req.body)
+    except httpx.HTTPError as exc:
+        # 보낸 뒤 끊겼을 수 있다. 예외 문장에 주소·키가 실릴 수 있어 종류 이름만 남긴다.
+        raise ExplainerOutcomeUnknown(f"{req.provider} 응답을 받지 못했습니다: {type(exc).__name__}") from None
     finally:
         if own:
             http.close()
+    if resp.status_code == 408 or resp.status_code >= 500:
+        raise ExplainerOutcomeUnknown(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
     if resp.status_code >= 400:
-        raise ExplainerProviderError(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
-    return resp.json()
+        raise ExplainerNotSent(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
+    try:
+        return resp.json()
+    except ValueError:
+        raise ExplainerOutcomeUnknown(f"{req.provider} 응답을 읽지 못했습니다(200)") from None
+
+
+def generate_explainer_clip(clip: ExplainerClipInput, out_path: str, *, provider: str, approval_id: str, idempotency_key: str, client: Any = None) -> ExplainerClipOutput:
+    """공급자 어댑터 전체(§3-2): 요청 만들기 → 전송(스위치·결재 없으면 거절) → 해석 → 저장·실측. 재시도하지 않는다.
+
+    실패는 청구 여부로 갈라 올린다: ExplainerNotSent(청구 없음) / ExplainerOutcomeUnknown(모름) / ExplainerBilledBadFile(청구 유력).
+    [미검증] 응답 모양·첫 프레임 고정·길이 지정은 S2 전까지 가정이다(이 절 머리 주석). 멱등키를 받는 칸이 문서에 없어 공급자에 보내지 않는다 —
+    중복 호출은 시도 표(requested → generating 은 한 번뿐)가 막는다."""
+    if provider != "omni":
+        raise ExplainerSendRefused(f"이 공급자({provider})의 전송은 아직 연결하지 않았습니다")
+    if not str(idempotency_key or "").strip():
+        raise ExplainerNotSent("멱등키 없는 호출은 하지 않습니다(시도 행을 먼저 만듭니다)")
+    try:
+        req = build_omni_request(clip)
+    except ExplainerProviderError as exc:
+        raise ExplainerNotSent(str(exc)) from exc
+    data = send_explainer_request(req, approval_id=approval_id, client=client)
+    try:
+        parsed = parse_omni_response(data)
+    except ExplainerProviderError as exc:
+        raise ExplainerOutcomeUnknown(str(exc)) from exc
+    try:
+        return store_parsed_clip(parsed, out_path)
+    except ExplainerProviderError as exc:
+        raise ExplainerBilledBadFile(str(exc)) from exc
 
 
 def generate_clip(cut: dict[str, Any], header: dict[str, Any], out_path: str,
