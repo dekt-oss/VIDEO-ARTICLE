@@ -32,8 +32,13 @@ def utf8_console() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+def preview_date() -> str:
+    """산출물 폴더 날짜. 기본 오늘(KST). 한 단계의 산출물을 다른 날 이어 보려면 DRINKS_PREVIEW_DATE=2026-11-02 처럼 준다."""
+    return os.getenv("DRINKS_PREVIEW_DATE") or today_local().isoformat()
+
+
 def preview_dir(name: str) -> Path:
-    out = ROOT / "docs" / f"preview-{today_local().isoformat()}" / name
+    out = ROOT / "docs" / f"preview-{preview_date()}" / name
     out.mkdir(parents=True, exist_ok=True)
     return out
 

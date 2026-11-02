@@ -74,6 +74,7 @@ def tts_ms_measured(scenes: list[dict[str, Any]], out_dir: Path, tts: str) -> di
 
 
 def dry_run(out: Path, *, tts: str) -> dict[str, Any]:
+    out.mkdir(parents=True, exist_ok=True)
     fx = load_fixture()
     review = {"status": "approved", "claims": fx["claims"], "brief": fx["brief"], "sources": fx["sources"]}
     job = {"request_id": "dry-run", "lease_token": "dry", "kind": "plan", "budget_id": "dry-budget", "topic": fx["topic"], "review": review}
