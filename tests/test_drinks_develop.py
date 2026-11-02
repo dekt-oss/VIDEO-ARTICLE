@@ -130,6 +130,16 @@ def boom(*a, **k):
     raise AssertionError("모델을 부르면 안 됩니다")
 
 
+@pytest.fixture(autouse=True)
+def _old_short_shape(monkeypatch):
+    """이 파일의 금본위 사례(whisky-water-v1)와 사고 사례들은 2026-11-02 이전 모양(5~7장면·30~40초·시각 주장표 없음)이다.
+    그 사례들로 재는 규칙(인용·근거·재작성·결재)은 길이와 무관하므로 옛 모양으로 고정해 그대로 잰다.
+    설명형 길이·시각 주장표는 tests/test_drinks_explainer.py 가 기본값으로 잰다."""
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_SCENES", (5, 7))
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_SECONDS", (30.0, 40.0))
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_EXPLAINER_CONTRACT", False)
+
+
 def deps(**kw):
     base = {"extract_claims": boom, "write_plan": boom, "jev_check": lambda n, s: None, "fetcher_factory": lambda hosts: boom()}
     base.update(kw)
