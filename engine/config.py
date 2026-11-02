@@ -4621,8 +4621,8 @@ DRINKS_DEVELOP_JEV_ENABLED: bool = _get_bool("DRINKS_DEVELOP_JEV_ENABLED", False
 DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN: float = _get_float("DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN", 0.6)
 DRINKS_DEVELOP_SOURCE_KINDS_AUTO: tuple[str, ...] = ("official", "expert", "manufacturer")   # 운영자가 붙이지 않은 출처(수집원·공식 목록·논문)에서 자동으로 쓰는 종류
 DRINKS_DEVELOP_SOURCE_KINDS_NEVER: tuple[str, ...] = ("community", "reader", "retailer")      # 운영자가 붙였어도 사실 근거로 쓰지 않는 종류(질문·후기·판매글)
-DRINKS_DEVELOP_SCENES: tuple[int, int] = (5, 7)      # 대본 장면 수 범위(30~40초 릴스)
-DRINKS_DEVELOP_SECONDS: tuple[float, float] = (30.0, 40.0)   # 장면 timing_sec 합계 범위
+DRINKS_DEVELOP_SCENES: tuple[int, int] = (8, 11)     # 대본 장면 수 범위 — 설명형(기획 v2 §9 D1). 2026-11-02 전에는 (5, 7)
+DRINKS_DEVELOP_SECONDS: tuple[float, float] = (48.0, 66.0)   # 장면 timing_sec 합계(배속 전). ÷ DRINKS_EXPLAINER_PLAYBACK_SPEED = 최종 40~55초. 전에는 (30, 40)
 
 
 # ═════════════════════════════════════════════════════════════
@@ -4630,6 +4630,79 @@ DRINKS_DEVELOP_SECONDS: tuple[float, float] = (30.0, 40.0)   # 장면 timing_sec
 # ═════════════════════════════════════════════════════════════
 
 # ── ⓐ 설명형 ──
+# 기획 v2 §2-2·§2-3·§3 · 근거·되돌리기: docs/deviation-drinks-explainer-stage1.md
+DRINKS_DEVELOP_EXPLAINER_CONTRACT: bool = _get_bool("DRINKS_DEVELOP_EXPLAINER_CONTRACT", True)   # 대본에 시각 주장표(§3-4)를 요구하고 정지 카드를 막는다
+DRINKS_EXPLAINER_FINAL_SEC: tuple[float, float] = (40.0, 55.0)    # 최종 길이(§2-2). 밖이면 자동 검사가 막는다
+DRINKS_EXPLAINER_TARGET_SEC: tuple[float, float] = (45.0, 50.0)   # 목표 길이(§2-2) — 참고값, 막지 않는다
+# ★ 위험 2(§11): 이 배속은 조립이 끝난 파일 전체에 걸린다 — 소리뿐 아니라 **클립 움직임도 이 배로 빨라진다.**
+#   그래서 클립 원본에서 필요한 길이 = 배속 전 시간이고, 최종 시간 = 배속 전 ÷ 이 값이다. 1.0 미만은 E2(느리게 재생) 위반이라 렌더가 거부한다.
+#   어색하면 이 값만 낮추고 TTS 속도로 보상한다(운영자 판단 — S1 에서 화면으로 본다). 이미지 나열식 배속(DRINKS_PLAYBACK_SPEED)과는 따로 논다.
+DRINKS_EXPLAINER_PLAYBACK_SPEED: float = _get_float("DRINKS_EXPLAINER_PLAYBACK_SPEED", 1.2)
+DRINKS_EXPLAINER_CUT_TARGET_FINAL_MS: int = 3200   # 편집 컷 나눌 때의 목표 길이(최종 기준, §2-2 의 2~4초 안)
+DRINKS_EXPLAINER_CUT_MAX_FINAL_MS: int = 4500      # 한 컷 최대(§2-2). 넘으면 경고(마무리 컷 예외는 §3-6 이 S1 판정으로 남겼다)
+DRINKS_EXPLAINER_CUT_MIN_FINAL_MS: int = 2000      # 한 컷 최소(§2-2). 훅은 1.5초라 경고만 — §2-2 와 §3-6·§3-6-2 가 어긋나는 자리다
+DRINKS_EXPLAINER_ZOOM_MAX: float = 1.15            # E6 디지털 확대 상한(움직이는 영상 위에서만)
+DRINKS_EXPLAINER_BOUNDARY_KINDS: tuple[str, ...] = ("loop", "flash_forward", "cut_to_mechanism", "match", "same_clip")   # §3-5 + 같은 클립 이어짐(§3-6)
+DRINKS_EXPLAINER_MIN_SRC_MARGIN_MS: int = 200      # 슬롯 min_src_ms = 가장 늦은 사용 지점 + 이 여유(§3-3)
+DRINKS_EXPLAINER_PLAN_MARGIN_MS: int = 500         # 계획 규칙: 사용 길이 ≤ 자산 길이 − 이 값(§3-6-2)
+DRINKS_EXPLAINER_DEPICTION_LABELS: dict[str, str] = {"mechanism": "설명용 도해", "reality": "CG 연출"}   # §3-4 화면 표기
+DRINKS_EXPLAINER_MOOD_PREFIX: str = "장면 분위기"   # 근거 없는 장면의 visual_claim_ko 는 이 말로 시작해야 한다(§3-4)
+# 편집·인코딩
+DRINKS_EXPLAINER_X264_PRESET: str = "veryfast"
+DRINKS_EXPLAINER_X264_CRF: int = 18
+DRINKS_EXPLAINER_FFMPEG_TIMEOUT_SEC: float = _get_float("DRINKS_EXPLAINER_FFMPEG_TIMEOUT_SEC", 600.0)
+# 안전 영역·자막 층(§2-3). ★ 설계값(가설) — 실제 앱 확인 전이다[미검증].
+DRINKS_EXPLAINER_SAFE_BOTTOM_PX: int = 340
+DRINKS_EXPLAINER_SAFE_RIGHT_PX: int = 120
+DRINKS_EXPLAINER_SAFE_LEFT_PX: int = 60            # 문서에 없는 값 — 왼쪽 가장자리에 붙지 않게 잡았다
+DRINKS_EXPLAINER_HOOK_BAND_PCT: tuple[float, float] = (0.20, 0.25)   # 훅 자막 상자가 들어갈 높이 띠(화면 위에서부터)
+DRINKS_EXPLAINER_HOOK_WINDOW_SEC: float = 1.5      # 훅은 최종 시간 0~이 값 안에 있다(§3-8)
+DRINKS_EXPLAINER_FONT_FILE: str = "Pretendard-Bold.otf"   # assets/fonts — ass 필터 fontsdir 로 넘긴다
+DRINKS_EXPLAINER_FONT_NAME: str = "Pretendard"
+DRINKS_EXPLAINER_OUTLINE_PX: int = 5
+DRINKS_EXPLAINER_CAPTION_LAYOUT: dict[str, dict[str, int]] = {
+    # size·min_size 글자 크기(px), max_lines 최대 줄 수, anchor(ASS: 8 위 가운데, 2 아래 가운데, 7 왼쪽 위), y = 앵커 높이(px)
+    "hook":      {"size": 64, "min_size": 44, "max_lines": 1, "anchor": 8, "y": 392},
+    "phrase":    {"size": 72, "min_size": 52, "max_lines": 2, "anchor": 2, "y": 1570},
+    "tail":      {"size": 56, "min_size": 40, "max_lines": 2, "anchor": 2, "y": 1570},
+    "card":      {"size": 56, "min_size": 40, "max_lines": 2, "anchor": 8, "y": 560},
+    "depiction": {"size": 34, "min_size": 34, "max_lines": 1, "anchor": 7, "y": 300},
+}
+# 자동 검사(§3-8 A). 설명형 전용 — 공유 설정 RENDER_QA_MAX_FREEZE_SEC(3.0초·경고)은 건드리지 않는다.
+DRINKS_EXPLAINER_FREEZE_NOISE: str = "-55dB"
+DRINKS_EXPLAINER_FREEZE_MIN_SEC: float = 0.8       # 첫 값(§3-8). S3 운영자 판정과 대조해 정한다[미검증]
+DRINKS_EXPLAINER_BLACK_MIN_SEC: float = 0.3
+DRINKS_EXPLAINER_BLACK_PIC_TH: float = 0.98
+DRINKS_EXPLAINER_LOUDNESS_TOLERANCE_LU: float = 2.0   # 목표는 LOUDNESS_LUFS
+# 슬롯·후보·시도(§3-3). 0062 의 drinks_explainer_limits() 와 같아야 한다(tests/test_drinks_explainer.py 가 대조).
+DRINKS_EXPLAINER_MAX_CANDIDATES_PER_SLOT: int = 2
+DRINKS_EXPLAINER_MAX_ATTEMPTS_PER_CANDIDATE: int = 2
+DRINKS_EXPLAINER_MAX_ATTEMPTS_PER_SLOT: int = 4
+# 공급자 어댑터(§3-2). ★ 호출 안 함 — 모양 시험만 했다. 실제 전송은 이 스위치 + 결재 id 가 있어야 하고, 렌더에서는 닿지 않는다.
+DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED: bool = _get_bool("DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED", False)
+DRINKS_EXPLAINER_OMNI_MODEL: str = "gemini-omni-1.1-flash"
+DRINKS_EXPLAINER_OMNI_URL: str = "https://generativelanguage.googleapis.com/v1beta/interactions"
+DRINKS_EXPLAINER_OMNI_RESOLUTIONS: tuple[str, ...] = ("360p", "720p", "1080p", "4k")
+DRINKS_EXPLAINER_OMNI_SEC_RANGE: tuple[int, int] = (3, 10)
+DRINKS_EXPLAINER_VERTEX_MODEL: str = "veo-3.1-fast-generate-001"
+DRINKS_EXPLAINER_VERTEX_LOCATION: str = "us-central1"
+DRINKS_EXPLAINER_VERTEX_SEC_TIERS: tuple[int, ...] = (4, 6, 8)
+DRINKS_EXPLAINER_VERTEX_RESOLUTIONS: tuple[str, ...] = ("720p", "1080p")
+# 날짜 붙은 단가표 — 견적은 여기서만 읽는다(§3-7, 위험 1). ★ 전부 문서값이고 청구서와 대조한 적 없다.
+#   ② 의 "1 count = 1초" 해석은 [미검증](§3-2) — S2 청구서로 확정한다.
+DRINKS_EXPLAINER_PRICES: dict = {
+    "as_of": "2026-10-31",
+    "image": {"mechanism": {"model": "gemini-3-pro-image", "usd": 0.134}, "reality": {"model": "gemini-2.5-flash-image", "usd": 0.039}},
+    "omni": {"model": DRINKS_EXPLAINER_OMNI_MODEL, "billing": "tokens", "output_usd_per_mtok": 17.50,
+             "tokens_per_sec": {"720p": 5792, "1080p": 8688}, "input_image_tokens": 1120, "input_usd_per_mtok": 1.50},
+    "veo_fast": {"model": DRINKS_EXPLAINER_VERTEX_MODEL, "billing": "seconds_unverified", "video_only_usd_per_sec": {"720p": 0.08, "1080p": 0.10},
+                 "with_audio_usd_per_sec": {"720p": 0.10}, "sunset": "2026-11-17 또는 그 이후 지원 종료 예정"},
+    "veo_lite": {"model": "veo-3.1-lite-generate-001", "billing": "seconds_unverified", "video_only_usd_per_sec": {"720p": 0.03, "1080p": 0.05},
+                 "stability": "preview", "adapter": False},
+}
+# 한 편 계획(§3-6-2) — 견적 계산의 입력. 대본이 나오면 실측으로 바뀐다.
+DRINKS_EXPLAINER_PLAN_COUNTS: dict[str, int] = {"mechanism_images": 3, "reality_images": 6, "clip_sec": 64, "second_candidate_sec": 8,
+                                                "retry_clip_sec": 8, "retry_mechanism_images": 1}
 
 
 # ── ⓑ 인스타 트렌드 보드 ──
