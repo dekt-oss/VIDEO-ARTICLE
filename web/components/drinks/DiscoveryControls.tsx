@@ -146,7 +146,7 @@ export function CandidateActions({ c, others, recommended, defaultWeek, budgetId
           <button className="btn pick" disabled={busy || !format || !week || !title || !question || cats.length === 0} onClick={() => pick()}>이걸로</button>
           <p className="muted">
             {format === "explainer" && "근거 초안 → 대본 초안을 이어서 만들고, 내용 승인 화면에서 한 번에 승인합니다."}
-            {format === "card" && "근거 초안까지 만들고 멈춥니다(카드뉴스 대본 자동 작성은 아직 없습니다). 그다음은 기존 근거·공통 기획·카드뉴스 탭입니다."}
+            {format === "card" && "근거 초안 → 카드 제작안 초안을 이어서 만들고, 소재의 내용 승인 탭에서 한 번에 승인합니다. 렌더는 로컬이라 0원이고, 초안을 쓰는 데 개발 결재가 필요합니다."}
             {format === "meme" && "형식만 적어 둡니다. 제작은 밈 보드에서 이어집니다."}
             {" "}모델 호출은 열린 개발 결재 안에서만 일어납니다{budgetId ? "" : " — 지금 열린 결재가 없어 근거 단계에서 멈춥니다"}.
           </p>

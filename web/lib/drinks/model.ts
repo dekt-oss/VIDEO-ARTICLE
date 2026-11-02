@@ -462,7 +462,7 @@ export interface PickSummary {
   format_intent: "explainer" | "card" | "meme";
 }
 
-/** 내용 승인 화면으로 보낼 상태인가. 근거가 이미 승인된 소재·[이걸로]를 안 누른 소재·카드뉴스는 기존 흐름(null)이다. */
+/** 내용 승인 화면으로 보낼 상태인가. 근거가 이미 승인된 소재·[이걸로]를 안 누른 소재는 기존 흐름(null)이다. draftPlan = 고른 형식의 현재 제작안. */
 export function contentApprovalState(
   status: TopicStatus,
   review: Pick<ReviewRow, "id" | "status"> | null,
@@ -475,7 +475,7 @@ export function contentApprovalState(
     if (videoPlan.blocked_at) return open ? "invalidated" : null;
     if (open && videoPlan.topic_review_id === review!.id) return "ready";
   }
-  if (!pick || pick.format_intent === "card") return null;
+  if (!pick) return null;
   return "waiting";
 }
 
@@ -525,7 +525,7 @@ export function deriveTopic(
         return [f, { status: p.plan_status, blocked: Boolean(p.blocked_at), evidenceValid: nowValid(pr ?? null) }];
       })
     ),
-    contentApproval: contentApprovalState(t.status, review, fmtPlans.video, pickRow),
+    contentApproval: contentApprovalState(t.status, review, pickRow?.format_intent === "card" ? fmtPlans.carousel : fmtPlans.video, pickRow),
   });
   const scoreSource = approvalValid ? approvedReview : review;
   return {

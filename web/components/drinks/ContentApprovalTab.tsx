@@ -5,6 +5,7 @@
 // ★ 근거 문장을 고치거나 주장을 빼면 그 근거로 쓴 대본은 서버가 무효로 만든다 — [이 근거로 대본 다시 만들기] 뒤에야 승인할 수 있다.
 // ★ 버튼 잠금은 편의다. 막는 것은 DB(drinks_approve_content + 기존 승인 함수들)다.
 // ★ 승인 금액은 기록만 한다. 결재를 열지 않고 돈이 나가지 않는다 — 영상 구매가 연결되면 이 금액이 그 편의 결재 금액이 된다.
+// ★ 카드뉴스(0065)도 같은 화면이다. 금액을 받지 않는다 — 렌더가 로컬 0원이다.
 import { useState } from "react";
 
 import {
@@ -17,7 +18,7 @@ import { FORMAT_INTENT_LABEL, type FormatIntent } from "@/lib/drinks/formatRecom
 import {
   FORMAT_FIT_MIN, QUOTE_LABEL, SELECT_THRESHOLD, SUPPORT_LABEL, VISUAL_ROLE_LABEL, blockerLabel, fitOk, nextMonday, weightedScore, type Scores,
 } from "@/lib/drinks/model";
-import type { Brief, Claim, PlanRow, ReviewRow, SnapshotRow, TopicRow, VideoScene } from "@/lib/drinks/types";
+import type { Brief, CarouselPage, Claim, PlanRow, ReviewRow, SnapshotRow, TopicRow, VideoScene } from "@/lib/drinks/types";
 import { AutoRefresh } from "./DevelopControls";
 import ScoreInputs from "./ScoreInputs";
 import { useDrinksAction } from "./useDrinksAction";
@@ -27,7 +28,7 @@ export default function ContentApprovalTab({
 }: {
   topic: TopicRow;
   review: ReviewRow | null;
-  /** 영상 결과물의 현재 제작안 */
+  /** 고른 형식(설명형=영상, 카드뉴스=카드)의 현재 제작안 */
   plan: PlanRow | null;
   pick: PickRow | null;
   requests: DevelopRequestRow[];
@@ -58,11 +59,14 @@ export default function ContentApprovalTab({
     || JSON.stringify(scores) !== JSON.stringify(review?.scores ?? {})
     || claims.some((c) => c.support_review !== savedClaims.find((s) => s.claim_id === c.claim_id)?.support_review);
   const score = weightedScore(scores as Record<string, unknown>);
-  const fitVideo = typeof scores.fit_video === "number" ? scores.fit_video : null;
+  const isCard = pick?.format_intent === "card";
+  const planFormat = isCard ? "carousel" : "video";
+  const fitRaw = isCard ? scores.fit_carousel : scores.fit_video;
+  const formatFit = typeof fitRaw === "number" ? fitRaw : null;
   const blockers = review?.readiness?.blockers ?? [];
   const locks = approvalLocks({
     pick, chain, dirty, blockers, score, selectThreshold: SELECT_THRESHOLD, scoreException: scoreExc,
-    fitVideo, fitMin: FORMAT_FIT_MIN, fitException: fitExc, amountUsd: Number(amount),
+    formatFit, fitMin: FORMAT_FIT_MIN, fitException: fitExc, amountUsd: Number(amount),
   }, blockerLabel);
   const editable = review !== null && review.status === "draft" && topic.status === "researching";
 
@@ -78,9 +82,9 @@ export default function ContentApprovalTab({
     if (!review || !plan) return;
     const r = await run("approve_content", {
       topic_id: topic.id, expected_topic_version: topic.version, review_id: review.id, expected_review_version: review.version,
-      plan_revision_id: plan.id, expected_plan_version: plan.version, approved_amount_usd: Number(amount),
+      plan_revision_id: plan.id, expected_plan_version: plan.version, ...(isCard ? {} : { approved_amount_usd: Number(amount) }),
       ...(scoreExc.trim() ? { score_exception_reason: scoreExc.trim() } : {}),
-      ...(fitExc.trim() ? { format_exceptions: { video: fitExc.trim() } } : {}),
+      ...(fitExc.trim() ? { format_exceptions: { [planFormat]: fitExc.trim() } } : {}),
     }, "근거와 대본을 함께 승인하고 편성했습니다", "내용 승인");
     setServerBlockers(!r.ok && Array.isArray(r.detail) ? (r.detail as string[]) : null);
   };
@@ -104,8 +108,9 @@ export default function ContentApprovalTab({
       <section className="section">
         <h3>내용 승인</h3>
         <p className="muted">
-          {pick?.approved_at ? `이 소재는 내용 승인을 마쳤습니다(승인 금액 기록 $${Number(pick.approved_amount_usd ?? 0).toFixed(2)}). ` : "이 소재는 이미 근거가 승인됐습니다. "}
-          이어지는 일은 공통 기획·영상·카드뉴스 탭과 제작 화면에서 합니다. 설명형은 전부 영상이어야 해서, 전용 제작을 연결하기 전까지 옛 그림 나열식 렌더가 막혀 있습니다.
+          {pick?.approved_at ? `이 소재는 내용 승인을 마쳤습니다${pick.approved_amount_usd ? `(승인 금액 기록 $${Number(pick.approved_amount_usd).toFixed(2)})` : ""}. ` : "이 소재는 이미 근거가 승인됐습니다. "}
+          이어지는 일은 공통 기획·영상·카드뉴스 탭과 제작 화면에서 합니다.
+          {isCard ? " 카드뉴스는 제작 화면에서 [렌더 요청]을 누르면 카드와 릴스 영상이 함께 나옵니다(로컬·0원)." : " 설명형은 전부 영상이어야 해서, 전용 제작을 연결하기 전까지 옛 그림 나열식 렌더가 막혀 있습니다."}
         </p>
       </section>
     );
@@ -115,10 +120,12 @@ export default function ContentApprovalTab({
   }
 
   const scenes = plan?.plan_json?.scenes ?? [];
+  const pages: CarouselPage[] = plan?.plan_json?.pages ?? [];
+  const reel = plan?.plan_json?.reel;
   const visualClaims = visualClaimsOf(requests, plan?.id);
   const totalSec = scenes.reduce((n, s) => n + (typeof s.timing_sec === "number" ? s.timing_sec : 0), 0);
   const claimOf = (id: string) => claims.find((c) => c.claim_id === id);
-  const canRegenerate = review?.status === "draft" && pick?.format_intent === "explainer"
+  const canRegenerate = review?.status === "draft" && (pick?.format_intent === "explainer" || isCard)
     && (chain.state === "invalidated" || (chain.state === "stopped" && chain.code !== "meme_board"));
 
   return (
@@ -209,15 +216,35 @@ export default function ContentApprovalTab({
           {score !== null && score < SELECT_THRESHOLD && (
             <label className="dk-field"><span>{score}점 — 기준 {SELECT_THRESHOLD}점 미만 예외 사유</span><input value={scoreExc} onChange={(e) => setScoreExc(e.target.value)} /></label>
           )}
-          {fitVideo !== null && !fitOk(scores, "video") && (
-            <label className="dk-field"><span>영상 적합성 {FORMAT_FIT_MIN}점 미만 예외 사유</span><input value={fitExc} onChange={(e) => setFitExc(e.target.value)} /></label>
+          {formatFit !== null && !fitOk(scores, planFormat) && (
+            <label className="dk-field"><span>{isCard ? "카드뉴스" : "영상"} 적합성 {FORMAT_FIT_MIN}점 미만 예외 사유</span><input value={fitExc} onChange={(e) => setFitExc(e.target.value)} /></label>
           )}
           {contentEdited && <p className="banner-warn">근거 내용이 바뀌었습니다. 저장하면 지금 대본은 무효가 되고, 대본을 다시 만들어야 승인할 수 있습니다(모델 비용이 듭니다).</p>}
           <div className="actions"><button className="btn" disabled={busy || !dirty || !editable} onClick={save}>저장</button></div>
         </section>
       )}
 
-      {plan && (
+      {plan && isCard && (
+        <section className="section">
+          <h3>카드 제작안 — 버전 {plan.revision_no} · {pages.length}장{plan.blocked_at ? " · 무효" : ""}</h3>
+          {plan.plan_json?.notes && <p className="dk-kv">{plan.plan_json.notes}</p>}
+          {reel && (
+            <p className="dk-kv">릴스 첫 화면 큰 제목 <b>{reel.hook_title}</b> · 마지막 화면 한 줄 <b>{reel.share_line}</b></p>
+          )}
+          {pages.map((pg, i) => (
+            <div key={i} className="dk-sub" style={plan.blocked_at ? { opacity: 0.6 } : undefined}>
+              <div className="dk-row"><b>{i + 1}쪽</b> <span className="pill">{pg.role}</span> <b>{pg.heading}</b></div>
+              {pg.body && <p style={{ margin: "6px 0", whiteSpace: "pre-line" }}>{pg.body}</p>}
+              {pg.claim_ids.map((id) => {
+                const c = claimOf(id);
+                return <p key={id} className="muted" style={{ margin: "2px 0" }}>근거 {id}: {c?.source_refs[0]?.original_quote ?? c?.text ?? "(이 버전에 없는 주장)"}</p>;
+              })}
+            </div>
+          ))}
+        </section>
+      )}
+
+      {plan && !isCard && (
         <section className="section">
           <h3>대본 — 버전 {plan.revision_no} · {scenes.length}장면 · 합계 {totalSec}초{plan.blocked_at ? " · 무효" : ""}</h3>
           {plan.plan_json?.notes && <p className="dk-kv">{plan.plan_json.notes}</p>}
@@ -246,7 +273,14 @@ export default function ContentApprovalTab({
         </section>
       )}
 
-      <section className="section">
+      {isCard && (
+        <section className="section">
+          <h3>금액</h3>
+          <p className="muted">카드와 릴스 영상은 로컬에서 만들어 렌더 비용이 0원입니다. 승인 금액을 받지 않습니다. 근거·대본을 만드는 데 든 비용은 개발 카드에 있습니다.</p>
+        </section>
+      )}
+
+      {!isCard && <section className="section">
         <h3>금액</h3>
         <p className="dk-kv">
           설명형 영상 구매 계획값(기획 §3-7, 48초 기준 — 이 편의 실측이 아닙니다): 예상 <b>${EXPLAINER_ESTIMATE_USD.toFixed(2)}</b>, 승인 상한 <b>${EXPLAINER_APPROVAL_CAP_USD.toFixed(2)}</b>
@@ -258,7 +292,7 @@ export default function ContentApprovalTab({
           지금은 금액을 기록만 합니다. 승인해도 결재가 열리지 않고 돈이 나가지 않습니다 — 영상 구매는 아직 연결되지 않았고, 유료 렌더는 제작 화면의 결재를 따로 거칩니다.
           근거·대본을 만드는 데 든 비용은 개발 카드에 있습니다.
         </p>
-      </section>
+      </section>}
 
       <section className="section">
         {locks.length > 0 ? (

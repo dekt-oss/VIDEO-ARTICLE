@@ -62,14 +62,17 @@ test("표시 없는 대본·다른 근거 버전의 대본은 이어 만들기 �
 
 const clean: ApprovalInput = {
   pick, chain: { state: "ready", label: "준비", reason: null }, dirty: false, blockers: [], score: 80, selectThreshold: 65,
-  scoreException: "", fitVideo: 3, fitMin: 2, fitException: "", amountUsd: 8.9,
+  scoreException: "", formatFit: 3, fitMin: 2, fitException: "", amountUsd: 8.9,
 };
 const locks = (o: Partial<ApprovalInput>) => approvalLocks({ ...clean, ...o }, blockerLabel);
 
 test("승인 버튼: 모든 조건이 맞을 때만 열리고, 잠길 때는 이유가 쉬운 말로 나온다", () => {
   assert.deepEqual(locks({}), []);
   assert.match(locks({ pick: null })[0], /\[이걸로\]/);
-  assert.match(locks({ pick: { format_intent: "card" } })[0], /설명형만/);
+  assert.match(locks({ pick: { format_intent: "meme" } })[0], /밈 보드/);
+  assert.deepEqual(locks({ pick: { format_intent: "card" }, amountUsd: 0 }), [], "카드뉴스는 0원이라 승인 금액을 받지 않는다");
+  assert.match(locks({ pick: { format_intent: "card" }, formatFit: 1 })[0], /카드뉴스 적합성/);
+  assert.match(locks({ amountUsd: 0 })[0], /승인 금액/);
   assert.match(locks({ chain: { state: "running", label: "대본을 만드는 중입니다", reason: null } })[0], /만드는 중/);
   assert.match(locks({ chain: { state: "invalidated", label: "근거가 바뀌어 대본이 무효가 됐습니다", reason: "다시 만드세요" } })[0], /무효.*다시 만드세요/);
   assert.match(locks({ dirty: true })[0], /저장/);
@@ -79,8 +82,8 @@ test("승인 버튼: 모든 조건이 맞을 때만 열리고, 잠길 때는 이
   assert.match(support[0], /\[c1\]/);
   assert.match(locks({ score: 60 })[0], /60점/);
   assert.deepEqual(locks({ score: 60, scoreException: "시즌 소재" }), []);
-  assert.match(locks({ fitVideo: 1 })[0], /적합성/);
-  assert.deepEqual(locks({ fitVideo: 1, fitException: "화면이 단순" }), []);
+  assert.match(locks({ formatFit: 1 })[0], /적합성/);
+  assert.deepEqual(locks({ formatFit: 1, fitException: "화면이 단순" }), []);
   assert.match(locks({ amountUsd: 0 })[0], /승인 금액/);
   assert.match(locks({ amountUsd: 10.5 })[0], /승인 금액/);
   assert.match(locks({ amountUsd: Number("abc") })[0], /승인 금액/);
@@ -109,7 +112,7 @@ test("다음 행동: 준비된 초안은 내용 승인으로, 무효면 다시 �
   assert.equal(contentApprovalState("researching", { id: "r1", status: "draft" }, { ...plan, blocked_at: "t" } as never, pick), "invalidated");
   assert.equal(contentApprovalState("researching", null, null, pick), "waiting");
   assert.equal(contentApprovalState("researching", null, null, { format_intent: "meme" }), "waiting");
-  assert.equal(contentApprovalState("researching", null, null, { format_intent: "card" }), null, "카드뉴스는 기존 흐름");
+  assert.equal(contentApprovalState("researching", null, null, { format_intent: "card" }), "waiting", "카드뉴스도 내용 승인으로 간다(0065)");
   assert.equal(contentApprovalState("researching", { id: "r1", status: "draft" }, null, null), null, "[이걸로]를 안 눌렀으면 기존 흐름");
   assert.equal(contentApprovalState("selected", { id: "r1", status: "approved" }, plan as never, pick), null, "승인 뒤에는 기존 흐름");
   assert.equal(contentApprovalState("researching", { id: "r1", status: "approved" }, plan as never, pick), "waiting", "옛 탭으로 근거를 승인한 뒤 철회된 경우 — 무효 대본이 없으면 [이걸로] 상태만 본다");

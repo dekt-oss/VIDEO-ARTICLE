@@ -67,7 +67,9 @@ export default async function DrinksTopicPage(props: {
   const develop = tab === "overview" || tab === "evidence" || tab === "brief" || tab === "approval" ? await loadDevelop(topic.id) : null;
   const developOk = develop?.state === "ok" ? develop : null;
   // 내용 승인으로 가는 소재에서 예전 탭을 열면 그 사실을 말한다 — 예전 탭의 승인은 그대로 되지만 같은 근거를 두 번 판단하지 않게 한다.
-  const oldTabNotice = d.action.tab === "approval" && (tab === "evidence" || tab === "brief" || tab === "video");
+  const oldTabNotice = d.action.tab === "approval" && (tab === "evidence" || tab === "brief" || tab === "video" || tab === "carousel");
+  // 내용 승인은 고른 형식의 제작안을 보여 준다.
+  const approvalPlan = (pick?.format_intent === "card" ? d.plans.carousel : d.plans.video) ?? null;
 
   return (
     <main className="container">
@@ -119,10 +121,10 @@ export default async function DrinksTopicPage(props: {
 
       {tab === "approval" && (
         <ContentApprovalTab
-          key={`${d.review?.id ?? "none"}-${d.review?.version ?? 0}-${d.plans.video?.id ?? "none"}-${d.plans.video?.version ?? 0}-${topic.version}`}
+          key={`${d.review?.id ?? "none"}-${d.review?.version ?? 0}-${approvalPlan?.id ?? "none"}-${approvalPlan?.version ?? 0}-${topic.version}`}
           topic={topic}
           review={d.review}
-          plan={d.plans.video ?? null}
+          plan={approvalPlan}
           pick={pick}
           requests={developOk?.requests ?? []}
           budget={developOk ? pickBudget(developOk.budgets, Date.now()) : null}

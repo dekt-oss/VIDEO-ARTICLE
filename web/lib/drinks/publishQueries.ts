@@ -2,6 +2,7 @@
 // 두 화면이 각각 DB 함수 하나(drinks_publish_board / drinks_analytics_board)로 읽는다 — 상한을 넘으면 truncated.
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fromQuery, type Loaded } from "@/lib/drinks/model";
+import type { AudioBundle, AudioOption } from "@/lib/drinks/audio";
 
 export type PubStatus = "draft" | "awaiting_approval" | "approved" | "scheduled" | "publishing" | "published" | "failed"
   | "unknown" | "paused" | "canceled";
@@ -33,11 +34,15 @@ export interface RequestView {
   external_url: string | null; reconcile_state: string; attempt_count: number; error_code: string | null; error_message: string | null;
   published_at: string | null; version: number; updated_at: string;
   files: { role: string; position: number; storage_key: string; width: number | null; height: number | null; state: string }[] | null;
+  /** 0065 음원 묶음. 없으면 null */
+  audio?: AudioBundle | null; audio_verified_at?: string | null; audio_required?: boolean;
 }
 
 export interface ReadyOutput {
   output_review_id: string; manifest_id: string; plan_revision_id: string; format: "video" | "carousel"; topic_title: string;
   reviewed_at: string | null; pages: number;
+  /** 0065: 이 묶음으로 아직 만들 수 있는 게시 형식 */
+  post_types?: ("carousel" | "reel")[];
 }
 
 export interface PublishBoard {
@@ -46,6 +51,8 @@ export interface PublishBoard {
   requests: RequestView[];
   requests_truncated: boolean;
   ready_outputs: ReadyOutput[];
+  /** 0065: 고를 수 있는 음원(가장 최근 수집일 목록) */
+  audio_options?: AudioOption[];
   slot_weights: Record<string, number> | null;
 }
 

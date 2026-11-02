@@ -35,7 +35,7 @@ export interface ChainView {
   label: string;
   /** 멈췄을 때 이유(서버가 준 문장 그대로) */
   reason: string | null;
-  /** 멈춘 코드: evidence_insufficient·budget_missing·script_check_failed·card_plan_not_built·meme_board … */
+  /** 멈춘 코드: evidence_insufficient·budget_missing·script_check_failed·meme_board … (card_plan_not_built 는 0065 이전 기록에만 있다) */
   code: string | null;
 }
 
@@ -125,7 +125,8 @@ export interface ApprovalInput {
   score: number | null;
   selectThreshold: number;
   scoreException: string;
-  fitVideo: number | null;
+  /** 고른 형식의 적합성 점수(fit_video·fit_carousel). 없으면 null */
+  formatFit: number | null;
   fitMin: number;
   fitException: string;
   amountUsd: number;
@@ -135,17 +136,20 @@ export interface ApprovalInput {
 export function approvalLocks(i: ApprovalInput, blockerText: (code: string) => string): string[] {
   const out: string[] = [];
   if (!i.pick) out.push("[이걸로]로 형식을 고른 소재만 이 화면에서 승인합니다.");
-  else if (i.pick.format_intent !== "explainer") out.push("한 번 승인은 지금 설명형만 됩니다 — 근거 탭·공통 기획 탭에서 이어 가세요.");
+  else if (INTENT_TO_FORMAT[i.pick.format_intent] === null) out.push("밈형은 내용 승인을 하지 않습니다 — 밈 보드에서 이어 가세요.");
   if (i.chain.state !== "ready") out.push(`${i.chain.label}${i.chain.reason ? ` — ${i.chain.reason}` : ""}`);
   if (i.dirty) out.push("저장하지 않은 수정이 있습니다 — 먼저 저장하세요.");
   for (const b of i.blockers) out.push(blockerText(b));
   if (i.score !== null && i.score < i.selectThreshold && !i.scoreException.trim()) {
     out.push(`편성 평가 ${i.score}점이 기준 ${i.selectThreshold}점 미만입니다 — 예외 사유를 적으세요.`);
   }
-  if (i.fitVideo !== null && i.fitVideo < i.fitMin && !i.fitException.trim()) {
-    out.push(`영상 적합성이 ${i.fitMin}점 미만입니다 — 예외 사유를 적으세요.`);
+  if (i.formatFit !== null && i.formatFit < i.fitMin && !i.fitException.trim()) {
+    out.push(`${i.pick?.format_intent === "card" ? "카드뉴스" : "영상"} 적합성이 ${i.fitMin}점 미만입니다 — 예외 사유를 적으세요.`);
   }
-  if (!(i.amountUsd > 0) || i.amountUsd > MAX_APPROVAL_USD) out.push(`승인 금액은 0보다 크고 $${MAX_APPROVAL_USD} 이하여야 합니다.`);
+  // 카드뉴스는 로컬 렌더 0원이라 승인 금액을 받지 않는다(0065).
+  if (i.pick?.format_intent !== "card" && (!(i.amountUsd > 0) || i.amountUsd > MAX_APPROVAL_USD)) {
+    out.push(`승인 금액은 0보다 크고 $${MAX_APPROVAL_USD} 이하여야 합니다.`);
+  }
   return out;
 }
 

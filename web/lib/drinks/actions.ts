@@ -47,6 +47,8 @@ export const DRINKS_ACTIONS = {
   create_publication: "drinks_create_publication",
   update_publication: "drinks_update_publication",
   publication_action: "drinks_publication_action",
+  // 음원 고르기·바꾸기(0065). 승인 뒤 바꾸면 승인이 풀린다. 게시 직전 재조회·컨테이너 음원 설정(워커 전용)은 여기 없다.
+  set_publication_audio: "drinks_set_publication_audio",
   strategy_action: "drinks_strategy_action",
   // 소재 개발(0060): 근거 초안·대본 초안 요청/취소, 개발 결재 열기·닫기. 초안을 쓰는 LLM 호출·결재 가잡기·확정(워커 전용)은
   // 여기 없다 — 화면은 요청을 큐에 넣을 뿐이다. 아래 PHASE_A_EXCLUDED 의 research_llm·generate_plan·generate_script 와는 다른 이름이다.
@@ -174,6 +176,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   not_normal_day: 409,
   // 내용 승인 한 번(0064)
   evidence_not_usable: 422, review_not_draft: 422, plan_stale: 409,
+  // 음원 계약(0065)
+  audio_required: 422, audio_not_for_carousel: 422, audio_not_found: 422, audio_connection_unsupported: 422, licensed_mix_not_rendered: 422,
 };
 
 export interface DbError {

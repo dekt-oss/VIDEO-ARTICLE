@@ -144,7 +144,7 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
                 </div>
               ))}
             </div>
-            {m.review && <OutputReview review={m.review} format={f} usableNow={!m.currentBlock} />}
+            {m.review && <OutputReview review={m.review} format={f} usableNow={!m.currentBlock} hasReel={f === "carousel" && m.files.some((x) => x.role === "final_video")} />}
           </article>
         ))}
       </section>
