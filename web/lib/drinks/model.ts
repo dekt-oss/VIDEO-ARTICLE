@@ -340,11 +340,18 @@ export interface NextActionInput {
    * evidenceValid = 그 제작안 **자신이 참조하는** 근거 버전을 지금 쓸 수 있는가(편성 버전과 다를 수 있다 — 정책 ③).
    */
   plans: Partial<Record<Format, { status: VersionStatus; blocked: boolean; evidenceValid: boolean } | null>>;
+  /**
+   * 내용 승인 한 번(0064). ready=승인 전 근거로 쓴 대본이 준비됨 / invalidated=근거를 고쳐 대본이 무효 / waiting=[이걸로]를 눌렀고 아직 대본이 없음.
+   * null·없음이면 기존 두 단계 흐름 그대로다.
+   */
+  contentApproval?: ContentApprovalState;
 }
+
+export type ContentApprovalState = "ready" | "invalidated" | "waiting" | null;
 
 export interface NextAction {
   label: string;
-  tab: "overview" | "evidence" | "brief" | Format | "history";
+  tab: "overview" | "evidence" | "brief" | "approval" | Format | "history";
   hint: string;
   /** 지금 실행할 수 없는 행동. 화면은 버튼을 잠그고 이유를 보여준다(2026-10-28 기준 해당 행동 없음 — 제작이 연결됐다). */
   unavailable?: boolean;
@@ -362,6 +369,15 @@ export function nextAction(v: NextActionInput): NextAction {
       return { label: "다시 열기", tab: "overview", hint: "보류·제외·중복 처리된 소재입니다. 다시 열면 이전 단계로 돌아갑니다." };
     case "researching":
     case "ready": {
+      if (v.contentApproval === "ready") {
+        return { label: "내용 승인", tab: "approval", hint: "근거표·대본·장면 지시·금액을 한 화면에서 보고 한 번에 승인합니다. 주장별 확인은 이 화면에서 사람이 합니다." };
+      }
+      if (v.contentApproval === "invalidated") {
+        return { label: "대본 다시 만들기", tab: "approval", hint: "근거를 고쳐 그 근거로 쓴 대본이 무효가 됐습니다. 고친 근거로 대본을 다시 만들어야 승인할 수 있습니다." };
+      }
+      if (v.contentApproval === "waiting") {
+        return { label: "이어 만들기 확인", tab: "approval", hint: "근거 → 대본을 이어 만드는 중이거나 멈췄습니다. 어디까지 됐는지와 멈춘 이유가 내용 승인 화면에 있습니다." };
+      }
       const also = v.status === "ready" ? " (지금 승인된 버전으로 편성할 수도 있습니다)" : "";
       if (v.reviewStatus === "draft") {
         return v.reviewBlockers > 0
@@ -441,11 +457,34 @@ const num = (v: number | string | null | undefined): number | null =>
 
 const hasScores = (r: ReviewRow | null) => Boolean(r?.scores && Object.keys(r.scores).length > 0);
 
+/** 형식 의도(0064) 중 다음 행동에 필요한 칸. 값 import 를 피하려고 여기서 모양만 적는다. */
+export interface PickSummary {
+  format_intent: "explainer" | "card" | "meme";
+}
+
+/** 내용 승인 화면으로 보낼 상태인가. 근거가 이미 승인된 소재·[이걸로]를 안 누른 소재·카드뉴스는 기존 흐름(null)이다. */
+export function contentApprovalState(
+  status: TopicStatus,
+  review: Pick<ReviewRow, "id" | "status"> | null,
+  videoPlan: Pick<PlanRow, "plan_status" | "blocked_at" | "topic_review_id" | "drafted_from_unapproved"> | null | undefined,
+  pick: PickSummary | null | undefined
+): ContentApprovalState {
+  if (status !== "researching") return null;
+  const open = review !== null && (review.status === "draft" || review.status === "in_review");
+  if (videoPlan?.drafted_from_unapproved && videoPlan.plan_status === "draft") {
+    if (videoPlan.blocked_at) return open ? "invalidated" : null;
+    if (open && videoPlan.topic_review_id === review!.id) return "ready";
+  }
+  if (!pick || pick.format_intent === "card") return null;
+  return "waiting";
+}
+
 export function deriveTopic(
   t: TopicRow,
   reviews: Map<string, ReviewRow>,
   deliverables: DeliverableRow[],
-  plans: Map<string, PlanRow>
+  plans: Map<string, PlanRow>,
+  pickRow?: PickSummary | null
 ): TopicDerived {
   const missing: string[] = [];
   const pick = <T,>(id: string | null, m: Map<string, T>, label: string): T | null => {
@@ -486,6 +525,7 @@ export function deriveTopic(
         return [f, { status: p.plan_status, blocked: Boolean(p.blocked_at), evidenceValid: nowValid(pr ?? null) }];
       })
     ),
+    contentApproval: contentApprovalState(t.status, review, fmtPlans.video, pickRow),
   });
   const scoreSource = approvalValid ? approvedReview : review;
   return {

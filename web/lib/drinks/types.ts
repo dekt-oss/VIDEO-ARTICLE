@@ -225,6 +225,9 @@ export interface PlanRow {
   revoked_reason: string | null;
   blocked_at: string | null;
   blocked_reason: string | null;
+  /** 0064: 승인 전 근거로 쓴 대본인가. 0064 전 DB 에서는 오지 않는다 */
+  drafted_from_unapproved?: boolean;
+  evidence_content_hash?: string | null;
   version: number;
   created_at: string;
   updated_at: string;
