@@ -13,6 +13,11 @@
   · 게시 호출 **전** 공급자가 거부를 확정 → failed(재시도 가능). 캡션·계정·공급자 꺼짐 → paused(사람이 고친다).
   · 게시 호출 **뒤** 무엇이든(타임아웃·오류·워커 죽음) → unknown. 정확히-한-번은 보장하지 않는다(§8.4).
 공급자: 계정이 fake 연결이면 가짜 공급자, 실제 연결이면 DRINKS_IG_LIVE=1 일 때만 Meta Graph API(운영자 승인 전 꺼짐).
+
+5단계(2026-11-02, 0068 — docs/deviation-drinks-stage5-publish-loop.md): 요청에 content_format(card·explainer·meme)이 실린다.
+  · 밈(meme_spec 동봉)은 게시 호출 전에 drinks_meme.assert_auto_publishable 을 지난다 — 박자 맞춤은 DB 가 세 겹으로 막지만 워커도 다시 잰다.
+  · 설명형(산 장면 밈)은 캡션에 'AI 생성 영상' 한 줄이 없으면 올리지 않는다(기획 v2 §3-4). DB 가 먼저 막고 여기서도 잰다.
+  0068 전 DB(content_format 없음)에서는 카드로 본다 — 옛 경로 그대로다.
 """
 
 from __future__ import annotations
@@ -107,6 +112,31 @@ def audio_configuration(req: dict[str, Any], provider: Any) -> Optional[dict[str
     return {"audio_id": audio["audio_id"], "audio_volume": audio["audio_volume"], "video_volume": audio["video_volume"]}
 
 
+def format_gate(req: dict[str, Any]) -> Optional[tuple[str, str]]:
+    """형식별 게시 문(0068). 막히면 (코드, 이유) — 게시 호출 전이라 paused 로 보낸다. 통과면 None.
+
+    밈: drinks_meme.assert_auto_publishable(박자 맞춤·앱 부착 음원은 자동 게시 안 함). 설명형·산 장면 밈: 'AI 생성 영상' 한 줄.
+    content_format 이 없는 옛 DB(0068 전)에서는 카드로 보고 아무것도 막지 않는다."""
+    fmt = req.get("content_format") or "card"
+    caption = req.get("caption") or ""
+    if fmt == "meme":
+        from .drinks_meme import MemeStop, assert_auto_publishable   # 렌더 의존성이 무거워 밈 요청에서만 읽는다
+
+        spec = req.get("meme_spec")
+        if not isinstance(spec, dict) or not spec:
+            return "meme_spec_missing", "밈 제작안 내용이 요청에 없습니다 — DB(0068)가 동봉해야 합니다"
+        try:
+            assert_auto_publishable(spec)
+        except MemeStop as exc:
+            return exc.code, exc.message
+        if (spec.get("scene") or {}).get("source") == "bought_reaction" and "AI 생성" not in caption:
+            return "ai_label_missing", f"산 장면을 쓴 밈의 캡션에는 '{config.DRINKS_AI_LABEL_TEXT}' 한 줄이 있어야 합니다"
+        return None
+    if fmt == "explainer" and config.DRINKS_AI_LABEL_TEXT not in caption:
+        return "ai_label_missing", f"설명형 릴스 캡션에는 '{config.DRINKS_AI_LABEL_TEXT}' 한 줄이 있어야 합니다(기획 v2 §3-4)"
+    return None
+
+
 def publish_one(req: dict[str, Any], rpc: Rpc, storage: Storage, providers: ProviderFor, *,
                 wait_sec: float = CONTAINER_WAIT_SEC, poll_sec: float = CONTAINER_POLL_SEC) -> dict[str, Any]:
     lease = {"request_id": req["request_id"], "lease_token": req["lease_token"]}
@@ -122,6 +152,9 @@ def publish_one(req: dict[str, Any], rpc: Rpc, storage: Storage, providers: Prov
         if not rep.ok:
             return finish("paused", error_code="caption_check",
                           error_message="캡션 검사에서 막혔습니다: " + "; ".join(f"{f.code}: {f.message}" for f in rep.blocks)[:1500])
+        gate_stop = format_gate(req)
+        if gate_stop is not None:
+            return finish("paused", error_code=gate_stop[0], error_message=gate_stop[1][:1500])
         provider = providers(account)
         if req["post_type"] == "reel":
             audio_cfg = audio_configuration(req, provider)
@@ -231,7 +264,7 @@ def run(rpc: Rpc, storage: Storage, providers: ProviderFor, *, worker_id: str, m
         req = got.get("request")
         if not req:
             break
-        log.info("drinks: 발행 %s 시작(%s)", req["request_id"], req["post_type"])
+        log.info("drinks: 발행 %s 시작(%s · %s)", req["request_id"], req["post_type"], req.get("content_format") or "card")
         res = publish_one(req, rpc, storage, providers, wait_sec=wait_sec, poll_sec=poll_sec)
         log.info("drinks: 발행 %s → %s", req["request_id"], (res or {}).get("status"))
         published.append({"request_id": req["request_id"], **(res or {})})

@@ -4915,3 +4915,18 @@ DRINKS_EXPLAINER_ASPECT_TOLERANCE: float = 0.02    # 후보 자동 판정의 9:1
 DRINKS_EXPLAINER_SEND_TIMEOUT_SEC: float = _get_float("DRINKS_EXPLAINER_SEND_TIMEOUT_SEC", 300.0)   # 동기 응답(§3-2 ①) 대기. [미검증] 끊기면 unknown_billed 로 멈춘다
 DRINKS_EXPLAINER_STALE_ATTEMPT_SEC: int = 1800     # 이만큼 멈춘 시도는 워커가 죽은 것으로 본다(0053 임대 시간과 같다)
 DRINKS_EXPLAINER_PLACEHOLDER_SYL_PER_SEC: float = 5.9   # tts=placeholder 의 길이 추정(§3-6-2 말 속도). 무음 시험 전용
+
+# ── 5단계 게시 크론·성과 루프(2026-11-02, 총괄계획 §5·§6 5단계). docs/deviation-drinks-stage5-publish-loop.md ──
+# ★ 예약 실행은 기본 꺼짐이다. 저장소 변수(Settings → Variables) DRINKS_PUBLISH_CRON_ENABLED=1 이 있어야 drinks-publish.yml 의 크론 잡이 일한다.
+#   값이 없으면 크론이 떠도 아무것도 하지 않는다. 수동 실행(workflow_dispatch)은 변수와 무관하다.
+DRINKS_PUBLISH_CRON_VAR: str = "DRINKS_PUBLISH_CRON_ENABLED"
+# 크론 시각(UTC — GitHub Actions 는 UTC 만 받는다). .github/workflows/drinks-publish.yml 과 같아야 한다(tests/test_drinks_stage5_publish_loop.py 가 대조).
+#   게시: KST 07:00~23:30 매 30분(총괄계획 §5 "예약 시각" — 늦어도 30분 안에 집는다. 2시간 넘게 늦으면 게시하지 않는다, 0055).
+#   성과: 매일 KST 08:15(수집 06:30·트렌드 07:30 뒤). 전략: 월요일 KST 08:45(§5 "주 1회").
+DRINKS_PUBLISH_CRON_PUBLISH: str = "0,30 22-23,0-14 * * *"
+DRINKS_PUBLISH_CRON_METRICS: str = "15 23 * * *"
+DRINKS_PUBLISH_CRON_STRATEGY: str = "45 23 * * 0"
+# 콘텐츠 형식(0068 drink_publication_requests.content_format). 전략 묶음 'format' 의 값이다. SQL 과 같아야 한다.
+DRINKS_CONTENT_FORMATS: tuple[str, ...] = ("card", "explainer", "meme")
+# 설명형 캡션 필수 한 줄(기획 v2 §3-4). SQL drinks_ai_label_text() 와 같아야 한다. 산 장면을 쓴 밈은 'AI 생성' 이 들어가면 된다(0066 규칙 그대로).
+DRINKS_AI_LABEL_TEXT: str = "AI 생성 영상"

@@ -5,10 +5,13 @@
 무엇을 재나: 비교 칸(72h) 스냅샷의 **(저장 + 공유) ÷ 도달**. 저장·공유는 "나중에 다시 볼 만했다"는 신호라 카드뉴스의
 목적(정보)에 가장 가깝다. 도달이 없거나 0, 저장·공유 중 하나라도 못 받았으면 그 게시물은 표본에서 뺀다(0 으로 치지 않는다).
 
-어떻게 제안하나: 묶음(주종·결과물 형식·소재 갈래·게시 시간대·질문 유형)마다 평균 ÷ 전체 평균 − 1 을 목표 가중치로 보고,
+어떻게 제안하나: 묶음(주종·게시 형식·소재 갈래·게시 시간대·질문 유형·콘텐츠 형식)마다 평균 ÷ 전체 평균 − 1 을 목표 가중치로 보고,
 지금 가중치에서 한 번에 ±max_step 만 움직인다. 묶음 표본이 min_group 미만이면 그 묶음은 그대로, 전체 표본이
 min_total 미만이면 **아무것도 바꾸지 않는 '표본 부족' 제안**만 낸다 — 몇 편 안 될 때의 차이는 우연이다.
 자동 반영하지 않는다. 운영자가 [반영]해야 새 전략 버전이 된다(drinks_strategy_action).
+
+5단계(2026-11-02, 0068): 묶음에 콘텐츠 형식(format = card·explainer·meme)이 더해졌다 — 총괄계획 §5 "⑨ 다음 편성 제안" 이 형식별
+성과를 본다. 0068 전 DB 는 'format' 값을 안 주므로 그 묶음은 비어 제안에서 빠진다(옛 DB 가 모르는 차원 이름을 거부하지 않게).
 """
 
 from __future__ import annotations
@@ -21,13 +24,15 @@ from .drinks_collect import supabase_rpc
 from .util import log
 
 Rpc = Callable[[str, dict[str, Any]], Any]
-DIMENSIONS = ("category", "post_type", "lane", "slot", "question_kind")
-DIM_KO = {"category": "주종", "post_type": "형식", "lane": "소재 갈래", "slot": "게시 시간대", "question_kind": "질문 유형"}
+DIMENSIONS = ("category", "post_type", "lane", "slot", "question_kind", "format")
+DIM_KO = {"category": "주종", "post_type": "게시 형식", "lane": "소재 갈래", "slot": "게시 시간대", "question_kind": "질문 유형",
+          "format": "콘텐츠 형식"}
 VALUE_KO = {"sake": "사케", "traditional": "전통주", "whisky": "위스키", "carousel": "카드뉴스", "reel": "릴스",
             "evergreen": "상시", "timely": "시의성", "reader_question": "독자 질문", "morning": "아침", "afternoon": "낮",
             "evening": "저녁", "night": "밤",
             "storage": "보관", "misconception": "오해", "selection": "선택", "debate": "논쟁", "pairing": "페어링",
-            "howto": "방법", "general": "일반"}
+            "howto": "방법", "general": "일반",
+            "card": "카드뉴스(형식)", "explainer": "설명형", "meme": "밈형"}
 
 
 def save_rate(values: dict[str, Any]) -> Optional[float]:
@@ -42,7 +47,7 @@ def save_rate(values: dict[str, Any]) -> Optional[float]:
 def _groups(post: dict[str, Any]) -> dict[str, list[str]]:
     return {"category": list(post.get("categories") or []), "post_type": [post.get("post_type")],
             "lane": [post.get("lane")], "slot": [post.get("slot")],
-            "question_kind": [post.get("question_kind")]}
+            "question_kind": [post.get("question_kind")], "format": [post.get("format")]}
 
 
 def propose(inputs: dict[str, Any]) -> dict[str, Any]:
