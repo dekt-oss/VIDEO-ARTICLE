@@ -254,7 +254,13 @@ def _visual_claim_rules() -> str:
         f"depiction_label(mechanism 은 '{labels['mechanism']}', reality 는 '{labels['reality']}').\n"
         f"- claim_ids 가 없는 장면의 visual_claim_ko 는 '{config.DRINKS_EXPLAINER_MOOD_PREFIX}'로 시작하고 사실 주장·숫자를 담지 않는다. "
         "visual_claim_ko 의 숫자도 인용에 있는 것만 쓴다.\n"
-        "- 모든 장면에 motion_prompt 를 쓴다(영어). 시작 그림에서 무엇이 어떻게 움직이는지만 적는다 — 설명형은 이 문장으로 클립을 산다.\n"
+        "- 모든 장면에 motion_prompt 를 쓴다(영어, 필수). 시작 그림에서 무엇이 어떻게 움직이는지만 적는다(카메라 한 가지 + 피사체 움직임 한두 가지) — "
+        "설명형은 이 문장으로 클립을 산다. 장면을 다시 묘사하지 않는다(시작 그림이 이미 장면이다).\n"
+        "- 2번 이후 모든 장면에 continuity(경계 종류)를 쓴다: 'ref:N'(N번 장면에서 선택된 클립의 마지막 프레임을 그대로 이어 그린다 — 같은 잔·같은 테이블), "
+        "'match'(바로 앞 장면이 그대로 이어진다, ref:(앞 번호)와 같다), 'cut'(새 장면·새 장소). 역할이 바뀌는 자리(실사 → 도해)는 'cut' 으로 적는다 — "
+        "코드가 '같은 잔의 속으로 들어가는 전환'으로 처리한다. 'match'·'ref' 는 정말 같은 물건·같은 조명이 이어질 때만 쓴다(그 장면은 앞 장면이 다 만들어진 뒤에 산다).\n"
+        "- 첫 장면은 질문이고, 첫 번째 mechanism 장면이 훅이다(그 장면의 결정적 순간을 영상 맨 앞에 먼저 보여 준다). 그래서 첫 mechanism 장면의 "
+        "transformation 은 1~2초 안에 눈으로 보이는 변화여야 한다.\n"
     )
 
 
@@ -272,7 +278,7 @@ def plan_system() -> str:
         "- 사실을 말하는 장면(content_kind=fact)은 claim_ids 에 근거를 단다. 도입·전환(transition)은 비워도 된다.\n"
         + ("- 각 장면: narration, visual_role(reality|mechanism), content_kind, claim_ids, timing_sec, answers_ko(이 장면이 답하는 질문), "
            "staging_ko(화면에서 무슨 일이 일어나나), explanation, visual_prompt(영어), overlays(선택), "
-           "continuity(앞 장면 이어 그리기면 'ref:N'), motion_prompt(영어, 선택), visual_claim_ko, allowed_simplification, forbidden_misreading, depiction_label.\n"
+           "continuity('ref:N' | 'match' | 'cut' — 2번 이후 필수), motion_prompt(영어, 필수), visual_claim_ko, allowed_simplification, forbidden_misreading, depiction_label.\n"
            if contract else
            "- 각 장면: narration, visual_role(reality|mechanism|text_card), content_kind, claim_ids, timing_sec, answers_ko(이 장면이 답하는 질문), "
            "staging_ko(화면에서 무슨 일이 일어나나), explanation, visual_prompt(영어), "
@@ -722,10 +728,44 @@ def visual_claim_checks(plan: dict[str, Any], claims: list[dict[str, Any]]) -> l
     return out
 
 
+CONTINUITY_REF = re.compile(r"^\s*ref:(\d+)\s*$")
+
+
+def continuity_kind(value: Any, scene_no: int) -> tuple[Optional[str], Optional[int]]:
+    """장면의 continuity 칸 → (종류, 이어 그릴 장면 번호). 'ref:N' → ('ref', N) · 'match' → ('ref', n-1) · 'cut' → ('cut', None).
+    비었거나 모르는 값이면 (None, None). 1번 장면은 경계가 없다(loop)."""
+    s = str(value or "").strip().lower()
+    if scene_no <= 1 or not s:
+        return None, None
+    m = CONTINUITY_REF.match(s)
+    if m:
+        return "ref", int(m.group(1))
+    if s == "match":
+        return "ref", scene_no - 1
+    if s == "cut":
+        return "cut", None
+    return None, None
+
+
+def explainer_boundary_checks(plan: dict[str, Any]) -> list[script_check.Finding]:
+    """경계 종류 검사(차단, 개발 단계만). 2번 이후 장면은 continuity 가 있어야 하고, ref 는 앞 장면만 가리킨다.
+    ★ 지시서(drinks_explainer_queue.build_directive)는 이 검사를 다시 하지 않는다 — 리허설·옛 제작안은 continuity 가 없어도 'cut' 으로 읽는다."""
+    out: list[script_check.Finding] = []
+    for i, sc in enumerate((plan or {}).get("scenes") or [], 1):
+        if i == 1:
+            continue
+        kind, ref = continuity_kind(sc.get("continuity"), i)
+        if kind is None:
+            out.append(script_check.Finding("boundary_missing", i, "경계 종류(continuity)가 없습니다 — 'ref:N' | 'match' | 'cut' 중 하나를 적습니다"))
+        elif kind == "ref" and not 1 <= int(ref or 0) < i:
+            out.append(script_check.Finding("invalid_continuity", i, f"이어 그릴 {ref}번은 앞 장면이 아닙니다"))
+    return out
+
+
 def visual_claim_table(plan: dict[str, Any]) -> list[dict[str, Any]]:
     """장면별 시각 주장표. ★ DB 검증기(0057 drinks_validate_plan)는 이 칸들을 보존하지 않는다 — source_table 처럼 요청 결과(result)에 남긴다.
     제작안을 사람이 고쳐 새 버전을 저장하면 그 버전에는 이 표가 없다: 이어 쓰는 쪽은 표가 없으면 멈춰야 한다(근거·이유 docs/deviation-drinks-explainer-stage1.md)."""
-    return [{"scene": i, "claim_ids": list(sc.get("claim_ids") or []), **{k: sc.get(k) for k in VISUAL_CLAIM_FIELDS}}
+    return [{"scene": i, "claim_ids": list(sc.get("claim_ids") or []), "continuity": sc.get("continuity") or None, **{k: sc.get(k) for k in VISUAL_CLAIM_FIELDS}}
             for i, sc in enumerate((plan or {}).get("scenes") or [], 1)]
 
 
@@ -741,6 +781,7 @@ def check_plan(plan: dict[str, Any], review: dict[str, Any], topic: dict[str, An
     rep.blocks.extend(develop_checks(plan, allowed))
     if config.DRINKS_DEVELOP_EXPLAINER_CONTRACT:
         rep.blocks.extend(visual_claim_checks(plan, claims))
+        rep.blocks.extend(explainer_boundary_checks(plan))
     return rep
 
 

@@ -1,0 +1,363 @@
+{
+ "_about": "S0.5 가짜 응답(0원). 운영 소재 '위스키 병에는 왜 유통기한이 안 보일까?'(topic 549a5721…, 승인 근거 dac3ebbe… v6)의 **승인된 근거 7개를 읽기 조회로 옮겨 적었다**(2026-11-02). scenes 는 손으로 쓴 가짜 모델 응답이다 — 모델이 내야 하는 모양(시각 주장표·motion_prompt·continuity)을 끝까지 통과시키는 용도이고, 실제 S0.5 는 B3·B7 근거를 새로 모아 모델이 다시 쓴다(기획 v2 §3-6-2). 이 장면들을 운영에 쓰지 않는다.",
+ "topic": {
+  "id": "549a5721-5128-4e45-81a0-803226571108",
+  "title": "위스키에도 유통기한이 있을까?",
+  "question": "위스키 병에는 왜 유통기한이 안 보일까?",
+  "categories": [
+   "whisky"
+  ]
+ },
+ "review": {
+  "id": "dac3ebbe-6059-4df0-b02c-19f10d7fda12",
+  "version": 6,
+  "status": "approved"
+ },
+ "brief": {
+  "audience_question": "위스키엔 왜 유통기한이 없을까?",
+  "core_takeaway": "핵심은 '왜'다: 도수 높은 술은 에탄올의 항균성 때문에 미생물로 상하는 것이 유통기한의 기준이 아니고, 맛·향이 기준이다. 그 결과로 EU 는 알코올 10% 이상 음료에 품질유지기한 표시를 요구하지 않고, 한국도 소비기한은 탁주·약주(맥주는 소비기한 또는 품질유지기한)에만 적게 한다.",
+  "exclusions": "'상하지 않는다', '영원히', '장기 보관 가능', '개봉 후 몇 년' 같은 말은 쓰지 않는다 — 원문은 '미생물 기준의 유통기한이 덜 중요하다'까지만 말한다. 제조번호·병입연월일 생략 같은 부수 규칙은 쓰지 않는다. 보관 방법 권고도 하지 않는다.",
+  "selected_claim_ids": [
+   "c2",
+   "c3",
+   "c8",
+   "c9"
+  ],
+  "required_claims": {
+   "video": [
+    "c2",
+    "c3",
+    "c8",
+    "c9"
+   ],
+   "carousel": []
+  },
+  "proposed_formats": [
+   "video"
+  ]
+ },
+ "sources": [
+  {
+   "snapshot_id": "de2c4df2-18ec-474f-916c-81d5bcc79243",
+   "title": "식품등의 표시기준 — Ⅲ. 1. 거. 주류 (식품의약품안전처고시 제2025-27호, 2026. 1. 1. 시행)",
+   "url": "https://www.law.go.kr/LSW//admRulInfoP.do?admRulSeq=2100000258070&chrClsCd=010201",
+   "publisher": "식품의약품안전처",
+   "source_kind": "official",
+   "rights_status": "quote_ok"
+  },
+  {
+   "snapshot_id": "63a7b5a3-c428-4ee8-9167-52cc0fceb95f",
+   "title": "Regulation (EU) No 1169/2011 on the provision of food information to consumers — Annex X, point 1(d) (consolidated text 01.01.2018)",
+   "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:02011R1169-20180101",
+   "publisher": "European Union (EUR-Lex)",
+   "source_kind": "official",
+   "rights_status": "quote_ok"
+  },
+  {
+   "snapshot_id": "b84d2e1d-434b-4e11-825f-a18d51dddddf",
+   "title": "O'Sullivan, M. G. (2011). Principles of sensory shelf-life evaluation and its application to alcoholic beverages. In: Alcoholic Beverages: Sensory Evaluation and Consumer Research, Elsevier, pp. 42-65. doi:10.1016/B978-0-85709-051-5.50003-1 — abstract",
+   "url": "https://research.ucc.ie/en/publications/principles-of-sensory-shelf-life-evaluation-and-its-application-t/",
+   "publisher": "University College Cork research repository (Elsevier chapter abstract)",
+   "source_kind": "expert",
+   "rights_status": "quote_ok"
+  }
+ ],
+ "claims": [
+  {
+   "claim_id": "c1",
+   "text": "미생물학적 유통기한은 맥주 유통기한 평가에 중요하기 때문에 논의된다.",
+   "claim_type": "product_fact",
+   "support_review": "not_reviewed",
+   "source_refs": [
+    {
+     "snapshot_id": "b84d2e1d-434b-4e11-825f-a18d51dddddf",
+     "original_quote": "Microbiological shelf life is discussed because of its importance for beer shelf-life evaluation."
+    }
+   ]
+  },
+  {
+   "claim_id": "c2",
+   "text": "에탄올의 항균성 때문에 알코올 도수가 높은 술은 미생물 기준의 유통기한이 덜 중요하고, 맛·향 같은 관능 품질이 유통기한을 정하는 주된 기준이다.",
+   "claim_type": "product_fact",
+   "support_review": "supported",
+   "source_refs": [
+    {
+     "snapshot_id": "b84d2e1d-434b-4e11-825f-a18d51dddddf",
+     "original_quote": "However, this is less important for other alcoholic beverages with higher alcohol levels due to the antimicrobial nature of ethanol and where sensory quality is the primary means of defining shelf life."
+    }
+   ]
+  },
+  {
+   "claim_id": "c3",
+   "text": "알코올 함량이 부피 기준으로 10% 이상인 음료에는 최소 내구성 날짜 표시가 요구되지 않는다.",
+   "claim_type": "product_fact",
+   "support_review": "supported",
+   "source_refs": [
+    {
+     "snapshot_id": "63a7b5a3-c428-4ee8-9167-52cc0fceb95f",
+     "original_quote": "beverages containing 10 % or more by volume of alcohol,"
+    }
+   ]
+  },
+  {
+   "claim_id": "c8",
+   "text": "주류의 식품유형 중 증류주류에는 소주, 위스키, 브랜디, 일반증류주, 리큐르가 포함된다.",
+   "claim_type": "product_fact",
+   "support_review": "supported",
+   "source_refs": [
+    {
+     "snapshot_id": "de2c4df2-18ec-474f-916c-81d5bcc79243",
+     "original_quote": "나) 증류주류 소주, 위스키, 브랜디, 일반증류주, 리큐르"
+    }
+   ]
+  },
+  {
+   "claim_id": "c9",
+   "text": "주류의 표시사항 중 제조연월일은 탁주 및 약주는 소비기한, 맥주는 소비기한 또는 품질유지기한으로 표시한다.",
+   "claim_type": "product_fact",
+   "support_review": "supported",
+   "source_refs": [
+    {
+     "snapshot_id": "de2c4df2-18ec-474f-916c-81d5bcc79243",
+     "original_quote": "라) 제조연월일(탁주 및 약주는 소비기한, 맥주는 소비기한 또는 품질유지기한). 다만, 제조번호 또는 병입연월일을 표시한 경우에는 제조연월일을 생략할 수 있다."
+    }
+   ]
+  },
+  {
+   "claim_id": "c10",
+   "text": "주류의 제조번호 또는 병입연월일을 표시한 경우에는 제조연월일을 생략할 수 있다.",
+   "claim_type": "product_fact",
+   "support_review": "not_reviewed",
+   "source_refs": [
+    {
+     "snapshot_id": "de2c4df2-18ec-474f-916c-81d5bcc79243",
+     "original_quote": "다만, 제조번호 또는 병입연월일을 표시한 경우에는 제조연월일을 생략할 수 있다."
+    }
+   ]
+  },
+  {
+   "claim_id": "c12",
+   "text": "주류는 에탄올 또는 알코올의 함량을 표시해야 한다.",
+   "claim_type": "product_fact",
+   "support_review": "not_reviewed",
+   "source_refs": [
+    {
+     "snapshot_id": "de2c4df2-18ec-474f-916c-81d5bcc79243",
+     "original_quote": "주류는 에탄올(또는 알코올)의 함량을 표시하여야 한다."
+    }
+   ]
+  }
+ ],
+ "fake_plan": {
+  "scenes": [
+   {
+    "narration": "위스키 병에는 왜 유통기한이 안 보일까요? 한번 뒤를 봐 볼까요.",
+    "visual_role": "reality",
+    "content_kind": "transition",
+    "claim_ids": [],
+    "timing_sec": 4.3,
+    "answers_ko": "무엇을 궁금해하는 영상인가",
+    "staging_ko": "나무 테이블 위 위스키 병 하나로 천천히 다가간다. 손이 병을 살짝 돌려 뒷면을 본다",
+    "explanation": "병 하나, 뒷면을 보는 손",
+    "visual_prompt": "A single amber whisky bottle standing on a plain wooden table, soft side light, a hand resting beside it, matte finish, nothing else on the table",
+    "motion_prompt": "The camera slowly pushes in toward the bottle while a hand turns the bottle a quarter turn to show its back",
+    "visual_claim_ko": "장면 분위기: 병을 들여다보는 도입",
+    "allowed_simplification": "없음",
+    "forbidden_misreading": "실제 브랜드 라벨·글자가 보이는 것",
+    "depiction_label": "CG 연출"
+   },
+   {
+    "narration": "에탄올이 미생물을 억제해서요. 도수가 높은 술에선 미생물이 자라기 어려워요. 상하는 게 기준이 아닌 거죠.",
+    "visual_role": "mechanism",
+    "content_kind": "fact",
+    "claim_ids": [
+     "c2"
+    ],
+    "timing_sec": 7.0,
+    "continuity": "cut",
+    "answers_ko": "왜 상하지 않는다고 보나",
+    "staging_ko": "잔 단면 속 황금빛 술. 초록 알갱이(미생물)가 다가오다가 술 가장자리에서 멈추고 더 들어가지 못한다",
+    "explanation": "잔 단면, 미생물이 다가가다 멈춤",
+    "mechanism": {
+     "subject": "cross-section of a whisky glass filled with amber spirit",
+     "components": [
+      "amber spirit",
+      "green granules approaching from outside",
+      "glass wall"
+     ],
+     "relationship": "granules drift toward the spirit surface",
+     "initial_state": "granules moving toward the liquid",
+     "transformation": "granules slow and stop at the liquid boundary, none pass into the spirit",
+     "final_state": "granules held still at the boundary, spirit clear",
+     "highlighted_element": "the boundary where granules stop",
+     "claim_ids": [
+      "c2"
+     ]
+    },
+    "visual_prompt": "Cross-section view of a tulip glass filled with amber spirit, small dull green granules drifting toward the liquid surface from above, matte CG, soft studio light",
+    "motion_prompt": "Green granules drift down toward the amber liquid, slow as they reach the surface, and stop at the boundary without sinking in; camera holds steady with a slow push",
+    "visual_claim_ko": "도수 높은 술 속에서는 에탄올이 미생물을 억제한다",
+    "allowed_simplification": "미생물을 초록 알갱이로, 억제를 '다가가다 멈춤'으로",
+    "forbidden_misreading": "미생물이 죽어 사라진다(살균 주장 없음) · 위스키가 영원히 안 변한다 · 농도 숫자",
+    "depiction_label": "설명용 도해"
+   },
+   {
+    "narration": "그러니까 도수 높은 술은 미생물로 상하는 게 유통기한의 기준이 아니에요. 그건 덜 중요하다고 봐요.",
+    "visual_role": "mechanism",
+    "content_kind": "fact",
+    "claim_ids": [
+     "c2"
+    ],
+    "timing_sec": 6.8,
+    "continuity": "match",
+    "answers_ko": "그 억제가 유통기한과 무슨 상관인가",
+    "staging_ko": "같은 잔 단면을 더 가까이. 멈춘 알갱이 쪽은 흐려지고 술 자체가 또렷해진다",
+    "explanation": "같은 잔, 알갱이는 바깥에, 술은 그대로",
+    "mechanism": {
+     "subject": "the same glass cross-section, closer",
+     "components": [
+      "amber spirit",
+      "green granules held outside",
+      "glass wall"
+     ],
+     "relationship": "granules remain outside the spirit",
+     "initial_state": "granules resting at the boundary",
+     "transformation": "focus shifts from the granules to the clear spirit, granules fade back",
+     "final_state": "clear amber spirit in focus, granules out of focus",
+     "highlighted_element": "the clear spirit",
+     "claim_ids": [
+      "c2"
+     ]
+    },
+    "visual_prompt": "Closer cross-section of the same tulip glass, amber spirit in sharp focus, dull green granules resting just outside the liquid boundary, matte CG",
+    "motion_prompt": "The camera eases closer; focus shifts from the resting granules to the clear amber spirit, the granules soften out of focus",
+    "visual_claim_ko": "도수 높은 술은 미생물 기준의 유통기한이 덜 중요하다",
+    "allowed_simplification": "초점 이동으로 '기준이 아님'을 표현",
+    "forbidden_misreading": "술이 미생물을 없앤다 · 영원히 안 변한다",
+    "depiction_label": "설명용 도해"
+   },
+   {
+    "narration": "반대로 도수가 낮은 탁주나 약주는 소비기한을 적어요. 맥주도 소비기한이나 품질유지기한을 적죠.",
+    "visual_role": "reality",
+    "content_kind": "fact",
+    "claim_ids": [
+     "c9"
+    ],
+    "timing_sec": 6.8,
+    "continuity": "cut",
+    "answers_ko": "낮은 도수 술은 어떤가",
+    "staging_ko": "냉장고 선반의 막걸리 병과 약주 병. 손이 막걸리 병을 들어 뒷면을 본다",
+    "explanation": "막걸리·약주 병, 뒷면 보는 손",
+    "visual_prompt": "A chilled shelf with a cloudy rice wine bottle and a clear pale yakju bottle, a hand lifting the cloudy bottle and turning it, matte finish, cool light",
+    "motion_prompt": "A hand lifts the cloudy bottle and turns it slowly to show the back while the camera drifts left",
+    "visual_claim_ko": "탁주·약주는 소비기한을 표시한다",
+    "allowed_simplification": "병 종류로만 구분",
+    "forbidden_misreading": "병에 날짜 숫자가 읽히는 것 · 특정 브랜드",
+    "depiction_label": "CG 연출"
+   },
+   {
+    "narration": "그런데 위스키는 소주, 브랜디와 같은 증류주예요. 도수가 높은 쪽이죠.",
+    "visual_role": "reality",
+    "content_kind": "fact",
+    "claim_ids": [
+     "c8"
+    ],
+    "timing_sec": 5.1,
+    "continuity": "cut",
+    "answers_ko": "위스키는 어떤 종류의 술인가",
+    "staging_ko": "선반 위 증류주 병들 — 위스키, 소주, 브랜디 — 을 옆으로 훑는다",
+    "explanation": "선반 위 증류주 병들",
+    "visual_prompt": "A wooden shelf with three unlabeled spirit bottles of different shapes, amber whisky, clear soju, deep brandy, side by side, matte finish, warm light",
+    "motion_prompt": "The camera glides sideways along the shelf, passing each bottle in turn, slight parallax",
+    "visual_claim_ko": "위스키·소주·브랜디는 증류주다",
+    "allowed_simplification": "병 모양으로만 구분",
+    "forbidden_misreading": "특정 브랜드로 보이는 것",
+    "depiction_label": "CG 연출"
+   },
+   {
+    "narration": "그래서 라벨엔 소비기한 대신 제조연월일을 적어요. 유럽도 알코올 10% 이상이면 날짜 표시를 안 요구해요.",
+    "visual_role": "reality",
+    "content_kind": "fact",
+    "claim_ids": [
+     "c9",
+     "c3"
+    ],
+    "timing_sec": 7.0,
+    "continuity": "match",
+    "answers_ko": "그래서 라벨에 무엇이 적히나",
+    "staging_ko": "같은 선반의 위스키 병을 손이 들어 뒷면을 보인다. 글자는 코드가 카드로 얹는다",
+    "explanation": "병 뒷면 보는 손 + 코드 글자 카드",
+    "visual_prompt": "The same wooden shelf, a hand lifting the amber whisky bottle and turning its back toward the camera, matte finish, warm light",
+    "motion_prompt": "A hand lifts the amber bottle from the shelf and turns it so the back faces the camera, camera holds with a gentle push",
+    "overlays": "증류주: 제조연월일 · EU: 알코올 10% 이상 날짜 표시 요구 없음",
+    "visual_claim_ko": "증류주는 제조연월일을 적고, EU 는 알코올 10% 이상 음료에 날짜 표시를 요구하지 않는다",
+    "allowed_simplification": "규칙 두 개를 카드 한 줄로",
+    "forbidden_misreading": "가짜 공문서·라벨 글씨 · 10% 가 위스키 도수라는 오해",
+    "depiction_label": "CG 연출"
+   },
+   {
+    "narration": "그럼 뭐가 기준일까요? 맛과 향이에요. 관능 품질이 유통기한을 정하는 주된 기준이거든요.",
+    "visual_role": "reality",
+    "content_kind": "fact",
+    "claim_ids": [
+     "c2"
+    ],
+    "timing_sec": 6.3,
+    "continuity": "cut",
+    "answers_ko": "상하지 않으면 무엇이 기준인가",
+    "staging_ko": "사람이 잔을 들어 코 가까이 가져가 향을 맡는다",
+    "explanation": "잔 향을 맡는 사람",
+    "visual_prompt": "A person lifting a tulip glass of amber whisky toward their nose, eyes lowered, warm matte light, plain background",
+    "motion_prompt": "The glass rises toward the face and tilts slightly as the person breathes in, camera slowly pushes in on the glass",
+    "visual_claim_ko": "이런 술은 맛·향 변화가 기준이다",
+    "allowed_simplification": "향을 맡는 행동으로",
+    "forbidden_misreading": "취함·과음 미화",
+    "depiction_label": "CG 연출"
+   },
+   {
+    "narration": "그러니까 병에 적힌 날짜는 만든 날이고, 상태는 맛과 향으로 보는 거예요.",
+    "visual_role": "reality",
+    "content_kind": "fact",
+    "claim_ids": [
+     "c9",
+     "c2"
+    ],
+    "timing_sec": 5.1,
+    "continuity": "match",
+    "answers_ko": "그러면 날짜는 무슨 뜻인가",
+    "staging_ko": "같은 사람이 잔을 내려놓고 병을 옆에 세운다",
+    "explanation": "잔을 내려놓고 병을 세움",
+    "visual_prompt": "The same person setting the tulip glass down on the table and standing the amber bottle beside it, warm matte light",
+    "motion_prompt": "The glass is lowered to the table and the bottle is placed upright beside it, camera settles",
+    "visual_claim_ko": "증류주의 날짜는 제조연월일이고 상태 판단은 맛·향이다",
+    "allowed_simplification": "병과 잔을 나란히",
+    "forbidden_misreading": "오래 두면 좋아진다 · 보관법 권고",
+    "depiction_label": "CG 연출"
+   },
+   {
+    "narration": "오래 둔 위스키 있는 친구한테 이 영상 보내 주세요.",
+    "visual_role": "reality",
+    "content_kind": "transition",
+    "claim_ids": [],
+    "timing_sec": 3.7,
+    "continuity": "match",
+    "answers_ko": "마무리",
+    "staging_ko": "테이블 위 잔과 병으로 천천히 밀고 들어가며 끝난다(첫 장면과 이어지는 루프)",
+    "explanation": "잔과 병으로 밀고 들어가며 끝",
+    "visual_prompt": "The tulip glass and the amber bottle on the plain wooden table, camera moving in toward the bottle, warm matte light",
+    "motion_prompt": "The camera pushes slowly in toward the bottle until it fills most of the frame, then holds",
+    "visual_claim_ko": "장면 분위기: 마무리와 루프",
+    "allowed_simplification": "없음",
+    "forbidden_misreading": "브랜드 라벨·글자",
+    "depiction_label": "CG 연출"
+   }
+  ],
+  "viewer_conclusion": {
+   "text": "도수 높은 위스키는 미생물로 상하는 것이 기준이 아니라 맛·향이 기준이고, 그래서 병에는 소비기한 대신 제조연월일이 적힌다.",
+   "claim_ids": [
+    "c2",
+    "c9"
+   ]
+  }
+ }
+}

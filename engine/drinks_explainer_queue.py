@@ -78,10 +78,9 @@ def scene_boundary(scenes: list[dict[str, Any]], i: int) -> tuple[str, Optional[
     if i == 1:
         return "loop", None
     sc, prev = scenes[i - 1], scenes[i - 2]
-    m = REF.match(str(sc.get("continuity") or ""))
-    if m:
-        ref = int(m.group(1))
-        if not 1 <= ref < i:
+    kind, ref = dd.continuity_kind(sc.get("continuity"), i)
+    if kind == "ref":
+        if not 1 <= int(ref or 0) < i:
             raise dx.ExplainerStop("invalid_continuity", f"{i}번 장면이 이어 그릴 {ref}번은 앞 장면이 아닙니다")
         return "match", ref
     if (sc.get("visual_role") or "reality") != (prev.get("visual_role") or "reality"):
