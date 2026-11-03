@@ -265,7 +265,14 @@ class ExplainerSendRefused(ExplainerNotSent):
 
 
 class ExplainerOutcomeUnknown(ExplainerProviderError):
-    """보냈는데 결과를 모른다(끊김·제한시간·5xx·읽을 수 없는 200 응답). 시도는 unknown_billed — 자동으로 다시 부르지 않는다(§3-3)."""
+    """보냈는데 결과를 모른다(끊김·제한시간·5xx·읽을 수 없는 200 응답). 시도는 unknown_billed — 자동으로 다시 부르지 않는다(§3-3).
+
+    request_id: 공급자가 준 interaction id(아는 경우만). 시도 행의 provider_request_id 로 남겨야 나중에 조회로 정정할 수 있다
+    (engine/drinks_explainer_lookup.py). 2026-11-03 전에는 "진행 중" 응답의 id 가 예외 문장에만 실리고 버려졌다."""
+
+    def __init__(self, message: str = "", *, request_id: str = "") -> None:
+        super().__init__(message)
+        self.request_id = str(request_id or "")
 
 
 class ExplainerBilledBadFile(ExplainerProviderError):
@@ -585,7 +592,8 @@ def generate_explainer_clip(clip: ExplainerClipInput, out_path: str, *, provider
     except ExplainerProviderError as exc:
         raise ExplainerOutcomeUnknown(str(exc)) from exc
     if not parsed.done:
-        raise ExplainerOutcomeUnknown(f"Omni interaction 이 아직 진행 중입니다(id={parsed.request_id or '-'}) — 조회(GET interactions/{{id}})로 정정합니다")
+        raise ExplainerOutcomeUnknown(f"Omni interaction 이 아직 진행 중입니다(id={parsed.request_id or '-'}) — 조회(GET interactions/{{id}})로 정정합니다",
+                                      request_id=parsed.request_id)
     if not parsed.video_bytes and parsed.gcs_uri:
         parsed = _omni_download_uri(parsed, client)
     try:
