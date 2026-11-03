@@ -265,7 +265,12 @@ class ExplainerSendRefused(ExplainerNotSent):
 
 
 class ExplainerOutcomeUnknown(ExplainerProviderError):
-    """보냈는데 결과를 모른다(끊김·제한시간·5xx·읽을 수 없는 200 응답). 시도는 unknown_billed — 자동으로 다시 부르지 않는다(§3-3)."""
+    """보냈는데 결과를 모른다(끊김·제한시간·5xx·읽을 수 없는 200 응답). 시도는 unknown_billed — 자동으로 다시 부르지 않는다(§3-3).
+    공급자가 요청 ID 를 줬으면 request_id 에 담아 시도 행에 남긴다. 끊겨서 못 받았으면 빈 값이고, 그 시도는 조회할 수 없다."""
+
+    def __init__(self, message: str, request_id: str = "") -> None:
+        super().__init__(message)
+        self.request_id = request_id
 
 
 class ExplainerBilledBadFile(ExplainerProviderError):
@@ -353,8 +358,8 @@ def build_omni_request(clip: ExplainerClipInput) -> ExplainerRequest:
     body = {"model": config.DRINKS_EXPLAINER_OMNI_MODEL, "input": parts,
             "generation_config": {"video_config": {"task": config.DRINKS_EXPLAINER_OMNI_TASK}},
             "response_format": fmt,
-            # 문서 권장: 동기·보관 없음·스트림 없음. store=false 면 previous_interaction_id 편집은 못 하지만 우리는 편집하지 않는다.
-            "background": False, "store": False, "stream": False}
+            # 동기·스트림 없음. store 는 결과 불명 조회(GET interactions/{id})의 전제다 — config 주석.
+            "background": False, "store": config.DRINKS_EXPLAINER_OMNI_STORE, "stream": False}
     return ExplainerRequest(provider="omni", method="POST", url=config.DRINKS_EXPLAINER_OMNI_URL, body=body,
                             auth="gemini_api_key", billing_unit="tokens", unverified=OMNI_UNVERIFIED)
 
@@ -583,9 +588,10 @@ def generate_explainer_clip(clip: ExplainerClipInput, out_path: str, *, provider
     try:
         parsed = parse_omni_response(data)
     except ExplainerProviderError as exc:
-        raise ExplainerOutcomeUnknown(str(exc)) from exc
+        raise ExplainerOutcomeUnknown(str(exc), request_id=str((data or {}).get("id") or "")) from exc
     if not parsed.done:
-        raise ExplainerOutcomeUnknown(f"Omni interaction 이 아직 진행 중입니다(id={parsed.request_id or '-'}) — 조회(GET interactions/{{id}})로 정정합니다")
+        raise ExplainerOutcomeUnknown(f"Omni interaction 이 아직 진행 중입니다(id={parsed.request_id or '-'}) — 조회(GET interactions/{{id}})로 정정합니다",
+                                      request_id=parsed.request_id)
     if not parsed.video_bytes and parsed.gcs_uri:
         parsed = _omni_download_uri(parsed, client)
     try:

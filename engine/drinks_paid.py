@@ -343,11 +343,15 @@ class LiveAdapter:
         return video_provider.generate_explainer_clip(inp, out, provider=self.provider, approval_id=approval_id, idempotency_key=idempotency_key)
 
 
+def omni_tokens_usd(billed_units: float) -> float:
+    p = config.DRINKS_EXPLAINER_PRICES["omni"]
+    return round(float(billed_units) * p["output_usd_per_mtok"] / 1_000_000 + p["input_image_tokens"] * p["input_usd_per_mtok"] / 1_000_000, 4)
+
+
 def clip_actual_usd(item: OrderItem, billing_unit: Optional[str], billed_units: Optional[float]) -> float:
     """공급자가 토큰 수를 주면 그것으로 계산한다. 아니면 예상 금액(청구서 대조 전 — 원장에 추정으로 남는다)."""
     if billing_unit == "tokens" and billed_units is not None and item.provider == "omni":
-        p = config.DRINKS_EXPLAINER_PRICES["omni"]
-        return round(float(billed_units) * p["output_usd_per_mtok"] / 1_000_000 + p["input_image_tokens"] * p["input_usd_per_mtok"] / 1_000_000, 4)
+        return omni_tokens_usd(billed_units)
     return item.est_usd
 
 
@@ -398,7 +402,7 @@ def buy_clip_attempt(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: st
         rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "settled", "actual_usd": item.est_usd, "note": "받았지만 쓸 수 없음(청구 유력, 예상 금액)"})
         raise PaidError("attempt_failed_billed", f"{attempt_id}: {str(exc)[:300]}") from exc
     except Exception as exc:  # noqa: BLE001 — 보낸 뒤의 어떤 예외도 "모름"이다. 다시 부르지 않고 운영자에게 넘긴다.
-        _event(rpc, attempt_id, "unknown_billed", error_code=type(exc).__name__[:100])
+        _event(rpc, attempt_id, "unknown_billed", error_code=type(exc).__name__[:100], provider_request_id=getattr(exc, "request_id", "") or None)
         raise PaidError("unknown_billed", f"{attempt_id}: 결과를 모릅니다({type(exc).__name__}) — 운영자가 billed/void 로 닫기 전에는 이 후보를 다시 사지 않습니다") from exc
     actual = clip_actual_usd(item, getattr(res, "billing_unit", None), getattr(res, "billed_units", None))
     _event(rpc, attempt_id, "received", provider_request_id=getattr(res, "request_id", "") or None, billed_units=getattr(res, "billed_units", None), actual_usd=actual)

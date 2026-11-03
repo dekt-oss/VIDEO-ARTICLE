@@ -24,6 +24,7 @@ from engine import drinks_paid as dpaid
 from engine import drinks_produce as dp
 from engine.drinks_collect import DbError
 from engine.providers import video as pv
+from scripts import explainer_lookup as lookup
 from scripts import explainer_queue_rehearsal as qr
 from scripts import explainer_rehearsal as base
 
@@ -405,7 +406,7 @@ def test_omni_request_shape_matches_the_documented_interactions_api():
     assert [p["type"] for p in b["input"]] == ["image", "image", "text"] and b["input"][0] == {"type": "image", "mime_type": "image/png", "data": "QUJD"}
     assert b["generation_config"] == {"video_config": {"task": "image_to_video"}}, "첫 그림이 시작 프레임[문서]"
     assert b["response_format"] == {"type": "video", "aspect_ratio": "9:16", "resolution": "720p", "delivery": "inline", "duration": "8s"}
-    assert b["background"] is False and b["store"] is False and b["stream"] is False
+    assert b["background"] is False and b["store"] is True and b["stream"] is False, "store 를 끄면 결과 불명을 조회할 수 없다"
     assert "seed" not in str(b) and "negative" not in str(b).lower(), "문서에 없는 칸은 보내지 않는다"
     assert "8 seconds" in b["input"][-1]["text"], "길이는 문장에도 말한다(duration 형식이 미검증)"
     assert pv.build_omni_fetch_request("abc").url.endswith("/v1beta/interactions/abc") and pv.build_omni_fetch_request("abc").method == "GET"
@@ -419,6 +420,53 @@ def test_fetch_interaction_corrects_unknown_outcome(live):
     assert parsed.request_id == "int-9" and parsed.video_bytes == b"ABC" and parsed.billed_units == 23168.0 and client.n == 0
     with pytest.raises(pv.ExplainerSendRefused):
         pv.fetch_omni_interaction("int-9", approval_id="", client=client)
+
+
+def test_unknown_outcome_keeps_the_provider_id_when_it_got_one(live, tmp_path):
+    clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="the glass tilts", clip_sec=8)
+    client = Client(Resp(200, interaction(status="in_progress", iid="int-7")))
+    with pytest.raises(pv.ExplainerOutcomeUnknown) as e:
+        pv.generate_explainer_clip(clip, str(tmp_path / "a.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=client)
+    assert e.value.request_id == "int-7"
+
+
+def test_lookup_lists_unknown_and_never_calls_provider_without_an_id():
+    status = {"slots": [{"candidates": [{"attempts": [
+        {"attempt_id": "c#a1", "state": "unknown_billed", "provider": "omni", "provider_request_id": None, "approval_id": "ap", "est_usd": 1.0},
+        {"attempt_id": "c#a2", "state": "unknown_billed", "provider": "omni", "provider_request_id": "int-9", "approval_id": "ap", "est_usd": 1.0},
+        {"attempt_id": "c#a3", "state": "stored", "provider": "omni", "provider_request_id": "int-8", "approval_id": "ap"}]}]}]}
+    rows = lookup.unknown_attempts(status)
+    assert [r["attempt_id"] for r in rows] == ["c#a1", "c#a2"]
+    calls = []
+
+    def fetch(iid, *, approval_id):
+        calls.append((iid, approval_id))
+        return pv.ExplainerParsed(provider="omni", request_id=iid, billing_unit="tokens", billed_units=23168.0, video_bytes=b"ABC")
+
+    no_id = lookup.lookup_one(rows[0], fetch)
+    assert no_id["outcome"] == "no_id" and calls == [], "ID 가 없으면 부르지 않는다"
+    found = lookup.lookup_one(rows[1], fetch)
+    assert calls == [("int-9", "ap")] and found["outcome"] == "completed" and found["video_bytes"] == 3
+    assert found["usd"] == round(23168 * 17.5 / 1e6 + 1120 * 1.5 / 1e6, 4)
+
+
+def test_lookup_reports_not_retrievable_and_in_progress():
+    row = {"attempt_id": "c#a2", "provider": "omni", "provider_request_id": "int-9", "approval_id": "ap", "est_usd": 1.0}
+
+    def gone(iid, *, approval_id):
+        raise pv.ExplainerNotSent("omni 404: not found")
+
+    def running(iid, *, approval_id):
+        return pv.ExplainerParsed(provider="omni", request_id=iid, billing_unit="tokens", billed_units=None, done=False)
+
+    assert lookup.lookup_one(row, gone)["outcome"] == "not_retrievable"
+    assert lookup.lookup_one(row, running)["outcome"] == "in_progress"
+
+
+def test_lookup_script_has_no_db_write_and_no_switch():
+    src = (Path(__file__).resolve().parent.parent / "scripts" / "explainer_lookup.py").read_text(encoding="utf-8")
+    assert "drinks_explainer_close_unknown" not in src and "drinks_explainer_attempt_event" not in src and "drinks_settle_spend" not in src, "닫기는 운영자 몫이다"
+    assert "PROVIDER_SEND_ENABLED =" not in src and "os.environ[" not in src, "스위치를 코드가 켜지 않는다"
 
 
 @needs_ffmpeg

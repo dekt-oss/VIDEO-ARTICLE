@@ -4945,6 +4945,8 @@ DRINKS_EXPLAINER_OMNI_DELIVERY: str = "inline"                 # response_format
 DRINKS_EXPLAINER_OMNI_SEND_DURATION: bool = True               # response_format.duration(문자열)[문서에 칸만 있음]. 형식 "8s" 는 [미검증] — 400 이면 청구 없이 멈춘다
 DRINKS_EXPLAINER_OMNI_MODELS_URL: str = "https://generativelanguage.googleapis.com/v1beta/models"   # 사전 검증(무료 GET)
 DRINKS_EXPLAINER_OMNI_INTERACTIONS_URL: str = "https://generativelanguage.googleapis.com/v1beta/interactions"   # GET {id} 로 결과 불명을 정정한다[문서]
+# store: 문서 기본값은 true(유료 등급 55일 보관). false 로 보내면 GET 으로 다시 못 받을 가능성이 크다[문서가 조회를 보관에 묶어 설명한다 — 조회 자체는 미검증].
+DRINKS_EXPLAINER_OMNI_STORE: bool = _get_bool("DRINKS_EXPLAINER_OMNI_STORE", True)
 DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED: bool = _get_bool("DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED", True)   # 구매 전 모델 조회(무료)로 이름·메서드를 대조한다
 DRINKS_EXPLAINER_OMNI_PREFLIGHT_TIMEOUT_SEC: float = 20.0
 # 사람 검수 6항목(§3-8 B)·과정 검수 3항목 — SQL 0067 required 배열·web QUALITY_CHECKS 와 같아야 한다(tests/test_drinks_explainer_stage2.py 가 대조)
