@@ -229,7 +229,7 @@ function MemeWorkSection({ loaded, useCards }: { loaded: MemeWorkLoaded; useCard
   return (
     <section className="section">
       <h3>밈 제작 ({work.drafts.length})</h3>
-      <p className="muted" style={{ fontSize: 13 }}>카드·소재 → 제작안 초안 → 승인 → 로컬 제작(0원) → 게시 대기. 게시 워커는 아직 연결되지 않았습니다. 박자에 맞춰야 하는 밈은 자동 게시되지 않고, 앱에서 음원을 붙이는 안내만 나옵니다.</p>
+      <p className="muted" style={{ fontSize: 13 }}>카드·소재 → 제작안 초안 → 승인 → 로컬 제작(0원) → 게시 대기 → 발행 화면에서 승인·예약. 박자에 맞춰야 하는 밈은 자동 게시되지 않고, 앱에서 음원을 붙이는 안내만 나옵니다.</p>
       <ManualCardForm />
       {openCards.map((c) => (
         <div key={c.id} className="card">
