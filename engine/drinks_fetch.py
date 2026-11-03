@@ -138,7 +138,16 @@ class PinnedBackend(httpcore.SyncBackend):
         ips = self._resolver(host, port)
         if not ips or not all(ip_is_public(ip) for ip in ips):
             raise FetchError("private_address", f"{host} 가 공개 주소가 아닌 곳을 가리킵니다(연결 직전 확인)")
-        return super().connect_tcp(ips[0], port, timeout=timeout, local_address=local_address, socket_options=socket_options)
+        # ★ 2026-11-03 실측: 문자열 정렬 첫 IP 하나만 쓰면 IPv6 없는 GitHub 러너에서 수집이 통째로 죽었다.
+        #   "2a03:…" 은 "57.…" 보다 앞서고 "157.…" 보다 뒤라, DNS 답에 따라 날마다 성패가 갈렸다.
+        #   검사를 통과한 IP 를 IPv4 부터 차례로 시도한다.
+        last: Optional[Exception] = None
+        for ip in sorted(ips, key=lambda v: ":" in v):
+            try:
+                return super().connect_tcp(ip, port, timeout=timeout, local_address=local_address, socket_options=socket_options)
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                last = exc
+        raise last  # type: ignore[misc]  # ips 가 비어 있으면 위에서 이미 막혔다
 
 
 class SafeFetcher:
