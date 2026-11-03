@@ -178,16 +178,21 @@ test("링크 동작: 서버가 정규화해 rpc 로 넘기고, 계정 이름이 
   assert.deepEqual(calls[0], { fn: "drinks_ig_add_link", p: { username: "daquan", note: "봤다", canonical_url: "https://www.instagram.com/reel/AbCdE12/", shortcode: "AbCdE12" } });
 });
 
-test("밈 보드 동작은 넷뿐이고, 워커 전용 함수·돈이 드는 함수는 화면에서 부를 수 없다", () => {
+test("밈 보드 동작은 여섯뿐이고, 워커 전용 함수(점유·끝내기·수집)는 화면에서 부를 수 없다", () => {
   const ig = Object.entries(DRINKS_ACTIONS).filter(([k]) => k.startsWith("ig_")).map(([, f]) => f).sort();
-  assert.deepEqual(ig, ["drinks_ig_add_link", "drinks_ig_card_decide", "drinks_ig_set_card_field", "drinks_ig_watch_action"]);
+  // 2026-11-02 총괄 §7 결정 1: [쓰자] + 정밀화 요청(drinks_ig_card_use_refine)과 손으로 만드는 카드(drinks_ig_create_manual_card)가 더해졌다.
+  assert.deepEqual(ig, ["drinks_ig_add_link", "drinks_ig_card_decide", "drinks_ig_card_use_refine", "drinks_ig_create_manual_card",
+    "drinks_ig_set_card_field", "drinks_ig_watch_action"]);
+  for (const f of Object.values(DRINKS_ACTIONS)) assert.ok(!/drinks_apify_(claim|finish|reap)|drinks_ig_(record|upsert|apply|mark|finish_link|worker_state)/.test(f), f);
 });
 
-test("[쓰자] 경로가 워크플로를 깨우거나 분석을 시작하지 않는다", () => {
+test("[쓰자] 는 Apify 요청을 큐에 넣을 뿐 — 화면·보드 코드가 돈이 드는 경로를 직접 열지 않는다", () => {
   const route = readFileSync(join(HERE, "../../app/api/drinks/route.ts"), "utf8");
-  assert.ok(!/ig_card_decide/.test(route), "라우트에 [쓰자] 전용 후속 동작이 없다");
+  assert.ok(!/ig_card_decide/.test(route), "결정만 기록하는 [넘기기]·[나중에] 에는 후속 동작이 없다");
+  assert.match(route, /ig_card_use_refine[\s\S]*refine\?\.queued === true[\s\S]*drinks-apify\.yml/, "요청이 실제로 큐에 들어갔을 때만 정밀화 워커를 깨운다");
   const page = readFileSync(join(HERE, "../../app/drinks/memes/page.tsx"), "utf8") + readFileSync(join(HERE, "../../components/drinks/MemeBoardControls.tsx"), "utf8");
-  assert.ok(!/apify\.com|request_develop|request_render|triggerWorkflow/i.test(page));
+  assert.ok(!/apify\.com|request_develop|request_render|triggerWorkflow|APIFY_TOKEN/i.test(page));
+  assert.match(page, /refineCostLine|이달 누적/, "버튼 옆에 이번 예상액·이달 누적액을 보여 준다(기획 v2 §6-1)");
 });
 
 test("미적용·실패 때도 관찰 범위 줄이 화면에 남는다", () => {

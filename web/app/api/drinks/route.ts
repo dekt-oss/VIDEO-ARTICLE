@@ -4,8 +4,8 @@
 // DB 함수(0050)가 한다. 이 라우트는 운영자 게이트 → service key rpc 연결만 한다.
 // ★ 렌더·업로드·발행 큐(triggerRender·triggerDraft·trigger-publish)를 쓰지 않는다 — 주류는 유료 생성·외부 발행
 //   경로로 이어질 길이 없어야 한다. 깨우는 워크플로는 수집 워커(drinks-collect.yml)·로컬·무료 제작 워커
-//   (drinks-produce.yml)·밈 제작 워커(drinks-meme.yml, 로컬·무료)·소재 개발 워커(drinks-develop.yml) 넷뿐이다
-//   (tests/test_drinks_phase_a_guards.py 가 감시).
+//   (drinks-produce.yml)·밈 제작 워커(drinks-meme.yml, 로컬·무료)·소재 개발 워커(drinks-develop.yml)·
+//   밈 틀 정밀화 워커(drinks-apify.yml, [쓰자] 클릭 승인분만 — 2026-11-02) 다섯뿐이다(tests/test_drinks_phase_a_guards.py 가 감시).
 import { NextResponse } from "next/server";
 
 import { requireOperator } from "@/lib/apiGuard";
@@ -41,6 +41,11 @@ export async function POST(request: Request) {
       && (res.body.result as { status?: string } | undefined)?.status === "approved") {
     // 밈 제작 워커(로컬 렌더, 유료 키 없음). 토큰이 없으면 큐에만 남는다. 게시는 하지 않는다.
     res.body.dispatch = await triggerWorkflow("drinks-meme.yml", null);
+  }
+  if (res.status === 200 && action === "ig_card_use_refine"
+      && (res.body.result as { refine?: { queued?: boolean } } | undefined)?.refine?.queued === true) {
+    // 밈 틀 정밀화 워커(Apify + 영상 분석, 클릭 승인 1회분 — 상한·월 한도는 DB 가 센다). 토큰이 없으면 큐에만 남는다. 게시는 하지 않는다.
+    res.body.dispatch = await triggerWorkflow("drinks-apify.yml", null);
   }
   const queued = action === "pick_topic"
     // [이걸로]: 이어 만들기 요청이 새로 들어갔을 때만 깨운다(밈·이미 있는 초안은 큐에 안 들어간다).

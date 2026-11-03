@@ -48,7 +48,9 @@ _KO_NUMERALS = r"(?:한두|두세|서너|한|두|세|네|다섯|여섯|몇|\d+(?
 _QUANTITY = re.compile(rf"{_KO_NUMERALS}\s*({'|'.join(sorted(map(re.escape, _UNITS), key=len, reverse=True))})", re.I)
 # 권고(명령·청유) 끝맺음 — "~해 보세요", "~하세요", "~드세요", "~마세요", "~해요"(청유는 애매해 뺀다)
 _ADVICE = re.compile(r"(?:보세요|하세요|드세요|마세요|넣으세요|타세요|고르세요|해\s?봐요|해\s?보자)[.!?…]*$")
-_FORMAL = re.compile(r"(?:습니다|입니다|됩니다|ㅂ니다)[.!?…]*$")
+# 2026-11-03 정정(scripts/card_plan_run 질문 지도 검사에서 드러남): "못합니다·합니다·갑니다" 가 빠져 있었고 "ㅂ니다" 는 낱자라 어떤 글에도 안 걸렸다.
+# 받침 ㅂ + 니다 로 끝나는 모든 음절을 잡는다. "아니다" 는 문어체가 아니라 뺀다.
+_FORMAL = re.compile(r"(?<!아)니다[.!?…]*$")
 _SENT_SPLIT = re.compile(r"(?<=[.?!])\s+")
 ADVICE_KINDS = {"practice", "recommendation", "advice", "howto"}
 DERIVED_KINDS = {"calc", "derived", "inference"}
