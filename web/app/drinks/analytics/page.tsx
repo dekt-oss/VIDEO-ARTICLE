@@ -10,9 +10,11 @@ export const dynamic = "force-dynamic";
 
 const METRICS = [["reach", "도달"], ["saved", "저장"], ["shares", "공유"], ["likes", "좋아요"], ["comments", "댓글"], ["views", "조회(릴스)"]] as const;
 const BUCKETS = ["24h", "72h", "7d"] as const;
-const DIM_LABEL: Record<string, string> = { category: "주종", post_type: "형식", lane: "소재 갈래", slot: "게시 시간대", question_kind: "질문 유형" };
+// 0068: 묶음 'format'(콘텐츠 형식 card·explainer·meme)이 더해졌다 — engine/drinks_strategy.py DIM_KO 와 같은 뜻.
+const DIM_LABEL: Record<string, string> = { category: "주종", post_type: "게시 형식", lane: "소재 갈래", slot: "게시 시간대", question_kind: "질문 유형",
+  format: "콘텐츠 형식" };
 const VALUE_LABEL: Record<string, string> = { ...CATEGORY_LABEL, ...LANE_LABEL, ...QUESTION_KIND_LABEL, carousel: "카드뉴스", reel: "릴스", morning: "아침",
-  afternoon: "낮", evening: "저녁", night: "밤" };
+  afternoon: "낮", evening: "저녁", night: "밤", card: "카드뉴스(형식)", explainer: "설명형", meme: "밈형" };
 const pct = (x: number | null | undefined) => (typeof x === "number" ? `${(x * 100).toFixed(1)}%` : "—");
 
 function cell(s: SnapshotView | undefined, k: string): string {
@@ -42,6 +44,10 @@ export default async function DrinksAnalyticsPage() {
               </p>
             )}
             <h2>게시물 ({d.posts.length}{d.posts_truncated ? "+, 최근 300건만" : ""})</h2>
+            {d.format_counts && Object.keys(d.format_counts).length > 0 && (
+              <p className="muted">형식별 게시 편수: {Object.entries(d.format_counts).map(([f, n]) => `${VALUE_LABEL[f] ?? f} ${n}편`).join(" · ")}
+                {" "}— 전략은 72시간 칸이 잡힌 편만 형식별로 비교합니다.</p>
+            )}
             {d.posts.length === 0 ? <p className="muted">게시된 것이 없습니다(미수집).</p> : (
               <div className="table-scroll">
                 <table className="grid">
@@ -63,8 +69,9 @@ export default async function DrinksAnalyticsPage() {
                                 {p.external_url ? <a href={p.external_url} target="_blank" rel="noreferrer">{p.topic_title}</a> : p.topic_title}
                                 {p.is_test && <span className="pill"> 시험(가짜) </span>}
                                 <div className="muted">
-                                  {[p.categories.map((c) => VALUE_LABEL[c] ?? c).join("·"), VALUE_LABEL[p.post_type] ?? p.post_type,
-                                    VALUE_LABEL[p.slot] ?? p.slot, kst(p.published_at)].join(" · ")}
+                                  {[(p.categories ?? []).map((c) => VALUE_LABEL[c] ?? c).join("·") || "(소재 없음 — 밈 카드)",
+                                    p.format ? VALUE_LABEL[p.format] ?? p.format : null, VALUE_LABEL[p.post_type] ?? p.post_type,
+                                    VALUE_LABEL[p.slot] ?? p.slot, kst(p.published_at)].filter(Boolean).join(" · ")}
                                 </div>
                                 {p.snapshots.some((s) => s.status === "failed") && <div className="muted">수집 실패 기록 있음</div>}
                               </td>

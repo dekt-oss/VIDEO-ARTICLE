@@ -1,12 +1,21 @@
 # 주류 공장 순환 워커 — ③ 인스타 발행 · ④ 성과 수집 · ⑤ 전략 제안 (2026-10-27). docs/deviation-drinks-publish-loop.md
 #
-# ★ 수동 실행만 있다(workflow_dispatch). 예약 실행(cron)은 운영자 승인 뒤에 켠다 — 무인 게시가 되기 때문이다.
+# ★ 예약 실행(cron)은 **기본 꺼짐**이다(2026-11-02, 총괄계획 §6 5단계 — docs/deviation-drinks-stage5-publish-loop.md).
+#   크론은 아래에 적혀 있지만, 저장소 변수 DRINKS_PUBLISH_CRON_ENABLED 가 '1' 이 아니면 잡이 통째로 건너뛴다(아무 호출도 없다).
+#   켜는 법: GitHub → Settings → Secrets and variables → Actions → Variables → New: DRINKS_PUBLISH_CRON_ENABLED = 1.
+#   끄는 법: 그 변수를 지우거나 0 으로. 수동 실행(Run workflow)은 변수와 무관하게 전처럼 돈다.
+#   크론 시각(UTC; engine/config.py DRINKS_PUBLISH_CRON_* 와 같다 — tests/test_drinks_stage5_publish_loop.py 가 대조):
+#     게시   0,30 22-23,0-14 * * *   = KST 07:00~23:30 매 30분. 예약한 편만 그 시각에 올라간다(DB 가 publish_at 로 준다).
+#     성과   15 23 * * *             = 매일 KST 08:15(수집 06:30·트렌드 07:30 뒤)
+#     전략   45 23 * * 0             = 월요일 KST 08:45(주 1회 제안 — 운영자가 [반영]해야 바뀐다)
 # ★ 실제 인스타 게시 스위치를 켰다(2026-10-28 운영자 지시 "실제 게시 준비를 시작해"): DRINKS_IG_LIVE=1 과 계정 토큰 비밀.
 #   그래도 이 워크플로가 혼자 게시하지는 않는다. 게시되려면 DB 에서 셋이 다 맞아야 한다(0055):
 #     ① 계정이 워커 대조로 '연결 확인됨' + 운영자가 [발행 켜기]  ② 발행 요청을 운영자가 지문 확인 후 [승인]·[예약]
 #     ③ 예약 시각 도래(2시간 넘게 늦으면 게시하지 않음). 운영 DB 에 0050~0055 가 없으면 아무것도 집지 않는다.
+#   발행이 꺼진 계정(publish_enabled=false)의 요청은 DB 가 paused 로 보내고 건드리지 않는다(drinks_pub_block).
 # ★ 토큰은 계정별 비밀로 준다. 대시보드 계정 등록의 '비밀 이름'(credential_ref)과 아래 env 이름이 같아야 한다.
 #   계정을 늘리면 여기에 한 줄씩 추가한다. 토큰을 로그·URL 에 남기지 않는다(공급자는 Authorization 헤더로만 보낸다).
+#   SOOLJJERIGO_FB_TOKEN(2026-11-02): 같은 계정의 Facebook 로그인 연결 행(음원 릴스 전용). 비밀이 없으면 그 행만 credential_missing 으로 멈춘다.
 # ★ 유료 호출 없음: LLM·이미지·영상 키를 주지 않는다. 전략 제안은 코드 계산(0원)이다.
 name: drinks-publish
 
@@ -18,6 +27,10 @@ on:
         type: choice
         default: publish
         options: [publish, metrics, strategy]
+  schedule:
+    - cron: "0,30 22-23,0-14 * * *"
+    - cron: "15 23 * * *"
+    - cron: "45 23 * * 0"
 
 concurrency:
   group: drinks-publish
@@ -30,6 +43,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # ★ 크론 스위치. 수동 실행은 항상, 예약 실행은 변수가 '1' 일 때만.
+    if: github.event_name != 'schedule' || vars.DRINKS_PUBLISH_CRON_ENABLED == '1'
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -38,6 +53,9 @@ jobs:
       DRINKS_STORAGE: supabase
       DRINKS_IG_LIVE: "1"
       SOOLJJERIGO_IG_TOKEN: ${{ secrets.SOOLJJERIGO_IG_TOKEN }}
+      SOOLJJERIGO_FB_TOKEN: ${{ secrets.SOOLJJERIGO_FB_TOKEN }}
+      # 어느 단계인가: 수동이면 고른 값, 예약이면 크론 문자열로 정한다(게시 크론이 기본).
+      STEP: ${{ github.event_name == 'workflow_dispatch' && inputs.step || (github.event.schedule == '15 23 * * *' && 'metrics') || (github.event.schedule == '45 23 * * 0' && 'strategy') || 'publish' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
@@ -46,11 +64,11 @@ jobs:
           cache: pip
       - run: python -m pip install -r engine/requirements.txt
       - name: publish
-        if: inputs.step == 'publish'
+        if: env.STEP == 'publish'
         run: python -m engine.drinks_publish
       - name: metrics
-        if: inputs.step == 'metrics'
+        if: env.STEP == 'metrics'
         run: python -m engine.drinks_metrics
       - name: strategy
-        if: inputs.step == 'strategy'
+        if: env.STEP == 'strategy'
         run: python -m engine.drinks_strategy

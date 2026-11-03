@@ -139,13 +139,14 @@ CLAIMS = [{"claim_id": "c1", "original_quote": "Ethanol at 40% inhibits growth"}
 
 def scene(**kw):
     base = {"narration": "왜일까?", "visual_role": "mechanism", "claim_ids": ["c1"], "visual_claim_ko": "에탄올이 미생물을 억제한다",
-            "allowed_simplification": "미생물 = 초록 알갱이", "forbidden_misreading": "미생물이 죽어 사라진다", "depiction_label": "설명용 도해"}
+            "allowed_simplification": "미생물 = 초록 알갱이", "forbidden_misreading": "미생물이 죽어 사라진다", "depiction_label": "설명용 도해", "motion_prompt": "the microbes approach and stop"}
     base.update(kw)
     return base
 
 
 @pytest.mark.parametrize("sc, code", [
     (scene(), None),
+    (scene(motion_prompt=" "), "motion_prompt_missing"),
     (scene(visual_claim_ko=""), "visual_claim_missing"),
     (scene(forbidden_misreading=None), "visual_claim_missing"),
     (scene(depiction_label="CG 연출"), "depiction_label_mismatch"),
@@ -332,7 +333,8 @@ def test_limits_match_the_migration():
 
 def test_boundary_kinds_match_the_migration():
     allowed = re.search(r"boundary_in\s+text check \(boundary_in in \(([^)]*)\)\)", SQL).group(1)
-    assert set(re.findall(r"'(\w+)'", allowed)) == set(config.DRINKS_EXPLAINER_BOUNDARY_KINDS)
+    # 'cut' 은 0067 이 더했다(tests/test_drinks_explainer_queue.py 가 그 체크를 대조).
+    assert set(re.findall(r"'(\w+)'", allowed)) | {"cut"} == set(config.DRINKS_EXPLAINER_BOUNDARY_KINDS)
 
 
 def test_quote_matches_the_document_table():
@@ -369,7 +371,9 @@ def test_render_module_has_no_still_or_stretch_route():
 
 def test_render_uses_only_named_assemble_helpers():
     used = {n.attr for n in ast.walk(ast.parse(SRC)) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "assemble"}
-    assert used == {"build_concat_clips_command", "build_loudnorm_command", "build_speed_command", "filter_path"}, used
+    # build_last_frame_command 는 다음 슬롯 시작 그림의 참고 프레임을 뽑을 뿐이다(§3-5, last_frame). 편집표·타임라인에 들어가지 않는다.
+    assert used == {"build_concat_clips_command", "build_loudnorm_command", "build_speed_command", "filter_path", "build_last_frame_command"}, used
+    assert "last_frame(" not in SRC[SRC.index("def render_explainer"):SRC.index("def _measure_black")], "렌더는 마지막 프레임을 쓰지 않는다"
 
 
 def test_cut_filter_touches_no_time_and_caps_zoom():
@@ -678,12 +682,14 @@ CLIP = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="the glass sl
 def test_omni_request_shape():
     r = pv.build_omni_request(CLIP)
     assert r.method == "POST" and r.url == "https://generativelanguage.googleapis.com/v1beta/interactions"
-    assert set(r.body) == {"model", "input", "response_format"}, "문서에 있는 최상위 칸만"
+    # 2026-11-02 문서 대조 뒤의 모양(ai.google.dev/api/interactions · /gemini-api/docs/omni) — 상세는 tests/test_drinks_explainer_stage2.py
+    assert set(r.body) == {"model", "input", "generation_config", "response_format", "background", "store", "stream"}, "문서에 있는 최상위 칸만"
     assert r.body["model"] == "gemini-omni-1.1-flash" and r.auth == "gemini_api_key" and r.billing_unit == "tokens"
     assert r.body["input"][0] == {"type": "image", "mime_type": "image/png", "data": "QUJD"}
     assert r.body["input"][-1]["type"] == "text" and "the glass slowly turns" in r.body["input"][-1]["text"]
-    assert r.body["response_format"]["aspect_ratio"] == "9:16"
-    assert "시작 그림 첫 프레임 고정" in r.unverified, "[미검증]을 단정하지 않는다"
+    assert r.body["response_format"]["aspect_ratio"] == "9:16" and r.body["generation_config"]["video_config"]["task"] == "image_to_video"
+    assert "시작 그림 첫 프레임 고정" not in r.unverified, "문서가 확인했다(video_config.task=image_to_video) — 픽셀 고정은 S2 가 본다"
+    assert any("duration" in u for u in r.unverified), "길이 칸의 형식은 여전히 [미검증]"
     with_end = pv.build_omni_request(dataclasses.replace(CLIP, end_image_b64="REVG"))
     assert [p["type"] for p in with_end.body["input"]] == ["image", "image", "text"]
     for bad in ({"clip_sec": 2}, {"clip_sec": 11}, {"resolution": "8k"}, {"motion_prompt": " "}, {"start_image_b64": ""}):
@@ -695,10 +701,11 @@ def test_omni_response_parsing():
     import base64
 
     raw = b"\x00\x00\x00\x18ftypmp42"
-    data = {"id": "int-1", "outputs": [{"type": "text", "text": "ok"}, {"type": "video", "data": base64.b64encode(raw).decode()}], "usage": {"total_output_tokens": 46336}}
-    p = pv.parse_omni_response(data)
+    step = lambda *content: {"id": "int-1", "status": "completed", "steps": [{"type": "model_output", "content": list(content)}], "usage": {"total_output_tokens": 46336}}  # noqa: E731
+    p = pv.parse_omni_response(step({"type": "text", "text": "ok"}, {"type": "video", "mime_type": "video/mp4", "data": base64.b64encode(raw).decode()}))
     assert (p.request_id, p.video_bytes, p.billing_unit, p.billed_units) == ("int-1", raw, "tokens", 46336.0)
-    for bad in ({}, {"outputs": []}, {"outputs": [{"type": "text", "text": "거절"}]}, {"outputs": [{"type": "video", "data": "@@not base64@@"}]}):
+    for bad in ({}, step(), step({"type": "text", "text": "거절"}), step({"type": "video", "data": "@@not base64@@"}),
+                {"id": "x", "outputs": [{"type": "video", "data": base64.b64encode(raw).decode()}]}):   # 옛 가정 모양은 더 읽지 않는다
         with pytest.raises(pv.ExplainerProviderError):
             pv.parse_omni_response(bad)
 
@@ -823,10 +830,13 @@ def test_gold_plan_stretched_to_explainer_shape_passes_all_checks():
         extra.pop("continuity", None)
         extra.update(claim_ids=["c1"], content_kind="fact")
         scenes.append(extra)
-    for s in scenes:
+    for i, s in enumerate(scenes, 1):
         s["timing_sec"] = 6.4
         s.pop("card_page", None)
+        if i > 1:
+            s.setdefault("continuity", "cut")   # 2026-11-02 부터 설명형 대본은 2번 이후 장면마다 경계 종류를 선언한다(explainer_boundary_checks)
         s.update(allowed_simplification="없음", forbidden_misreading="실제 제품 촬영으로 오해", depiction_label=config.DRINKS_EXPLAINER_DEPICTION_LABELS[s.get("visual_role") or "reality"])
+        s.setdefault("motion_prompt", "the camera slowly pushes in")
         s["visual_claim_ko"] = "화면이 나레이션을 보여 준다" if s.get("claim_ids") else f"{config.DRINKS_EXPLAINER_MOOD_PREFIX}: 도입"
     plan = {"scenes": scenes, "viewer_conclusion": GOLD.get("viewer_conclusion")}
     review = {"claims": GOLD["claims"], "brief": {"audience_question": "질문"}, "sources": [GOLD.get("source")]}

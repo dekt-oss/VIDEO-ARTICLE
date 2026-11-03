@@ -51,6 +51,9 @@ FAILURE_STATES: dict[str, dict[str, str]] = {
     "review_fail": {"enter": "사람 검수 불합격", "exit": "운영자 지시대로(재렌더 / 재촬영 결재 / 폐기)"},
 }
 AUTO_REBUY: bool = False   # 상태 표의 '자동 재구매: 없음'. 켜는 코드를 만들지 않는다.
+# 사람 검수(§3-8 B). 과정 3항목 → 품질 6항목. 하나라도 거짓이면 SQL(0067 drinks_explainer_review)이 합격을 받지 않고 ready_to_publish 로 못 간다.
+PROCESS_REVIEW_ITEMS: tuple[str, ...] = config.DRINKS_EXPLAINER_PROCESS_ITEMS
+QUALITY_REVIEW_ITEMS: tuple[str, ...] = config.DRINKS_EXPLAINER_QUALITY_ITEMS
 BLOCKED_ASSET_CODES: tuple[str, ...] = ("clip_missing", "clip_corrupt", "clip_short")
 
 
@@ -695,6 +698,87 @@ def render_explainer(beats: list[Beat], assets: dict[str, Asset], *, hook_text: 
 
 
 # ─────────────────────────────────────────────────────────────
+# 후보 자동 판정(§3-3)·연속성 숫자(§3-5). 판정은 "돌아간다"일 뿐이다 — 사람 판정이 따로 있다.
+# ─────────────────────────────────────────────────────────────
+
+def _measure_black(path: str) -> list[tuple[float, float]]:
+    proc = _subprocess(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-an",
+                        "-vf", f"blackdetect=d={config.DRINKS_EXPLAINER_BLACK_MIN_SEC}:pic_th={config.DRINKS_EXPLAINER_BLACK_PIC_TH}", "-f", "null", "-"])
+    if proc.returncode != 0:
+        raise ExplainerStop("render_failed", f"검은 화면 검사 실패: {(proc.stderr or '')[-200:]}")
+    return [(float(m.group(1)), float(m.group(2))) for m in re.finditer(r"black_start:([0-9.]+)\s+black_end:[0-9.]+\s+black_duration:([0-9.]+)", proc.stderr or "")]
+
+
+def check_candidate(path: str, min_src_ms: int) -> dict[str, Any]:
+    """자동 판정: 길이 ≥ min_src_ms, 9:16, 정지 구간, 검은 화면. 글자 나타남(Jev) 신호는 아직 없다 — 사람 검수가 본다.
+    정지 문턱은 최종 시간 기준 0.8초를 원본 시간으로 바꾼 값이다(렌더의 freeze_under_captions 와 같다)."""
+    probe = probe_clip(path)
+    report: dict[str, Any] = {"pass": False, "blocks": [], "duration_ms": probe["duration_ms"], "width": probe["width"], "height": probe["height"],
+                              "frames": probe["frames"], "fps": probe["fps"], "min_src_ms": int(min_src_ms), "freeze": [], "black": []}
+    if not probe["ok"] or not probe["has_video"] or probe["still"]:
+        report["blocks"].append("clip_corrupt")
+        return report
+    if probe["duration_ms"] < int(min_src_ms):
+        report["blocks"].append("clip_short")
+    width, height = probe["width"] or 0, probe["height"] or 0
+    if not height or abs(width / height - 9 / 16) > config.DRINKS_EXPLAINER_ASPECT_TOLERANCE:
+        report["blocks"].append("not_vertical")
+    report["freeze"] = [[round(s, 3), round(d, 3)] for s, d in _detect_freeze(path, config.DRINKS_EXPLAINER_FREEZE_MIN_SEC * playback_speed())]
+    if report["freeze"]:
+        report["blocks"].append("freeze")
+    report["black"] = [[round(s, 3), round(d, 3)] for s, d in _measure_black(path)]
+    if report["black"]:
+        report["blocks"].append("black_frames")
+    report["pass"] = not report["blocks"]
+    return report
+
+
+def _frame_at(path: str, ms: int, out_png: str) -> None:
+    proc = _subprocess(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{max(ms, 0) / 1000.0:.3f}", "-i", path, "-frames:v", "1", out_png])
+    if proc.returncode != 0 or not os.path.isfile(out_png):
+        raise ExplainerStop("render_failed", f"프레임을 뽑지 못했습니다: {(proc.stderr or '')[-200:]}")
+
+
+def last_frame(clip_path: str, out_png: str) -> str:
+    """이어 그리기 참고 그림 — 선택된 클립의 실제 마지막 프레임(§3-5). 공용 명령을 그대로 쓴다."""
+    proc = _subprocess(assemble.build_last_frame_command(clip_path, out_png))
+    if proc.returncode != 0 or not os.path.isfile(out_png):
+        raise ExplainerStop("clip_corrupt", f"마지막 프레임을 뽑지 못했습니다: {(proc.stderr or '')[-200:]}")
+    return out_png
+
+
+def _frame_stats(png: str) -> tuple[list[float], float]:
+    from PIL import Image
+
+    with Image.open(png) as im:
+        rgb = im.convert("RGB").resize((64, 114))
+    hist = rgb.histogram()
+    total = float(sum(hist)) or 1.0
+    grey = rgb.convert("L").histogram()
+    bright = sum(i * v for i, v in enumerate(grey)) / (sum(grey) or 1)
+    return [v / total for v in hist], bright
+
+
+def boundary_metrics(cuts: list[EditCut], assets: dict[str, Asset], work_dir: str) -> list[dict[str, Any]]:
+    """§3-5: 실제 사용 구간 끝 프레임 ↔ 다음 컷 첫 프레임의 색 분포 거리·밝기 차. **기록만 한다**(문턱은 첫 편 운영자 판정과 맞춰 본 뒤 정한다)."""
+    os.makedirs(work_dir, exist_ok=True)
+    pairs: list[tuple[str, EditCut, EditCut]] = []
+    for prev, cur in zip(cuts, cuts[1:]):
+        if cur.boundary in ("match", "cut_to_mechanism"):
+            pairs.append((cur.boundary, prev, cur))
+    if cuts:
+        pairs.append(("loop", cuts[-1], cuts[0]))
+    out: list[dict[str, Any]] = []
+    for i, (kind, prev, cur) in enumerate(pairs):
+        a, b = os.path.join(work_dir, f"b{i}_a.png"), os.path.join(work_dir, f"b{i}_b.png")
+        _frame_at(assets[prev.asset_id].path, prev.src_end_ms - 40, a)
+        _frame_at(assets[cur.asset_id].path, cur.src_start_ms, b)
+        (ha, ba), (hb, bb) = _frame_stats(a), _frame_stats(b)
+        out.append({"boundary": kind, "from_cut": prev.cut_id, "to_cut": cur.cut_id, "color_distance": round(sum(abs(x - y) for x, y in zip(ha, hb)) / 2, 4), "brightness_diff": round(abs(ba - bb), 2)})
+    return out
+
+
+# ─────────────────────────────────────────────────────────────
 # 최종 영상 자동 검사(§3-8 A) — 합격은 "돌아간다"이지 품질이 아니다
 # ─────────────────────────────────────────────────────────────
 
@@ -843,6 +927,15 @@ def clip_price_per_sec(provider: str, resolution: str = "720p") -> float:
     if provider == "veo_fast":
         return prices["veo_fast"]["video_only_usd_per_sec"][resolution]
     raise ValueError(f"견적을 낼 수 없는 공급자입니다: {provider}")
+
+
+def clip_est_usd(provider: str, clip_sec: int, resolution: str = "720p") -> float:
+    """클립 1개 예상액 — 토큰 과금이면 입력 그림 몫까지(§3-7)."""
+    est = clip_price_per_sec(provider, resolution) * int(clip_sec)
+    if provider == "omni":
+        p = config.DRINKS_EXPLAINER_PRICES["omni"]
+        est += p["input_image_tokens"] * p["input_usd_per_mtok"] / 1_000_000
+    return round(est, 4)
 
 
 def quote_explainer(provider: str = "omni", resolution: str = "720p") -> dict[str, Any]:

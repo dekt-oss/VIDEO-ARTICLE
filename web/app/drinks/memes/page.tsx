@@ -1,13 +1,15 @@
 // 밈 보드 (/drinks/memes) — 인스타에서 지금 도는 형식. 관찰 계정의 뜨는 릴스·오르는 음원·운영자 링크를 카드로 묶는다. 기획 v2 §6.
 // ★ 신호일 뿐 사실 근거가 아니다. 음원 자리는 "인스타가 우리 계정에 준 추천 순서" 안의 자리다.
 // ★ 관찰 범위·마지막 정상 관측일·최근 7일 정상 관측 수는 어떤 상태에서도 보인다(§6-2). 실패·미적용·수집 전을 0건처럼 보이지 않게 한다.
-// ★ [쓰자]는 결정만 기록한다. 돈이 나가는 분석은 이 화면에서 시작되지 않는다.
+// ★ [쓰자] = 결정 기록 + Apify 정밀화 요청 1건(총괄 §7 결정 1, 0070). 1회 $0.02·월 $3 상한은 DB 가 센다. 0070 이 없으면 결정만 기록한다.
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
 import {
-  AddLinkForm, AddWatchAccountForm, CardDecisionButtons, CardFieldForm, WatchAccountAction,
+  AddLinkForm, AddWatchAccountForm, CardDecisionButtons, CardFieldForm, ManualCardForm, WatchAccountAction,
 } from "@/components/drinks/MemeBoardControls";
+import { APIFY_STATUS_LABEL, refineCostLine, requestSummary, type ApifyMonth, type ApifyRequestRow } from "@/lib/drinks/apify";
+import { loadApifyBoard, type ApifyBoardLoaded } from "@/lib/drinks/apifyQueries";
 import {
   DECISION_LABEL, EVIDENCE_LABEL, FORMAT_FIELDS, LINK_STATUS_LABEL, PRECISION_LABEL, RISING_AUDIO_LABEL, RUN_STATUS_LABEL, SOURCE_LABEL, STATE_LABEL, STRUCTURE_LABEL,
   boardHealth, compactNum, failureText, groupCards, isoToday, latestRuns, positionLabel, reasonsText, sortAudio, tokenView, noteAfterUse,
@@ -15,6 +17,9 @@ import {
 } from "@/lib/drinks/igTrends";
 import { loadIgBoard } from "@/lib/drinks/igTrendsQueries";
 import { safeHref } from "@/lib/drinks/trends";
+import { MemeDraftActions, MemeDraftForm } from "@/components/drinks/MemeDraftControls";
+import { MEME_STATUS_LABEL, memeNextStep, type MemeDraftRow } from "@/lib/drinks/meme";
+import { loadMemeWork, type MemeWork, type MemeWorkLoaded } from "@/lib/drinks/memeQueries";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +68,31 @@ function Banners({ h, token }: { h: BoardHealth; token: TokenView }) {
   );
 }
 
-function RunTable({ runs }: { runs: IgRunRow[] }) {
+function T4Row({ apify }: { apify: ApifyBoardLoaded }) {
+  if (apify.state !== "ok") {
+    return (
+      <tr>
+        <td>{SOURCE_LABEL.t4}</td>
+        <td className="muted">-</td>
+        <td><span className="pill">{apify.state === "missing" ? "0070 미적용" : apify.state === "failed" ? "조회 실패" : "연결 안 함"}</span></td>
+        <td className="num">-</td>
+        <td className="muted">{apify.state === "missing" ? "요청 표가 운영 DB 에 없습니다 — [쓰자] 는 결정만 기록합니다. 돈이 나가지 않습니다." : apify.state === "failed" ? apify.error : "서버 설정 없음"}</td>
+      </tr>
+    );
+  }
+  const latest = apify.data.requests[0];
+  return (
+    <tr>
+      <td>{SOURCE_LABEL.t4}</td>
+      <td className="muted">{latest ? ymd(latest.created_at) : "요청 없음"}</td>
+      <td><span className={latest?.status === "failed" ? "pill reject" : latest?.status === "partial" ? "pill dk-warn" : "pill"}>{latest ? APIFY_STATUS_LABEL[latest.status].split(" — ")[0] : "클릭 때만"}</span></td>
+      <td className="num">{apify.data.month.requests}건/이달</td>
+      <td className="muted">매일 돌지 않습니다 — [쓰자] 클릭 1회 = 실행 1회. {refineCostLine(apify.data.month)} · 정상 관측일 계산에 넣지 않습니다.</td>
+    </tr>
+  );
+}
+
+function RunTable({ runs, apify }: { runs: IgRunRow[]; apify: ApifyBoardLoaded }) {
   const latest = latestRuns(runs);
   const rows: ("t1" | "t2" | "t3")[] = ["t1", "t2", "t3"];
   return (
@@ -86,13 +115,7 @@ function RunTable({ runs }: { runs: IgRunRow[] }) {
               </tr>
             );
           })}
-          <tr>
-            <td>{SOURCE_LABEL.t4}</td>
-            <td className="muted">-</td>
-            <td><span className="pill">연결 안 함</span></td>
-            <td className="num">-</td>
-            <td className="muted">이 화면과 수집에 연결돼 있지 않습니다. 돈이 나가지 않습니다.</td>
-          </tr>
+          <T4Row apify={apify} />
         </tbody>
       </table>
     </div>
@@ -116,7 +139,15 @@ function FormatFields({ c }: { c: IgCardRow }) {
   );
 }
 
-function MemeCard({ c, today }: { c: IgCardRow; today: string }) {
+function RefineLine({ r }: { r: ApifyRequestRow }) {
+  return (
+    <p className={r.status === "failed" ? "dk-bad" : "muted"} style={{ fontSize: 13, margin: "4px 0" }}>
+      정밀화 {ymd(r.created_at)}: {requestSummary(r)}{r.error_message && r.status !== "done" ? ` — ${r.error_message}` : ""}
+    </p>
+  );
+}
+
+function MemeCard({ c, today, month, apifyReady, refines }: { c: IgCardRow; today: string; month: ApifyMonth | null; apifyReady: boolean; refines: ApifyRequestRow[] }) {
   return (
     <div className={c.decision === "use" ? "card picked" : c.decision === "pass" ? "card rejected" : "card"}>
       <div className="dk-row">
@@ -149,15 +180,85 @@ function MemeCard({ c, today }: { c: IgCardRow; today: string }) {
           })}
         </div>
       )}
-      <CardDecisionButtons id={c.id} decision={c.decision} />
+      {refines.slice(0, 2).map((r) => <RefineLine key={r.id} r={r} />)}
+      <CardDecisionButtons card={c} month={month} apifyReady={apifyReady} />
       <CardFieldForm card={c} />
     </div>
   );
 }
 
-function CardList({ rows, today, empty }: { rows: IgCardRow[]; today: string; empty?: string }) {
+function MemeDraftItem({ d, work }: { d: MemeDraftRow; work: MemeWork }) {
+  const urls = work.urls[d.id] ?? {};
+  return (
+    <div className={d.status === "publish_waiting" || d.status === "published" ? "card picked" : d.status === "stopped" || d.status === "failed" ? "card rejected" : "card"}>
+      <div className="dk-row">
+        <b>{d.owner_name ?? "(이름 없음)"}</b>
+        <span className={d.status === "publish_waiting" ? "pill on" : d.status === "stopped" || d.status === "failed" ? "pill reject" : "pill"}>{MEME_STATUS_LABEL[d.status]}</span>
+        {d.sync_grade === "sync_required" && <span className="pill dk-warn">박자 맞춤 — 자동 게시 안 함</span>}
+      </div>
+      {d.spec.top_line && <p style={{ margin: "4px 0" }}><b>{d.spec.top_line}</b> <span className="muted">· {(d.spec.beats ?? []).map((b) => b.text).join(" / ")}</span></p>}
+      {memeNextStep(d.status) && <p className="muted" style={{ fontSize: 13, margin: "4px 0" }}>{memeNextStep(d.status)}</p>}
+      {d.error_message && <p className="dk-bad" style={{ fontSize: 13, margin: "4px 0" }}>{d.error_code}: {d.error_message}</p>}
+      {d.status === "draft" && d.blockers.map((b, i) => <p key={i} className="dk-bad" style={{ fontSize: 13, margin: "2px 0" }}>{b.message}</p>)}
+      {urls.final_video && <video src={urls.final_video} controls preload="metadata" style={{ width: 220, display: "block", marginTop: 6 }} />}
+      {d.guide && <details className="dk-sub"><summary>앱에서 음원 붙이는 안내</summary><pre style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{d.guide}</pre></details>}
+      {d.external_url && safeHref(d.external_url) && <p style={{ fontSize: 13 }}><a href={safeHref(d.external_url)!} target="_blank" rel="noreferrer noopener">앱으로 올린 릴스</a></p>}
+      <MemeDraftActions draft={d} />
+      {d.status === "draft" && <details className="dk-sub"><summary className="muted">제작안 고치기</summary><MemeDraftForm draft={d} budgets={work.budgets} reviews={work.reviews} /></details>}
+    </div>
+  );
+}
+
+function MemeWorkSection({ loaded, useCards }: { loaded: MemeWorkLoaded; useCards: IgCardRow[] }) {
+  if (loaded.state === "missing") {
+    return (
+      <section className="section">
+        <h3>밈 제작</h3>
+        <div className="banner-warn" role="status">0066 이 운영 DB 에 아직 없습니다 — 제작안이 0건인 것이 아니라 적용 전입니다. 운영자가 승인해 0066_drinks_meme_engine.sql 을 적용하면 이 칸이 열립니다.</div>
+      </section>
+    );
+  }
+  if (loaded.state !== "ok") {
+    return <section className="section"><h3>밈 제작</h3><LoadProblem state={loaded.state} error={loaded.state === "failed" ? loaded.error : undefined} /></section>;
+  }
+  const work = loaded.data;
+  // 게시된(published, 0068) 제작안도 '살아 있음' — 같은 카드·소재로 또 만들지 않는다(DB 고유 색인과 같다).
+  const live = (d: MemeDraftRow) => !["rejected", "stopped", "failed", "posted_manual"].includes(d.status);
+  const openCards = useCards.filter((c) => !work.drafts.some((d) => d.card_id === c.id && live(d)));
+  const openPicks = work.picks.filter((p) => !work.drafts.some((d) => d.topic_id === p.topic_id && live(d)));
+  return (
+    <section className="section">
+      <h3>밈 제작 ({work.drafts.length})</h3>
+      <p className="muted" style={{ fontSize: 13 }}>카드·소재 → 제작안 초안 → 승인 → 로컬 제작(0원) → 게시 대기. 게시 워커는 아직 연결되지 않았습니다. 박자에 맞춰야 하는 밈은 자동 게시되지 않고, 앱에서 음원을 붙이는 안내만 나옵니다.</p>
+      <ManualCardForm />
+      {openCards.map((c) => (
+        <div key={c.id} className="card">
+          <b>{c.name}</b> <span className="pill pick">쓰자</span> <span className={c.precision === "precise" ? "pill on" : "pill"}>{PRECISION_LABEL[c.precision]}</span>
+          {c.precision === "precise"
+            ? <MemeDraftForm cardId={c.id} budgets={work.budgets} reviews={work.reviews} />
+            : <p className="muted" style={{ fontSize: 13 }}>참고 카드는 제작으로 넘어가지 않습니다. 위 카드에서 비트 수·컷 길이·반전 시점을 넣으면 정밀 틀이 됩니다.</p>}
+        </div>
+      ))}
+      {openPicks.map((p) => (
+        <div key={p.topic_id} className="card">
+          <b>{p.title ?? "(제목 없음)"}</b> <span className="pill">소재에서 밈으로 고름</span>
+          {p.question && <span className="muted"> · {p.question}</span>}
+          <MemeDraftForm topicId={p.topic_id} budgets={work.budgets} reviews={work.reviews} />
+        </div>
+      ))}
+      {openCards.length === 0 && openPicks.length === 0 && work.drafts.length === 0 && <p className="muted">[쓰자]로 고른 카드나 밈으로 고른 소재가 없습니다.</p>}
+      {work.drafts.map((d) => <MemeDraftItem key={d.id} d={d} work={work} />)}
+    </section>
+  );
+}
+
+interface CardCtx { today: string; apify: ApifyBoardLoaded }
+
+function CardList({ rows, ctx, empty }: { rows: IgCardRow[]; ctx: CardCtx; empty?: string }) {
   if (rows.length === 0) return empty ? <p className="muted">{empty}</p> : null;
-  return <>{rows.map((c) => <MemeCard key={c.id} c={c} today={today} />)}</>;
+  const month = ctx.apify.state === "ok" ? ctx.apify.data.month : null;
+  const requests = ctx.apify.state === "ok" ? ctx.apify.data.requests : [];
+  return <>{rows.map((c) => <MemeCard key={c.id} c={c} today={ctx.today} month={month} apifyReady={ctx.apify.state === "ok"} refines={requests.filter((r) => r.card_id === c.id)} />)}</>;
 }
 
 function AudioLine({ a, today }: { a: IgAudioRow; today: string }) {
@@ -215,7 +316,7 @@ function AccountRow({ a }: { a: IgAccountRow }) {
 }
 
 export default async function DrinksMemesPage() {
-  const v = await loadIgBoard();
+  const [v, memeWork, apify] = await Promise.all([loadIgBoard(), loadMemeWork(), loadApifyBoard()]);
   const nowMs = Date.now();
   const today = isoToday(nowMs);
   const header = (
@@ -248,6 +349,7 @@ export default async function DrinksMemesPage() {
   const tokenNow = tokenView(token, nowMs);
   const groups = groupCards(cards);
   const pendingCount = accounts.filter((a) => a.status !== "active").length;
+  const ctx: CardCtx = { today, apify };
   return (
     <main className="container">
       {header}
@@ -255,24 +357,26 @@ export default async function DrinksMemesPage() {
       <Banners h={health} token={tokenNow} />
       <section className="section">
         <h3>수집 상태</h3>
-        <RunTable runs={runs} />
+        <RunTable runs={runs} apify={apify} />
         <p className="muted" style={{ fontSize: 13 }}>정상 관측일은 T1 이 정상이고 T2 계정 성공률이 80% 이상인 날입니다. 카드 수명은 그런 날만 셉니다. {tokenNow.level === "ok" && tokenNow.text}</p>
       </section>
       <section className="section">
         <h3>결정할 카드 ({groups.undecided.length})</h3>
         <p className="muted" style={{ fontSize: 13 }}>
-          [쓰자]는 결정만 기록합니다. 형식 분석이나 구매는 시작되지 않습니다. 표지·캡션만으로는 영상 칸을 채우지 않으며, 그 칸이 비면 참고 카드로 남습니다.
+          [쓰자] 는 결정을 기록하고, 참고 카드면 그 카드의 릴스 3개 이하를 Apify 로 받아 형식(비트 수·컷 길이·반전 시점·동기화)을 잽니다 — 클릭 1회가 실행 1회 승인입니다(1회 상한 $0.02, 월 $3).
+          남의 영상은 분석 뒤 바로 지우고 저장하지 않습니다. 표지·캡션만으로는 영상 칸을 채우지 않으며, 그 칸이 비면 참고 카드로 남습니다.
         </p>
-        <CardList rows={groups.undecided} today={today} empty={health.neverRun ? "수집 전이라 카드가 없습니다." : "지금 결정할 카드가 없습니다. 첫 관측일의 릴스와 음원은 신호에 넣지 않으므로 처음 며칠은 비어 있는 것이 정상입니다."} />
+        <CardList rows={groups.undecided} ctx={ctx} empty={health.neverRun ? "수집 전이라 카드가 없습니다. 아래 [밈 제작]에서 원본 릴스를 보고 카드를 직접 만들 수 있습니다." : "지금 결정할 카드가 없습니다. 첫 관측일의 릴스와 음원은 신호에 넣지 않으므로 처음 며칠은 비어 있는 것이 정상입니다."} />
       </section>
-      {groups.use.length > 0 && <section className="section"><h3>쓰자 ({groups.use.length})</h3><CardList rows={groups.use} today={today} /></section>}
-      {groups.later.length > 0 && <section className="section"><h3>나중에 ({groups.later.length})</h3><CardList rows={groups.later} today={today} /></section>}
+      {groups.use.length > 0 && <section className="section"><h3>쓰자 ({groups.use.length})</h3><CardList rows={groups.use} ctx={ctx} /></section>}
+      <MemeWorkSection loaded={memeWork} useCards={groups.use} />
+      {groups.later.length > 0 && <section className="section"><h3>나중에 ({groups.later.length})</h3><CardList rows={groups.later} ctx={ctx} /></section>}
       {(groups.pass.length > 0 || groups.archived.length > 0) && (
         <section className="section">
           <details>
             <summary className="muted">넘긴 카드 {groups.pass.length}장 · 식어서 보관된 카드 {groups.archived.length}장</summary>
-            <CardList rows={groups.pass} today={today} />
-            <CardList rows={groups.archived} today={today} />
+            <CardList rows={groups.pass} ctx={ctx} />
+            <CardList rows={groups.archived} ctx={ctx} />
           </details>
         </section>
       )}

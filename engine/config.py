@@ -4813,3 +4813,163 @@ DRINKS_FORMAT_EVIDENCE_MAX_CANDIDATES: int = 50
 DRINKS_EXPLAINER_ESTIMATE_USD: float = 7.95
 DRINKS_EXPLAINER_APPROVAL_CAP_USD: float = 8.90
 
+
+# ── 카드뉴스 형식 엔진 (총괄계획 §4-2, 기획 v2 §2-2·§2-3·§4·§7, 마이그레이션 0065). docs/deviation-drinks-card-reels.md ──
+# 카드 제작안 초안. 글자 수 상한은 렌더(1080×1920)에서 잘리지 않는 값으로 잡았다 — 샘플 렌더로 정한 첫 값이다.
+DRINKS_CARD_PLAN_MODEL: str = os.getenv("DRINKS_CARD_PLAN_MODEL", DRINKS_DEVELOP_PLAN_MODEL)
+DRINKS_CARD_PLAN_MAX_TOKENS: int = 8_000
+DRINKS_CARD_PAGES: tuple[int, int] = (5, 8)          # 표지 1 + 설명 + 출처 1. 페이지당 2.5~4초면 15~30초에 든다
+DRINKS_CARD_HEADING_MAX_CHARS: int = 26              # 페이지 제목(공백 포함)
+DRINKS_CARD_BODY_MAX_CHARS: int = 110                # 페이지 본문(공백·줄바꿈 제외)
+DRINKS_CARD_LINE_MAX_CHARS: int = 22                 # 본문 한 줄 — 넘으면 뜻 단위로 끊으라고 알린다(차단 아님)
+DRINKS_CARD_HOOK_MAX_CHARS: int = 24                 # 첫 페이지 큰 훅 제목. 워커가 쓰는 초안의 상한이다(DB 상한은 아래 LIMITS)
+DRINKS_CARD_SHARE_MAX_CHARS: int = 34                # 마지막 페이지 저장/보내기 한 줄. 위와 같다
+# 릴스 묶음 — SQL drinks_card_reel_limits() 와 같아야 한다(tests/test_drinks_card_reel.py 가 대조).
+DRINKS_CARD_REEL_LIMITS: dict = {"min_pages": 4, "max_pages": 12, "hook_max": 40, "share_max": 60}
+# 카드뉴스 릴스 렌더(로컬·0원). 길이·페이지당 시간은 기획 v2 §2-2.
+DRINKS_CARD_REEL_SECONDS: tuple[float, float] = (15.0, 30.0)
+DRINKS_CARD_REEL_PAGE_SECONDS: tuple[float, float] = (2.5, 4.0)
+DRINKS_CARD_REEL_READ_CHARS_PER_SEC: float = 10.0    # 글자를 읽는 속도 가정(실측 없음). 페이지 시간을 글 길이에 비례시키는 데만 쓴다
+DRINKS_CARD_REEL_TRANSITION: str = "slideleft"       # ffmpeg xfade 전환. 정지 화면을 밀어 넘긴다 — 글자 위 확대(zoompan)는 떨림이 나서 쓰지 않는다
+DRINKS_CARD_REEL_TRANSITION_SEC: float = 0.35
+DRINKS_CARD_REEL_FPS: int = 30
+# 안전 영역 설계값(기획 v2 §2-3 [미검증] — 앱 확인 전 업계 관행값). 이 밖으로 나가는 글자가 있으면 렌더가 멈춘다.
+DRINKS_REEL_SAFE_BOTTOM_PX: int = 340
+DRINKS_REEL_SAFE_RIGHT_PX: int = 120
+DRINKS_CARD_REEL_HOOK_TOP_RATIO: float = 0.20        # 훅 제목 시작 높이(위 20~25%)
+# 음원(기획 v2 §7-4) — 나레이션 없음의 기본값. 화면이 미리 채워 보내고, 워커는 저장된 값을 그대로 쓴다. 첫 시험 게시에서 귀로 판정한다.
+DRINKS_CARD_REEL_AUDIO_VOLUME: int = 90
+DRINKS_CARD_REEL_VIDEO_VOLUME: int = 10
+DRINKS_IG_AUDIO_POLL_SEC: float = 60.0               # 음원 붙인 컨테이너 상태 조회 간격(문서: 1분 간격, 최대 5분)
+# ── 밈형 제작 엔진 (2026-11-02, 총괄 계획 §4-3·기획 v2 §5). docs/deviation-drinks-meme-engine.md ──
+# 길이·화면 숫자는 시험 2 실측(인기 밈 24편, 가운데값 13초)과 설계값이다. 우리 계정 성과로 잰 값이 아니다.
+DRINKS_MEME_MIN_SEC: float = 6.0                     # web/lib/drinks/meme.ts · 0066 과 같아야 한다(tests/test_drinks_meme.py 가 대조)
+DRINKS_MEME_MAX_SEC: float = 15.0
+DRINKS_MEME_BEAT_MIN_MS: int = 500
+DRINKS_MEME_BEAT_MAX_MS: int = 8000
+DRINKS_MEME_MAX_BEATS: int = 6
+DRINKS_MEME_TEXT_MAX_CHARS: int = 60                 # 윗줄·비트 글 한 칸 상한
+DRINKS_MEME_BEAT_MS_PER_CHAR: int = 170              # 비트 길이를 안 정했을 때 글 읽는 시간. 첫 값(meme.ts 와 같다)
+DRINKS_MEME_BEAT_FLOOR_MS: int = 1800                # 짧은 글도 이만큼은 머문다
+DRINKS_MEME_SYNC_REQUIRED_PATTERN: str = r"(필수|맞춰|맞춤|required)"   # 카드의 '음악 동기화' 칸이 이 말이면 박자 맞춤으로 본다(0066 과 같다)
+DRINKS_MEME_FRAMES: tuple[str, ...] = ("top_text", "full_title")     # ① 검은 바탕 위쪽 글 + 가운데 가로 장면 ② 세로 꽉 찬 장면 + 큰 제목
+DRINKS_MEME_SYNC_GRADES: tuple[str, ...] = ("sync_free", "sync_required")
+DRINKS_MEME_AUDIO_MODES: tuple[str, ...] = ("none", "ambient_local", "ig_audio", "app_manual")
+# 화면 — 아래 안전 영역은 설명형 값(기획 v2 §2-3, 앱에서 확인 전 [미검증])을 그대로 쓴다. 글은 좌우 대칭으로 둔다.
+DRINKS_MEME_TEXT_SIDE_PX: int = 120
+DRINKS_MEME_LANDSCAPE_H: int = 608                   # ① 가운데 가로 장면 높이(1080 폭의 16:9)
+DRINKS_MEME_ACCENT: dict = {"top_text": "#FF3B30", "full_title": "#FFE000"}   # 시험 2 실측: 틀 ① 빨강(memezar) · 틀 ② 노랑
+DRINKS_MEME_FONT_FILE: str = "Pretendard-ExtraBold.otf"
+DRINKS_MEME_FONT_NAME: str = "Pretendard ExtraBold"
+DRINKS_MEME_TOP_LINE: dict = {"size": 66, "min_size": 44, "max_lines": 1}
+DRINKS_MEME_TITLE: dict = {"size": 104, "min_size": 72, "max_lines": 3, "y": 400}
+DRINKS_MEME_BEAT_TOP: dict = {"size": 76, "min_size": 52, "max_lines": 3}
+DRINKS_MEME_BEAT_FULL: dict = {"size": 84, "min_size": 56, "max_lines": 3, "y": 900}
+DRINKS_MEME_PALETTES: dict = {       # 코드가 만드는 움직이는 배경(0원). 남의 장면을 쓰지 않는다.
+    "amber": ("0x3A2410", "0x8A5A1E"), "wine": ("0x2C0F1C", "0x7A2A44"), "night": ("0x10182C", "0x2C4A6E"), "moss": ("0x16261A", "0x41653A"),
+}
+DRINKS_MEME_BG_SPEED: float = 0.012                  # 배경 흐름 속도(ffmpeg gradients)
+DRINKS_MEME_AMBIENT_CHORDS: dict = {"amber": (110.0, 165.0, 220.0), "wine": (98.0, 147.0, 196.0), "night": (82.4, 123.5, 164.8), "moss": (123.5, 185.0, 246.9)}
+DRINKS_MEME_X264_PRESET: str = "veryfast"
+DRINKS_MEME_X264_CRF: int = 20
+DRINKS_MEME_FREEZE_MIN_SEC: float = 2.5              # 멈춘 듯 보이는 구간 — 경고만. 밈은 한 장면이 흔하다(시험 2: 24편 중 19편)
+# 안전 검사 — SQL 0066 drinks_meme_unsafe_rules 와 같아야 한다(tests/test_drinks_meme.py 가 대조). 고치면 둘 다 고친다.
+# ★ 낱말 목록이라 뜻은 못 본다. 돌려 말한 농담은 사람이 승인 때 본다. 첫 값이고 실제 카드로 다시 본다.
+DRINKS_MEME_UNSAFE_RULES: tuple[tuple[str, str, str], ...] = (
+    ("meme_encourages_drinking", "음주 조장", r"(원\s*샷|한\s*잔\s*더|한\s*병\s*더|더\s*마셔|마셔\s*라|마시자|달리자|부어라|벌주|취하자|먹고\s*죽|오늘은\s*마신다)"),
+    ("meme_minor", "미성년", r"(미성년|고등학생|중학생|초등학생|고딩|중딩|초딩|교복|수능|청소년|학교\s*끝나고)"),
+    ("meme_overdrinking", "과음 미화", r"(필름\s*(이\s*)?끊|꽐라|만취|폭음|폭탄주|주량\s*자랑|토할\s*때까지|기억\s*(이\s*)?안\s*나|인사불성|해장술|술고래|말술|[0-9]+\s*병\s*(은\s*)?(기본|마셨|깠))"),
+    ("meme_drunk_driving", "음주운전", r"(음주\s*운전|술\s*마시고\s*운전|한\s*잔만\s*하고\s*운전)"),
+    ("meme_pregnancy", "임신 중 음주", r"(임산부|임신\s*중)"),
+)
+# 이 말이 있으면 농담이 아니라 정보로 본다 → 근거가 없으면 멈춘다. 숫자는 단위가 붙은 것만(3초 고민 같은 농담은 잡지 않는다).
+DRINKS_MEME_INFO_PATTERN: str = r"([0-9]+\s*(%|퍼센트|도|ml|밀리|리터|칼로리|kcal|년산|배)|연구|논문|과학적|칼로리|숙취\s*해소|건강에|몸에\s*(좋|나쁘)|효과가|법적으로|법으로|법령|세금|주세)"
+DRINKS_MEME_FOREIGN_MEDIA_PATTERN: str = r"(instagram\.com|cdninstagram|fbcdn|tiktok|youtube\.com|youtu\.be|media_url|permalink)"
+DRINKS_MEME_SCENE_RIGHTS: tuple[str, ...] = ("generated_paid", "own", "licensed")   # 0053 rights 중 장면 칸에 쓸 수 있는 것
+DRINKS_MEME_COPY_SIMILAR_MAX: float = 0.6            # 원본 릴스 캡션·표지 글과 이만큼 겹치면 베낀 것으로 본다(글자 2개 조각 Jaccard). 첫 값
+# 반응 장면(유료) — ★ 이번에는 호출하지 않는다. 기획 v2 §5: 클립 4초 ① 기준 약 $0.41 + 그림 $0.039.
+DRINKS_MEME_REACTION_PAID_ENABLED: bool = False      # 결재 전 꺼짐. 환경변수로 켜지 않는다 — 코드를 바꿔야 켜진다
+DRINKS_MEME_REACTION_CLIP_SEC: int = 4
+DRINKS_MEME_REACTION_CLIP_USD_PER_SEC: float = 0.101
+DRINKS_MEME_REACTION_IMAGE_USD: float = 0.039
+# 글 초안 LLM — 코드 경로만 있다. 결재(drink_develop_budgets)가 있어야 부른다. SQL 0066 drinks_meme_limits 와 같아야 한다.
+DRINKS_MEME_TEXT_MODEL: str = os.getenv("DRINKS_MEME_TEXT_MODEL", "gemini-2.5-flash")
+DRINKS_MEME_TEXT_MAX_OUT_TOKENS: int = 800
+DRINKS_MEME_TEXT_MAX_USD_PER_DRAFT: float = 0.02
+DRINKS_MEME_TEXT_MAX_CALLS_PER_DRAFT: int = 3
+
+# ── 설명형 제작 큐(기획 v2 §3-3·§3-5·§3-9, 2026-11-02) ── 근거·되돌리기: docs/deviation-drinks-explainer-queue.md
+# ★ 실제 공급자 호출 스위치는 위의 DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED 하나다(기본 꺼짐). 이 절의 어떤 값도 호출을 켜지 않는다.
+DRINKS_EXPLAINER_DEFAULT_PROVIDER: str = os.getenv("DRINKS_EXPLAINER_DEFAULT_PROVIDER", "omni")   # S2 에서 확정한다(§3-2). 지금 전송이 연결된 것은 omni 뿐
+DRINKS_EXPLAINER_RESOLUTION: str = "720p"          # 견적 기준(§3-7)
+DRINKS_EXPLAINER_RENDERER_VERSION: str = "drinks-explainer-v1"
+DRINKS_EXPLAINER_RENDERERS: tuple[str, ...] = ("explainer_plan", "explainer_buy", "explainer_render")   # 0067 체크와 같다
+# 대본이 이어짐을 선언하지 않은 같은 역할 장면 사이의 보통 컷. §3-5 표에는 없는 값이다 — 앞 장면 선택을 기다리지 않고 살 수 있고, 연속성 사람 검사 대상이 아니다.
+DRINKS_EXPLAINER_BOUNDARY_KINDS = DRINKS_EXPLAINER_BOUNDARY_KINDS + ("cut",)
+DRINKS_EXPLAINER_CLIP_SEC_TIERS: dict[str, tuple[int, ...]] = {"omni": (4, 6, 8, 10), "veo_fast": (4, 6, 8)}   # 주문 길이. omni 는 3~10초 안에서 짝수만 — 실제 길이는 받은 뒤 잰다(E5)
+DRINKS_EXPLAINER_HOOK_CANDIDATES: int = 2          # 훅 자산의 후보 수(§3-6-2: 후보 2발은 첫 도해 하나에만). 나머지는 1
+DRINKS_EXPLAINER_HOOK_RAW_MS: int = 1800           # 훅으로 앞당겨 보여 주는 길이(배속 전, §3-6-2 B1)
+DRINKS_EXPLAINER_HOOK_END_GAP_MS: int = 300        # 훅 구간이 그 자산의 사용 끝보다 이만큼 앞에서 끝난다(§3-6: 5,400~7,200 / 사용 끝 7,460). 결정적 순간을 지정하는 칸이 대본에 없어 근사한다
+DRINKS_EXPLAINER_TAIL_MS: int = 600                # 말 없는 꼬리(배속 전, §3-6)
+DRINKS_EXPLAINER_ASPECT_TOLERANCE: float = 0.02    # 후보 자동 판정의 9:16 허용 오차(폭/높이 비)
+DRINKS_EXPLAINER_SEND_TIMEOUT_SEC: float = _get_float("DRINKS_EXPLAINER_SEND_TIMEOUT_SEC", 300.0)   # 동기 응답(§3-2 ①) 대기. [미검증] 끊기면 unknown_billed 로 멈춘다
+DRINKS_EXPLAINER_STALE_ATTEMPT_SEC: int = 1800     # 이만큼 멈춘 시도는 워커가 죽은 것으로 본다(0053 임대 시간과 같다)
+DRINKS_EXPLAINER_PLACEHOLDER_SYL_PER_SEC: float = 5.9   # tts=placeholder 의 길이 추정(§3-6-2 말 속도). 무음 시험 전용
+
+# ── 5단계 게시 크론·성과 루프(2026-11-02, 총괄계획 §5·§6 5단계). docs/deviation-drinks-stage5-publish-loop.md ──
+# ★ 예약 실행은 기본 꺼짐이다. 저장소 변수(Settings → Variables) DRINKS_PUBLISH_CRON_ENABLED=1 이 있어야 drinks-publish.yml 의 크론 잡이 일한다.
+#   값이 없으면 크론이 떠도 아무것도 하지 않는다. 수동 실행(workflow_dispatch)은 변수와 무관하다.
+DRINKS_PUBLISH_CRON_VAR: str = "DRINKS_PUBLISH_CRON_ENABLED"
+# 크론 시각(UTC — GitHub Actions 는 UTC 만 받는다). .github/workflows/drinks-publish.yml 과 같아야 한다(tests/test_drinks_stage5_publish_loop.py 가 대조).
+#   게시: KST 07:00~23:30 매 30분(총괄계획 §5 "예약 시각" — 늦어도 30분 안에 집는다. 2시간 넘게 늦으면 게시하지 않는다, 0055).
+#   성과: 매일 KST 08:15(수집 06:30·트렌드 07:30 뒤). 전략: 월요일 KST 08:45(§5 "주 1회").
+DRINKS_PUBLISH_CRON_PUBLISH: str = "0,30 22-23,0-14 * * *"
+DRINKS_PUBLISH_CRON_METRICS: str = "15 23 * * *"
+DRINKS_PUBLISH_CRON_STRATEGY: str = "45 23 * * 0"
+# 콘텐츠 형식(0068 drink_publication_requests.content_format). 전략 묶음 'format' 의 값이다. SQL 과 같아야 한다.
+DRINKS_CONTENT_FORMATS: tuple[str, ...] = ("card", "explainer", "meme")
+# 설명형 캡션 필수 한 줄(기획 v2 §3-4). SQL drinks_ai_label_text() 와 같아야 한다. 산 장면을 쓴 밈은 'AI 생성' 이 들어가면 된다(0066 규칙 그대로).
+DRINKS_AI_LABEL_TEXT: str = "AI 생성 영상"
+# ── 설명형 2단계(S0.5 → S2 → S3) 준비(2026-11-02) ── 근거·되돌리기: docs/deviation-drinks-explainer-stage2.md
+# ★ 이 절의 어떤 값도 호출을 켜지 않는다. 돈이 나가는 스크립트(scripts/explainer_s05·s2·s3)는 `--yes` 와 결재 문장이 있어야 하고,
+#   영상 구매는 그 위에 DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED(운영자 PC 한 회)까지 켜져야 한다.
+# 단계별 결재 상한(기획 v2 §3-10·총괄 §4-1). S3 는 "상한 − S2 사용액"이라 스크립트가 원장에서 뺀다.
+DRINKS_EXPLAINER_STAGE_CAPS_USD: dict[str, float] = {"s05": 0.30, "s2": 2.60, "s3": 8.90}
+DRINKS_EXPLAINER_S05_TOPIC_ID: str = "549a5721-5128-4e45-81a0-803226571108"   # 운영 소재 "위스키 병에는 왜 유통기한이 안 보일까?"(2026-11-02 읽기 조회)
+DRINKS_EXPLAINER_S2_EXTRA_CLIP_RETRY: int = 1      # S2 상한 계산에 넣는 재시도 예비(가장 긴 클립 1회)
+# 대본이 장면마다 선언하는 경계(기획 v2 §3-5 + 큐의 cut). 'match' 는 "바로 앞 장면이 이어진다"(= ref:(n-1))의 짧은 표기다.
+DRINKS_EXPLAINER_SCENE_CONTINUITY_KINDS: tuple[str, ...] = ("ref", "match", "cut")
+# 공급자(Gemini Omni, Interactions API) — 2026-11-02 공식 문서 대조. 검증됨/미검증 구분은 providers/video.py 머리 주석.
+DRINKS_EXPLAINER_OMNI_TASK: str = "image_to_video"             # generation_config.video_config.task — 첫 그림이 시작 프레임[문서]
+DRINKS_EXPLAINER_OMNI_DELIVERY: str = "inline"                 # response_format.delivery — base64 로 바로 받는다[문서]. uri 면 Files API 폴링이 필요
+DRINKS_EXPLAINER_OMNI_SEND_DURATION: bool = True               # response_format.duration(문자열)[문서에 칸만 있음]. 형식 "8s" 는 [미검증] — 400 이면 청구 없이 멈춘다
+DRINKS_EXPLAINER_OMNI_MODELS_URL: str = "https://generativelanguage.googleapis.com/v1beta/models"   # 사전 검증(무료 GET)
+DRINKS_EXPLAINER_OMNI_INTERACTIONS_URL: str = "https://generativelanguage.googleapis.com/v1beta/interactions"   # GET {id} 로 결과 불명을 정정한다[문서]
+DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED: bool = _get_bool("DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED", True)   # 구매 전 모델 조회(무료)로 이름·메서드를 대조한다
+DRINKS_EXPLAINER_OMNI_PREFLIGHT_TIMEOUT_SEC: float = 20.0
+# 사람 검수 6항목(§3-8 B)·과정 검수 3항목 — SQL 0067 required 배열·web QUALITY_CHECKS 와 같아야 한다(tests/test_drinks_explainer_stage2.py 가 대조)
+DRINKS_EXPLAINER_QUALITY_ITEMS: tuple[str, ...] = ("stops_in_first_1_5s", "no_photo_like_scene", "match_boundaries_connect", "mechanism_explains_why", "no_fake_text", "loop_natural")
+DRINKS_EXPLAINER_PROCESS_ITEMS: tuple[str, ...] = ("directive_matches_clips", "selection_reasons_ok", "cost_matches_approval")
+DRINKS_EXPLAINER_CAPTION_AI_LINE: str = "AI 생성 영상"       # §3-4: 인스타 "AI 정보" 표시가 API 로 켜지는지 확인 전까지 캡션 첫 줄 아래에 넣는다
+# ── 3·4단계 준비(2026-11-02): 카드 대본 실제 생성 준비 · Apify 밈 틀 정밀화(총괄 §3 결정 1·§6-7). docs/deviation-drinks-stage3-4.md ──
+# 카드 대본 실제 생성 1회 상한(scripts/card_plan_run.py --yes). 예상액이 이 값을 넘으면 부르지 않는다. 결재 문장 없이도 부르지 않는다.
+DRINKS_CARD_PLAN_RUN_CAP_USD: float = 0.10
+# Apify — 클릭 승인(기획 v2 §6-1): [쓰자] 1회 $0.02 · [이걸로] 1회 $0.05 · 월 상한 $3. SQL 0070 drinks_apify_limits() 와 같아야 한다(tests/test_drinks_meme_refine.py 가 대조).
+DRINKS_APIFY_TOKEN_ENV: str = "APIFY_TOKEN"                 # 토큰 환경변수 **이름**. 값은 Authorization 헤더로만 보내고 저장·로그·출력 금지
+DRINKS_APIFY_HOST: str = "api.apify.com"
+DRINKS_APIFY_REEL_ACTOR: str = "apify~instagram-reel-scraper"   # 검토 §4 — 릴스 1행 $0.0026(FREE) + 실행 시작 $0.001
+DRINKS_APIFY_MONTH_CAP_USD: float = 3.00
+DRINKS_APIFY_RUN_CAP_USD: dict[str, float] = {"meme_refine": 0.02, "explainer_reference": 0.05}
+DRINKS_APIFY_MAX_REELS_PER_RUN: int = 3                      # [쓰자] 한 번에 보내는 릴스 수 상한(기획 v2 §6-1 "3개 이하")
+DRINKS_APIFY_REEL_USD: float = 0.0026                        # 결과 1행(오류 행도 청구된다 — 검토 §1)
+DRINKS_APIFY_START_USD: float = 0.001
+DRINKS_APIFY_RUN_TIMEOUT_SEC: int = 180
+DRINKS_APIFY_LEASE_SEC: int = 900
+# 영상 분석(기획 v2 §6-7): 모델 상수 하나, 60초·20MB 이하만 바이트로 직접 보낸다. 넘으면 분석하지 않는다(표지 분석은 이번에 없다).
+DRINKS_APIFY_ANALYSIS_MODEL: str = os.getenv("DRINKS_APIFY_ANALYSIS_MODEL", "gemini-2.5-flash")
+DRINKS_APIFY_ANALYSIS_MAX_SEC: float = 60.0
+DRINKS_APIFY_ANALYSIS_MAX_BYTES: int = 20 * 1024 * 1024
+DRINKS_APIFY_ANALYSIS_MAX_OUT_TOKENS: int = 1500
+DRINKS_APIFY_ANALYSIS_EST_USD: float = 0.003                 # 영상 1편 분석 예상액(flash 저해상도, 60초 이하). 실측 전 계획값 — 정산은 실제 토큰으로. 3편이면 Apify $0.0088 + $0.009 = $0.0178 ≤ $0.02
+DRINKS_APIFY_SCENE_THRESHOLD: float = 0.30                   # ffmpeg 장면 전환 감지 문턱(검토 §6 시험 2 는 scdet 12 를 썼다 — select 식은 0~1)
+DRINKS_APIFY_TMP_SWEEP_HOURS: int = 24                       # 실행 시작 때 이보다 오래된 임시 폴더를 먼저 지운다(§6-7 파일 수명)

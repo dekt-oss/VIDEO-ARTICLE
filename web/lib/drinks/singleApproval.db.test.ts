@@ -252,9 +252,10 @@ test("[승인] 한 번: 근거·편성·대본이 함께 승인되고, 설명형
   assert.equal(Number((await row("select approved_amount_usd from drink_topic_picks where topic_id = $1", [topic])).approved_amount_usd), 8.9);
   assert.equal((await row("select count(*)::int n from drink_spend_approvals where plan_revision_id = $1", [planId])).n, 0, "승인은 지출 결재를 열지 않는다");
   assert.equal((await row("select count(*)::int n from drink_production_jobs where plan_revision_id = $1", [planId])).n, 0, "승인은 제작을 시작하지 않는다");
-  // 승인해도 옛 그림 나열식 렌더 큐에는 못 들어간다(설명형은 전부 영상, 사진 대체 금지). 전용 제작을 잇기 전까지 막힌다.
+  // 승인해도 옛 그림 나열식 렌더 큐에는 못 들어간다(설명형은 전부 영상, 사진 대체 금지). 0067 부터 표 트리거가 막는다.
   await fails("request_render", { plan_revision_id: planId }, "not_renderable");
-  assert.equal((await row("select drinks_plan_renderable($1) as v", [planId])).v, "explainer_engine_not_wired");
+  assert.equal((await row("select count(*)::int n from drink_production_jobs where plan_revision_id = $1", [planId])).n, 0);
+  assert.equal((await row("select drinks_plan_is_explainer($1) as v", [planId])).v, true);
   // 두 번 승인할 수 없다
   await fails("approve_content", await approvePayload(topic, reviewId, planId), "invalid_state");
 });
@@ -511,14 +512,12 @@ test("근거에 돈 쓰기 전에 고칠 곳이 있으면 이어 만들지 않�
   await rpcFails("drinks_request_develop", { topic_id: topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id }, "evidence_not_usable");
   assert.equal(saved.quote_check.unmatched, 1);
 
-  // 카드뉴스: 근거까지 하고 멈춘다
+  // 카드뉴스: 0065 부터 대본까지 이어 간다(자세한 것은 cardReel.db.test.ts)
   const card = await pickAndEvidence(b, "card");
-  assert.equal(card.fin.result.chain.queued, false);
-  assert.equal(card.fin.result.chain.code, "card_plan_not_built");
-  assert.match(card.fin.result.chain.message, /카드뉴스/);
+  assert.equal(card.fin.result.chain.queued, true);
   const rv = await reviewRow(card.reviewId);
   assert.deepEqual(rv.brief.proposed_formats, ["carousel"]);
-  await rpcFails("drinks_request_develop", { topic_id: card.topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id }, "format_not_selected");
+  await rpc("drinks_cancel_develop", { request_id: card.fin.result.chain.request_id });
 
   // 밈: 모델을 부르지 않는다. 의도만 적고 이유를 돌려준다
   const memeTopic = await researching();
@@ -535,7 +534,7 @@ test("근거에 돈 쓰기 전에 고칠 곳이 있으면 이어 만들지 않�
   await assert.rejects(db.query("update drink_topics set selected_formats = '{meme}' where id = $1", [memeTopic]), /check constraint/);
 });
 
-test("한 번 승인은 설명형·표시된 대본만 받는다", async () => {
+test("한 번 승인은 고른 형식의 표시된 대본만 받는다", async () => {
   const b = await budget();
   const { topic, reviewId } = await pickAndEvidence(b);
   const { planId } = await draftPlan();
@@ -626,8 +625,8 @@ test("기존 탭으로 승인해도 앞뒤가 맞는다 — 이어 만든 대본
   p = await planRow(planId);
   await ok("plan_action", { revision_id: p.id, expected_version: p.version, action: "approve" });
   assert.equal((await planRow(planId)).plan_status, "approved");
-  // 승인돼도 설명형은 옛 그림 나열식 렌더로 못 간다(사진 대체 금지) — 전용 제작을 잇기 전까지 막힌다.
-  assert.equal((await row("select drinks_plan_renderable($1) as v", [planId])).v, "explainer_engine_not_wired");
+  // 승인돼도 설명형은 옛 그림 나열식 렌더로 못 간다(사진 대체 금지). 0067 부터 표 트리거가 막는다.
+  assert.equal((await row("select drinks_plan_is_explainer($1) as v", [planId])).v, true);
   await fails("request_render", { plan_revision_id: planId }, "not_renderable");
 });
 

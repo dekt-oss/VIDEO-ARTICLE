@@ -34,8 +34,10 @@ def collect(rpc: Rpc, providers: Callable[[dict[str, Any]], Any], *, limit: int 
                 rpc("drinks_account_verified", {"account_id": d["account"]["account_id"], "ok": False, "error_code": exc.code})
             res = rpc("drinks_record_metrics", {**base, "values": {}, "unavailable": {}, "fetch_status": "failed",
                                                 "error_code": exc.code})
-        log.info("drinks: 성과 %s %s → %s", d["request_id"], res.get("bucket"), "중복" if res.get("duplicate") else "기록")
-        out.append({"request_id": d["request_id"], **res})
+        # 형식(card·explainer·meme, 0068)은 요청 행에 있다 — 스냅샷은 요청으로 묶이므로 형식별 집계는 drinks_strategy_inputs 가 한다.
+        log.info("drinks: 성과 %s(%s) %s → %s", d["request_id"], d.get("content_format") or "card", res.get("bucket"),
+                 "중복" if res.get("duplicate") else "기록")
+        out.append({"request_id": d["request_id"], "content_format": d.get("content_format") or "card", **res})
     return out
 
 

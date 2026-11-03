@@ -88,4 +88,17 @@ def render_carousel(job: dict[str, Any], work_dir: str) -> Rendered:
         warnings.append("glyph_missing")
     qa = {"pages": len(files), "missing_glyphs": sorted(set(MISSING)), "truncated_pages": [q["position"] for q in page_qa if q["truncated"]], "warnings": warnings,
           "size": [CARD_W, CARD_H], "brand": BRAND["version"], "template_version": (job["plan"] or {}).get("template_version", "card-v1")}
-    return Rendered(files, qa, [{"kind": "card", "provider": "local_pillow", "cost_usd": 0, "units": len(files)}])
+    costs = [{"kind": "card", "provider": "local_pillow", "cost_usd": 0, "units": len(files)}]
+    # 0065: 제작안에 릴스 묶음이 있으면 같은 페이지로 세로 영상도 만든다(로컬·0원). 못 만들면 작업 전체가 실패한다 — 카드만 내고 조용히 넘어가지 않는다.
+    if (job["plan"] or {}).get("reel"):
+        from .drinks_card_reel import render_card_reel
+
+        reel_files, reel_qa = render_card_reel(job, os.path.join(work_dir, "reel"))
+        warnings.extend(w for w in reel_qa.pop("warnings") if w not in warnings)
+        if MISSING and "glyph_missing" not in warnings:
+            warnings.append("glyph_missing")
+        qa.update(reel_qa)
+        qa["missing_glyphs"] = sorted(set(MISSING))
+        files.extend(reel_files)
+        costs.append({"kind": "render", "provider": "local_ffmpeg", "cost_usd": 0, "note": "카드뉴스 릴스 조립(Pillow·ffmpeg) — 소리는 무음, 음원은 게시 때 붙는다"})
+    return Rendered(files, qa, costs)

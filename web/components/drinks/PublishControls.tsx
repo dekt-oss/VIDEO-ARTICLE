@@ -5,7 +5,55 @@
 // ★ 막는 것은 DB 다(0055). 버튼을 숨기는 것은 편의일 뿐이다.
 import { useState } from "react";
 
+import {
+  CARD_REEL_AUDIO_VOLUME, CARD_REEL_VIDEO_VOLUME, audioPayload, audioSummary, type AudioBundle, type AudioChoice, type AudioOption,
+} from "@/lib/drinks/audio";
 import { useDrinksAction } from "./useDrinksAction";
+
+/** 음원 고르기: 수집된 인기 음원 중 하나 + 볼륨 + 박자 등급. 제목·가수는 서버가 음원 표에서 복사한다. 미리듣기는 음원만 된다(합성 미리보기는 공급자가 지원하지 않는다). */
+function AudioFields({ options, value, onChange }: { options: AudioOption[]; value: AudioChoice; onChange: (v: AudioChoice) => void }) {
+  const picked = options.find((o) => o.audio_id === value.audioId);
+  if (options.length === 0) return <span className="banner-warn">고를 음원이 없습니다 — 트렌드 수집이 아직 돌지 않았습니다. 음원 없이는 올리지 않습니다.</span>;
+  return (
+    <span className="dk-row" style={{ flexWrap: "wrap", gap: 6 }}>
+      <select value={value.audioId} onChange={(e) => onChange({ ...value, audioId: e.target.value })}>
+        <option value="">음원 고르기(필수)</option>
+        {options.map((o) => <option key={o.audio_id} value={o.audio_id}>{o.list_position != null ? `${o.list_position}. ` : ""}{o.title ?? o.audio_id}{o.display_artist ? ` — ${o.display_artist}` : ""}</option>)}
+      </select>
+      {picked?.preview_url && <a href={picked.preview_url} target="_blank" rel="noreferrer noopener">음원 미리듣기</a>}
+      <label className="muted">음원 볼륨 <input type="number" min={1} max={100} style={{ width: 64 }} value={value.audioVolume} onChange={(e) => onChange({ ...value, audioVolume: Number(e.target.value) })} /></label>
+      <label className="muted">영상 볼륨 <input type="number" min={1} max={100} style={{ width: 64 }} value={value.videoVolume} onChange={(e) => onChange({ ...value, videoVolume: Number(e.target.value) })} /></label>
+      <label className="muted"><input type="checkbox" checked={value.syncGrade === "sync_required"} onChange={(e) => onChange({ ...value, syncGrade: e.target.checked ? "sync_required" : "sync_free" })} /> 박자에 맞춰야 하는 편(자동 게시 안 됨)</label>
+      <span className="muted">음원이 어디서 시작하는지는 정할 수 없습니다.</span>
+    </span>
+  );
+}
+
+const defaultChoice = (a?: AudioBundle | null): AudioChoice => ({
+  audioId: a?.audio_id ?? "", audioVolume: a?.audio_volume ?? CARD_REEL_AUDIO_VOLUME, videoVolume: a?.video_volume ?? CARD_REEL_VIDEO_VOLUME,
+  syncGrade: a?.sync_grade ?? "sync_free",
+});
+
+/** 만들어 둔 릴스 발행 요청의 음원 고르기·바꾸기. 승인 뒤 바꾸면 승인이 풀려 다시 승인해야 게시된다(DB 가 한다). */
+export function AudioControl({ id, version, status, audio, options, summary }: {
+  id: string; version: number; status: string; audio: AudioBundle | null | undefined; options: AudioOption[]; summary: string;
+}) {
+  const { run, busy } = useDrinksAction();
+  const [choice, setChoice] = useState<AudioChoice>(defaultChoice(audio));
+  if (!["draft", "awaiting_approval", "approved", "scheduled", "paused", "failed"].includes(status)) return null;
+  const releases = status !== "draft";
+  return (
+    <details>
+      <summary className="muted">음원 {audio ? "바꾸기" : "고르기"} — 지금: {summary}</summary>
+      <AudioFields options={options} value={choice} onChange={setChoice} />
+      <button className="btn" disabled={busy || !choice.audioId} onClick={() => {
+        if (releases && !window.confirm("음원을 바꾸면 승인이 풀립니다. 다시 승인해야 게시됩니다. 바꿀까요?")) return;
+        run("set_publication_audio", { request_id: id, expected_version: version, audio: audioPayload(choice) },
+          releases ? "음원을 바꿨습니다 — 다시 승인해야 게시됩니다" : "음원을 골랐습니다", "음원");
+      }}>음원 저장</button>
+    </details>
+  );
+}
 
 export function RegisterAccount() {
   const { run, busy } = useDrinksAction();
@@ -67,14 +115,17 @@ export function AccountActions({ id, version, status, publishEnabled }: { id: st
 }
 
 /** 발행안 작성: 계정을 고르고(기본 계정 없음) 캡션·게시 시각(한국 시각)을 적는다. */
-export function CreatePublication({ outputReviewId, accounts, postType, slotHint }: {
+export function CreatePublication({ outputReviewId, accounts, postType, slotHint, audioOptions, audioRequired = false }: {
   outputReviewId: string; accounts: { id: string; label: string; postTypes: string[] }[]; postType: "carousel" | "reel"; slotHint: string | null;
+  /** 0065: 카드 묶음을 릴스로 올리면 음원이 필수다 */
+  audioOptions?: AudioOption[]; audioRequired?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
   const usable = accounts.filter((a) => a.postTypes.includes(postType));
   const [acc, setAcc] = useState("");
   const [caption, setCaption] = useState("");
   const [when, setWhen] = useState("");
+  const [choice, setChoice] = useState<AudioChoice>(defaultChoice());
   if (usable.length === 0) return <span className="muted">이 형식({postType === "carousel" ? "카드뉴스" : "릴스"})을 올릴 수 있는 계정이 없습니다 — 위에서 계정을 등록하세요.</span>;
   return (
     <div className="dk-row" style={{ flexWrap: "wrap", gap: 6 }}>
@@ -86,10 +137,44 @@ export function CreatePublication({ outputReviewId, accounts, postType, slotHint
         onChange={(e) => setCaption(e.target.value)} />
       <label className="muted">게시 시각(한국) <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
       {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
-      <button className="btn" disabled={busy || !acc} onClick={() => run("create_publication", {
-        output_review_id: outputReviewId, account_id: acc, caption,
+      {audioRequired && <AudioFields options={audioOptions ?? []} value={choice} onChange={setChoice} />}
+      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId)} onClick={() => run("create_publication", {
+        output_review_id: outputReviewId, account_id: acc, caption, post_type: postType,
         publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
+        ...(audioRequired ? { audio: audioPayload(choice) } : {}),
       }, "발행안을 만들었습니다(작성 중)", "발행안 작성")}>발행안 만들기</button>
+    </div>
+  );
+}
+
+/** 0068: 게시 대기 밈 제작안 → 발행안. 캡션을 비우면 제작안의 캡션(승인된 글)을 쓴다. 박자 맞춤은 여기 오지 않는다(DB 가 목록에서 뺀다). */
+export function CreateMemePublication({ draftId, accounts, defaultCaption, slotHint, audioOptions, audioRequired, boughtScene }: {
+  draftId: string; accounts: { id: string; label: string; postTypes: string[] }[]; defaultCaption: string; slotHint: string | null;
+  audioOptions?: AudioOption[]; audioRequired: boolean; boughtScene: boolean;
+}) {
+  const { run, busy } = useDrinksAction();
+  const usable = accounts.filter((a) => a.postTypes.includes("reel"));
+  const [acc, setAcc] = useState("");
+  const [caption, setCaption] = useState(defaultCaption);
+  const [when, setWhen] = useState("");
+  const [choice, setChoice] = useState<AudioChoice>(defaultChoice());
+  if (usable.length === 0) return <span className="muted">릴스를 올릴 수 있는 계정이 없습니다 — 위에서 계정을 등록하세요.</span>;
+  return (
+    <div className="dk-row" style={{ flexWrap: "wrap", gap: 6 }}>
+      <select value={acc} onChange={(e) => setAcc(e.target.value)}>
+        <option value="">계정 고르기</option>
+        {usable.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+      </select>
+      <textarea rows={3} style={{ minWidth: 320 }} placeholder="캡션(비우면 제작안의 캡션)" value={caption} onChange={(e) => setCaption(e.target.value)} />
+      {boughtScene && <span className="muted">산 장면을 쓴 밈 — 캡션에 &apos;AI 생성 영상&apos; 한 줄이 있어야 합니다.</span>}
+      <label className="muted">게시 시각(한국) <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
+      {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
+      {audioRequired && <AudioFields options={audioOptions ?? []} value={choice} onChange={setChoice} />}
+      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId)} onClick={() => run("create_meme_publication", {
+        draft_id: draftId, account_id: acc, caption,
+        publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
+        ...(audioRequired ? { audio: audioPayload(choice) } : {}),
+      }, "밈 발행안을 만들었습니다(작성 중)", "밈 발행안 작성")}>발행안 만들기</button>
     </div>
   );
 }

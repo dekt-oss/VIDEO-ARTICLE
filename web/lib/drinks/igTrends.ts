@@ -322,7 +322,7 @@ export function groupCards<T extends Pick<IgCardRow, "decision" | "state" | "arc
 /** [쓰자] 뒤 화면 문장. 돈이 나가는 일이 시작되지 않는다는 것을 그대로 말한다. */
 export function noteAfterUse(c: Pick<IgCardRow, "precision" | "state">): string {
   const cooled = c.state === "cooled" ? "식었음 — 만들지 말지 다시 판단하세요. " : "";
-  if (c.precision === "precise") return `${cooled}정밀 틀입니다. 밈 제작 엔진이 연결되면 이 틀로 넘어갑니다(아직 연결 전). 결정만 기록했고 돈은 나가지 않았습니다.`;
+  if (c.precision === "precise") return `${cooled}정밀 틀입니다. 아래 [밈 제작]에서 제작안을 씁니다. 결정만 기록했고 돈은 나가지 않았습니다.`;
   return `${cooled}참고 카드입니다. 원본 릴스를 보고 비트 수·컷 길이·반전 시점을 직접 넣으면 정밀 틀이 됩니다. 결정만 기록했고 돈은 나가지 않았습니다.`;
 }
 

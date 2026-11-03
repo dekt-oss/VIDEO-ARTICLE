@@ -161,20 +161,28 @@ def test_graph_media_owner_app_scoped_id_maps_to_account_id(monkeypatch):
     assert graph(other, monkeypatch).media(ACC, "m1").owner_id == "555", "다른 주인은 그대로 둔다(불일치로 잡히게)"
 
 
-def test_live_publish_workflow_is_manual_only_and_reads_token_from_secret():
-    """실제 게시 스위치(DRINKS_IG_LIVE)를 켠 워크플로는 사람이 눌러야만 돈다 — 예약 실행·푸시 실행이 끼면 무인 게시가 된다."""
+def test_live_publish_workflow_cron_is_off_by_default_and_reads_token_from_secret():
+    """실제 게시 스위치(DRINKS_IG_LIVE)를 켠 워크플로. 2026-11-02(총괄계획 §6 5단계)부터 크론이 적혀 있지만 **기본 꺼짐**이다 —
+    저장소 변수 DRINKS_PUBLISH_CRON_ENABLED 가 '1' 이 아니면 예약 실행은 잡 단계에서 통째로 건너뛴다. 푸시 실행은 여전히 없다."""
     import pathlib
     import re as _re
 
     import yaml
 
+    from engine import config
+
     p = pathlib.Path(__file__).resolve().parents[1] / ".github" / "workflows" / "drinks-publish.yml"
     raw = p.read_text(encoding="utf-8")
     wf = yaml.safe_load(raw)
     triggers = wf.get("on") or wf.get(True)
-    assert set(triggers) == {"workflow_dispatch"}, "실제 게시 워크플로에 cron·push 를 붙이려면 운영자 승인 후 이 시험을 고친다"
-    env = wf["jobs"]["run"]["env"]
+    assert set(triggers) == {"workflow_dispatch", "schedule"}, "실제 게시 워크플로에 push 를 붙이지 않는다"
+    job = wf["jobs"]["run"]
+    gate = job.get("if") or ""
+    assert "github.event_name != 'schedule'" in gate and f"vars.{config.DRINKS_PUBLISH_CRON_VAR} == '1'" in gate, \
+        "예약 실행은 저장소 변수 하나로만 켜진다(기본 꺼짐) — 변수 이름은 config 와 같다"
+    env = job["env"]
     assert env.get("DRINKS_IG_LIVE") == "1"
-    tokens = {k: v for k, v in env.items() if k.endswith("_IG_TOKEN")}
+    tokens = {k: v for k, v in env.items() if k.endswith("_TOKEN")}
     assert tokens and all(v == "${{ secrets.%s }}" % k for k, v in tokens.items()), "토큰은 같은 이름의 GitHub 비밀에서만"
+    assert "SOOLJJERIGO_IG_TOKEN" in tokens and "SOOLJJERIGO_FB_TOKEN" in tokens, "운영 계정의 Instagram·Facebook 로그인 토큰 둘"
     assert not _re.search(r"echo .*TOKEN|set -x", raw), "토큰을 로그에 찍지 않는다"

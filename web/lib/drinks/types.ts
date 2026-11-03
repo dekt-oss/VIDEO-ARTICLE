@@ -210,7 +210,8 @@ export interface PlanRow {
   format: Format;
   revision_no: number;
   topic_review_id: string;
-  plan_json: { scenes?: VideoScene[]; pages?: CarouselPage[]; notes?: string | null; template_version?: string };
+  /** reel(0065): 있으면 같은 페이지로 세로 영상도 만든다. 첫 화면 큰 제목·마지막 화면 저장/보내기 한 줄. */
+  plan_json: { scenes?: VideoScene[]; pages?: CarouselPage[]; notes?: string | null; template_version?: string; reel?: { hook_title: string; share_line: string } };
   visual_profile: string | null;
   brand_profile_version: string | null;
   schema_version: string;

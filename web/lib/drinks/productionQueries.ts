@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Loaded } from "@/lib/drinks/model";
 import { fetchAllIn, fetchAllPages } from "@/lib/drinks/paging";
 import type { PlanRow, ReviewRow, TopicRow } from "@/lib/drinks/types";
+import type { ExplainerStatus } from "@/lib/drinks/explainerQueue";
 
 export interface ProdJobRow {
   id: string; format: "video" | "carousel"; status: "queued" | "running" | "succeeded" | "failed" | "canceled";
@@ -51,6 +52,7 @@ export interface PlanProduction {
   manifests: ManifestView[];
   costs: CostRow[];
   spend: PlanSpend;
+  explainer: ExplainerStatus;
 }
 
 export async function loadPlanProduction(planId: string): Promise<Loaded<PlanProduction> | { state: "not_found" }> {
@@ -61,18 +63,22 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
   if (p.error) return { state: "failed", error: `제작안: ${p.error.message}` };
   if (!p.data) return { state: "not_found" };
   const plan = p.data as PlanRow;
-  const [t, rv, va, ren, spend, jobs, mans] = await Promise.all([
+  const [t, rv, va, ren, spend, ex, jobs, mans] = await Promise.all([
     db.from("drink_topics").select("id, title, question, status").eq("id", plan.topic_id).maybeSingle(),
     db.from("drink_topic_reviews").select("id, revision_no, status, revoked_at").eq("id", plan.topic_review_id).maybeSingle(),
     db.from("drink_review_validity").select("currently_valid").eq("review_id", plan.topic_review_id).maybeSingle(),
     db.rpc("drinks_plan_render_state", { p: { plan_revision_id: planId } }),
     db.rpc("drinks_plan_spend", { p: { plan_revision_id: planId } }),
+    db.rpc("drinks_explainer_status", { p: { plan_revision_id: planId } }),
     fetchAllPages<ProdJobRow>((f, to) => db.from("drink_production_jobs").select("*", { count: "exact" }).eq("plan_revision_id", planId)
       .order("created_at", { ascending: false }).order("id").range(f, to), "제작 작업"),
     fetchAllPages<ManifestRow>((f, to) => db.from("drink_asset_manifests").select("*", { count: "exact" }).eq("plan_revision_id", planId)
       .order("created_at", { ascending: false }).order("id").range(f, to), "파일 묶음"),
   ]);
   for (const r of [t, rv, va, ren, spend]) if (r.error) return { state: "failed", error: r.error.message };
+  // 0067 적용 전(함수 없음)이면 설명형이 아닌 것으로 보고 화면을 그대로 둔다 — 코드를 먼저 합치고 마이그레이션을 뒤에 적용한다. 다른 오류는 숨기지 않는다.
+  const exMissing = ex.error && ["PGRST202", "42883"].includes(ex.error.code);
+  if (ex.error && !exMissing) return { state: "failed", error: ex.error.message };
   if (!t.data || !rv.data) return { state: "failed", error: "소재·근거 버전 조회 누락" };
   if (!jobs.ok) return { state: "failed", error: jobs.error };
   if (!mans.ok) return { state: "failed", error: mans.error };
@@ -101,6 +107,16 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
     urls.set(m.id, s.error ? null : s.data?.signedUrl ?? null);
     if (s.error || !s.data?.signedUrl) urlErrors.set(m.id, s.error?.message ?? "서명 URL 없음");
   }
+  // 후보 클립 미리보기(비공개 버킷, 1시간). 못 만들면 그 사실을 화면이 말한다.
+  const explainer: ExplainerStatus = exMissing ? { is_explainer: false, approved_amount_usd: null, episode: null, slots: [], approvals: [], unknown_attempts: [] } : (ex.data as ExplainerStatus);
+  for (const slot of explainer.slots) {
+    for (const c of slot.candidates) {
+      if (!c.asset || c.asset.state !== "stored" || c.asset.storage_key.startsWith("local:")) continue;
+      const s = await db.storage.from("drinks").createSignedUrl(c.asset.storage_key, 3600);
+      c.url = s.error ? null : s.data?.signedUrl ?? null;
+      c.urlError = s.error?.message ?? (s.data?.signedUrl ? null : "서명 URL 없음");
+    }
+  }
   const revBy = new Map((reviews as { ok: true; rows: OutputReviewRow[] }).rows.map((r) => [r.manifest_id, r]));
   const valBy = new Map((validity as { ok: true; rows: { manifest_id: string; current_block: string | null; currently_usable: boolean }[] }).rows
     .map((v) => [v.manifest_id, v]));
@@ -119,6 +135,7 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
       review: { ...(rv.data as PlanProduction["review"]), currently_valid: (va.data as { currently_valid?: boolean } | null)?.currently_valid },
       renderable: (ren.data as { block: string | null } | null)?.block ?? null, jobs: jobs.rows, manifests, costs: (costs as { ok: true; rows: CostRow[] }).rows,
       spend: spend.data as PlanSpend,
+      explainer,
     },
   };
 }

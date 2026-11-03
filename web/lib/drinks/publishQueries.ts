@@ -2,6 +2,7 @@
 // 두 화면이 각각 DB 함수 하나(drinks_publish_board / drinks_analytics_board)로 읽는다 — 상한을 넘으면 truncated.
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fromQuery, type Loaded } from "@/lib/drinks/model";
+import type { AudioBundle, AudioOption } from "@/lib/drinks/audio";
 
 export type PubStatus = "draft" | "awaiting_approval" | "approved" | "scheduled" | "publishing" | "published" | "failed"
   | "unknown" | "paused" | "canceled";
@@ -25,19 +26,38 @@ export interface AccountView {
   publish_enabled: boolean; credential_ref: string | null; verified_at: string | null; verified_username: string | null; version: number;
 }
 
+/** 0068: 콘텐츠 형식. 카드뉴스(캐러셀·카드 릴스)·설명형·밈형. 성과·전략이 이 값으로 묶인다. */
+export type ContentFormat = "card" | "explainer" | "meme";
+export const CONTENT_FORMAT_LABEL: Record<ContentFormat, string> = { card: "카드뉴스", explainer: "설명형", meme: "밈형" };
+
 export interface RequestView {
-  id: string; topic_id: string; topic_title: string; categories: string[]; plan_revision_id: string; post_type: "carousel" | "reel";
+  id: string; topic_id: string | null; topic_title: string; categories: string[]; plan_revision_id: string | null; post_type: "carousel" | "reel";
+  /** 0068. 0068 전 DB 는 이 칸을 주지 않는다 → 카드로 본다 */
+  content_format?: ContentFormat; meme_draft_id?: string | null;
   account_id: string; target_external_account_id: string; caption: string; publish_at: string | null; display_timezone: string;
   status: PubStatus; approval_digest: string | null; current_digest: string; block: string | null; approved_at: string | null;
   pause_code: string | null; pause_reason: string | null; cancel_requested: boolean; external_post_id: string | null;
   external_url: string | null; reconcile_state: string; attempt_count: number; error_code: string | null; error_message: string | null;
   published_at: string | null; version: number; updated_at: string;
   files: { role: string; position: number; storage_key: string; width: number | null; height: number | null; state: string }[] | null;
+  /** 0065 음원 묶음. 없으면 null */
+  audio?: AudioBundle | null; audio_verified_at?: string | null; audio_required?: boolean;
 }
 
 export interface ReadyOutput {
   output_review_id: string; manifest_id: string; plan_revision_id: string; format: "video" | "carousel"; topic_title: string;
   reviewed_at: string | null; pages: number;
+  /** 0065: 이 묶음으로 아직 만들 수 있는 게시 형식 */
+  post_types?: ("carousel" | "reel")[];
+  /** 0068: 설명형 소재의 영상이면 explainer — 캡션에 'AI 생성 영상' 한 줄이 필수다 */
+  content_format?: ContentFormat;
+}
+
+/** 0068: 게시 대기 중인 밈 제작안(박자 무관만). 발행안을 만들면 목록에서 빠진다. */
+export interface ReadyMeme {
+  draft_id: string; owner_name: string; card_id: string | null; topic_id: string | null; frame: string | null; top_line: string | null;
+  caption: string | null; audio_mode: string | null; audio_id: string | null; bought_scene: boolean | null; duration_ms: number | null;
+  approved_at: string | null; updated_at: string;
 }
 
 export interface PublishBoard {
@@ -46,7 +66,13 @@ export interface PublishBoard {
   requests: RequestView[];
   requests_truncated: boolean;
   ready_outputs: ReadyOutput[];
+  /** 0068: 게시 대기 밈 제작안. 0068 전 DB 는 이 칸을 주지 않는다 */
+  ready_memes?: ReadyMeme[];
+  /** 0065: 고를 수 있는 음원(가장 최근 수집일 목록) */
+  audio_options?: AudioOption[];
   slot_weights: Record<string, number> | null;
+  /** 0068: 설명형 캡션 필수 한 줄(서버 값) */
+  ai_label_text?: string;
 }
 
 export interface SnapshotView {
@@ -55,8 +81,10 @@ export interface SnapshotView {
 }
 
 export interface PostView {
-  request_id: string; topic_title: string; categories: string[]; lane: string; post_type: string; account: string; is_test: boolean;
+  request_id: string; topic_title: string; categories: string[]; lane: string | null; post_type: string; account: string; is_test: boolean;
   external_url: string | null; published_at: string; slot: string; snapshots: SnapshotView[];
+  /** 0068 */
+  format?: ContentFormat;
 }
 
 export interface ProposalView {
@@ -74,6 +102,8 @@ export interface AnalyticsBoard {
   real_active_accounts: number;
   posts: PostView[];
   posts_truncated: boolean;
+  /** 0068: 형식별 게시 편수 */
+  format_counts?: Partial<Record<ContentFormat, number>>;
   active_strategy: { id: string; label: string; weights: Record<string, Record<string, number>>; created_at: string } | null;
   proposals: ProposalView[];
   rank: { strategy: string; topics: { topic_id: string; title: string; status: string; categories: string[]; lane: string;

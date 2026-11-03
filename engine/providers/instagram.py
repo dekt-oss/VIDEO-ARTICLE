@@ -128,13 +128,28 @@ class FakeInstagram:
             raise AuthError("unknown_account", "가짜 인스타에 없는 계정입니다")
         return {"id": ext, "username": st["accounts"][ext]["username"]}
 
+    def check_audio(self, account: dict[str, Any], audio_id: str) -> dict[str, Any]:
+        """게시 직전 음원 재조회(기획 v2 §7-2). faults: audio_check=unavailable(거부 확정) | timeout | auth_error."""
+        self._check(account)
+        st = self._load()
+        fault = self._fault(st, "audio_check")
+        if fault == "auth_error":
+            raise AuthError("auth_failed", "토큰이 만료됐습니다(가짜)")
+        if fault == "timeout":
+            raise PublishTimeout("network_timeout", "응답 없음(가짜)")
+        if fault == "unavailable" or audio_id in st.get("audio_denied", []):
+            raise PublishError("provider_rejected", "이 계정에서 쓸 수 없는 음원입니다(가짜)", response_code="400")
+        return {"id": audio_id}
+
     def create_container(self, account: dict[str, Any], *, kind: str, url: Optional[str] = None,
                          children: Optional[list[str]] = None, caption: Optional[str] = None,
-                         cover_url: Optional[str] = None) -> str:
+                         cover_url: Optional[str] = None, audio_configuration: Optional[dict[str, Any]] = None) -> str:
         ext = self._check(account)
         st = self._load()
         if self._fault(st, "container") == "error":
             raise PublishError("container_rejected", "컨테이너 생성 거부(가짜)", response_code="400")
+        if audio_configuration is not None and kind != "reel":
+            raise PublishError("audio_not_for_kind", "음원은 릴스 컨테이너에만 붙습니다(가짜)", response_code="400")
         if kind in ("image", "reel") and not url:
             raise PublishError("media_url_missing", "파일 주소가 없습니다")
         if kind == "carousel":
@@ -143,7 +158,7 @@ class FakeInstagram:
                 raise PublishError("children_not_ready", "자식 컨테이너가 준비되지 않았습니다")
         cid = "c_" + uuid.uuid4().hex[:12]
         st["containers"][cid] = {"owner": ext, "kind": kind, "url": url, "children": children or [], "caption": caption or "",
-                                 "cover_url": cover_url, "status": "FINISHED", "media_id": None}
+                                 "cover_url": cover_url, "audio_configuration": audio_configuration, "status": "FINISHED", "media_id": None}
         self._save(st)
         return cid
 
@@ -271,9 +286,18 @@ class GraphInstagram:
         b = self._call("GET", account, f"/{account['external_account_id']}", params={"fields": "id,username"})
         return {"id": str(b.get("id") or ""), "username": b.get("username")}
 
+    def check_audio(self, account: dict[str, Any], audio_id: str) -> dict[str, Any]:
+        """게시 직전 재조회(기획 v2 §7-2): GET /{audio_id}?user_id=우리계정. 실패는 예외다 — 호출쪽이 멈춘다. **[미검증]** 실제 음원으로 불러 본 적 없다."""
+        b = self._call("GET", account, f"/{audio_id}", params={"user_id": account["external_account_id"]})
+        if not isinstance(b, dict) or not b:
+            raise PublishError("audio_empty_response", "음원 조회 응답이 비어 있습니다")
+        return b
+
     def create_container(self, account: dict[str, Any], *, kind: str, url: Optional[str] = None,
                          children: Optional[list[str]] = None, caption: Optional[str] = None,
-                         cover_url: Optional[str] = None) -> str:
+                         cover_url: Optional[str] = None, audio_configuration: Optional[dict[str, Any]] = None) -> str:
+        if audio_configuration is not None and kind != "reel":
+            raise PublishError("audio_not_for_kind", "음원은 릴스 컨테이너에만 붙습니다")
         if url is not None and not url.startswith("https://"):
             raise PublishError("media_url_invalid", "공급자가 가져갈 수 있는 https 주소가 아닙니다")
         data: dict[str, Any] = {}
@@ -285,6 +309,8 @@ class GraphInstagram:
             data = {"media_type": "REELS", "video_url": url, "caption": caption or ""}
             if cover_url:
                 data["cover_url"] = cover_url
+            if audio_configuration is not None:
+                data["audio_configuration"] = json.dumps(audio_configuration)   # 문서 이름 그대로. 값을 고치지 않는다
         else:
             raise PublishError("invalid_kind", f"알 수 없는 컨테이너 종류: {kind}")
         b = self._call("POST", account, f"/{account['external_account_id']}/media", data=data)

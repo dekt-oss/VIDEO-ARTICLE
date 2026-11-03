@@ -13,6 +13,8 @@
 | ⑤ 전략 | `drink_strategy_versions`·`drink_strategy_proposals`, 순서 `drinks_strategy_rank` | `engine/drinks_strategy.py` | `/drinks/analytics` |
 
 워크플로 `drinks-publish.yml` 은 **수동 실행만**(단계 선택: publish / metrics / strategy). 예약(cron)은 승인 뒤.
+→ **2026-11-02(5단계):** 크론 셋이 적혔지만 저장소 변수 `DRINKS_PUBLISH_CRON_ENABLED=1` 이 없으면 꺼져 있다. 밈·설명형 연결과 형식별 성과는
+`docs/deviation-drinks-stage5-publish-loop.md`(0068).
 
 ## 명세와 다르게 정한 것(근거)
 

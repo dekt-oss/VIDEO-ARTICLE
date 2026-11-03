@@ -61,7 +61,8 @@ export default function PlanTab({
   const save = async () => {
     const plan_json = format === "video"
       ? { scenes, notes: notes || null }
-      : { pages: pages.map((p, i) => ({ ...p, position: i + 1 })), notes: notes || null };
+      // 릴스 묶음(0065)은 이 화면에서 고치지 않지만 새 버전에서 잃지 않는다.
+      : { pages: pages.map((p, i) => ({ ...p, position: i + 1 })), notes: notes || null, ...(current?.plan_json.reel ? { reel: current.plan_json.reel } : {}) };
     const payload: Record<string, unknown> = {
       topic_id: topic.id, format, topic_review_id: review?.id ?? null, plan_json,
       visual_profile: visual || null, brand_profile_version: brand || null, aspect_ratio: aspect,

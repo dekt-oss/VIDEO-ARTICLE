@@ -4,9 +4,10 @@
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
-import { AccountActions, CreatePublication, RegisterAccount, RequestActions } from "@/components/drinks/PublishControls";
+import { AccountActions, AudioControl, CreateMemePublication, CreatePublication, RegisterAccount, RequestActions } from "@/components/drinks/PublishControls";
+import { audioSummary, pubBlockLabel } from "@/lib/drinks/audio";
 import {
-  ACCOUNT_STATUS_LABEL, CONNECTION_LABEL, PUB_STATUS_LABEL, PUB_TABS, kst, loadPublishBoard, pubTab, type PubTab,
+  ACCOUNT_STATUS_LABEL, CONNECTION_LABEL, CONTENT_FORMAT_LABEL, PUB_STATUS_LABEL, PUB_TABS, kst, loadPublishBoard, pubTab, type PubTab,
 } from "@/lib/drinks/publishQueries";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
         <LoadProblem state={board.state} error={board.state === "failed" ? board.error : undefined} />
       ) : (() => {
         const { accounts, requests, ready_outputs: ready, slot_weights: slots } = board.data;
+        const readyMemes = board.data.ready_memes ?? [];
+        const aiLabel = board.data.ai_label_text ?? "AI 생성 영상";
         const accLabel = new Map(accounts.map((a) => [a.id, `${a.display_name} (${a.external_account_id})`]));
         const publishable = accounts.filter((a) => a.status !== "disabled").map((a) => ({ id: a.id,
           label: `${a.display_name} · ${a.external_account_id}${a.connection === "fake" ? " · 시험" : ""}${a.publish_enabled ? "" : " · 발행 꺼짐"}`,
@@ -63,15 +66,34 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
 
             <h2>발행안을 만들 수 있는 결과물 ({ready.length})</h2>
             {ready.length === 0 ? <p className="muted">검수 승인된(그리고 지금도 근거가 유효한) 파일 묶음 중 발행안이 없는 것이 없습니다.</p>
-              : ready.map((o) => (
-                <div key={o.output_review_id} className="list-row" style={{ alignItems: "flex-start" }}>
+              : ready.flatMap((o) => (o.post_types ?? [o.format === "carousel" ? "carousel" : "reel"]).map((postType) => (
+                <div key={`${o.output_review_id}-${postType}`} className="list-row" style={{ alignItems: "flex-start" }}>
                   <span>
                     <Link href={`/drinks/production/${o.plan_revision_id}`}>{o.topic_title}</Link>{" "}
-                    <span className="pill">{o.format === "carousel" ? `카드뉴스 ${o.pages}장` : "릴스"}</span>
+                    <span className="pill">{postType === "carousel" ? `카드뉴스 ${o.pages}장` : o.format === "carousel" ? "카드뉴스 릴스" : o.content_format === "explainer" ? "설명형 릴스" : "릴스"}</span>
                     <span className="muted"> · 검수 {kst(o.reviewed_at)}</span>
+                    {o.content_format === "explainer" && <div className="muted">설명형은 캡션에 &apos;{aiLabel}&apos; 한 줄이 있어야 발행안을 만들 수 있습니다(기획 v2 §3-4).</div>}
                   </span>
-                  <CreatePublication outputReviewId={o.output_review_id} accounts={publishable}
-                    postType={o.format === "carousel" ? "carousel" : "reel"} slotHint={slotHint} />
+                  <CreatePublication outputReviewId={o.output_review_id} accounts={publishable} postType={postType} slotHint={slotHint}
+                    audioOptions={board.data.audio_options} audioRequired={postType === "reel" && o.format === "carousel"} />
+                </div>
+              )))}
+
+            <h2>게시 대기 밈 ({readyMemes.length})</h2>
+            <p className="muted">밈 보드에서 제작이 끝난 박자 무관 밈입니다. 박자 맞춤 밈은 자동 게시하지 않아 여기 오지 않습니다(앱에서 붙입니다).
+              발행안을 만들면 다른 형식과 같은 승인·예약을 거쳐 워커가 올립니다.</p>
+            {readyMemes.length === 0 ? <p className="muted">게시 대기 중인 밈 제작안이 없습니다.</p>
+              : readyMemes.map((m) => (
+                <div key={m.draft_id} className="list-row" style={{ alignItems: "flex-start" }}>
+                  <span style={{ maxWidth: 640 }}>
+                    <Link href="/drinks/memes">{m.owner_name}</Link>{" "}
+                    <span className="pill">밈 릴스{m.duration_ms ? ` ${(m.duration_ms / 1000).toFixed(1)}초` : ""}</span>
+                    <span className="muted"> · 승인 {kst(m.approved_at)}</span>
+                    <div className="muted">{m.top_line}</div>
+                    {m.audio_mode === "ig_audio" && <div className="muted">제작안이 정한 인스타 음원({m.audio_id})을 붙여야 합니다 — Facebook 로그인 계정으로만.</div>}
+                  </span>
+                  <CreateMemePublication draftId={m.draft_id} accounts={publishable} defaultCaption={m.caption ?? ""} slotHint={slotHint}
+                    audioOptions={board.data.audio_options} audioRequired={m.audio_mode === "ig_audio"} boughtScene={!!m.bought_scene} />
                 </div>
               ))}
 
@@ -85,8 +107,10 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
             {rows.length === 0 ? <p className="muted">{requests.length === 0 ? "발행 요청이 없습니다(정상 0건)." : "이 탭에 해당하는 요청이 없습니다."}</p>
               : rows.map((r) => {
                 const pages = (r.files ?? []).filter((f) => f.role === "page").length;
-                const what = r.post_type === "carousel" ? `카드뉴스 ${pages}장` : "릴스(영상 + 커버)";
-                const summary = `계정: ${accLabel.get(r.account_id) ?? r.target_external_account_id}\n파일: ${what}\n시각: ${kst(r.publish_at)} (한국)\n캡션: ${r.caption || "(없음)"}`;
+                const fmt = r.content_format ?? "card";
+                const what = r.post_type === "carousel" ? `카드뉴스 ${pages}장` : `${fmt === "card" ? "" : CONTENT_FORMAT_LABEL[fmt] + " "}릴스(영상 + 커버)`;
+                const audioText = audioSummary(r.audio);
+                const summary = `계정: ${accLabel.get(r.account_id) ?? r.target_external_account_id}\n파일: ${what}\n시각: ${kst(r.publish_at)} (한국)\n캡션: ${r.caption || "(없음)"}${r.post_type === "reel" ? `\n음원: ${audioText}` : ""}`;
                 return (
                   <div key={r.id} className="list-row" style={{ alignItems: "flex-start" }}>
                     <span style={{ maxWidth: 640 }}>
@@ -95,10 +119,16 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
                       <div className="muted">{accLabel.get(r.account_id) ?? r.target_external_account_id} · 게시 시각 {kst(r.publish_at)} (한국)
                         {r.published_at && <> · 게시됨 {kst(r.published_at)}</>}</div>
                       <div style={{ whiteSpace: "pre-wrap" }}>{r.caption || <span className="muted">(캡션 없음)</span>}</div>
+                      {r.post_type === "reel" && (r.audio_required || r.audio) && (
+                        <AudioControl id={r.id} version={r.version} status={r.status} audio={r.audio} options={board.data.audio_options ?? []} summary={audioText} />
+                      )}
+                      {r.audio_verified_at && <div className="muted">음원 재확인 {kst(r.audio_verified_at)}</div>}
+                      {r.status === "awaiting_approval" && r.pause_code === "needs_reconfirm" && <div className="banner-info">{r.pause_reason}</div>}
+                      {r.status === "paused" && r.pause_code === "audio_failed" && <div className="banner-info">음원 없이 올리지 않았습니다. 다른 음원을 고르거나(다시 승인), 앱에서 직접 붙이거나, 취소하세요.</div>}
                       {r.status === "unknown" && <div className="banner-block">게시 여부 확인 필요 — 응답이 끊겨 게시됐는지 모릅니다. 다시 게시하지 않고, 다음 워커 실행이 인스타 조회로 대조합니다.{r.cancel_requested && " (취소 요청 있음 — 이미 게시됐으면 취소되지 않습니다)"}</div>}
                       {r.status === "paused" && <div className="banner-info">멈춤: {r.pause_reason ?? r.pause_code}</div>}
                       {r.status === "failed" && <div className="banner-info">실패(게시 안 됨 확인): {r.error_message ?? r.error_code}</div>}
-                      {r.block && r.status !== "paused" && <div className="muted">지금 게시 조건: {r.block}</div>}
+                      {r.block && r.status !== "paused" && <div className="muted">지금 게시 조건: {pubBlockLabel(r.block)}</div>}
                       {r.reconcile_state === "cancel_not_applied" && <div className="banner-info">취소 요청 전에 이미 게시돼 취소되지 않았습니다.</div>}
                       {r.external_url && <div><a href={r.external_url} target="_blank" rel="noreferrer">게시물 보기</a></div>}
                       {r.approval_digest && <div className="muted">승인 지문 {r.approval_digest.slice(0, 12)}…{r.approval_digest !== r.current_digest && " ⚠ 지금 내용과 다름"}</div>}

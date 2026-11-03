@@ -70,7 +70,7 @@
 | 의도 | `selected_formats` | 지금 |
 |---|---|---|
 | 설명형 `explainer` | `video` | 이어 만들기 + 한 번 승인 |
-| 카드뉴스 `card` | `carousel` | 근거 초안까지 만들고 멈춘다. 카드뉴스 대본 자동 작성이 없어서다. 그다음은 기존 근거·공통 기획·카드뉴스 탭 |
+| 카드뉴스 `card` | `carousel` | 0065 전: 근거 초안까지 만들고 멈춘다. 0065 뒤: 이어 만들기 + 한 번 승인(`docs/deviation-drinks-card-reels.md`, 운영 적용 전) |
 | 밈형 `meme` | 없음 | 의도만 적는다. 근거·대본을 만들지 않는다. 밈 제작 엔진은 아직 없다 |
 
 `drink_topics.selected_formats` 값은 그대로 `video`·`carousel` 만 받는다. 의도는 새 표 `drink_topic_picks` 에 있다. 편성(`status='selected'`)은 [승인] 때 일어난다 — 승인되지 않은 근거로는 편성할 수 없다는 0050 규칙을 지키기 위해서다.

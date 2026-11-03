@@ -233,18 +233,43 @@ def _veo_i2v(cut: dict[str, Any], header: dict[str, Any], out_path: str,
 # 이 어댑터는 렌더에서 닿지 않는다: drinks_explainer 는 이 모듈을 import 하지 않고(정적 시험), 전송은
 # send_explainer_request 하나뿐이며 config.DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED + 결재 id 가 없으면 거절한다.
 #
-# [미검증] — 문서로 확인되지 않아 단정하지 않는 것(§3-2·§11). 판정은 S2 에서 한다:
-#   ① Omni: input·response_format 안쪽 모양과 응답 outputs 모양은 문서의 최상위 칸(model·input·response_format)만 근거다 — 안쪽은 가정.
-#   ① Omni: 시작 그림이 **첫 프레임으로 고정되는지**, 길이를 정수로 지정하는 방법, 서버 보관, 요청 ID 로 조회 가능한지, seed 지원.
-#   ②③ Vertex: 가격표의 "1 count" = 1초 해석, generateAudio·seed·lastFrame 칸 이름, 지원 종료(2026-11-17 이후) 뒤 후속 모델.
+# ★ 2026-11-02 공식 문서 대조(ai.google.dev/api/interactions · /gemini-api/docs/omni · /api/models · /gemini-api/docs/pricing). 호출은 하지 않았다.
+# [검증됨 — 문서] ① Omni
+#   · 주소 POST v1beta/interactions, 인증 x-goog-api-key 헤더. 기본은 동기(한 응답에 status=completed). background·store·stream 은 false 권장.
+#   · input 은 블록 배열: {"type":"image","data":<base64>,"mime_type":"image/png"} · {"type":"text","text":…}.
+#   · generation_config.video_config.task = "image_to_video": **첫 그림이 시작 프레임, 둘째 그림(선택)이 끝 프레임** — §3-5 이어 그리기의 전제가 문서로 확인됐다.
+#   · response_format = {"type":"video","aspect_ratio":"9:16"|"16:9","resolution":"360p"|"720p"|"1080p"|"4k","delivery":"inline"|"uri","duration":<문자열>}.
+#   · 영상 위치: steps[].{type:"model_output"}.content[].{type:"video", mime_type:"video/mp4", data:<base64>} (delivery=uri 면 data 대신 uri — Files API 폴링 뒤 :download?alt=media).
+#   · usage.total_output_tokens · output_tokens_by_modality[{modality:"video", tokens}]. 단가 $17.50/100만 토큰, 720p 초당 5,792토큰.
+#   · GET v1beta/interactions/{id} 로 다시 받을 수 있다(inline 으로 온다) → unknown_billed 를 조회로 정정할 길이 있다(§3-3).
+#   · 부정 프롬프트 칸은 없다(문서: "negative prompts are not supported as a parameter" — 문장에 쓴다). seed 칸도 영상에는 없다.
+#   · 무료 사전 검증: GET v1beta/models/{model} → {name, displayName, supportedGenerationMethods[] …}.
+# [미검증] ① Omni
+#   · response_format.duration 의 **형식**(칸만 있고 설명 없음). "8s"(protobuf Duration 표기)로 보낸다 — 틀리면 400 → ExplainerNotSent(청구 없음)로 멈춘다.
+#     그래도 받은 길이는 E5 가 잰다. 기본 길이·3~10초 범위도 문서에 없다(확장 구간 3~10초만 있다).
+#   · 실제 응답에서 영상이 정말 steps 안에 오는지(문서 설명은 있으나 예시 응답은 글 모델 것뿐이다). 모양이 다르면 지어내지 않고 ExplainerOutcomeUnknown.
+#   · supportedGenerationMethods 에 어떤 이름이 오는지 — 사전 검증은 모델 **존재**만 거부 조건으로 쓰고 메서드 이름은 기록한다.
+# [미검증] ②③ Vertex: 가격표의 "1 count" = 1초 해석, generateAudio·seed·lastFrame 칸 이름, 지원 종료(2026-11-17 이후) 뒤 후속 모델. 전송 미연결.
 # ─────────────────────────────────────────────────────────────
 
 class ExplainerProviderError(RuntimeError):
     """요청을 만들 수 없거나(규격 밖), 응답을 해석할 수 없다. 조용히 넘기지 않는다."""
 
 
-class ExplainerSendRefused(ExplainerProviderError):
+class ExplainerNotSent(ExplainerProviderError):
+    """청구 없음이 확실한 실패 — 보내지 않았거나 공급자가 명시적으로 거절했다(4xx). 시도는 failed_unbilled."""
+
+
+class ExplainerSendRefused(ExplainerNotSent):
     """실제 전송 거절 — 스위치·결재가 없다. 렌더 경로에서는 절대 열리지 않는다."""
+
+
+class ExplainerOutcomeUnknown(ExplainerProviderError):
+    """보냈는데 결과를 모른다(끊김·제한시간·5xx·읽을 수 없는 200 응답). 시도는 unknown_billed — 자동으로 다시 부르지 않는다(§3-3)."""
+
+
+class ExplainerBilledBadFile(ExplainerProviderError):
+    """받았는데 파일로 쓸 수 없다 — 청구 유력. 시도는 failed_billed, 재시도는 새 결재로만(§3-3)."""
 
 
 @dataclass(frozen=True)
@@ -297,10 +322,19 @@ class ExplainerClipOutput:
     billed_units: float | None
 
 
-def build_omni_request(clip: ExplainerClipInput) -> ExplainerRequest:
-    """① Gemini Omni Flash — POST v1beta/interactions, 응답에 영상이 base64 로 바로 온다(동기).
+OMNI_UNVERIFIED: tuple[str, ...] = ("response_format.duration 형식('8s')", "실제 응답에서 영상이 steps 안에 오는지", "기본 길이·길이 범위", "supportedGenerationMethods 이름")
+OMNI_VERIFIED_BY_DOCS: tuple[str, ...] = ("input 블록 모양(type/data/mime_type)", "video_config.task=image_to_video 첫 그림 = 시작 프레임",
+                                           "response_format aspect_ratio·resolution·delivery", "영상 위치 steps[].content[].type=video", "usage.total_output_tokens",
+                                           "GET interactions/{id} 조회", "단가 $17.50/M 토큰·720p 초당 5,792토큰")
 
-    [미검증] 길이 지정 방법이 문서에 없어 전용 칸을 만들지 않고 문장으로 말한다 — 실제 길이는 받은 뒤 E5 가 잰다."""
+
+def omni_duration_value(clip_sec: int) -> str:
+    """response_format.duration 문자열. [미검증] protobuf Duration 표기("8s")로 보낸다 — 문서에 칸만 있고 예시가 없다."""
+    return f"{int(clip_sec)}s"
+
+
+def build_omni_request(clip: ExplainerClipInput) -> ExplainerRequest:
+    """① Gemini Omni Flash — POST v1beta/interactions(동기). 모양은 2026-11-02 문서 그대로(모듈 머리 주석의 검증됨/미검증 표)."""
     lo, hi = config.DRINKS_EXPLAINER_OMNI_SEC_RANGE
     if not lo <= int(clip.clip_sec) <= hi:
         raise ExplainerProviderError(f"Omni 출력 길이는 {lo}~{hi}초입니다: {clip.clip_sec}")
@@ -311,29 +345,120 @@ def build_omni_request(clip: ExplainerClipInput) -> ExplainerRequest:
     parts: list[dict[str, Any]] = [{"type": "image", "mime_type": clip.image_mime, "data": clip.start_image_b64}]
     if clip.end_image_b64:
         parts.append({"type": "image", "mime_type": clip.image_mime, "data": clip.end_image_b64})
+    # 길이는 전용 칸(duration)과 문장 둘 다에 말한다 — 칸의 형식이 미검증이라 문장이 안전망이다. 실제 길이는 받은 뒤 E5 가 잰다.
     parts.append({"type": "text", "text": f"{clip.motion_prompt.strip()} About {int(clip.clip_sec)} seconds."})
-    return ExplainerRequest(
-        provider="omni", method="POST", url=config.DRINKS_EXPLAINER_OMNI_URL,
-        body={"model": config.DRINKS_EXPLAINER_OMNI_MODEL, "input": parts,
-              "response_format": {"type": "video", "aspect_ratio": "9:16", "resolution": clip.resolution}},
-        auth="gemini_api_key", billing_unit="tokens",
-        unverified=("input 안쪽 모양", "response_format 안쪽 모양", "시작 그림 첫 프레임 고정", "길이 지정 방법", "조회 가능한 요청 ID"))
+    fmt: dict[str, Any] = {"type": "video", "aspect_ratio": "9:16", "resolution": clip.resolution, "delivery": config.DRINKS_EXPLAINER_OMNI_DELIVERY}
+    if config.DRINKS_EXPLAINER_OMNI_SEND_DURATION:
+        fmt["duration"] = omni_duration_value(clip.clip_sec)
+    body = {"model": config.DRINKS_EXPLAINER_OMNI_MODEL, "input": parts,
+            "generation_config": {"video_config": {"task": config.DRINKS_EXPLAINER_OMNI_TASK}},
+            "response_format": fmt,
+            # 문서 권장: 동기·보관 없음·스트림 없음. store=false 면 previous_interaction_id 편집은 못 하지만 우리는 편집하지 않는다.
+            "background": False, "store": False, "stream": False}
+    return ExplainerRequest(provider="omni", method="POST", url=config.DRINKS_EXPLAINER_OMNI_URL, body=body,
+                            auth="gemini_api_key", billing_unit="tokens", unverified=OMNI_UNVERIFIED)
+
+
+def build_omni_fetch_request(interaction_id: str) -> ExplainerRequest:
+    """GET v1beta/interactions/{id} — 보낸 뒤 결과를 모르는 시도(unknown_billed)를 조회로 정정한다[문서]. 돈이 들지 않는다(조회)."""
+    iid = str(interaction_id or "").strip()
+    if not iid or "/" in iid:
+        raise ExplainerProviderError("조회할 interaction id 가 없습니다")
+    return ExplainerRequest(provider="omni", method="GET", url=f"{config.DRINKS_EXPLAINER_OMNI_INTERACTIONS_URL}/{iid}", body={},
+                            auth="gemini_api_key", billing_unit="tokens")
+
+
+def _omni_video_blocks(data: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for step in (data or {}).get("steps") or []:
+        if not isinstance(step, dict) or step.get("type") != "model_output":
+            continue
+        for c in step.get("content") or []:
+            if isinstance(c, dict) and c.get("type") == "video":
+                out.append(c)
+    return out
+
+
+def omni_billed_units(data: dict[str, Any]) -> float | None:
+    """청구 토큰 — 영상 모달리티 출력 토큰이 있으면 그것, 없으면 total_output_tokens[문서]."""
+    usage = (data or {}).get("usage") or {}
+    for row in usage.get("output_tokens_by_modality") or []:
+        if isinstance(row, dict) and row.get("modality") == "video" and row.get("tokens") is not None:
+            return float(row["tokens"])
+    units = usage.get("total_output_tokens")
+    return float(units) if units is not None else None
 
 
 def parse_omni_response(data: dict[str, Any]) -> ExplainerParsed:
-    """[미검증] 가정한 모양: {id, outputs:[{type:"video", data:<base64>}], usage:{total_output_tokens}}. 모양이 다르면 지어내지 않고 멈춘다."""
-    outputs = (data or {}).get("outputs") or []
-    video = next((o for o in outputs if isinstance(o, dict) and o.get("type") == "video" and o.get("data")), None)
-    if video is None:
-        raise ExplainerProviderError(f"Omni 응답에 영상이 없습니다: keys={sorted((data or {}).keys())}")
+    """Interaction 자원 → 영상. 문서 모양: {id, status, steps:[{type:"model_output", content:[{type:"video", data|uri, mime_type}]}], usage}.
+    status 가 completed 가 아니면 아직(또는 실패)이다. 영상이 없으면 지어내지 않고 멈춘다."""
+    status = str((data or {}).get("status") or "")
+    rid = str((data or {}).get("id") or "")
+    if status in ("in_progress", "requires_action", "requires_continuation"):
+        return ExplainerParsed(provider="omni", request_id=rid, billing_unit="tokens", billed_units=omni_billed_units(data), done=False)
+    if status and status != "completed":
+        raise ExplainerProviderError(f"Omni interaction 이 끝나지 않았습니다: status={status}")
+    blocks = _omni_video_blocks(data)
+    if not blocks:
+        raise ExplainerProviderError(f"Omni 응답에 영상이 없습니다: keys={sorted((data or {}).keys())}, status={status or '-'}")
+    v = blocks[0]
+    raw = b""
+    if v.get("data"):
+        try:
+            raw = base64.b64decode(v["data"], validate=True)
+        except (ValueError, TypeError) as exc:
+            raise ExplainerProviderError("Omni 응답의 영상이 base64 가 아닙니다") from exc
+    elif not v.get("uri"):
+        raise ExplainerProviderError("Omni 영상 블록에 data 도 uri 도 없습니다")
+    return ExplainerParsed(provider="omni", request_id=rid, billing_unit="tokens", billed_units=omni_billed_units(data),
+                           video_bytes=raw, gcs_uri=str(v.get("uri") or ""))
+
+
+@dataclass(frozen=True)
+class OmniPreflight:
+    """무료 사전 검증(GET models/{model}) 결과. ok 가 거짓이면 구매 호출을 **보내기 전에** 거절한다."""
+    ok: bool
+    model: str
+    reason: str = ""
+    display_name: str = ""
+    methods: tuple[str, ...] = ()
+    version: str = ""
+
+
+def evaluate_omni_model_listing(status_code: int, data: Any, model: str | None = None) -> OmniPreflight:
+    """GET v1beta/models/{model} 응답 판정(순수). 404 → 모델 없음(거절). name 불일치 → 거절. 메서드 이름은 기록만(미검증)."""
+    want = model or config.DRINKS_EXPLAINER_OMNI_MODEL
+    if status_code == 404:
+        return OmniPreflight(False, want, "모델이 목록에 없습니다(404) — 이름이 바뀌었거나 종료됐습니다")
+    if status_code >= 400:
+        return OmniPreflight(False, want, f"모델 조회 실패 {status_code}")
+    d = data if isinstance(data, dict) else {}
+    name = str(d.get("name") or "")
+    if name.split("/")[-1] != want:
+        return OmniPreflight(False, want, f"모델 이름이 다릅니다: {name or '(없음)'}")
+    methods = tuple(str(m) for m in d.get("supportedGenerationMethods") or [])
+    return OmniPreflight(True, want, "", str(d.get("displayName") or ""), methods, str(d.get("version") or ""))
+
+
+def omni_preflight(client: Any = None) -> OmniPreflight:
+    """무료 GET 한 번 — 생성 호출이 아니다. 키가 없으면 보내지 않고 거절한다."""
+    if not config.SECRETS.gemini_api_key:
+        return OmniPreflight(False, config.DRINKS_EXPLAINER_OMNI_MODEL, "GEMINI_API_KEY 가 없습니다")
+    url = f"{config.DRINKS_EXPLAINER_OMNI_MODELS_URL}/{config.DRINKS_EXPLAINER_OMNI_MODEL}"
+    own = client is None
+    http = client or httpx.Client(timeout=config.DRINKS_EXPLAINER_OMNI_PREFLIGHT_TIMEOUT_SEC)
     try:
-        raw = base64.b64decode(video["data"], validate=True)
-    except (ValueError, TypeError) as exc:
-        raise ExplainerProviderError("Omni 응답의 영상이 base64 가 아닙니다") from exc
-    usage = (data or {}).get("usage") or {}
-    units = usage.get("total_output_tokens")
-    return ExplainerParsed(provider="omni", request_id=str(data.get("id") or ""), billing_unit="tokens",
-                           billed_units=float(units) if units is not None else None, video_bytes=raw)
+        resp = http.get(url, headers=gemini_auth())
+    except httpx.HTTPError as exc:
+        return OmniPreflight(False, config.DRINKS_EXPLAINER_OMNI_MODEL, f"모델 조회에 닿지 못했습니다: {type(exc).__name__}")
+    finally:
+        if own:
+            http.close()
+    try:
+        data = resp.json()
+    except ValueError:
+        data = None
+    return evaluate_omni_model_listing(resp.status_code, data)
 
 
 def _vertex_base(project: str) -> str:
@@ -416,15 +541,81 @@ def send_explainer_request(req: ExplainerRequest, *, approval_id: str, client: A
     else:
         raise ExplainerSendRefused(f"이 인증({req.auth})의 전송은 아직 연결하지 않았습니다 — 비밀값은 운영자가 넣습니다(§10-3)")
     own = client is None
-    http = client or httpx.Client(timeout=config.HTTP_TIMEOUT_SEC, follow_redirects=True)
+    http = client or httpx.Client(timeout=config.DRINKS_EXPLAINER_SEND_TIMEOUT_SEC, follow_redirects=True)
     try:
-        resp = http.post(req.url, headers=headers, json=req.body)
+        resp = http.get(req.url, headers=headers) if req.method == "GET" else http.post(req.url, headers=headers, json=req.body)
+    except httpx.HTTPError as exc:
+        # 보낸 뒤 끊겼을 수 있다. 예외 문장에 주소·키가 실릴 수 있어 종류 이름만 남긴다.
+        raise ExplainerOutcomeUnknown(f"{req.provider} 응답을 받지 못했습니다: {type(exc).__name__}") from None
+    finally:
+        if own:
+            http.close()
+    if resp.status_code == 408 or resp.status_code >= 500:
+        raise ExplainerOutcomeUnknown(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
+    if resp.status_code >= 400:
+        raise ExplainerNotSent(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
+    try:
+        return resp.json()
+    except ValueError:
+        raise ExplainerOutcomeUnknown(f"{req.provider} 응답을 읽지 못했습니다(200)") from None
+
+
+def generate_explainer_clip(clip: ExplainerClipInput, out_path: str, *, provider: str, approval_id: str, idempotency_key: str, client: Any = None) -> ExplainerClipOutput:
+    """공급자 어댑터 전체(§3-2): 요청 만들기 → 전송(스위치·결재 없으면 거절) → 해석 → 저장·실측. 재시도하지 않는다.
+
+    실패는 청구 여부로 갈라 올린다: ExplainerNotSent(청구 없음) / ExplainerOutcomeUnknown(모름) / ExplainerBilledBadFile(청구 유력).
+    [미검증] 응답 모양·첫 프레임 고정·길이 지정은 S2 전까지 가정이다(이 절 머리 주석). 멱등키를 받는 칸이 문서에 없어 공급자에 보내지 않는다 —
+    중복 호출은 시도 표(requested → generating 은 한 번뿐)가 막는다."""
+    if provider != "omni":
+        raise ExplainerSendRefused(f"이 공급자({provider})의 전송은 아직 연결하지 않았습니다")
+    if not str(idempotency_key or "").strip():
+        raise ExplainerNotSent("멱등키 없는 호출은 하지 않습니다(시도 행을 먼저 만듭니다)")
+    try:
+        req = build_omni_request(clip)
+    except ExplainerProviderError as exc:
+        raise ExplainerNotSent(str(exc)) from exc
+    if config.DRINKS_EXPLAINER_OMNI_PREFLIGHT_ENABLED and config.DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED and str(approval_id or "").strip():
+        # 무료 조회로 모델이 있는지 먼저 본다 — 모양이 다르면 unknown_billed 가 아니라 **보내기 전에** 거절한다(청구 없음).
+        pre = omni_preflight(client)
+        if not pre.ok:
+            raise ExplainerNotSent(f"사전 검증 실패(보내지 않음): {pre.reason}")
+    data = send_explainer_request(req, approval_id=approval_id, client=client)
+    try:
+        parsed = parse_omni_response(data)
+    except ExplainerProviderError as exc:
+        raise ExplainerOutcomeUnknown(str(exc)) from exc
+    if not parsed.done:
+        raise ExplainerOutcomeUnknown(f"Omni interaction 이 아직 진행 중입니다(id={parsed.request_id or '-'}) — 조회(GET interactions/{{id}})로 정정합니다")
+    if not parsed.video_bytes and parsed.gcs_uri:
+        parsed = _omni_download_uri(parsed, client)
+    try:
+        return store_parsed_clip(parsed, out_path)
+    except ExplainerProviderError as exc:
+        raise ExplainerBilledBadFile(str(exc)) from exc
+
+
+def _omni_download_uri(parsed: ExplainerParsed, client: Any = None) -> ExplainerParsed:
+    """delivery=uri 로 왔을 때(우리는 inline 을 요청하지만 문서가 둘 다 허용한다). Files API :download?alt=media[문서]. 여기부터의 실패는 청구 유력이다."""
+    own = client is None
+    http = client or httpx.Client(timeout=config.DRINKS_EXPLAINER_SEND_TIMEOUT_SEC, follow_redirects=True)
+    try:
+        resp = http.get(parsed.gcs_uri, headers=gemini_auth(), params={"alt": "media"})
+    except httpx.HTTPError as exc:
+        raise ExplainerBilledBadFile(f"영상 내려받기에 닿지 못했습니다: {type(exc).__name__}") from None
     finally:
         if own:
             http.close()
     if resp.status_code >= 400:
-        raise ExplainerProviderError(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
-    return resp.json()
+        raise ExplainerBilledBadFile(f"영상 내려받기 {resp.status_code}")
+    return ExplainerParsed(provider=parsed.provider, request_id=parsed.request_id, billing_unit=parsed.billing_unit, billed_units=parsed.billed_units,
+                           video_bytes=resp.content, gcs_uri=parsed.gcs_uri)
+
+
+def fetch_omni_interaction(interaction_id: str, *, approval_id: str, client: Any = None) -> ExplainerParsed:
+    """결과를 모르는 시도를 조회로 정정한다(§3-3). 생성 호출이 아니라 GET 이지만, 스위치·결재 게이트는 같은 함수(send_explainer_request)를 지난다."""
+    req = build_omni_fetch_request(interaction_id)
+    data = send_explainer_request(req, approval_id=approval_id, client=client)
+    return parse_omni_response(data)
 
 
 def generate_clip(cut: dict[str, Any], header: dict[str, Any], out_path: str,

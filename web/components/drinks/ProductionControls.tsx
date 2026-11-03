@@ -97,11 +97,17 @@ const CHECKS = {
   ],
 } as const;
 
-export function OutputReview({ review, format, usableNow }: {
-  review: { id: string; version: number; status: string }; format: "video" | "carousel"; usableNow: boolean;
+/** 0065: 카드 묶음에 릴스 영상이 들었을 때 더 보는 항목(DB drinks_output_review_action 과 같다). */
+const REEL_CHECKS = [
+  ["reel_motion_ok", "릴스 페이지 전환이 끊기지 않고 글자가 다 읽힌다"],
+  ["reel_hook_share_ok", "첫 화면 훅 제목과 마지막 화면 저장/보내기 한 줄이 맞다"],
+] as const;
+
+export function OutputReview({ review, format, usableNow, hasReel = false }: {
+  review: { id: string; version: number; status: string }; format: "video" | "carousel"; usableNow: boolean; hasReel?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
-  const items = CHECKS[format];
+  const items: readonly (readonly [string, string])[] = hasReel && format === "carousel" ? [...CHECKS[format], ...REEL_CHECKS] : CHECKS[format];
   const [ck, setCk] = useState<Record<string, boolean>>({});
   const [reason, setReason] = useState("");
   const all = items.every(([k]) => ck[k]);

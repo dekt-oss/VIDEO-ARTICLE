@@ -47,6 +47,10 @@ export const DRINKS_ACTIONS = {
   create_publication: "drinks_create_publication",
   update_publication: "drinks_update_publication",
   publication_action: "drinks_publication_action",
+  // 음원 고르기·바꾸기(0065). 승인 뒤 바꾸면 승인이 풀린다. 게시 직전 재조회·컨테이너 음원 설정(워커 전용)은 여기 없다.
+  set_publication_audio: "drinks_set_publication_audio",
+  // 밈 발행안(0068): 게시 대기(publish_waiting)·박자 무관 제작안만. 박자 맞춤은 DB 가 거부한다. 같은 승인·예약 경로(publication_action)를 탄다.
+  create_meme_publication: "drinks_create_meme_publication",
   strategy_action: "drinks_strategy_action",
   // 소재 개발(0060): 근거 초안·대본 초안 요청/취소, 개발 결재 열기·닫기. 초안을 쓰는 LLM 호출·결재 가잡기·확정(워커 전용)은
   // 여기 없다 — 화면은 요청을 큐에 넣을 뿐이다. 아래 PHASE_A_EXCLUDED 의 research_llm·generate_plan·generate_script 와는 다른 이름이다.
@@ -60,10 +64,28 @@ export const DRINKS_ACTIONS = {
   ig_set_card_field: "drinks_ig_set_card_field",
   ig_watch_action: "drinks_ig_watch_action",
   ig_add_link: "drinks_ig_add_link",
+  // Apify 정밀화(0070, 총괄 §3 결정 1): [쓰자] 클릭 1회 = Apify 실행 1회 승인(상한 $0.02, 월 $3 — DB 가 센다). 결정 기록 + 요청 큐를 한 트랜잭션으로.
+  // 실행(점유·끝내기)은 워커 전용이라 여기 없다. 손으로 만드는 정밀 틀 카드(정상 관측일 전 제작 경로)도 여기.
+  ig_card_use_refine: "drinks_ig_card_use_refine",
+  ig_manual_card: "drinks_ig_create_manual_card",
   // 내용 승인 한 번(0064): [이걸로](후보→소재·형식 의도·이어 만들기 요청), [승인](근거·편성·제작안을 한 트랜잭션으로).
   // 이어 만들기의 저장·끝내기(워커 전용)는 여기 없다. 워커는 승인 함수를 부르지 않는다.
   pick_topic: "drinks_pick_topic",
   approve_content: "drinks_approve_content",
+  // 밈 제작(0066): 제작안 저장·글 초안 요청·승인·되돌리기·버리기·앱 게시 링크 등록. 렌더·끝내기·가잡기(워커 전용)는 여기 없다.
+  // 게시 요청은 위의 create_meme_publication(0068)으로만 만든다 — 발행 화면에서, 다른 형식과 같은 승인·예약을 거친다.
+  meme_save_draft: "drinks_meme_save_draft",
+  meme_request_text: "drinks_meme_request_text",
+  meme_draft_action: "drinks_meme_draft_action",
+  // 설명형 제작(0067): 지시서·구매·조립 요청, 후보 사람 판정·선택, 결과 불명 닫기, 사람 검수. 시도 기록·가잡기·자동 판정·파일 등록(워커 전용)은 여기 없다 —
+  // 화면은 큐에 넣고 사람 판정만 적는다. 공급자를 부르는 길이 없다.
+  explainer_request_plan: "drinks_explainer_request_plan",
+  explainer_request_buy: "drinks_explainer_request_buy",
+  explainer_request_assemble: "drinks_explainer_request_assemble",
+  explainer_verdict: "drinks_explainer_verdict",
+  explainer_select: "drinks_explainer_select",
+  explainer_close_unknown: "drinks_explainer_close_unknown",
+  explainer_review: "drinks_explainer_review",
 } as const;
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
@@ -168,12 +190,24 @@ const STATUS_BY_CODE: Record<string, number> = {
   // 순환(0055)
   duplicate_account: 409, output_not_usable: 422, capability_missing: 422, duplicate_publication: 409,
   digest_mismatch: 409, not_publishable: 422, too_late: 422, stale_strategy: 409, insufficient_sample: 422,
+  // 5단계 게시 연결(0068). meme_sync_blocked 는 아래 0066 묶음에 이미 있다
+  ai_label_missing: 422, audio_mismatch: 422,
   // 소재 개발(0060)
   budget_missing: 422, evidence_insufficient: 422, script_check_failed: 422, develop_in_progress: 409,
   // 밈 보드(0063)
   not_normal_day: 409,
   // 내용 승인 한 번(0064)
   evidence_not_usable: 422, review_not_draft: 422, plan_stale: 409,
+  // 음원 계약(0065)
+  audio_required: 422, audio_not_for_carousel: 422, audio_not_found: 422, audio_connection_unsupported: 422, licensed_mix_not_rendered: 422,
+  // 밈 제작(0066)
+  meme_invalid: 422, meme_duration: 422, meme_sync_blocked: 422, meme_foreign_media: 422, meme_ai_label_missing: 422, meme_info_undeclared: 422,
+  meme_evidence_missing: 422, meme_encourages_drinking: 422, meme_minor: 422, meme_overdrinking: 422, meme_drunk_driving: 422, meme_pregnancy: 422,
+  card_not_precise: 422,
+  // Apify 정밀화(0070)
+  apify_budget_exhausted: 422, request_exists: 409, no_reels: 422, media_url_rejected: 422,
+  // 설명형 제작(0067·0062)
+  directive_missing: 422, selection_incomplete: 422, order_changed: 409, unknown_billed_open: 409, not_passed: 422, no_pass: 422, attempt_cap: 429, attempt_open: 409,
 };
 
 export interface DbError {
@@ -329,6 +363,21 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
   }
   if (action === "pick_topic" && p.format !== "explainer" && p.format !== "card" && p.format !== "meme") {
     return { status: 400, body: { error: "형식(설명형·카드뉴스·밈형)을 고르세요", code: "invalid_input" } };
+  }
+  if (action === "explainer_verdict") {
+    // 화면에서 오는 판정은 사람 판정뿐이다. 자동 판정 칸은 입력을 믿지 않고 지운다.
+    delete p.auto_verdict;
+    delete p.auto_report;
+    if (p.human_verdict !== "pass" && p.human_verdict !== "fail") {
+      return { status: 400, body: { error: "사람 판정(합격·불합격)을 고르세요", code: "invalid_input" } };
+    }
+  }
+  if (action === "explainer_select") p.selected_by = "operator"; // 고른 사람·닫은 사람 이름은 입력값을 믿지 않는다(운영자 키 게이트를 통과한 사람)
+  if (action === "explainer_close_unknown") p.closed_by = "operator";
+  if (action === "explainer_request_buy" && p.through_n !== undefined && p.through_n !== null) {
+    const n = Number(p.through_n);
+    if (!Number.isInteger(n) || n < 1) return { status: 400, body: { error: "슬롯 번호는 1 이상의 정수입니다", code: "invalid_input" } };
+    p.through_n = n;
   }
   if (action === "open_develop_budget") {
     // 개발 결재도 운영자 키를 가진 사람만 연다. 결재자 이름은 입력값을 믿지 않고, 결재 문장은 필수(DB 도 검사).
