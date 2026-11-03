@@ -369,6 +369,76 @@ begin
   return jsonb_build_object('request_id', r.id, 'status', r.status, 'version', r.version);
 end $$;
 
+-- 승인·예약·멈춤·취소(0055 정의). 승인 때 "지금도 쓸 수 있나" 검사가 밈이면 제작안의 게시 대기 상태를 본다(검수 묶음이 없다).
+create or replace function drinks_publication_action(p jsonb) returns jsonb language plpgsql set search_path = public, pg_temp as $$
+declare r drink_publication_requests; v_action text := drinks_text(p, 'action'); v_before text; v_block text;
+  v_grace int := (drinks_publish_limits() ->> 'late_grace_sec')::int;
+begin
+  perform drinks_reap_publications();
+  r := drinks_lock_publication(p);
+  v_before := r.status;
+  if v_action = 'submit' then
+    if r.status <> 'draft' then perform drinks_fail('invalid_state', '작성 중인 발행안만 승인 요청합니다'); end if;
+    if r.publish_at is null then perform drinks_fail('invalid_input', '게시 시각을 정하세요(지금 게시도 시각으로 적습니다)'); end if;
+    update drink_publication_requests set status = 'awaiting_approval', approval_digest = drinks_pub_digest(r)
+      where id = r.id returning * into r;
+  elsif v_action = 'withdraw' then
+    if r.status <> 'awaiting_approval' then perform drinks_fail('invalid_state', '승인 대기 중인 것만 작성으로 되돌립니다'); end if;
+    update drink_publication_requests set status = 'draft', approval_digest = null where id = r.id returning * into r;
+  elsif v_action = 'approve' then
+    if r.status <> 'awaiting_approval' then perform drinks_fail('invalid_state', '승인 대기 중인 것만 승인합니다'); end if;
+    -- 승인은 화면에 보인 지문을 그대로 돌려줘야 한다 — 다른 창에서 바뀐 내용을 모르고 승인하지 않게.
+    if drinks_text(p, 'expected_digest') is distinct from r.approval_digest or r.approval_digest <> drinks_pub_digest(r) then
+      perform drinks_fail('digest_mismatch', '승인 화면의 내용과 지금 내용이 다릅니다 — 새로 불러와 다시 확인하세요');
+    end if;
+    if r.meme_draft_id is null then
+      if not coalesce((select currently_usable from drink_output_validity where review_id = r.output_review_id), false) then
+        perform drinks_fail('output_not_usable', '파일 묶음의 검수·근거가 지금은 유효하지 않습니다');
+      end if;
+    elsif not exists (select 1 from drink_meme_drafts d where d.id = r.meme_draft_id and d.status = 'publish_waiting') then
+      perform drinks_fail('meme_not_publishable', '밈 제작안이 게시 대기 상태가 아닙니다 — 되돌리거나 버린 제작안은 게시하지 않습니다');
+    end if;
+    update drink_publication_requests set status = 'approved', approved_by = coalesce(drinks_text(p, 'actor'), 'operator'),
+      approved_at = now() where id = r.id returning * into r;
+  elsif v_action in ('schedule','resume','retry') then
+    if (v_action = 'schedule' and r.status <> 'approved') or (v_action = 'resume' and r.status <> 'paused')
+        or (v_action = 'retry' and r.status <> 'failed') then
+      perform drinks_fail('invalid_state', case v_action when 'schedule' then '승인된 것만 예약합니다'
+        when 'resume' then '멈춘 것만 다시 예약합니다' else '확정 실패한 것만 다시 시도합니다' end);
+    end if;
+    if r.approved_at is null then perform drinks_fail('invalid_state', '승인 기록이 없습니다 — 다시 승인받으세요'); end if;
+    v_block := drinks_pub_block(r.id);
+    if v_block is not null then
+      perform drinks_fail(case when v_block = 'digest_changed' then 'digest_mismatch' else 'not_publishable' end,
+        '지금은 예약할 수 없습니다: ' || v_block);
+    end if;
+    if r.publish_at < now() - make_interval(secs => v_grace) then
+      perform drinks_fail('too_late', '예약 시각이 2시간 넘게 지났습니다 — 취소하고 새 시각으로 다시 승인받으세요');
+    end if;
+    update drink_publication_requests set status = 'scheduled', pause_code = null, pause_reason = null, error_code = null,
+      error_message = null where id = r.id returning * into r;
+  elsif v_action = 'pause' then
+    if r.status not in ('approved','scheduled') then perform drinks_fail('invalid_state', '승인·예약된 것만 멈춥니다'); end if;
+    update drink_publication_requests set status = 'paused', pause_code = 'operator',
+      pause_reason = coalesce(drinks_text(p, 'reason'), '운영자 중지') where id = r.id returning * into r;
+  elsif v_action = 'cancel' then
+    if r.status in ('publishing','unknown') then
+      -- 게시 중·여부 불명은 취소로 닫지 않는다. 워커가 게시 직전에 확인하고, unknown 은 조회 대조가 정한다.
+      update drink_publication_requests set cancel_requested = true where id = r.id returning * into r;
+    elsif r.status in ('draft','awaiting_approval','approved','scheduled','paused') then
+      update drink_publication_requests set status = 'canceled', cancel_requested = true,
+        error_message = coalesce(drinks_text(p, 'reason'), '운영자 취소') where id = r.id returning * into r;
+    else
+      perform drinks_fail('invalid_state', '이미 끝난 발행 요청입니다');
+    end if;
+  else
+    perform drinks_fail('invalid_input', '알 수 없는 발행 동작입니다');
+  end if;
+  perform drinks_pub_log(r, v_action, v_before, drinks_text(p, 'reason'));
+  return jsonb_build_object('request_id', r.id, 'status', r.status, 'version', r.version, 'approval_digest', r.approval_digest,
+    'cancel_requested', r.cancel_requested);
+end $$;
+
 -- ─────────────────────────────────────────────────────────────
 -- 워커 RPC — 발행 (0065 정의 + 밈 파일·근거, content_format)
 -- ─────────────────────────────────────────────────────────────

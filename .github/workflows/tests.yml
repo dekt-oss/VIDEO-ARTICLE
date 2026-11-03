@@ -84,8 +84,9 @@ jobs:
           skipped=$(grep -oE '[0-9]+ skipped' /tmp/pytest.out | grep -oE '^[0-9]+' | tail -1)
           echo "건너뛴 테스트: ${skipped:-0}건"
           # 13 = 기존 11 + 여유 1 + 주류 순환 e2e(이 잡엔 web 의존성이 없어 모듈째 1건 건너뜀 — web 잡이 따로 돌린다)
-          if [ "${skipped:-0}" -gt 13 ]; then
-            echo "::error::건너뛴 테스트가 ${skipped}건이다(기준 13). 폰트·의존성 누락으로 검사가 헐거워졌다."
+          # 14 = 13 + 5단계 게시 루프 리허설 1건(2026-11-02, tests/test_drinks_stage5_publish_loop.py — PGlite 가 필요해 web 잡이 돌린다)
+          if [ "${skipped:-0}" -gt 14 ]; then
+            echo "::error::건너뛴 테스트가 ${skipped}건이다(기준 14). 폰트·의존성 누락으로 검사가 헐거워졌다."
             exit 1
           fi
 
@@ -117,11 +118,14 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      # 5단계(2026-11-02): 밈·설명형·카드 한 편씩 → 게시 요청 → 가짜 게시 → 성과 → 전략(0068, scripts/publish_loop_rehearsal.py). ffmpeg 가 필요하다.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: drinks loop e2e
         working-directory: .
         run: |
           pip install -r engine/requirements.txt
-          python -m pytest -q tests/test_drinks_loop_e2e.py
+          python -m pytest -q tests/test_drinks_loop_e2e.py tests/test_drinks_stage5_publish_loop.py
       - name: tsc --noEmit
         run: npx tsc --noEmit
       - name: lint
