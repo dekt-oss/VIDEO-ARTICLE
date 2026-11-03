@@ -148,6 +148,9 @@ def live(args: argparse.Namespace) -> dict[str, Any]:
     req = rpc("drinks_request_develop", {"topic_id": topic_id, "kind": args.step, "budget_id": budget_id})
     print(f"요청: {args.step} request_id={req.get('request_id')} existing={req.get('existing', False)}")
     res = dd.run_queue(rpc, dd.Deps(), worker_id=f"s05-{today_local().isoformat()}", max_jobs=1)
+    # 워커는 큐의 맨 앞 요청을 집는다 — 다른 소재의 요청이 먼저 있었으면 그것이 돌았다(그쪽 결재로). 어느 요청이 돌았는지 숨기지 않는다.
+    if res and res[0].get("request_id") != req.get("request_id"):
+        print(f"★ 주의: 집은 요청이 다릅니다 — 돈 요청 {res[0].get('request_id')} ≠ 우리 요청 {req.get('request_id')}. 우리 요청은 아직 큐에 있다. 같은 명령을 다시 실행한다")
     out = {"budget_id": budget_id, "request": req, "worker": res}
     st.dump(st.preview_dir("explainer-s05") / f"live-{args.step}.json", out)
     for r in res:
