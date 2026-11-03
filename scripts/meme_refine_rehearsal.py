@@ -23,7 +23,6 @@ from typing import Any, Optional
 from engine import config
 from engine import drinks_meme as dm
 from engine import drinks_meme_refine as rf
-from engine.util import today_local
 from scripts.explainer_rehearsal import Tripwire
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -155,9 +154,9 @@ def run(out_root: Path) -> dict[str, Any]:
 
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="밈 틀 정밀화 리허설(0원, 네트워크·DB 없음)")
-    ap.add_argument("--out", default=None, help="산출물 폴더(기본 docs/preview-<오늘>/meme-refine)")
+    ap.add_argument("--out", default=None, help="산출물 폴더(기본 docs/preview-2026-11-02/meme-refine)")
     args = ap.parse_args(argv)
-    out_root = Path(args.out) if args.out else ROOT / "docs" / f"preview-{today_local().isoformat()}" / "meme-refine"
+    out_root = Path(args.out) if args.out else ROOT / "docs" / "preview-2026-11-02" / "meme-refine"   # 3·4단계 준비 산출물은 한 날짜 폴더에 모은다
     report = run(out_root.resolve())
     for r in report["finish_payload"]["results"]:
         print(f"{r['input_url']}  {r['status']:<15} {r['duration_sec']}초  재생 {r['play_count']}")
