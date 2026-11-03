@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   CARD_MIN_EVIDENCE, EXPLAINER_MIN_EVIDENCE, EXPLAINER_MIN_EVIDENCE_CHARS, questionShape, recommendFormat, type FormatInput,
 } from "./formatRecommend.ts";
+import { officialSourceHits, withOfficialHits } from "./officialSources.ts";
 
 const input = (o: Partial<FormatInput> = {}): FormatInput => ({
   origin: "discovery", question: "고도주는 왜 안 상하나요?", signals: ["question"], evidenceCount: 3, evidenceChars: 5000, ...o,
@@ -69,4 +70,23 @@ test("근거 0개면 어느 형식도 추천하지 않는다 / 어느 유형에�
   const other = recommendFormat(input({ question: "오늘 뭐 마셨어요", signals: ["question"] }));
   assert.equal(other.format, "unknown");
   assert.match(other.reason, /직접 고르세요/);
+});
+
+test("공식 출처 목록: 낱말이 걸리면 근거로 세고, 답이 없는 질문은 세지 않는다", () => {
+  assert.equal(officialSourceHits("숙취는 왜 생기나요?").count, 2);
+  assert.equal(officialSourceHits("막걸리 유통기한 알려주세요").count, 0);
+  assert.equal(officialSourceHits("막걸리 왜 시큼한가요").count, 0);
+  assert.equal(officialSourceHits(null).count, 0);
+  const of = (q: string) => {
+    const h = officialSourceHits(q);
+    return input({ question: q, evidenceCount: h.count, evidenceChars: h.chars });
+  };
+  assert.equal(recommendFormat(of("숙취는 왜 생기나요?")).format, "explainer");
+  assert.equal(recommendFormat(of("막걸리 왜 시큼한가요")).format, "unknown");
+});
+
+test("공식 출처 목록: 못 읽은 수집 글 수를 0 으로 바꾸지 않는다", () => {
+  assert.equal(withOfficialHits(undefined, "와인 잔 고르기"), undefined);
+  assert.deepEqual(withOfficialHits({ count: 1, chars: 100 }, "와인 잔 고르기"), { count: 1, chars: 100 });
+  assert.equal(withOfficialHits({ count: 1, chars: 100 }, "숙취는 왜 생기나요?")?.count, 3);
 });

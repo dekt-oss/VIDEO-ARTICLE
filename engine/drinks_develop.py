@@ -482,6 +482,8 @@ def find_official(topic: dict[str, Any], deps: Deps) -> tuple[list[Source], list
         kws = [str(k).lower() for k in ent.get("keywords") or []]
         if kws and not any(k in terms or any(k in t for t in terms) for k in kws):
             continue
+        if any(a in t for a in ent.get("not_for") or [] for t in terms):
+            continue
         url = str(ent.get("url") or "")
         host = (urlsplit(url).hostname or "").lower()
         fetcher = deps.fetcher([host])
@@ -503,7 +505,7 @@ def find_official(topic: dict[str, Any], deps: Deps) -> tuple[list[Source], list
                               "canonical_url": url, "title": page.title or ent.get("name"), "publisher": ent.get("publisher"),
                               "source_kind": ent.get("source_kind") or "official", "depth": "full_text",
                               "body_text": text[: config.DRINKS_MAX_BODY_CHARS], "rights_status": ent.get("rights_status") or "unknown",
-                              "usage_terms": ent.get("usage_terms")}))
+                              "usage_terms": ent.get("usage_terms"), "original_language": ent.get("language")}))
     return out, notes
 
 

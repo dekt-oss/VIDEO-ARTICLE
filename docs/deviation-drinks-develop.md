@@ -15,7 +15,7 @@
 
 ## 근거를 찾는 곳 — 지금은 사실상 운영자가 붙인 출처
 - **Europe PMC 는 꺼져 있다**(`DRINKS_DEVELOP_EUROPEPMC_ENABLED=False`). 사이트 robots.txt 가 `ai-train=no` 를 두고 ClaudeBot 을 막으며 API 약관을 확인하지 못했다. 코드와 시험은 있다.
-- 공식 출처 목록(`DRINKS_DEVELOP_OFFICIAL_SOURCES`)은 **비어 있다.** 식약처·국세청·공공데이터포털은 공공누리 유형을 항목마다 운영자가 확인해야 한다. `terms_verified: True` 가 없는 항목은 쓰지 않는다.
+- 공식 출처 목록(`DRINKS_DEVELOP_OFFICIAL_SOURCES`)은 **2026-11-02 부터 5곳 13쪽이다**(운영자 등록 승인, 판정 근거 `docs/주류_근거출처_후보_2026-11-02.md`). `terms_verified: True` 가 없는 항목은 쓰지 않는다. 쪽이 고정이라 보관·개봉 후·왜 안 상하나·왜 시큼한가는 여전히 안 채워지고, 그런 소재는 `not_for` 로 집어 들지 않아 모델을 부르지 않고 근거 부족으로 멈춘다.
 - 그래서 근거 부족일 때 운영자가 할 일: 소재 화면 [출처 추가]로 공식·전문 출처의 **원문을 붙여넣어 근거 역할로** 등록 → 다시 요청. 워커의 `evidence_insufficient` 메시지가 읽은 출처, 건너뛴 출처와 이유(본문 없음·후기·질문 신호 역할 등)를 알려 준다.
 
 ## 비용 장치

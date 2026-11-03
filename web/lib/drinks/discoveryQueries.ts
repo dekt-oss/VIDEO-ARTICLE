@@ -4,6 +4,7 @@ import type { Loaded } from "@/lib/drinks/model";
 import type { DevelopBudgetRow } from "@/lib/drinks/develop";
 import type { CandidateRow, DiscoveryItemRow } from "@/lib/drinks/discovery";
 import { EVIDENCE_MAX_CANDIDATES } from "@/lib/drinks/formatRecommend";
+import { withOfficialHits } from "@/lib/drinks/officialSources";
 import { fetchAllIn, fetchAllPages } from "@/lib/drinks/paging";
 import type { RunRow, SourceRow, TopicRow } from "@/lib/drinks/types";
 
@@ -69,6 +70,11 @@ export async function loadDiscovery(status: string): Promise<Loaded<DiscoveryVie
       for (const [k, v] of Object.entries(ev.data as Record<string, { count: number; chars: number }>)) {
         evidence.set(k, { count: Number(v.count), chars: Number(v.chars) });
       }
+    }
+    // 설정의 공식 출처 목록도 근거 단계가 읽으므로 같이 센다(DB 함수는 자동 수집 글만 본다).
+    for (const x of cands) {
+      const merged = withOfficialHits(evidence.get(x.id), x.key_question);
+      if (merged) evidence.set(x.id, merged);
     }
     const bd = await db.from("drink_develop_budget_state").select("*").eq("status", "open").order("expires_at", { ascending: false }).limit(20);
     if (!bd.error && bd.data) budgets.push(...(bd.data as DevelopBudgetRow[]));
