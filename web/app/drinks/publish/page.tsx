@@ -26,8 +26,8 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
       </div>
       <p className="banner-info" style={{ marginTop: 12 }}>
         게시는 <b>승인 → 예약</b> 뒤 워커가 예약 시각에 합니다. 예약 시각보다 2시간 넘게 늦으면 게시하지 않고 멈춥니다.
-        게시 여부를 모르는 것(응답 끊김)은 <b>다시 게시하지 않고</b> 인스타 조회로 대조합니다. 실제 계정 게시는 계정 연결과
-        운영자 승인 전까지 꺼져 있습니다(시험용 가짜 계정만 돕니다).
+        게시 여부를 모르는 것(응답 끊김)은 <b>다시 게시하지 않고</b> 인스타 조회로 대조합니다. 발행이 켜진 계정에만 실제로
+        올라갑니다. 자동 실행 스위치(DRINKS_PUBLISH_CRON_ENABLED)가 꺼져 있는 동안은 워커를 손으로 돌릴 때만 게시됩니다.
       </p>
       {board.state !== "ok" ? (
         <LoadProblem state={board.state} error={board.state === "failed" ? board.error : undefined} />

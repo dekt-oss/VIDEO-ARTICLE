@@ -350,6 +350,52 @@ def test_connection_is_pinned_to_the_checked_ip():
     assert e.value.code == "private_address"
 
 
+def _pinned_attempts(monkeypatch, fail_on):
+    """소켓을 열지 않고 어떤 IP 를 어떤 순서로 시도했는지 잰다."""
+    import httpcore
+    from engine.drinks_fetch import PinnedBackend
+
+    tried = []
+
+    def fake_connect(self, host, port, timeout=None, local_address=None, socket_options=None):
+        tried.append(host)
+        if host in fail_on:
+            raise httpcore.ConnectError("unreachable")
+        return "stream"
+
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", fake_connect)
+    return tried, PinnedBackend
+
+
+def test_pinned_connect_prefers_ipv4_whatever_the_string_order(monkeypatch):
+    """2026-11-03 사고: "2a03:…" 이 "57.…" 보다 앞에 정렬돼 IPv6 없는 러너에서 수집이 통째로 죽었다."""
+    tried, Backend = _pinned_attempts(monkeypatch, fail_on={"2a03:2880:f12f:83:face:b00c:0:25de"})
+    backend = Backend(lambda h, p: ["2a03:2880:f12f:83:face:b00c:0:25de", "57.144.96.141"])
+    assert backend.connect_tcp("graph.facebook.com", 443) == "stream"
+    assert tried == ["57.144.96.141"]
+
+
+def test_pinned_connect_falls_back_to_the_next_checked_ip(monkeypatch):
+    tried, Backend = _pinned_attempts(monkeypatch, fail_on={"57.144.96.141"})
+    backend = Backend(lambda h, p: ["2a03:2880:f12f:83:face:b00c:0:25de", "57.144.96.141"])
+    assert backend.connect_tcp("graph.facebook.com", 443) == "stream"
+    assert tried == ["57.144.96.141", "2a03:2880:f12f:83:face:b00c:0:25de"]
+
+
+def test_pinned_connect_raises_when_every_ip_fails_and_never_tries_unchecked(monkeypatch):
+    import httpcore
+
+    ips = ["2a03:2880:f12f:83:face:b00c:0:25de", "57.144.96.141"]
+    tried, Backend = _pinned_attempts(monkeypatch, fail_on=set(ips))
+    with pytest.raises(httpcore.ConnectError):
+        Backend(lambda h, p: ips).connect_tcp("graph.facebook.com", 443)
+    assert sorted(tried) == sorted(ips)
+    tried.clear()
+    with pytest.raises(FetchError) as e:
+        Backend(lambda h, p: ["57.144.96.141", "10.0.0.1"]).connect_tcp("graph.facebook.com", 443)
+    assert e.value.code == "private_address" and tried == []
+
+
 def test_declared_content_length_over_cap_is_refused(monkeypatch):
     monkeypatch.setattr(config, "DRINKS_MAX_RESPONSE_BYTES", 1000)
     f = fetcher(lambda r: httpx.Response(200, headers={"content-type": "text/html", "content-length": "99999"},
