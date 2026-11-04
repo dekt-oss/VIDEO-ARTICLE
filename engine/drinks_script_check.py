@@ -275,6 +275,52 @@ def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Option
     return rep
 
 
+def card_texts(plan: dict[str, Any]) -> list[tuple[int, list[str], list[str]]]:
+    """카드 렌더가 **실제로 그리는 글** → [(페이지 번호, 글 목록, 그 페이지의 claim_ids)]. 릴스 묶음이면 첫 장 훅·마지막 장 공유 문장도 넣는다
+    (engine/drinks_cards.draw_card_page · drinks_card_reel.draw_frame 와 같은 칸)."""
+    pages = sorted((plan or {}).get("pages") or [], key=lambda p: int(p.get("position") or 0))
+    reel = (plan or {}).get("reel") or {}
+    out = []
+    for idx, pg in enumerate(pages, 1):
+        texts = [str(pg.get("heading") or ""), str(pg.get("body") or "")]
+        if reel and idx == 1 and reel.get("hook_title"):
+            texts.append(str(reel["hook_title"]))
+        if reel and idx == len(pages) and reel.get("share_line"):
+            texts.append(str(reel["share_line"]))
+        out.append((int(pg.get("position") or idx), [t for t in texts if t.strip()], [str(x) for x in pg.get("claim_ids") or []]))
+    return out
+
+
+def check_card_texts(plan: dict[str, Any], claims: list[dict[str, Any]], *, sources: Optional[list[dict[str, Any]]] = None) -> Report:
+    """카드뉴스·카드 릴스 화면 글 검사(리뷰 R7, 2026-11-04, 0원). 사람이 저장한 뒤 바뀐 글까지 **렌더 직전에** 다시 본다.
+
+    규칙은 대본·캡션과 같은 기계 셋(숫자·양·권고·없는 근거)이다. 근거를 단 페이지는 그 근거의 원문만, 근거가 없는 페이지
+    (표지·출처·마무리)와 훅·공유 문장은 승인된 근거 묶음 전체를 허용 범위로 본다(캡션과 같다).
+    ★ 한계: 뜻이 원문을 넘었는지(인과 비약 등)는 이 검사가 못 본다 — 사람 검수가 본다."""
+    rep = Report()
+    by_id = {str(c.get("claim_id")): c for c in claims or [] if isinstance(c, dict)}
+    usable_all = [c for c in by_id.values() if not _is_derived(c)]
+    meta = " ".join(" ".join(str(v) for v in (s or {}).values()) for s in (sources or []))
+    for pos, texts, cids in card_texts(plan):
+        unknown = [c for c in cids if c not in by_id]
+        if unknown:
+            rep.blocks.append(Finding("claim_unknown", pos, f"{pos}장: 근거 목록에 없는 주장 {', '.join(unknown)}"))
+        cited = [by_id[c] for c in cids if c in by_id and not _is_derived(by_id[c])] if cids else usable_all
+        quotes = " ".join(q for c in cited for q in _quotes(c))
+        text = _HASHTAG.sub(" ", "\n".join(texts))
+        missing = sorted(n for n in _nums(text) if n not in (_nums(quotes) | _nums(meta)))
+        if missing:
+            rep.blocks.append(Finding("number_unsupported", pos, f"{pos}장: 원문에 없는 숫자 {', '.join(missing)}"))
+        low = f" {quotes.lower()} "
+        for m in _QUANTITY.finditer(text):
+            if not any(w in low for w in _UNITS.get(m.group(1).lower(), _UNITS.get(m.group(1), ()))):
+                rep.blocks.append(Finding("quantity_unsupported", pos, f"{pos}장: '{m.group(0)}' — 원문에 이 단위(양)가 없습니다"))
+        lines = [x.strip() for x in re.split(r"[\n]+|(?<=[.?!])\s+", text) if x.strip()]
+        if any(_ADVICE.search(x) for x in lines) and not any(_kind(c) in ADVICE_KINDS for c in cited):
+            rep.blocks.append(Finding("advice_unsupported", pos, f"{pos}장: 권고(~해 보세요)인데 실제 습관·권고를 말한 원문 근거가 없습니다"))
+    return rep
+
+
 def summary_ko(rep: Report) -> str:
     lines = [("통과" if rep.ok else f"막힘 {len(rep.blocks)}건") + (f" · 알림 {len(rep.warns)}건" if rep.warns else "")]
     for f in rep.blocks:
