@@ -343,6 +343,10 @@ class ApifyClient:
         self.actor = actor or config.DRINKS_APIFY_REEL_ACTOR
         self.base = f"https://{host or config.DRINKS_APIFY_HOST}/v2"
         self._client = httpx.Client(timeout=httpx.Timeout(config.DRINKS_APIFY_RUN_TIMEOUT_SEC + 30, connect=20), transport=transport, trust_env=False)
+        # 리뷰 R9: 영상 받기는 토큰 없는 별도 요청기 — 연결 직전 공개 IP 확인·리다이렉트 안 따라감(drinks_fetch.pinned_client).
+        from .drinks_fetch import pinned_client
+
+        self._dl = pinned_client(timeout=httpx.Timeout(60, connect=20), transport=transport)
 
     def run_reels(self, urls: list[str], *, cap_usd: float) -> ApifyResult:
         params = {"maxTotalChargeUsd": f"{cap_usd:.4f}", "timeout": str(config.DRINKS_APIFY_RUN_TIMEOUT_SEC), "memory": "1024"}
@@ -362,9 +366,15 @@ class ApifyClient:
 
     def download(self, url: str, dest: str, *, max_bytes: int) -> int:
         """서명 달린 임시 영상 주소 → 임시 파일. 상한을 넘으면 끊고 받은 것을 지운다."""
+        from .drinks_fetch import check_provider_url
+
+        try:
+            check_provider_url(url, config.DRINKS_APIFY_VIDEO_HOSTS)
+        except ValueError as exc:
+            raise RefineStop("video_url_rejected", f"영상 주소를 받지 않습니다({exc})") from None
         n = 0
-        with self._client.stream("GET", url) as r:
-            if r.status_code >= 400:
+        with self._dl.stream("GET", url) as r:
+            if r.status_code >= 300:
                 raise RefineStop("download_failed", f"영상 받기 실패({r.status_code})")
             with open(dest, "wb") as f:
                 for chunk in r.iter_bytes():
@@ -378,6 +388,7 @@ class ApifyClient:
 
     def close(self) -> None:
         self._client.close()
+        self._dl.close()
 
 
 @dataclass

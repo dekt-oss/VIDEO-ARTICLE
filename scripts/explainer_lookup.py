@@ -33,13 +33,21 @@ def lookup_one(row: dict[str, Any], fetch: Callable[..., pv.ExplainerParsed]) ->
     except pv.ExplainerSendRefused:
         raise
     except pv.ExplainerNotSent as exc:
-        return {**out, "outcome": "not_retrievable", "advice": f"공급자가 조회를 거절했습니다({str(exc)[:120]}). 청구 내역으로 대조하세요"}
-    except pv.ExplainerProviderError as exc:
-        return {**out, "outcome": "unreadable", "advice": f"응답을 해석하지 못했습니다({str(exc)[:120]}). 청구 내역으로 대조하세요"}
+        return {**out, "outcome": "not_retrievable", "advice": f"공급자가 조회를 거절했습니다({pv._redact(str(exc))[:120]}). 청구 내역으로 대조하세요"}
+    except pv.ExplainerInteractionEnded as exc:
+        # 리뷰 R5: 실패·취소도 '청구 없음'으로 단정하지 않는다 — 공급자가 일부를 처리했을 수 있다.
+        return {**out, "outcome": exc.status or "ended", "advice": f"공급자 쪽에서 {exc.status} 로 끝났습니다. 청구 내역으로 대조한 뒤 닫으세요"}
+    except pv.ExplainerOutcomeUnknown as exc:
+        return {**out, "outcome": "unreadable", "advice": f"응답을 받지 못했습니다({pv._redact(str(exc))[:120]}). 나중에 한 번 더 묻거나 청구 내역으로 대조하세요"}
+    except Exception as exc:  # noqa: BLE001 — 잘못된 usage·배열 모양 등 무엇이든 '해석 못 함'으로 보고한다. 임의로 정산하지 않는다
+        return {**out, "outcome": "unreadable", "advice": f"응답을 해석하지 못했습니다({type(exc).__name__}: {pv._redact(str(exc))[:120]}). 청구 내역으로 대조하세요"}
     if not parsed.done:
         return {**out, "outcome": "in_progress", "advice": "아직 진행 중입니다. 지금 닫지 말고 나중에 다시 물어보세요"}
-    return {**out, "outcome": "completed", "billed_units": parsed.billed_units, "usd": None if parsed.billed_units is None else omni_tokens_usd(parsed.billed_units), "video_bytes": len(parsed.video_bytes),
-            "advice": "공급자가 완료했습니다. 청구된 것으로 닫는 쪽이 맞습니다(금액은 토큰 계산값, 청구서 대조 전)"}
+    delivery = "inline" if parsed.video_bytes else ("uri" if parsed.gcs_uri else "none")
+    return {**out, "outcome": "completed", "delivery": delivery, "billed_units": parsed.billed_units,
+            "usd": None if parsed.billed_units is None else omni_tokens_usd(parsed.billed_units), "video_bytes": len(parsed.video_bytes),
+            "advice": "공급자가 완료했습니다. 청구된 것으로 닫는 쪽이 맞습니다(금액은 토큰 계산값, 청구서 대조 전)"
+                      + (" — 영상은 주소로만 왔고 받지 않았습니다" if delivery == "uri" else "")}
 
 
 def main(argv: Optional[list[str]] = None) -> int:

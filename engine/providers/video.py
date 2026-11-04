@@ -274,7 +274,35 @@ class ExplainerOutcomeUnknown(ExplainerProviderError):
 
 
 class ExplainerBilledBadFile(ExplainerProviderError):
-    """받았는데 파일로 쓸 수 없다 — 청구 유력. 시도는 failed_billed, 재시도는 새 결재로만(§3-3)."""
+    """받았는데 파일로 쓸 수 없다 — 청구 유력. 시도는 failed_billed, 재시도는 새 결재로만(§3-3).
+    리뷰 R5: 요청 ID 를 알면 담는다 — 나중에 조회·청구 대조에 쓴다."""
+
+    def __init__(self, message: str, request_id: str = "") -> None:
+        super().__init__(message)
+        self.request_id = request_id
+
+
+class ExplainerInteractionEnded(ExplainerProviderError):
+    """interaction 이 completed 가 아닌 끝 상태(failed·cancelled·incomplete 등)다. 조회 결과를 '진행 중'·'완료'와 가르려고 따로 둔다."""
+
+    def __init__(self, message: str, status: str, request_id: str = "") -> None:
+        super().__init__(message)
+        self.status, self.request_id = status, request_id
+
+
+def _redact(text: str) -> str:
+    """오류 문장에 비밀값이 실리지 않게 지운다(공급자가 요청을 되돌려 보여 주는 경우 대비, 리뷰 R5)."""
+    key = getattr(config.SECRETS, "gemini_api_key", "") or ""
+    out = str(text)
+    if key:
+        out = out.replace(key, "***")
+    return out
+
+
+def omni_response_id(data: Any) -> str:
+    """응답에서 interaction id 를 **해석보다 먼저** 꺼낸다. 다른 칸이 깨져 있어도 이 값은 남긴다(리뷰 R5)."""
+    rid = data.get("id") if isinstance(data, dict) else None
+    return rid[:500] if isinstance(rid, str) else ""
 
 
 @dataclass(frozen=True)
@@ -387,22 +415,32 @@ def _omni_video_blocks(data: dict[str, Any]) -> list[dict[str, Any]]:
 def omni_billed_units(data: dict[str, Any]) -> float | None:
     """청구 토큰 — 영상 모달리티 출력 토큰이 있으면 그것, 없으면 total_output_tokens[문서]."""
     usage = (data or {}).get("usage") or {}
-    for row in usage.get("output_tokens_by_modality") or []:
-        if isinstance(row, dict) and row.get("modality") == "video" and row.get("tokens") is not None:
-            return float(row["tokens"])
-    units = usage.get("total_output_tokens")
-    return float(units) if units is not None else None
+    if not isinstance(usage, dict):
+        raise ExplainerProviderError("Omni 응답의 usage 가 객체가 아닙니다")
+    rows = usage.get("output_tokens_by_modality") or []
+    if not isinstance(rows, list):
+        raise ExplainerProviderError("Omni 응답의 output_tokens_by_modality 가 배열이 아닙니다")
+    try:
+        for row in rows:
+            if isinstance(row, dict) and row.get("modality") == "video" and row.get("tokens") is not None:
+                return float(row["tokens"])
+        units = usage.get("total_output_tokens")
+        return float(units) if units is not None else None
+    except (TypeError, ValueError) as exc:
+        raise ExplainerProviderError(f"Omni 응답의 토큰 수를 읽지 못했습니다: {type(exc).__name__}") from None
 
 
 def parse_omni_response(data: dict[str, Any]) -> ExplainerParsed:
     """Interaction 자원 → 영상. 문서 모양: {id, status, steps:[{type:"model_output", content:[{type:"video", data|uri, mime_type}]}], usage}.
     status 가 completed 가 아니면 아직(또는 실패)이다. 영상이 없으면 지어내지 않고 멈춘다."""
-    status = str((data or {}).get("status") or "")
-    rid = str((data or {}).get("id") or "")
+    if not isinstance(data, dict):
+        raise ExplainerProviderError(f"Omni 응답이 객체가 아닙니다({type(data).__name__})")
+    status = str(data.get("status") or "")
+    rid = omni_response_id(data)
     if status in ("in_progress", "requires_action", "requires_continuation"):
         return ExplainerParsed(provider="omni", request_id=rid, billing_unit="tokens", billed_units=omni_billed_units(data), done=False)
     if status and status != "completed":
-        raise ExplainerProviderError(f"Omni interaction 이 끝나지 않았습니다: status={status}")
+        raise ExplainerInteractionEnded(f"Omni interaction 이 끝나지 않았습니다: status={status[:40]}", status=status[:40], request_id=rid)
     blocks = _omni_video_blocks(data)
     if not blocks:
         raise ExplainerProviderError(f"Omni 응답에 영상이 없습니다: keys={sorted((data or {}).keys())}, status={status or '-'}")
@@ -546,7 +584,8 @@ def send_explainer_request(req: ExplainerRequest, *, approval_id: str, client: A
     else:
         raise ExplainerSendRefused(f"이 인증({req.auth})의 전송은 아직 연결하지 않았습니다 — 비밀값은 운영자가 넣습니다(§10-3)")
     own = client is None
-    http = client or httpx.Client(timeout=config.DRINKS_EXPLAINER_SEND_TIMEOUT_SEC, follow_redirects=True)
+    # 리뷰 R9: 리다이렉트를 따라가지 않는다 — 따라가면 인증 헤더(x-goog-api-key)가 다른 호스트로 갈 수 있다.
+    http = client or httpx.Client(timeout=config.DRINKS_EXPLAINER_SEND_TIMEOUT_SEC, follow_redirects=False)
     try:
         resp = http.get(req.url, headers=headers) if req.method == "GET" else http.post(req.url, headers=headers, json=req.body)
     except httpx.HTTPError as exc:
@@ -555,10 +594,10 @@ def send_explainer_request(req: ExplainerRequest, *, approval_id: str, client: A
     finally:
         if own:
             http.close()
-    if resp.status_code == 408 or resp.status_code >= 500:
-        raise ExplainerOutcomeUnknown(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
+    if resp.status_code == 408 or resp.status_code >= 500 or 300 <= resp.status_code < 400:
+        raise ExplainerOutcomeUnknown(f"{req.provider} {resp.status_code}: {_redact(resp.text[:200])}")
     if resp.status_code >= 400:
-        raise ExplainerNotSent(f"{req.provider} {resp.status_code}: {resp.text[:200]}")
+        raise ExplainerNotSent(f"{req.provider} {resp.status_code}: {_redact(resp.text[:200])}")
     try:
         return resp.json()
     except ValueError:
@@ -585,25 +624,38 @@ def generate_explainer_clip(clip: ExplainerClipInput, out_path: str, *, provider
         if not pre.ok:
             raise ExplainerNotSent(f"사전 검증 실패(보내지 않음): {pre.reason}")
     data = send_explainer_request(req, approval_id=approval_id, client=client)
+    rid = omni_response_id(data)   # 리뷰 R5: 해석 전에 꺼낸다 — 아래 어느 실패에서도 이 값을 남긴다
     try:
         parsed = parse_omni_response(data)
-    except ExplainerProviderError as exc:
-        raise ExplainerOutcomeUnknown(str(exc), request_id=str((data or {}).get("id") or "")) from exc
+    except Exception as exc:  # noqa: BLE001 — 200 을 받은 뒤의 해석 실패는 전부 "모름"이다(ValueError·TypeError 포함)
+        raise ExplainerOutcomeUnknown(_redact(str(exc))[:300] or type(exc).__name__, request_id=rid) from exc
     if not parsed.done:
         raise ExplainerOutcomeUnknown(f"Omni interaction 이 아직 진행 중입니다(id={parsed.request_id or '-'}) — 조회(GET interactions/{{id}})로 정정합니다",
-                                      request_id=parsed.request_id)
-    if not parsed.video_bytes and parsed.gcs_uri:
-        parsed = _omni_download_uri(parsed, client)
+                                      request_id=parsed.request_id or rid)
     try:
+        if not parsed.video_bytes and parsed.gcs_uri:
+            parsed = _omni_download_uri(parsed, client)
         return store_parsed_clip(parsed, out_path)
-    except ExplainerProviderError as exc:
-        raise ExplainerBilledBadFile(str(exc)) from exc
+    except ExplainerBilledBadFile as exc:
+        raise ExplainerBilledBadFile(str(exc), request_id=rid) from exc
+    except Exception as exc:  # noqa: BLE001 — 받은 뒤의 저장·실측 실패(디스크·ffprobe 포함)는 청구 유력이다
+        raise ExplainerBilledBadFile(_redact(str(exc))[:300] or type(exc).__name__, request_id=rid) from exc
 
 
 def _omni_download_uri(parsed: ExplainerParsed, client: Any = None) -> ExplainerParsed:
     """delivery=uri 로 왔을 때(우리는 inline 을 요청하지만 문서가 둘 다 허용한다). Files API :download?alt=media[문서]. 여기부터의 실패는 청구 유력이다."""
+    from ..drinks_fetch import check_provider_url
+
+    # 리뷰 R9: 응답이 준 주소를 그대로 믿지 않는다. 허용 호스트·https·443·공개 IP 만, 리다이렉트는 따라가지 않는다 —
+    # 인증 헤더는 이 검사를 지난 Gemini 호스트에만 간다.
+    try:
+        check_provider_url(parsed.gcs_uri, config.DRINKS_EXPLAINER_DOWNLOAD_HOSTS)
+    except ValueError as exc:
+        raise ExplainerBilledBadFile(f"영상 주소를 받지 않습니다: {exc}") from None
+    from ..drinks_fetch import pinned_client
+
     own = client is None
-    http = client or httpx.Client(timeout=config.DRINKS_EXPLAINER_SEND_TIMEOUT_SEC, follow_redirects=True)
+    http = client or pinned_client(timeout=config.DRINKS_EXPLAINER_SEND_TIMEOUT_SEC)
     try:
         resp = http.get(parsed.gcs_uri, headers=gemini_auth(), params={"alt": "media"})
     except httpx.HTTPError as exc:
@@ -611,7 +663,7 @@ def _omni_download_uri(parsed: ExplainerParsed, client: Any = None) -> Explainer
     finally:
         if own:
             http.close()
-    if resp.status_code >= 400:
+    if resp.status_code >= 300:
         raise ExplainerBilledBadFile(f"영상 내려받기 {resp.status_code}")
     return ExplainerParsed(provider=parsed.provider, request_id=parsed.request_id, billing_unit=parsed.billing_unit, billed_units=parsed.billed_units,
                            video_bytes=resp.content, gcs_uri=parsed.gcs_uri)

@@ -406,7 +406,7 @@ def buy_clip_attempt(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: st
         rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "released", "note": f"생성 전 거절(청구 없음): {str(exc)[:300]}"})
         raise PaidError("attempt_failed_unbilled", f"{attempt_id}: {str(exc)[:300]}") from exc
     except video_provider.ExplainerBilledBadFile as exc:
-        _event(rpc, attempt_id, "failed_billed", error_code="bad_file", actual_usd=item.est_usd)
+        _event(rpc, attempt_id, "failed_billed", error_code="bad_file", actual_usd=item.est_usd, provider_request_id=getattr(exc, "request_id", "") or None)
         rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "settled", "actual_usd": item.est_usd, "note": "받았지만 쓸 수 없음(청구 유력, 예상 금액)"})
         raise PaidError("attempt_failed_billed", f"{attempt_id}: {str(exc)[:300]}") from exc
     except Exception as exc:  # noqa: BLE001 — 보낸 뒤의 어떤 예외도 "모름"이다. 다시 부르지 않고 운영자에게 넘긴다.

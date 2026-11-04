@@ -4906,6 +4906,8 @@ DRINKS_EXPLAINER_RENDERER_VERSION: str = "drinks-explainer-v1"
 DRINKS_EXPLAINER_RENDERERS: tuple[str, ...] = ("explainer_plan", "explainer_buy", "explainer_render")   # 0067 체크와 같다
 # 대본이 이어짐을 선언하지 않은 같은 역할 장면 사이의 보통 컷. §3-5 표에는 없는 값이다 — 앞 장면 선택을 기다리지 않고 살 수 있고, 연속성 사람 검사 대상이 아니다.
 DRINKS_EXPLAINER_BOUNDARY_KINDS = DRINKS_EXPLAINER_BOUNDARY_KINDS + ("cut",)
+# 리뷰 R9: Omni 가 영상을 주소(uri)로 줄 때 인증 헤더를 붙여 받아도 되는 호스트. 그 밖이면 받지 않는다(청구 유력으로 기록).
+DRINKS_EXPLAINER_DOWNLOAD_HOSTS: tuple[str, ...] = ("generativelanguage.googleapis.com",)
 DRINKS_EXPLAINER_CLIP_SEC_TIERS: dict[str, tuple[int, ...]] = {"omni": (4, 6, 8, 10), "veo_fast": (4, 6, 8)}   # 주문 길이. omni 는 3~10초 안에서 짝수만 — 실제 길이는 받은 뒤 잰다(E5)
 DRINKS_EXPLAINER_HOOK_CANDIDATES: int = 2          # 훅 자산의 후보 수(§3-6-2: 후보 2발은 첫 도해 하나에만). 나머지는 1
 DRINKS_EXPLAINER_HOOK_RAW_MS: int = 1800           # 훅으로 앞당겨 보여 주는 길이(배속 전, §3-6-2 B1)
@@ -4963,6 +4965,9 @@ DRINKS_CARD_PLAN_RUN_CAP_USD: float = 0.10
 # Apify — 클릭 승인(기획 v2 §6-1): [쓰자] 1회 $0.02 · [이걸로] 1회 $0.05 · 월 상한 $3. SQL 0070 drinks_apify_limits() 와 같아야 한다(tests/test_drinks_meme_refine.py 가 대조).
 DRINKS_APIFY_TOKEN_ENV: str = "APIFY_TOKEN"                 # 토큰 환경변수 **이름**. 값은 Authorization 헤더로만 보내고 저장·로그·출력 금지
 DRINKS_APIFY_HOST: str = "api.apify.com"
+# 리뷰 R9(2026-11-04): Apify 결과의 videoUrl 은 이 호스트(또는 '.' 으로 시작하는 항목의 하위 도메인)일 때만 받는다. 인스타 영상 CDN 이름이다.
+# ★ 실제 Apify 응답으로 확인한 값이 아니다(미검증) — 다르면 다운로드가 안전하게 거절되고(분석 0회) 주소 칸 이름을 보고 고친다.
+DRINKS_APIFY_VIDEO_HOSTS: tuple[str, ...] = (".cdninstagram.com", ".fbcdn.net")
 DRINKS_APIFY_REEL_ACTOR: str = "apify~instagram-reel-scraper"   # 검토 §4 — 릴스 1행 $0.0026(FREE) + 실행 시작 $0.001
 DRINKS_APIFY_MONTH_CAP_USD: float = 3.00
 DRINKS_APIFY_RUN_CAP_USD: dict[str, float] = {"meme_refine": 0.02, "explainer_reference": 0.05}
