@@ -351,6 +351,7 @@ class LiveAdapter:
 
 
 def omni_tokens_usd(billed_units: float) -> float:
+    """Omni 청구 토큰 → 달러(출력 토큰 + 시작 그림 입력). 단가는 config.DRINKS_EXPLAINER_PRICES 하나에서 온다."""
     p = config.DRINKS_EXPLAINER_PRICES["omni"]
     return round(float(billed_units) * p["output_usd_per_mtok"] / 1_000_000 + p["input_image_tokens"] * p["input_usd_per_mtok"] / 1_000_000, 4)
 
@@ -360,6 +361,10 @@ def clip_actual_usd(item: OrderItem, billing_unit: Optional[str], billed_units: 
     if billing_unit == "tokens" and billed_units is not None and item.provider == "omni":
         return omni_tokens_usd(billed_units)
     return item.est_usd
+
+
+# 같은 계산의 다른 이름 — main(#141, engine/drinks_explainer_lookup.py)이 이 이름을 쓴다. 정의는 omni_tokens_usd 하나다.
+omni_usd_from_tokens = omni_tokens_usd
 
 
 def _event(rpc: Rpc, attempt_id: str, to_state: str, **extra: Any) -> None:

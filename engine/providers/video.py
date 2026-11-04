@@ -266,11 +266,12 @@ class ExplainerSendRefused(ExplainerNotSent):
 
 class ExplainerOutcomeUnknown(ExplainerProviderError):
     """보냈는데 결과를 모른다(끊김·제한시간·5xx·읽을 수 없는 200 응답). 시도는 unknown_billed — 자동으로 다시 부르지 않는다(§3-3).
-    공급자가 요청 ID 를 줬으면 request_id 에 담아 시도 행에 남긴다. 끊겨서 못 받았으면 빈 값이고, 그 시도는 조회할 수 없다."""
+    공급자가 요청 ID 를 줬으면 request_id 에 담아 시도 행에 남긴다. 끊겨서 못 받았으면 빈 값이고, 그 시도는 조회할 수 없다
+    (조회: scripts/explainer_lookup.py · engine/drinks_explainer_lookup.py). 2026-11-03 전에는 "진행 중" 응답의 id 가 예외 문장에만 실리고 버려졌다."""
 
-    def __init__(self, message: str, request_id: str = "") -> None:
+    def __init__(self, message: str = "", request_id: str = "") -> None:
         super().__init__(message)
-        self.request_id = request_id
+        self.request_id = str(request_id or "")
 
 
 class ExplainerBilledBadFile(ExplainerProviderError):
