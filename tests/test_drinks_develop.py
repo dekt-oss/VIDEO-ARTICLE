@@ -782,3 +782,26 @@ def test_migration_0064_keeps_the_safety_rules():
     # 옛 파일은 고치지 않았다(0060 규칙은 표시 없는 요청에 그대로)
     assert "review_not_approved" in SQL
     assert "되돌리기" in SQL_64
+
+
+
+def test_timed_out_model_call_is_settled_at_estimate_not_released():
+    """리뷰 R1 곁가지(2026-11-04): 응답 전에 끊긴 호출을 0원으로 풀지 않는다. 연결 전 실패는 그대로 해제한다."""
+    import httpx
+
+    rpc = FakeRpc(sources=[src_row()])
+
+    def timeout(q, t):
+        raise httpx.ReadTimeout("응답 늦음")
+
+    res = dd.process_job(job(), rpc, deps(extract_claims=timeout))
+    assert res["status"] == "failed"
+    assert [s["outcome"] for s in rpc.settles] == ["settled"] and rpc.settled > 0
+
+    rpc2 = FakeRpc(sources=[src_row()])
+
+    def refused(q, t):
+        raise httpx.ConnectError("연결 거부")
+
+    dd.process_job(job(), rpc2, deps(extract_claims=refused))
+    assert [s["outcome"] for s in rpc2.settles] == ["released"] and rpc2.settled == 0

@@ -224,7 +224,7 @@ class Wire:
         from engine.providers import image, video
 
         for obj, name, label in ((video, "generate_explainer_clip", "video.generate_explainer_clip"), (video, "send_explainer_request", "video.send_explainer_request"),
-                                 (video, "generate_clip", "video.generate_clip"), (video, "_veo_i2v", "video._veo_i2v"), (image, "generate_image", "image.generate_image"),
+                                 (video, "generate_clip", "video.generate_clip"), (video, "_veo_i2v", "video._veo_i2v"), (image, "generate_image", "image.generate_image"), (image, "gemini_image_once", "image.gemini_image_once"),
                                  (socket.socket, "connect", "socket.connect"), (socket, "create_connection", "socket.create_connection")):
             self._wire(obj, name, label)
         if self.render_phase:

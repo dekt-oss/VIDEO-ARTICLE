@@ -189,6 +189,21 @@ def capture_usage():
         llm._record_text_usage = orig
 
 
+def _maybe_billed(exc: BaseException) -> bool:
+    """보낸 뒤 응답을 못 받은 실패인가(읽기·쓰기 타임아웃, 끊김). 연결 전 실패·상태 코드 오류는 아니다."""
+    import httpx
+
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
+        return False
+    if isinstance(exc, (httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError)):
+        return True
+    try:
+        from anthropic import APIConnectionError, APITimeoutError
+    except ImportError:  # pragma: no cover
+        return False
+    return isinstance(exc, APITimeoutError) or (isinstance(exc, APIConnectionError) and "timed out" in str(exc).lower())
+
+
 class Ledger:
     """모델 호출 1회 = 가잡기 → 호출 → 확정(실제 금액; 모르면 예상 금액) 또는 해제(실패). 결재가 없으면 호출 전에 멈춘다."""
 
@@ -218,6 +233,12 @@ class Ledger:
                     self.rpc("drinks_develop_settle", {"hold_id": hold["hold_id"], "outcome": "settled", "actual_usd": round(box.usd, 4),
                                                        "note": f"{note} — 실패했지만 사용량이 기록됨({type(exc).__name__})"})
                     self.spent += box.usd
+                elif _maybe_billed(exc):
+                    # 리뷰 R1 곁가지(2026-11-04): 응답 전에 끊긴 호출은 공급자가 처리·청구했을 수 있다. 사용량이 안 잡혔다고 0원으로 풀지 않는다
+                    # (지출을 작게 적지 않는다). engine/llm.py 가 타임아웃을 자체 재시도하므로 실제로는 여러 번 보냈을 수도 있다 — 노트에 남긴다.
+                    self.rpc("drinks_develop_settle", {"hold_id": hold["hold_id"], "outcome": "settled", "actual_usd": round(est_usd, 4),
+                                                       "note": f"{note} — 결과 불명({type(exc).__name__}), 예상 금액으로 확정(재시도 포함 최대 {config.HTTP_MAX_RETRIES}회 전송 가능)"})
+                    self.spent += est_usd
                 else:
                     self.rpc("drinks_develop_settle", {"hold_id": hold["hold_id"], "outcome": "released", "note": f"{note} — 실패({type(exc).__name__})"})
                 raise

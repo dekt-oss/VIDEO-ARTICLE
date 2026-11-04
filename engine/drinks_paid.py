@@ -241,6 +241,8 @@ def buy(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: str, out_dir: s
                                      "provider": "gemini" if item.kind == "image" else "veo", "model": item.model,
                                      "est_usd": item.est_usd, "note": f"{item.position}번 장면", **(lease or {})})
     hold_id = hold["hold_id"]
+    from .providers.image import ImageNotSent
+
     try:
         cost = (generate or _generate)(item, out, ref_path)
     except Exception as exc:
@@ -248,6 +250,11 @@ def buy(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: str, out_dir: s
         if billed:   # Veo 가 만들고 받기만 실패 — 청구됐을 가능성이 높다(엔진 VeoBilledRejection)
             rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "settled", "actual_usd": item.est_usd,
                                         "note": f"생성 완료 후 받기 실패(청구 유력): {type(exc).__name__}"})
+        elif item.kind == "image" and not isinstance(exc, (ImageNotSent, PaidError)):
+            # 리뷰 R1: 그림은 "확실히 안 보냄"만 해제한다. 그 밖의 실패는 생성·청구됐을 수 있다 — 가잡기를 남겨 결재 상한을 계속 차지하게 하고
+            # (같은 항목 재구매는 DB 가 hold_in_progress 로 막는다) 운영자가 drinks_close_orphan_hold 로 billed/void 를 정한다.
+            raise PaidError("unknown_billed", f"{item.item_key}: 그림 결과를 모릅니다({type(exc).__name__}) — 가잡기 {hold_id} 를 유지합니다. "
+                                              "청구 내역을 확인해 운영자가 닫기 전에는 다시 사지 않습니다") from exc
         else:
             rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "released", "note": f"생성 실패(청구 없음): {type(exc).__name__}"})
         raise
@@ -282,9 +289,9 @@ def _generate(item: OrderItem, out: str, ref_path: Optional[str]) -> float:
     if item.kind == "image":
         from .providers import image as image_provider
 
-        with _paid_provider("image"):
-            _, cost = image_provider.generate_image(item.cut, HEADER, out, model=item.model, ref_path=ref_path)
-        return cost
+        # 리뷰 R1: 재시도 데코레이터가 붙은 generate_image 를 쓰지 않는다 — POST 한 번, 실패는 안 보냄/모름 둘로만.
+        image_provider.gemini_image_once(item.cut, HEADER, out, model=item.model, ref_path=ref_path)
+        return float(config.PRICING.get(item.model, {}).get("image_standard", 0)) or item.est_usd
     from .providers import video as video_provider
 
     if not ref_path:
