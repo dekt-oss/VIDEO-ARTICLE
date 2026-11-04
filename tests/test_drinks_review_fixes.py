@@ -391,3 +391,52 @@ def test_r2_month_guard_rechecks_on_insert(db):
     trig = db.sql("select count(*)::int n from pg_trigger where tgname = 'drink_apify_month_guard'")[0]["n"]
     assert trig == 1
     assert "pg_advisory_xact_lock" in (ROOT / "supabase" / "migrations" / "0071_drinks_review_fixes.sql").read_text(encoding="utf-8")
+
+
+# ─────────────────────────────────────────────────────────────
+# 리뷰 P2 — 카드 릴스 + 음원 계약을 가짜 공급자 경로로(게시 루프 리허설의 카드 사례는 캐러셀뿐이었다)
+# ─────────────────────────────────────────────────────────────
+
+@needs_db
+@needs_ffmpeg
+def test_card_reel_with_music_goes_through_the_fake_publish_path(pubenv):
+    from datetime import datetime, timedelta, timezone
+
+    env, db, pr = pubenv, pubenv["db"], pubenv["pr"]
+    tid = db.sql("select topic_id from drink_topic_reviews where id = $1", [env["review"]])[0]["topic_id"]
+    pages = [{"role": "cover", "heading": "다이긴조, 왜 비쌀까?"},
+             {"role": "explain", "heading": "쌀을 반 이상 깎아요", "body": "정미율 50% 이하", "claim_ids": ["c1"]},
+             {"role": "explain", "heading": "넣지 않는 것", "body": "양조 알코올 무첨가", "claim_ids": ["c2"]},
+             {"role": "checklist", "heading": "라벨 체크", "body": "양조 알코올 무첨가", "claim_ids": ["c2"]}]
+    dv = db.sql("select version from drink_deliverables where topic_id = $1 and format = 'carousel'", [tid])[0]["version"]
+    pl = db("drinks_save_plan", {"topic_id": tid, "format": "carousel", "topic_review_id": env["review"], "expected_deliverable_version": dv,
+                                 "plan_json": {"pages": pages, "reel": {"hook_title": "다이긴조는 왜 비쌀까?", "share_line": "라벨 볼 때 떠올려 봐"}}})
+    for act in ("submit", "approve"):
+        db("drinks_plan_action", {"revision_id": pl["revision_id"], "action": act, "expected_version": pr._ver(db, "drink_plan_revisions", pl["revision_id"])})
+    db("drinks_request_render", {"plan_revision_id": pl["revision_id"]})
+    res = dp.run_queue(db, env["storage"], worker_id="t", max_jobs=1)
+    assert res and res[0]["status"] == "succeeded", res
+    rev = db.sql("select id, version from drink_output_reviews where manifest_id = $1", [res[0]["manifest_id"]])[0]
+    db("drinks_output_review_action", {"review_id": rev["id"], "expected_version": rev["version"], "action": "approve",
+                                       "checklist": {**pr.CARD_CK, "reel_motion_ok": True, "reel_hook_share_ok": True}})
+    aid = "fake-audio-card-01"
+    db.sql("insert into drink_ig_audio (audio_id, audio_type, title, display_artist, first_seen_on, last_seen_on) values ($1, 'music', '노래', '가수', current_date, current_date)", [aid])
+    db.sql("insert into drink_ig_audio_observations (audio_id, observed_on, list_position) values ($1, current_date, 1)", [aid])
+    when = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    # 음원 없이 만든 릴스 발행안은 승인 요청에서 막힌다(0065 계약) — 취소하고 음원을 골라 새로 만든다
+    r0 = db("drinks_create_publication", {"output_review_id": rev["id"], "account_id": env["acc"], "caption": "원문 근거만 담은 카드예요", "post_type": "reel", "publish_at": when})
+    _fails(lambda: db("drinks_publication_action", {"request_id": r0["request_id"], "action": "submit",
+                                                    "expected_version": pr._ver(db, "drink_publication_requests", r0["request_id"])}), "audio_required")
+    db("drinks_publication_action", {"request_id": r0["request_id"], "action": "cancel", "expected_version": pr._ver(db, "drink_publication_requests", r0["request_id"])})
+    r = db("drinks_create_publication", {"output_review_id": rev["id"], "account_id": env["acc"], "caption": "원문 근거만 담은 카드예요", "post_type": "reel", "publish_at": when,
+                                         "audio": {"mode": "ig_audio", "audio_id": aid, "audio_volume": 90, "video_volume": 10, "sync_grade": "sync_free"}})
+    pr.schedule(db, r["request_id"])
+    before = env["ig"].publishes
+    out = _run(env)
+    assert [p.get("status") for p in out if p["request_id"] == r["request_id"]] == ["published"]
+    assert env["ig"].publishes == before + 1
+    row = db.sql("select post_type, audio, audio_verified_at from drink_publication_requests where id = $1", [r["request_id"]])[0]
+    assert row["post_type"] == "reel" and row["audio"]["audio_id"] == aid and row["audio_verified_at"] is not None, "게시 직전 음원 재조회를 지났다"
+    st = json.loads(Path(env["ig"].path).read_text(encoding="utf-8"))
+    reels = [c for c in st["containers"].values() if c["kind"] in ("reel", "REELS")]
+    assert reels and any(c.get("audio_id") == aid or aid in json.dumps(c) for c in reels), "가짜 인스타 컨테이너에 음원이 실렸다"

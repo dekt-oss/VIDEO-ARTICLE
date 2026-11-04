@@ -5,7 +5,7 @@
     python -m scripts.card_plan_run --offline         # Supabase 없이 시험 입력(scripts/sample_card_reel 의 위스키 근거)
     python -m scripts.card_plan_run --yes --approve "결재 문장"   # 실제 모델 호출 1회. 상한 $0.10(config.DRINKS_CARD_PLAN_RUN_CAP_USD). 결재 문장 없으면 부르지 않는다
                                                       # ★ 실제 호출도 DB 에 제작안을 쓰지 않는다 — 산출물 파일만. 운영 저장은 워커(drinks-develop)가 한다.
-                                                      #   단, LLM 호출의 비용 원장(generation_attempts)은 평소처럼 기록된다.
+                                                      #   단, LLM 호출의 비용 원장(generation_attempts)은 평소처럼 기록된다 — 보고서 db_writes 가 둘을 나눠 적는다.
 
 산출물: docs/preview-2026-11-02/card-plan/ (gitignore) — report.json · plan.json · source_table.md · question_map_check.json/md
 보이는 것:
@@ -272,12 +272,16 @@ def question_map_md(qm: dict[str, Any]) -> str:
 # 실행
 # ─────────────────────────────────────────────────────────────
 
+LEDGER_CALLS = {"n": 0}   # 이번 실행에서 비용 원장(generation_attempts) 기록을 시도한 LLM 호출 수 — 보고에 그대로 적는다
+
+
 def run_job(job: dict[str, Any], *, live: bool) -> tuple[dict[str, Any], MemRpc, float]:
     rpc = MemRpc()
     if live:
         deps = dd.Deps(write_card_plan=cp.llm_write_card_plan, jev_check=lambda n, s: None)
         with dd.capture_usage() as box:
             res = dd.process_job(job, rpc, deps)
+        LEDGER_CALLS["n"] = box.calls
         return res, rpc, round(box.usd, 6)
     deps = dd.Deps(write_card_plan=fake_card_plan, jev_check=lambda n, s: None)
     with Tripwire(allow_network=True) as wire:   # 모델·이미지·영상·구매 경로에 줄. 네트워크는 운영 DB 읽기(위 load) 뒤라 여기서는 안 쓴다
@@ -323,8 +327,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         "model": config.DRINKS_CARD_PLAN_MODEL if live else "(가짜 응답)",
         "status": res.get("status"), "error_code": (rpc.finish or {}).get("error_code"), "error_message": (rpc.finish or {}).get("error_message"),
         "checks": result.get("checks"), "rewrites": result.get("rewrites"), "coverage": result.get("coverage"),
-        "db_writes": 0, "rpc_calls": rpc.calls, "saved_to_db": False,
-        "note": "가짜 RPC 가 저장 호출을 받아 적었을 뿐이다. 운영 DB 에는 아무것도 쓰지 않았다. 운영 저장은 [이걸로] → drinks-develop 워커가 한다.",
+        # 리뷰 §5(2026-11-04): '쓰기 0'을 둘로 나눠 적는다. 제작안은 어느 모드에서도 운영 DB 에 저장하지 않지만, 실제 호출(--yes)은
+        # LLM 비용 원장(generation_attempts)에 호출마다 한 행씩 기록을 시도한다(engine/llm._record_text_usage → cost.record).
+        "db_writes": {"plan_saves": 0, "cost_ledger_rows_attempted": LEDGER_CALLS["n"] if live else 0},
+        "rpc_calls": rpc.calls, "saved_to_db": False,
+        "note": ("제작안은 가짜 RPC 가 받아 적었을 뿐 운영 DB 에 저장하지 않았다. 운영 저장은 [이걸로] → drinks-develop 워커가 한다."
+                 + (" 실제 호출의 비용은 운영 비용 원장(generation_attempts)에 기록을 시도했다(실패해도 호출은 막지 않는다)." if live else " 모델 호출 0회 — 비용 원장 기록도 없다.")),
     }
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     (out / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
