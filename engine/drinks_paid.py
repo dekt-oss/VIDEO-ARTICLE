@@ -387,7 +387,8 @@ def buy_clip_attempt(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: st
                                      "est_usd": item.est_usd, "note": f"{item.position}번 장면 후보 {item.candidate_id[-2:]}", **(lease or {})})
     hold_id = hold["hold_id"]
     try:
-        att = rpc("drinks_explainer_open_attempt", {"candidate_id": item.candidate_id, "approval_id": approval_id, "provider": item.provider})
+        # 리뷰 R4: 가잡기를 시도 행에 처음부터 묶는다 — generating 전에 끊겨도 sweep 이 그 가잡기를 찾아 해제한다.
+        att = rpc("drinks_explainer_open_attempt", {"candidate_id": item.candidate_id, "approval_id": approval_id, "provider": item.provider, "hold_id": hold_id})
     except Exception:
         rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "released", "note": "시도 행을 만들지 못함(호출 안 함)"})
         raise

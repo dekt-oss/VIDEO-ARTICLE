@@ -135,7 +135,7 @@ def run(out_root: Path) -> dict[str, Any]:
         "허용 어휘 밖 모델 답은 버려짐": all(k not in by_field or by_field[k]["value"] not in ("montage", "maybe") for k in ("structure", "music_sync")) and "cdninstagram" not in json.dumps(finish, ensure_ascii=False),
         "저장 데이터에 영상 주소 없음": not rf._MEDIA_URL.search(json.dumps({"results": finish["results"], "analysis": finish["analysis"], "fields": finish["fields"]}, ensure_ascii=False)),
         "빌린 영상은 분석 뒤 삭제": finish["analysis"]["deleted"] is True and not leftovers and all(not os.path.exists(p) for p in seen_paths),
-        "실행 상한 안(maxTotalChargeUsd 전달)": provider.calls[0]["cap_usd"] == job["cap_usd"] and finish["actual_usd"] <= job["cap_usd"],
+        "실행 상한 안(Apify 몫만 maxTotalChargeUsd 로 전달)": provider.calls[0]["cap_usd"] == rf.split_budget(job["cap_usd"], len(job["reels"]))["apify_cap_usd"] and finish["actual_usd"] <= job["cap_usd"],
         "운영자 입력 칸은 덮지 않음(캡션 훅은 caption 근거 유지)": rpc.card_fields["caption_hook"]["evidence"] == "caption",
         "카드가 정밀 틀이 됨": rpc_res["precision"] == "precise",
         "컷 길이가 제작안 비트에 그대로 쓰임": [b["ms"] for b in spec["beats"]] == [int(round(float(x) * 1000)) for x in by_field["cut_lengths"]["value"].split(",")],

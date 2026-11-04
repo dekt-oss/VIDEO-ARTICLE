@@ -8,6 +8,7 @@ import { useState } from "react";
 import {
   CARD_REEL_AUDIO_VOLUME, CARD_REEL_VIDEO_VOLUME, audioPayload, audioSummary, type AudioBundle, type AudioChoice, type AudioOption,
 } from "@/lib/drinks/audio";
+import { publishWindowProblem } from "@/lib/drinks/publishWindow";
 import { useDrinksAction } from "./useDrinksAction";
 
 /** 음원 고르기: 수집된 인기 음원 중 하나 + 볼륨 + 박자 등급. 제목·가수는 서버가 음원 표에서 복사한다. 미리듣기는 음원만 된다(합성 미리보기는 공급자가 지원하지 않는다). */
@@ -136,9 +137,10 @@ export function CreatePublication({ outputReviewId, accounts, postType, slotHint
       <textarea rows={3} style={{ minWidth: 320 }} placeholder="캡션(원문에 없는 숫자·양·권고는 게시 직전 검사에서 막힙니다)" value={caption}
         onChange={(e) => setCaption(e.target.value)} />
       <label className="muted">게시 시각(한국) <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
+      {publishWindowProblem(when) && <span className="banner-warn">{publishWindowProblem(when)}</span>}
       {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
       {audioRequired && <AudioFields options={audioOptions ?? []} value={choice} onChange={setChoice} />}
-      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId)} onClick={() => run("create_publication", {
+      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId) || !!publishWindowProblem(when)} onClick={() => run("create_publication", {
         output_review_id: outputReviewId, account_id: acc, caption, post_type: postType,
         publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
         ...(audioRequired ? { audio: audioPayload(choice) } : {}),
@@ -168,9 +170,10 @@ export function CreateMemePublication({ draftId, accounts, defaultCaption, slotH
       <textarea rows={3} style={{ minWidth: 320 }} placeholder="캡션(비우면 제작안의 캡션)" value={caption} onChange={(e) => setCaption(e.target.value)} />
       {boughtScene && <span className="muted">산 장면을 쓴 밈 — 캡션에 &apos;AI 생성 영상&apos; 한 줄이 있어야 합니다.</span>}
       <label className="muted">게시 시각(한국) <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
+      {publishWindowProblem(when) && <span className="banner-warn">{publishWindowProblem(when)}</span>}
       {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
       {audioRequired && <AudioFields options={audioOptions ?? []} value={choice} onChange={setChoice} />}
-      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId)} onClick={() => run("create_meme_publication", {
+      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId) || !!publishWindowProblem(when)} onClick={() => run("create_meme_publication", {
         draft_id: draftId, account_id: acc, caption,
         publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
         ...(audioRequired ? { audio: audioPayload(choice) } : {}),

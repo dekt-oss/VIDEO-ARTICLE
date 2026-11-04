@@ -188,6 +188,10 @@ def run(out_root: Path) -> dict[str, Any]:
         return fake
 
     db = qr.PgRpc()
+    # 0071(R6): 예약 시각은 KST 07:00~23:30 만 받는다. 리허설은 "1분 전" 시각으로 바로 게시하므로, 메모리 시험 DB 에서만 창을 하루 전체로 넓힌다
+    # (운영 함수는 그대로). 창 자체는 tests/test_drinks_review_fixes.py 가 따로 본다 — 밤에 돌려도 리허설이 시계 때문에 깨지지 않게.
+    db.sql("create or replace function drinks_publish_window() returns jsonb language sql immutable as $$ "
+           "select jsonb_build_object('timezone', 'Asia/Seoul', 'start', '00:00', 'end', '23:59:59') $$")
     report: dict[str, Any] = {"cost_usd": 0, "public_posts": 0}
     try:
         with qr.Wire() as wire:

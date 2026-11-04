@@ -4926,6 +4926,10 @@ DRINKS_PUBLISH_CRON_VAR: str = "DRINKS_PUBLISH_CRON_ENABLED"
 DRINKS_PUBLISH_CRON_PUBLISH: str = "0,30 22-23,0-14 * * *"
 DRINKS_PUBLISH_CRON_METRICS: str = "15 23 * * *"
 DRINKS_PUBLISH_CRON_STRATEGY: str = "45 23 * * 0"
+# 리뷰 R6(2026-11-04): 예약 게시 시각은 게시 크론이 도는 창 안이어야 한다. 크론은 KST 07:00~23:30 만 돈다 — 그 밖의 시각(예: 00:00)은
+# 다음 크론(07:00)이 2시간 유예를 넘겨 반드시 멈춘다. DB(0071 drinks_publish_window)·웹(lib/drinks/publishWindow.ts)·크론이 이 값과 같아야 한다
+# (tests/test_drinks_review_fixes.py 가 대조). 24시간으로 넓힐지는 운영자 결정이다.
+DRINKS_PUBLISH_WINDOW: dict[str, str] = {"timezone": "Asia/Seoul", "start": "07:00", "end": "23:30"}
 # 콘텐츠 형식(0068 drink_publication_requests.content_format). 전략 묶음 'format' 의 값이다. SQL 과 같아야 한다.
 DRINKS_CONTENT_FORMATS: tuple[str, ...] = ("card", "explainer", "meme")
 # 설명형 캡션 필수 한 줄(기획 v2 §3-4). SQL drinks_ai_label_text() 와 같아야 한다. 산 장면을 쓴 밈은 'AI 생성' 이 들어가면 된다(0066 규칙 그대로).

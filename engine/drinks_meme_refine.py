@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import os
 import re
 import shutil
@@ -82,6 +83,14 @@ def estimate_usd(n_reels: int, *, analyze: bool = True) -> float:
 def apify_input(urls: list[str]) -> dict[str, Any]:
     """Actor 입력. 공유 수·받아쓰기·영상 저장(추가 과금)은 전부 끈다(검토 §1)."""
     return {"directUrls": urls, "resultsLimit": len(urls), "includeSharesCount": False, "includeTranscript": False, "downloadVideos": False}
+
+
+def split_budget(cap_usd: float, n_reels: int) -> dict[str, float]:
+    """실행 상한을 Apify 몫과 분석 몫으로 나눈다(리뷰 R2). 분석 몫 = 영상 수 × 분석 1편 예상액. 내림으로 자른다(상한을 넘지 않게)."""
+    per = float(config.DRINKS_APIFY_ANALYSIS_EST_USD)
+    reserve = round(n_reels * per, 4)
+    apify = max(0.0, math.floor((cap_usd - reserve) * 10000) / 10000)
+    return {"cap_usd": round(cap_usd, 4), "apify_cap_usd": apify, "analysis_reserve_usd": reserve, "per_analysis_usd": per}
 
 
 def run_cap_check(job: dict[str, Any], n_reels: int) -> None:
@@ -391,14 +400,15 @@ class FakeApify:
         return None
 
 
-Analyzer = Callable[[str, float, list[float]], tuple[Optional[dict[str, Any]], float]]
+Analyzer = Callable[[str, float, list[float]], tuple[Optional[dict[str, Any]], Optional[float]]]   # 금액 None = 모름
 
 
 def gemini_analyzer(path: str, duration: float, cut_lengths: list[float]) -> tuple[Optional[dict[str, Any]], float]:
     model = config.DRINKS_APIFY_ANALYSIS_MODEL
     ans, usage = gemini_video_json(path, model=model, system=ANALYSIS_SYSTEM, user=analysis_prompt(duration, cut_lengths),
                                    max_tokens=config.DRINKS_APIFY_ANALYSIS_MAX_OUT_TOKENS)
-    return ans, analysis_usd(model, usage)
+    # 리뷰 R2: 사용량이 안 왔으면 0원이 아니라 "모름"(None)이다 — refine 이 분석 예약액으로 적는다.
+    return ans, (analysis_usd(model, usage) if usage else None)
 
 
 def no_analyzer(_path: str, _duration: float, _cuts: list[float]) -> tuple[Optional[dict[str, Any]], float]:
@@ -440,14 +450,18 @@ def refine(job: dict[str, Any], *, provider: Any, analyzer: Analyzer, tmp_root: 
     except RefineStop as exc:
         return RefineOutcome("stopped", [], {}, [], 0.0, None, exc.code, exc.message)
     sweep_old_tmp(tmp_root)
-    spent = 0.0
+    # 리뷰 R2(2026-11-04): 실행 상한 하나를 수집과 분석에 **먼저 나눈다**. 예전엔 Apify 에 상한 전체를 주고 분석비를 그 위에 얹어
+    # $0.020 + $0.003 = $0.023 이 done 으로 끝났다. 분석 예약액 = 영상 수 × 분석 예상액, Apify 상한 = 나머지.
+    cap = float(job["cap_usd"])
+    budget = split_budget(cap, len(inputs))
     try:
-        res = provider.run_reels(inputs, cap_usd=float(job["cap_usd"]))
+        res = provider.run_reels(inputs, cap_usd=budget["apify_cap_usd"])
     except RefineStop as exc:
         return RefineOutcome("failed", [], {}, [], None, None, exc.code, exc.message)
     rows = result_rows(res.items, inputs)
-    apify_usd = res.usage_usd if res.usage_usd is not None else estimate_usd(len(inputs), analyze=False)
-    spent += apify_usd
+    # 사용액을 못 읽으면 예상액이 아니라 **Apify 상한**으로 적는다(작게 적지 않는다).
+    spent = res.usage_usd if res.usage_usd is not None else budget["apify_cap_usd"]
+    paid_stop: Optional[str] = None     # 한 번 결과를 모르는 분석이 나오면 그 뒤 유료 분석은 하지 않는다
     per_video: list[dict[str, Any]] = []
     by_url = {_canon(str(it.get("inputUrl") or it.get("url") or "")): it for it in res.items}
     with BorrowedVideos(tmp_root) as box:
@@ -465,13 +479,27 @@ def refine(job: dict[str, Any], *, provider: Any, analyzer: Analyzer, tmp_root: 
                 m = measure_video(dest)
                 entry["measured"] = {k: m[k] for k in ("duration_sec", "cut_lengths", "beat_count")}
                 ans: Optional[dict[str, Any]] = None
-                if m["duration_sec"] <= config.DRINKS_APIFY_ANALYSIS_MAX_SEC and m["bytes"] <= config.DRINKS_APIFY_ANALYSIS_MAX_BYTES:
-                    ans, usd = analyzer(dest, m["duration_sec"], m["cut_lengths"])
-                    spent += usd
-                    entry["analyzed"] = ans is not None
-                    entry["frame"] = frame_summary(ans)
-                else:
+                reserve = budget["per_analysis_usd"]
+                if not (m["duration_sec"] <= config.DRINKS_APIFY_ANALYSIS_MAX_SEC and m["bytes"] <= config.DRINKS_APIFY_ANALYSIS_MAX_BYTES):
                     entry["skip"] = "too_long_or_large"
+                elif paid_stop:
+                    entry["skip"] = paid_stop
+                elif analyzer is not no_analyzer and cap - spent < reserve - 1e-9:
+                    # 호출 **전에** 남은 예산을 본다 — 분석 1편 예약액이 안 남았으면 부르지 않는다.
+                    entry["skip"] = paid_stop = "budget_exhausted"
+                else:
+                    try:
+                        ans, usd = analyzer(dest, m["duration_sec"], m["cut_lengths"])
+                    except Exception as exc:  # noqa: BLE001 — 보낸 뒤 실패는 청구됐을 수 있다. 예약액으로 적고 더 부르지 않는다
+                        spent += reserve
+                        entry["skip"] = paid_stop = "analysis_unknown"
+                        entry["error"] = getattr(exc, "message", type(exc).__name__)[:200]
+                    else:
+                        spent += reserve if usd is None else usd
+                        if usd is None:
+                            entry["usage_unknown"] = True
+                        entry["analyzed"] = ans is not None
+                        entry["frame"] = frame_summary(ans)
                 entry["fields"] = fields_from_analysis(m, ans)
             except RefineStop as exc:
                 entry["skip"] = exc.code
@@ -482,7 +510,12 @@ def refine(job: dict[str, Any], *, provider: Any, analyzer: Analyzer, tmp_root: 
             per_video.append(entry)
     fields = pick_fields(per_video)
     analysis = {"per_video": per_video, "picked_from": next((v["input_url"] for v in per_video if v.get("fields") is fields), None) if fields else None,
-                "deleted": box.deleted, "analyzer": "model" if any(v.get("analyzed") for v in per_video) else "ffmpeg_only"}
+                "deleted": box.deleted, "analyzer": "model" if any(v.get("analyzed") for v in per_video) else "ffmpeg_only",
+                "budget": {**budget, "spent_usd": round(spent, 4)}}
+    if spent > cap + 1e-9:
+        # 이미 나간 돈은 숨기지 않는다 — 그대로 기록하고 경고한다(상한은 호출 전에 걸었다).
+        analysis["over_cap_usd"] = round(spent - cap, 4)
+        log.warning("drinks: 정밀화 %s 가 실행 상한 $%.4f 를 $%.4f 넘었습니다(공급자 보고액 기준)", job.get("request_id"), cap, spent - cap)
     payload = {"results": rows, "analysis": analysis, "fields": fields}
     try:
         assert_no_media_url(payload)
