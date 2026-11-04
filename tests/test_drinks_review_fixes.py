@@ -403,13 +403,16 @@ def test_card_reel_with_music_goes_through_the_fake_publish_path(pubenv):
     from datetime import datetime, timedelta, timezone
 
     env, db, pr = pubenv, pubenv["db"], pubenv["pr"]
-    tid = db.sql("select topic_id from drink_topic_reviews where id = $1", [env["review"]])[0]["topic_id"]
+    # 앞 시험(R3)이 철회한 소재와 섞이지 않게 새 소재 하나를 쓴다(철회는 편성을 푼다)
+    card = pr.approved_card_review(db, env["storage"])
+    tid = card["topic_id"]
+    review = db.sql("select topic_review_id from drink_plan_revisions where id = $1", [card["plan_id"]])[0]["topic_review_id"]
     pages = [{"role": "cover", "heading": "다이긴조, 왜 비쌀까?"},
              {"role": "explain", "heading": "쌀을 반 이상 깎아요", "body": "정미율 50% 이하", "claim_ids": ["c1"]},
              {"role": "explain", "heading": "넣지 않는 것", "body": "양조 알코올 무첨가", "claim_ids": ["c2"]},
              {"role": "checklist", "heading": "라벨 체크", "body": "양조 알코올 무첨가", "claim_ids": ["c2"]}]
     dv = db.sql("select version from drink_deliverables where topic_id = $1 and format = 'carousel'", [tid])[0]["version"]
-    pl = db("drinks_save_plan", {"topic_id": tid, "format": "carousel", "topic_review_id": env["review"], "expected_deliverable_version": dv,
+    pl = db("drinks_save_plan", {"topic_id": tid, "format": "carousel", "topic_review_id": review, "expected_deliverable_version": dv,
                                  "plan_json": {"pages": pages, "reel": {"hook_title": "다이긴조는 왜 비쌀까?", "share_line": "라벨 볼 때 떠올려 봐"}}})
     for act in ("submit", "approve"):
         db("drinks_plan_action", {"revision_id": pl["revision_id"], "action": act, "expected_version": pr._ver(db, "drink_plan_revisions", pl["revision_id"])})
