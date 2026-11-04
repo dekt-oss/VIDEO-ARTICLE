@@ -135,7 +135,7 @@ def test_s2_and_s3_scopes_follow_the_plan_document(no_env):
     sc2 = st.s2_scope(d)
     assert sc2["through_n"] == d["hook_scene"] == 2 and sc2["slots"] == [1, 2] and sum(r["candidates"] for r in sc2["rows"]) == 3
     sc3 = st.s3_scope(d, s2_spent_usd=sc2["estimate_usd"], selected_slots=(1, 2))
-    assert [r["n"] for r in sc3["rows"]] == [3, 4, 5, 6, 7, 8, 9] and sc3["cap_usd"] == st.ceil_cents(8.90 - sc2["estimate_usd"]) and sc3["fits"]
+    assert [r["n"] for r in sc3["rows"]] == [3, 4, 5, 6, 7, 8, 9] and sc3["cap_usd"] == st.floor_cents(8.90 - sc2["estimate_usd"]) and sc3["fits"]
     assert st.s3_scope(d, s2_spent_usd=8.90)["fits"] is False, "S2 가 다 썼으면 S3 상한은 0 — 사지 않는다"
     assert st.s2_scope({**d, "slots": [dict(s, clip_est_usd=5.0) for s in d["slots"]]})["fits"] is False
 
@@ -218,3 +218,30 @@ def test_omni_parse_follows_documented_interaction_shape():
             pv.parse_omni_response(bad)
     assert pv.omni_duration_value(8) == "8s"
     assert set(pv.OMNI_UNVERIFIED) and set(pv.OMNI_VERIFIED_BY_DOCS), "검증됨/미검증을 코드가 구분해 적는다"
+
+
+
+# ── 리뷰 R10(2026-11-04): S3 잔액은 내림 — 편 전체 합산이 $8.90 을 넘지 않는다 ──
+
+def _directive(out):
+    s05.dry_run(out / "s05", tts="")
+    return json.loads((out / "s05" / "directive.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("s2", [2.2111, 2.2053, 2.0001, 2.60, 0.0, 8.8999])
+def test_s3_cap_is_floored_so_the_episode_never_exceeds_the_total(no_env, s2):
+    sc3 = st.s3_scope(_directive(no_env), s2_spent_usd=s2)
+    assert round(s2 + sc3["cap_usd"], 6) <= 8.90, (s2, sc3["cap_usd"])
+    assert sc3["cap_usd"] == st.floor_cents(8.90 - s2)
+
+
+def test_s3_reports_overspend_and_buys_nothing(no_env):
+    sc3 = st.s3_scope(_directive(no_env), s2_spent_usd=9.10)
+    assert sc3["cap_usd"] == 0 and sc3["fits"] is False and sc3["over_episode_cap_usd"] == pytest.approx(0.20)
+
+
+def test_s3_resume_counts_held_and_settled_of_every_approval():
+    from scripts import explainer_s3 as s3
+
+    status = {"approvals": [{"spent_usd": 2.2111, "held_usd": 0}, {"spent_usd": 1.50, "held_usd": 0.41}]}
+    assert s3.s2_spent_from_status(status) == pytest.approx(4.1211)
