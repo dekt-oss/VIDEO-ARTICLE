@@ -284,20 +284,42 @@ def frame_summary(ans: Optional[dict[str, Any]]) -> dict[str, Any]:
 # 파일 수명 (§6-7) — 받은 영상은 분석 뒤 지운다
 # ─────────────────────────────────────────────────────────────
 
-def sweep_old_tmp(root: Optional[str] = None, *, hours: Optional[int] = None, now: Optional[float] = None) -> list[str]:
-    """시작 때 오래된 임시 폴더를 먼저 지운다(지난 실행이 지우지 못한 것)."""
+def _rmtree(path: str) -> bool:
+    """지우고, **실제로 없어졌는지** 본다(리뷰 R8: rmtree(ignore_errors) 는 실패를 조용히 삼킨다). 읽기 전용 파일은 권한을 풀고 한 번 더."""
+    def _unlock(func: Any, p: str, _exc: Any) -> None:
+        try:
+            os.chmod(p, 0o700)
+            func(p)
+        except OSError:
+            pass
+    try:
+        shutil.rmtree(path, onerror=_unlock)
+    except OSError:
+        pass
+    return not os.path.exists(path)
+
+
+def sweep_tmp(root: Optional[str] = None, *, hours: Optional[int] = None, now: Optional[float] = None) -> dict[str, list[str]]:
+    """남의 영상 임시 폴더 청소. {"deleted": 실제로 지운 것, "failed": 남은 것}. 남은 것은 로그와 요청 analysis 에 남는다."""
     base = Path(root or tempfile.gettempdir())
     limit = (hours if hours is not None else config.DRINKS_APIFY_TMP_SWEEP_HOURS) * 3600
     t = now if now is not None else time.time()
-    gone = []
+    out: dict[str, list[str]] = {"deleted": [], "failed": []}
     for p in base.glob(f"{TMP_PREFIX}*"):
         try:
-            if p.is_dir() and t - p.stat().st_mtime > limit:
-                shutil.rmtree(p, ignore_errors=True)
-                gone.append(str(p))
+            if not p.is_dir() or t - p.stat().st_mtime <= limit:
+                continue
         except OSError:
             continue
-    return gone
+        (out["deleted"] if _rmtree(str(p)) else out["failed"]).append(str(p))
+    if out["failed"]:
+        log.warning("drinks: 남의 영상 임시 폴더 %d개를 지우지 못했습니다 — python -m engine.drinks_meme_refine --clean-tmp 로 다시 지우세요", len(out["failed"]))
+    return out
+
+
+def sweep_old_tmp(root: Optional[str] = None, *, hours: Optional[int] = None, now: Optional[float] = None) -> list[str]:
+    """시작 때 오래된 임시 폴더를 먼저 지운다(지난 실행이 지우지 못한 것). 실제로 지운 것만 돌려준다."""
+    return sweep_tmp(root, hours=hours, now=now)["deleted"]
 
 
 class BorrowedVideos:
@@ -313,9 +335,8 @@ class BorrowedVideos:
         return self
 
     def __exit__(self, *_exc: Any) -> None:
-        if self.path and os.path.isdir(self.path):
-            shutil.rmtree(self.path, ignore_errors=True)
-            self.deleted = not os.path.isdir(self.path)
+        if self.path and os.path.exists(self.path):
+            self.deleted = _rmtree(self.path)
             if not self.deleted:
                 log.warning("drinks: 빌린 영상 폴더를 지우지 못했습니다 — 다음 실행의 청소가 지웁니다")
         else:
@@ -460,7 +481,7 @@ def refine(job: dict[str, Any], *, provider: Any, analyzer: Analyzer, tmp_root: 
         run_cap_check(job, len(inputs))
     except RefineStop as exc:
         return RefineOutcome("stopped", [], {}, [], 0.0, None, exc.code, exc.message)
-    sweep_old_tmp(tmp_root)
+    swept = sweep_tmp(tmp_root)
     # 리뷰 R2(2026-11-04): 실행 상한 하나를 수집과 분석에 **먼저 나눈다**. 예전엔 Apify 에 상한 전체를 주고 분석비를 그 위에 얹어
     # $0.020 + $0.003 = $0.023 이 done 으로 끝났다. 분석 예약액 = 영상 수 × 분석 예상액, Apify 상한 = 나머지.
     cap = float(job["cap_usd"])
@@ -517,11 +538,15 @@ def refine(job: dict[str, Any], *, provider: Any, analyzer: Analyzer, tmp_root: 
                 entry["error"] = exc.message
             finally:
                 if os.path.exists(dest):
-                    os.remove(dest)      # 영상 하나 잴 때마다 바로 지운다(검토 §6 시험 2 와 같다)
+                    try:
+                        os.remove(dest)      # 영상 하나 잴 때마다 바로 지운다(검토 §6 시험 2 와 같다)
+                    except OSError:
+                        entry["delete_failed"] = True   # 폴더째 지우기(BorrowedVideos)가 다시 시도하고, 그것도 실패하면 deleted=False 로 남는다
             per_video.append(entry)
     fields = pick_fields(per_video)
     analysis = {"per_video": per_video, "picked_from": next((v["input_url"] for v in per_video if v.get("fields") is fields), None) if fields else None,
                 "deleted": box.deleted, "analyzer": "model" if any(v.get("analyzed") for v in per_video) else "ffmpeg_only",
+                "tmp_leftovers": len(swept["failed"]) + (0 if box.deleted else 1),
                 "budget": {**budget, "spent_usd": round(spent, 4)}}
     if spent > cap + 1e-9:
         # 이미 나간 돈은 숨기지 않는다 — 그대로 기록하고 경고한다(상한은 호출 전에 걸었다).
@@ -581,7 +606,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--yes", action="store_true", help="실제 Apify·분석 모델 호출(돈이 든다 — 클릭 승인분만, 월 $3 안)")
     ap.add_argument("--fake", action="store_true", help="가짜 응답으로 끝까지(0원, DB 없음). 산출물 docs/preview-<날짜>/meme-refine/")
     ap.add_argument("--max", type=int, default=5)
+    ap.add_argument("--clean-tmp", action="store_true", help="남의 영상 임시 폴더를 나이와 상관없이 지운다(0원, 호출 없음). 남은 것이 있으면 종료 코드 1")
     args = ap.parse_args(argv)
+    if args.clean_tmp:
+        res = sweep_tmp(hours=0)
+        print(f"지움 {len(res['deleted'])}개 · 남음 {len(res['failed'])}개")
+        for p in res["failed"]:
+            print(f"  남음: {p}")
+        return 1 if res["failed"] else 0
     if args.fake:
         from scripts.meme_refine_rehearsal import main as rehearsal
 

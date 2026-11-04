@@ -36,3 +36,7 @@ jobs:
       - run: python -m pip install -r engine/requirements.txt
       - name: refine
         run: python -m engine.drinks_meme_refine --yes --max 3
+      # 리뷰 R8: 정밀화가 중간에 죽어도 남의 영상 임시 폴더를 지운다(0원). 남으면 이 단계가 실패로 보인다.
+      - name: clean borrowed videos
+        if: always()
+        run: python -m engine.drinks_meme_refine --clean-tmp

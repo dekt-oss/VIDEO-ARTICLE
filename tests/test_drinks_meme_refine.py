@@ -343,3 +343,66 @@ def test_missing_analysis_usage_is_recorded_as_the_reserve(fake_measure):
 def test_gemini_analyzer_without_usage_returns_unknown(monkeypatch):
     monkeypatch.setattr(rf, "gemini_video_json", lambda *a, **k: ({"frame": "selfie"}, {}))
     assert rf.gemini_analyzer("x", 1.0, [])[1] is None
+
+
+# ── 리뷰 R8(2026-11-04): 남의 영상 삭제 실패를 성공으로 적지 않는다 ──
+
+def _old(tmp_path, name):
+    d = tmp_path / f"{rf.TMP_PREFIX}{name}"
+    d.mkdir()
+    (d / "a.mp4").write_bytes(b"x")
+    os.utime(d, (time.time() - 30 * 3600, time.time() - 30 * 3600))
+    return d
+
+
+def test_sweep_reports_a_folder_it_could_not_delete(tmp_path, monkeypatch):
+    stuck = _old(tmp_path, "stuck")
+    monkeypatch.setattr(rf.shutil, "rmtree", lambda p, **k: None)   # 지우기가 아무 일도 못 하게(권한 오류 흉내)
+    res = rf.sweep_tmp(str(tmp_path))
+    assert res == {"deleted": [], "failed": [str(stuck)]} and stuck.exists()
+    assert rf.sweep_old_tmp(str(tmp_path)) == [], "남은 폴더를 지운 것으로 돌려주지 않는다"
+
+
+def test_borrowed_videos_reports_failed_delete(tmp_path, monkeypatch):
+    monkeypatch.setattr(rf.shutil, "rmtree", lambda p, **k: None)
+    with rf.BorrowedVideos(str(tmp_path)) as box:
+        (Path(box.path) / "reel0.mp4").write_bytes(b"v")
+    assert box.deleted is False and Path(box.path).exists()
+
+
+@pytest.mark.parametrize("where", ["analysis", "download"])
+def test_failure_mid_run_still_deletes_and_reports(tmp_path, fake_measure, where):
+    class Breaks(_Prov):
+        def download(self, url, dest, *, max_bytes):
+            if where == "download":
+                Path(dest).write_bytes(b"half")
+                raise rf.RefineStop("download_failed", "중간에 끊김")
+            return super().download(url, dest, max_bytes=max_bytes)
+    an = Counting(exc=RuntimeError("분석 예외")) if where == "analysis" else Counting()
+    r = Rpc()
+    rf.process_job(job(), r, provider=Breaks(items=_ok_items(), usage_usd=0.0088), analyzer=an, tmp_root=str(tmp_path))
+    p = r.calls[-1][1]
+    assert p["analysis"]["deleted"] is True and p["analysis"]["tmp_leftovers"] == 0
+    assert list(tmp_path.glob(f"{rf.TMP_PREFIX}*")) == []
+
+
+def test_leftover_from_a_killed_run_is_cleaned_by_the_next_start_and_the_clean_command(tmp_path, monkeypatch, capsys):
+    _old(tmp_path, "killed")
+    monkeypatch.setattr(rf.tempfile, "gettempdir", lambda: str(tmp_path))
+    fresh = tmp_path / f"{rf.TMP_PREFIX}fresh"
+    fresh.mkdir()
+    assert rf.main(["--clean-tmp"]) == 0, "나이와 상관없이 지운다"
+    assert list(tmp_path.glob(f"{rf.TMP_PREFIX}*")) == []
+    assert "남음 0개" in capsys.readouterr().out
+
+
+def test_workflow_cleans_borrowed_videos_even_when_refine_fails():
+    assert "--clean-tmp" in WF and "if: always()" in WF
+
+
+def test_borrowed_videos_never_live_in_the_repo_or_storage():
+    """임시 폴더는 시스템 임시 디렉터리 아래다. 저장소(Storage.put)·Git 경로로 가는 코드가 없다."""
+    with rf.BorrowedVideos() as box:
+        assert not Path(box.path).resolve().is_relative_to(ROOT)
+    code = _code(SRC)
+    assert "storage.put" not in code and ".put(" not in code
