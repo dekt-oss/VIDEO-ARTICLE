@@ -280,6 +280,44 @@ body:has(> .dk-shell), body:has(.dk-shell) { background: #f4f4ee; }
 .dk-shell .dw-history { margin-bottom: 18px; }
 .dk-shell .dk-work-group h2 { font-size: 19px; margin: 0; letter-spacing: -0.4px; }
 
+/* 작업공간 두 칸 — 왼쪽 단계 섹션 · 오른쪽 "이 소재의 흐름"(목업 .two-col / .aside / .timeline) */
+.dk-shell .dw-layout { display: grid; grid-template-columns: minmax(0, 1fr) 245px; gap: 22px; align-items: start; }
+.dk-shell .dw-aside { font-size: 13px; min-width: 0; }
+.dk-shell .dw-flow { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; }
+.dk-shell .dw-flow h3 { font-size: 19px; letter-spacing: -0.4px; margin: 0 0 10px; }
+.dk-shell .dw-flow-sub { margin: 0; color: var(--text); font-size: 13px; }
+.dk-shell .dw-flow-steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 2px; }
+.dk-shell .dw-flow-steps button { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%;
+  background: transparent; border: 0; border-radius: 7px; padding: 6px 6px; font: inherit; font-size: 13px; color: var(--muted);
+  text-align: left; cursor: pointer; }
+.dk-shell .dw-flow-steps button:hover { background: #f4f6f0; }
+.dk-shell .dw-flow-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cfd8c8; background: #fff; display: grid;
+  place-items: center; font-size: 11px; font-weight: 800; line-height: 1; }
+.dk-shell .dw-flow-label { min-width: 0; overflow-wrap: anywhere; }
+.dk-shell .dw-flow-state { font-size: 11px; color: #8a948d; white-space: nowrap; }
+.dk-shell .dw-flow-steps li[data-state="done"] button { color: var(--text); }
+.dk-shell .dw-flow-steps li[data-state="done"] .dw-flow-dot { background: #e4ecd7; border-color: #e4ecd7; color: #4c6c32; }
+.dk-shell .dw-flow-steps li[data-state="done"] .dw-flow-state { color: #4c6c32; }
+.dk-shell .dw-flow-steps li[data-state="now"] button, .dk-shell .dw-flow-steps li[data-state="busy"] button { background: #e6eed9; color: var(--text); font-weight: 800; }
+.dk-shell .dw-flow-steps li[data-state="now"] .dw-flow-dot, .dk-shell .dw-flow-steps li[data-state="busy"] .dw-flow-dot { border-color: var(--accent); background: var(--accent); }
+.dk-shell .dw-flow-steps li[data-state="now"] .dw-flow-state, .dk-shell .dw-flow-steps li[data-state="busy"] .dw-flow-state { color: var(--accent); font-weight: 800; }
+.dk-shell .dw-flow-steps li[data-state="blocked"] button { background: #fff0eb; color: #a23b2c; font-weight: 800; }
+.dk-shell .dw-flow-steps li[data-state="blocked"] .dw-flow-dot { border-color: var(--danger); background: var(--danger); }
+.dk-shell .dw-flow-steps li[data-state="blocked"] .dw-flow-state { color: var(--danger); font-weight: 800; }
+.dk-shell .dw-flow-steps li[data-state="unknown"] .dw-flow-dot { border-style: dashed; }
+.dk-shell .dw-timeline { border-left: 2px solid #d9e2d1; padding-left: 18px; margin-top: 20px; }
+.dk-shell .dw-timeline p { font-size: 13px; margin: 0 0 12px; color: var(--text); }
+.dk-shell .dw-timeline p:last-child { margin-bottom: 0; }
+.dk-shell .dw-aside-note { background: #eff3e9; padding: 13px 16px; border-radius: 8px; font-size: 13px; margin: 14px 0; color: var(--text); }
+.dk-shell .dw-flow-help { background: #fff; border: 1px solid var(--border); border-radius: 10px; margin-top: 22px; padding: 15px 18px; }
+.dk-shell .dw-flow-help > summary { font-weight: 700; }
+.dk-shell .dw-flow-help p { margin: 12px 0 0; font-size: 13px; }
+.dk-shell .dw-foot { font-size: 12px; color: var(--muted); margin-top: 28px; border-top: 1px solid var(--border); padding-top: 16px; line-height: 1.7; }
+.dk-shell .dw-foot a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 1000px) {
+  .dk-shell .dw-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+}
+
 /* ── 반응형(목업과 같은 두 문턱: 1000px · 650px) ────────────────────────────── */
 @media (max-width: 1000px) {
   .dk-shell { grid-template-columns: 175px minmax(0, 1fr); }
