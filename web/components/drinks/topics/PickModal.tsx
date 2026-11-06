@@ -3,7 +3,8 @@
 // [이걸로 ▾] — 후보 하나를 소재로 올리면서 형식을 여러 개 고른다(한 소재 · 여러 형식, 2026-11-05 §3-5).
 //   체크 셋(릴스·밈·카드뉴스) → 편성 주차(월요일) → 결재 → 형식별 예상 초안 비용(모르면 "모름") → pick_topic(formats 배열).
 //   응답은 형식마다 네 갈래로 보여 준다(큐 등록+워커 깨움 / 큐 등록(다음 크론) / 이미 있음 / 실패). 규칙은 lib/drinks/pickModal.ts(순수).
-// ★ 선택은 제작·구매·게시 승인이 아니다. 모델 호출은 열린 개발 결재 안에서만 일어난다 — 막는 것은 DB 다.
+// ★ 선택은 제작·구매·게시 승인이 아니다. 모델 호출은 AI 초안 한도(개발 결재 행) 안에서만 일어난다 — 막는 것은 DB 다.
+//   모양은 승인 목업 docs/mockups/drinks/preview-format-choice-1280.png(큰 체크 줄 · 만들 주 · 안내 상자 · 비용 줄 · [취소]+[기획하기 →]).
 import Link from "next/link";
 import { useState } from "react";
 
@@ -58,73 +59,74 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
 
   return (
     <>
-      <button className="btn pick" type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}>이걸로 ▾</button>
+      <button className="btn pick dk-pick-trigger" type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}>이걸로 →</button>
       {open && (
         <div className="modal-backdrop" role="presentation" onClick={() => !busy && setOpen(false)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-labelledby={`pick-${c.id}`} style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
-            <p className="muted" style={{ margin: "0 0 4px", fontSize: 12, letterSpacing: "0.04em" }}>한 소재, 여러 형식</p>
-            <h3 id={`pick-${c.id}`} style={{ fontSize: 18 }}>{c.key_question}</h3>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby={`pick-${c.id}`} style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <p className="dk-eyebrow" style={{ marginBottom: 6 }}>한 소재, 여러 형식</p>
+            <h3 id={`pick-${c.id}`}>{c.key_question}</h3>
             {outcomes ? (
               <Outcomes topicId={outcomes.topicId} rows={outcomes.rows} onClose={() => setOpen(false)} />
             ) : (
               <>
-                <p>만들 형식을 모두 골라 주세요. 같은 근거로 각각 기획합니다. 원문을 옮기지 말고 술째리고의 질문·각도로 다시 쓰세요.</p>
-                <div className="dk-row" style={{ marginBottom: 12 }}>
+                <p style={{ marginBottom: 12 }}>만들 형식을 모두 골라 주세요. 같은 근거로 각각 기획합니다.</p>
+                <div className="dk-checks-big" role="group" aria-label="만들 형식">
                   {PICK_FORMATS.map((f) => (
-                    <label key={f} className="check-chip" style={{ flex: "1 1 150px", alignItems: "flex-start" }}>
+                    <label key={f} className="dk-check">
                       <input type="checkbox" checked={formats.includes(f)} disabled={busy}
                         onChange={(e) => setFormats(toggleFormat(formats, f, e.target.checked))} />
                       <span>
-                        <b>{PICK_FORMAT_LABEL[f]}</b>{recommended.format === f && <span className="pill dk-ok" style={{ marginLeft: 6 }}>추천</span>}
-                        <br /><small className="muted">{PICK_FORMAT_HINT[f]}</small>
+                        <b>{PICK_FORMAT_LABEL[f]}</b>{recommended.format === f && <span className="pill dk-ok" style={{ marginLeft: 8 }}>추천</span>}
+                        <small>{PICK_FORMAT_HINT[f]}</small>
                       </span>
                     </label>
                   ))}
                 </div>
-                {!check.ok && <p className="dk-warn" style={{ margin: "0 0 10px" }}>{check.reason}</p>}
-                <label className="dk-field">소재 제목<input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} /></label>
-                <label className="dk-field" style={{ marginTop: 8 }}>독자 질문(한국어)<input value={question} maxLength={1000} onChange={(e) => setQuestion(e.target.value)} /></label>
-                <label className="dk-field" style={{ marginTop: 8 }}>독자 효용<input value={value} onChange={(e) => setValue(e.target.value)} /></label>
-                <div className="dk-checks" style={{ margin: "8px 0" }}>
-                  <span className="muted">주종</span>
+                {!check.ok && <p className="dk-warn" style={{ margin: "0 0 10px", fontSize: 14 }}>{check.reason}</p>}
+                <p className="muted" style={{ fontSize: 13, margin: "0 0 4px" }}>원문을 옮기지 말고 술째리고의 질문·각도로 다시 쓰세요.</p>
+                <label className="dk-modal-label">소재 제목<input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} /></label>
+                <label className="dk-modal-label">독자 질문(한국어)<input value={question} maxLength={1000} onChange={(e) => setQuestion(e.target.value)} /></label>
+                <label className="dk-modal-label">독자 효용<input value={value} onChange={(e) => setValue(e.target.value)} /></label>
+                <div className="dk-checks" style={{ margin: "12px 0 0" }} role="group" aria-label="주종">
+                  <span style={{ fontWeight: 700 }}>주종</span>
                   {CATEGORIES.map((k) => (
                     <label key={k}><input type="checkbox" checked={cats.includes(k)}
                       onChange={(e) => setCats(e.target.checked ? [...cats, k] : cats.filter((x) => x !== k))} /> {CATEGORY_LABEL[k]}</label>
                   ))}
                 </div>
-                <div className="dk-grid">
-                  <label className="dk-field">만들 주(편성 주차)
-                    <select value={week} onChange={(e) => setWeek(e.target.value)}>
-                      {weeks.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
-                    </select>
-                  </label>
-                  <label className="dk-field">질문 유형
-                    <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                      <option value="">자동(후보 신호에서)</option>
-                      {Object.entries(QUESTION_KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                    </select>
-                  </label>
+                <label className="dk-modal-label">만들 주
+                  <select value={week} onChange={(e) => setWeek(e.target.value)}>
+                    {weeks.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
+                  </select>
+                </label>
+                <label className="dk-modal-label">질문 유형 <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>(비우면 후보 신호에서 자동)</span>
+                  <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                    <option value="">자동(후보 신호에서)</option>
+                    {Object.entries(QUESTION_KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </label>
+                <div className="dk-modal-info">
+                  <p>선택은 제작·구매·게시 승인이 아닙니다.</p>
+                  <p>
+                    AI 초안 한도: {budget
+                      ? <b>남은 ${Number(budget.remaining_usd).toFixed(2)} · {budget.expires_at.slice(0, 10)}까지</b>
+                      : <><b className="dk-bad">이번 주 AI 초안 한도를 다 썼습니다</b> — <Link href="/drinks/topics?tab=candidates">소재 고르기 위 칸에서 [한도 +$1]</Link></>}
+                  </p>
+                  <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>영상 구매는 따로 승인합니다 · 모르는 비용은 0원으로 쓰지 않습니다.</p>
                 </div>
-                <div className="dk-sub">
-                  <div className="dk-kv">
-                    결재: {budget
-                      ? <b>잔액 ${Number(budget.remaining_usd).toFixed(2)} · {budget.expires_at.slice(0, 10)}까지</b>
-                      : <><b className="dk-bad">열린 개발 결재 없음</b> — <Link href="/drinks/topics?tab=candidates">소재 고르기 맨 위 칸에서 결재를 여세요</Link></>}
-                  </div>
-                  <div className="dk-kv" style={{ marginTop: 4 }}>
-                    예상 초안 비용: {cost.lines.length === 0 ? <span>형식을 고르면 보입니다</span>
-                      : cost.lines.map((l) => <span key={l.format} style={{ marginRight: 10 }}>{PICK_FORMAT_LABEL[l.format]} <b>{l.text}</b></span>)}
-                    {cost.lines.length > 0 && <> · 합계 <b>{cost.total}</b></>}
-                  </div>
-                  <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>선택은 제작·구매·게시 승인이 아닙니다 · 영상 구매는 별도 결재 · 모르는 비용은 0원으로 쓰지 않습니다.</p>
-                </div>
-                <p className="muted" style={{ fontSize: 12 }}>추천 이유: {recommended.reason}</p>
-                <div className="actions">
+                <p className="dk-cost-line">
+                  예상 초안 비용: {cost.lines.length === 0 ? <span>형식을 고르면 보입니다</span>
+                    : cost.lines.map((l) => <span key={l.format} style={{ marginRight: 8 }}>{PICK_FORMAT_LABEL[l.format]} <b>{l.text}</b></span>)}
+                  {cost.lines.length > 0 && <> · 합계 <b>{cost.total}</b></>}
+                </p>
+                <p className="muted" style={{ fontSize: 12, margin: 0 }}>추천 이유: {recommended.reason}</p>
+                <div className="dk-modal-actions">
                   <button className="btn" type="button" disabled={busy} onClick={() => setOpen(false)}>취소</button>
                   <button className="btn pick" type="button" disabled={!canSubmit} onClick={() => submit()}>
                     {busy ? "보내는 중…" : check.ok ? `선택한 ${check.formats.length}개 형식으로 기획하기 →` : "형식을 하나 이상 골라 주세요"}
                   </button>
                 </div>
+                {check.ok && !canSubmit && !busy && <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>소재 제목 · 독자 질문 · 주종을 채우면 누를 수 있습니다.</p>}
               </>
             )}
           </div>

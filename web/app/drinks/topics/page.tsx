@@ -5,15 +5,16 @@
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
-import { OpenDevelopBudget } from "@/components/drinks/DevelopControls";
 import CandidateCard from "@/components/drinks/topics/CandidateCard";
 import ManualEntry from "@/components/drinks/topics/ManualEntry";
+import WeeklyBudgetCard from "@/components/drinks/topics/WeeklyBudgetCard";
 import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
 import MineTab from "@/components/drinks/topics/MineTab";
 import { todayInSeoul } from "@/lib/date";
 import { pickBudget } from "@/lib/drinks/develop";
 import { recommendFormat } from "@/lib/drinks/formatRecommend";
 import { UNKNOWN_ESTIMATE, normalizeEstimate, pickability, weekOptions, type EstimateMap } from "@/lib/drinks/pickModal";
+import { loadWeeklyBudget } from "@/lib/drinks/weeklyBudget";
 import { loadTopicCandidates, type FitFilter, type TopicsCandidatesView } from "@/lib/drinks/topicsQueries";
 import { decide, rankForHome } from "@/lib/drinks/work/decision";
 import { loadDevelopEstimate, loadWorkItems } from "@/lib/drinks/work/queries";
@@ -34,12 +35,10 @@ export default async function DrinksTopicsPage(props: { searchParams: Promise<SP
   const fit: FitFilter = sp.fit === "video" || sp.fit === "carousel" ? sp.fit : "";
   return (
     <main className="container">
-      <div className="header">
-        <div>
-          <p className="muted" style={{ margin: 0, fontSize: 12, letterSpacing: "0.06em" }}>PICK A TOPIC</p>
-          <h1 style={{ margin: "2px 0" }}>어떤 이야기를 만들까요?</h1>
-          <span className="muted">고를 것은 모두 여기에 있습니다. 고른 뒤에는 <Link href="/drinks/work">작업공간</Link>에서 이어집니다.</span>
-        </div>
+      <div className="dk-head">
+        <p className="dk-eyebrow">PICK A TOPIC</p>
+        <h1 className="dk-h1">어떤 이야기를 만들까요?</h1>
+        <p className="dk-lead">고를 것은 모두 여기에 있습니다. 고른 뒤에는 <Link href="/drinks/work">작업공간</Link>에서 이어집니다.</p>
       </div>
       <nav className="dk-tabs" aria-label="소재 탭">
         {(Object.keys(TABS) as Tab[]).map((k) => <Link key={k} href={`/drinks/topics?tab=${k}`} data-active={k === tab}>{TABS[k]}</Link>)}
@@ -59,10 +58,14 @@ function Header({ v, pickable }: { v: TopicsCandidatesView; pickable: number | n
   const to = Math.min(v.total, v.page * v.pageSize);
   return (
     <>
-      <p style={{ margin: "4px 0" }}>
-        전체 <b>{v.total}</b>건 · 표시 <b>{v.candidates.length}</b>건{v.total > 0 && <span className="muted"> ({from}–{to})</span>}
-        {pickable !== null && <> · 지금 고를 수 있음 <b>{pickable}</b>건<span className="muted">(이번 쪽)</span></>}
-      </p>
+      <div>
+        <p className="dk-counts">
+          전체 <b>{v.total}</b>건{pickable !== null && <> · 지금 고를 수 있는 <b>{pickable}</b>건</>}
+        </p>
+        <p className="dk-counts-sub">
+          이번 쪽 {v.candidates.length}건 표시{v.total > 0 && <> ({from}–{to})</>}{pickable !== null && " · 고를 수 있는 수는 이번 쪽 기준"}
+        </p>
+      </div>
       {v.partial.length > 0 && (
         <p className="banner-warn" role="status"><b>부분 조회</b> — 목록은 맞지만 일부 값을 못 읽었습니다: {v.partial.join(" · ")}</p>
       )}
@@ -80,15 +83,17 @@ function Pager({ v, tab, fit }: { v: TopicsCandidatesView; tab: Tab; fit: FitFil
   if (last <= 1) return null;
   const href = (p: number) => `/drinks/topics?tab=${tab}&page=${p}${fit ? `&fit=${fit}` : ""}`;
   return (
-    <div className="dk-row" style={{ justifyContent: "center", margin: "14px 0" }}>
-      {v.page > 1 ? <Link className="btn" href={href(v.page - 1)}>← 앞 페이지</Link> : <span className="btn" aria-disabled="true" style={{ opacity: 0.5 }}>← 앞 페이지</span>}
+    <div className="dk-pager">
+      {v.page > 1 ? <Link className="btn" href={href(v.page - 1)}>← 앞 페이지</Link> : <span className="btn" aria-disabled="true">← 앞 페이지</span>}
       <span className="muted">{v.page} / {last}</span>
-      {v.page < last ? <Link className="btn" href={href(v.page + 1)}>다음 페이지 →</Link> : <span className="btn" aria-disabled="true" style={{ opacity: 0.5 }}>다음 페이지 →</span>}
+      {v.page < last ? <Link className="btn" href={href(v.page + 1)}>다음 페이지 →</Link> : <span className="btn" aria-disabled="true">다음 페이지 →</span>}
     </div>
   );
 }
 
 async function CandidatesTab({ page, fit }: { page: number; fit: FitFilter }) {
+  // 이번 주 한도 줄을 먼저 확보한다(없으면 DB 가 $5 로 만든다) — 그래야 아래 결재 목록에 잡혀 [이걸로]가 열린다.
+  const wb = await loadWeeklyBudget();
   const [v, est] = await Promise.all([
     loadTopicCandidates({ statuses: ["suggested"], page, fit }),
     loadDevelopEstimate(["explainer", "card", "meme"]),
@@ -107,7 +112,8 @@ async function CandidatesTab({ page, fit }: { page: number; fit: FitFilter }) {
   const pickable = cards.filter((x) => x.pick.ok).length;
   return (
     <>
-      <div className="dk-row" style={{ justifyContent: "space-between" }}>
+      <WeeklyBudgetCard budget={wb.state === "ok" ? wb.data : null} error={wb.state === "error" ? wb.message : undefined} />
+      <div className="dk-toolbar">
         <Header v={d} pickable={pickable} />
         <form method="get" action="/drinks/topics" className="dk-row">
           <input type="hidden" name="tab" value="candidates" />
@@ -118,18 +124,13 @@ async function CandidatesTab({ page, fit }: { page: number; fit: FitFilter }) {
         </form>
       </div>
       {est.state !== "ok" && d.candidates.length > 0 && <p className="muted" style={{ fontSize: 12 }}>형식별 예상 비용을 읽지 못해 모달에 &ldquo;모름&rdquo;으로 보입니다(0원이 아닙니다).</p>}
-      {d.budgets && !budget && d.candidates.length > 0 && (
-        <div className="banner-warn" role="status">
-          <p style={{ margin: 0 }}>열린 개발 결재가 없어 후보를 고를 수 없습니다. 아래에서 초안용 결재를 한 번 열면 기간 동안 모든 후보에 씁니다.</p>
-          <p className="muted" style={{ margin: "4px 0 8px", fontSize: 12 }}>결재는 돈을 쓰는 것이 아니라 상한을 정하는 것입니다 — 근거·대본 초안(LLM)만 이 상한 안에서 쓰고, 영상 구매는 따로 결재합니다.</p>
-          <OpenDevelopBudget />
-        </div>
-      )}
-      {cards.map(({ c, rec, ev, pick }) => (
-        <CandidateCard key={c.id} c={c} rec={rec} evidence={ev} evidenceLoaded={d.evidence !== null}
-          dupTopics={c.duplicate_topic_ids.map((id) => ({ id, title: d.topics.get(id)?.title ?? "소재" }))}
-          pick={pick} weeks={weeks} budget={budget} estimate={estimate} />
-      ))}
+      <div className="dk-topic-grid">
+        {cards.map(({ c, rec, ev, pick }) => (
+          <CandidateCard key={c.id} c={c} rec={rec} evidence={ev} evidenceLoaded={d.evidence !== null}
+            dupTopics={c.duplicate_topic_ids.map((id) => ({ id, title: d.topics.get(id)?.title ?? "소재" }))}
+            pick={pick} weeks={weeks} budget={budget} estimate={estimate} />
+        ))}
+      </div>
       <Pager v={d} tab="candidates" fit={fit} />
     </>
   );
@@ -144,11 +145,13 @@ async function HeldTab({ page }: { page: number }) {
     <>
       <Header v={d} pickable={null} />
       <p className="muted" style={{ fontSize: 13 }}>기각·합쳐진 후보. 보류·제외된 <b>소재</b>는 <Link href="/drinks/board?tab=held">옛 선별 화면의 보류·제외 탭</Link>에 있습니다.</p>
-      {d.candidates.map((c) => (
-        <CandidateCard key={c.id} c={c} rec={{ format: "unknown", reason: "기각·합쳐진 후보는 추천하지 않습니다" }} evidence={undefined} evidenceLoaded={false}
-          dupTopics={c.duplicate_topic_ids.map((id) => ({ id, title: d.topics.get(id)?.title ?? "소재" }))}
-          pick={{ ok: false, code: "promoted", reason: "다시 열어야 고를 수 있습니다" }} weeks={weeks} budget={null} estimate={UNKNOWN_ESTIMATE} />
-      ))}
+      <div className="dk-topic-grid">
+        {d.candidates.map((c) => (
+          <CandidateCard key={c.id} c={c} rec={{ format: "unknown", reason: "기각·합쳐진 후보는 추천하지 않습니다" }} evidence={undefined} evidenceLoaded={false}
+            dupTopics={c.duplicate_topic_ids.map((id) => ({ id, title: d.topics.get(id)?.title ?? "소재" }))}
+            pick={{ ok: false, code: "promoted", reason: "다시 열어야 고를 수 있습니다" }} weeks={weeks} budget={null} estimate={UNKNOWN_ESTIMATE} />
+        ))}
+      </div>
       <Pager v={d} tab="held" fit="" />
     </>
   );

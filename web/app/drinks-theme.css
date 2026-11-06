@@ -1,0 +1,337 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   주류 공장 전용 테마(2026-11-06) — 승인 목업 docs/mockups/drinks/style.css 의 값을 옮겼다.
+   ★ 모든 규칙은 .dk-shell 아래에만 건다. .dk-shell 은 AppShell 이 주류 공장(/drinks/**)일 때만 붙이므로
+     논문·리포트 공장 화면은 이 파일의 영향을 받지 않는다. 토큰(--bg 등)을 덮어써 globals.css 의 공용 클래스
+     (.card .btn .pill .banner-* .modal …)가 밝은 종이색으로 저절로 바뀌고, 어두운 테마에 맞춰 박아 둔 색만 여기서 고친다.
+   ★ 외부 글꼴을 읽지 않는다(목업도 시스템 글꼴만 쓴다).
+   ───────────────────────────────────────────────────────────────────────────── */
+.dk-shell {
+  --bg: #f4f4ee;            /* 목업 --paper */
+  --card: #ffffff;
+  --border: #dce2d9;        /* 목업 --line */
+  --text: #193a30;          /* 목업 --ink */
+  --muted: #62716a;
+  --accent: #245f46;        /* 목업 --green */
+  --accent-soft: #e4efdc;
+  --accent-faint: #eff3e9;
+  --danger: #a63c2f;        /* 목업 --red */
+  --warn: #896223;          /* 목업 --amber */
+  --dk-lime: #dceba8;
+  --dk-hero: #e5edce;
+  --dk-hero-line: #cbd9ac;
+  --dk-side: #183e30;
+  --dk-input-line: #bac6ba;
+  color-scheme: light;
+  display: grid;
+  grid-template-columns: 218px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+/* 바깥 body 는 globals 의 어두운 배경이다 — 주류 화면에서는 스크롤 끝에서도 종이색이 보이게. */
+body:has(> .dk-shell), body:has(.dk-shell) { background: #f4f4ee; }
+
+/* ── 왼쪽 세로 메뉴 ─────────────────────────────────────────────────────────── */
+.dk-sidebar { background: var(--dk-side); color: #eaf1e8; padding: 28px 18px; position: sticky; top: 0;
+  height: 100vh; display: flex; flex-direction: column; overflow-y: auto; }
+.dk-brand { display: block; font-size: 24px; font-weight: 900; letter-spacing: -1px; padding: 0 14px;
+  color: #fff; text-decoration: none; line-height: 1.3; }
+.dk-brand small { display: block; font-size: 11px; color: #a9c4b2; letter-spacing: 2px; margin-top: 3px; font-weight: 700; }
+.dk-nav { display: grid; gap: 6px; margin-top: 42px; }
+.dk-nav-item { display: block; padding: 12px 14px; border-radius: 8px; color: #c9dbcf; text-decoration: none; font-size: 15px; }
+.dk-nav-item:hover, .dk-nav-item[data-active="true"] { background: #315c46; color: #fff; }
+.dk-nav-num { opacity: .5; font-size: 11px; margin-right: 12px; }
+.dk-subnav { display: flex; flex-wrap: wrap; gap: 2px 4px; padding: 2px 0 4px 38px; }
+.dk-subnav a { font-size: 12px; color: #a9c4b2; text-decoration: none; padding: 3px 6px; border-radius: 5px; }
+.dk-subnav a:hover, .dk-subnav a[data-active="true"] { color: #fff; background: #2a5140; }
+.dk-more { margin-top: 18px; border-top: 1px solid #315c46; padding-top: 12px; }
+.dk-more > summary { cursor: pointer; list-style: none; font-size: 12px; font-weight: 700; color: #a9c4b2;
+  letter-spacing: 1px; padding: 6px 14px; border-radius: 6px; }
+.dk-more > summary::-webkit-details-marker { display: none; }
+.dk-more > summary::after { content: " ▾"; font-size: 10px; }
+.dk-more[open] > summary::after { content: " ▴"; }
+.dk-more > summary:hover, .dk-more > summary[data-active="true"] { color: #fff; }
+.dk-more-list { display: grid; gap: 1px; margin-top: 4px; }
+.dk-more-list a { font-size: 13px; color: #c9dbcf; text-decoration: none; padding: 6px 14px; border-radius: 6px; }
+.dk-more-list a:hover, .dk-more-list a[data-active="true"] { background: #2a5140; color: #fff; }
+.dk-side-note { margin-top: auto; padding: 24px 14px 0; font-size: 12px; color: #b8cdbd; }
+.dk-sidebar a:focus-visible, .dk-sidebar summary:focus-visible { outline: 3px solid #cb8a26; outline-offset: 2px; }
+
+.dk-main { min-width: 0; }
+.dk-topstrip { padding: 15px 38px; background: #fbfcf8; border-bottom: 1px solid var(--border); display: flex;
+  align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; flex-wrap: wrap; }
+.dk-factory { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.dk-factory a, .dk-factory-now { padding: 4px 8px; border-radius: 5px; font-weight: 700; text-decoration: none; color: var(--muted); }
+.dk-factory-now { background: #ebeedb; color: var(--text); }
+.dk-factory a:hover { color: var(--text); background: #eef4e8; }
+
+/* ── 바탕 글자·링크·포커스 ─────────────────────────────────────────────────── */
+/* 링크 색은 globals 의 `a { color: var(--accent) }` 가 덮어쓴 토큰으로 이미 녹색이다 — 여기서 a 를 다시 잡으면 메뉴·버튼 색을 이긴다. */
+.dk-shell :focus-visible { outline: 3px solid #cb8a26; outline-offset: 3px; border-radius: 4px; }
+.dk-shell .muted { color: var(--muted); }
+.dk-shell .container { max-width: 1180px; padding: 32px 38px 64px; }
+.dk-shell .container--dw { max-width: 1180px; }
+.dk-shell .header h1 { font-size: 28px; letter-spacing: -0.8px; line-height: 1.3; }
+.dk-shell h1, .dk-shell h2, .dk-shell h3 { color: var(--text); }
+
+/* 목업 머리(eyebrow · 큰 제목 · 회색 한 줄) */
+.dk-shell .dk-head { margin-bottom: 24px; }
+.dk-shell .dk-eyebrow { font-size: 12px; font-weight: 800; letter-spacing: 2px; margin: 0 0 12px; color: var(--text); }
+.dk-shell .dk-h1 { font-size: 34px; line-height: 1.3; letter-spacing: -1.4px; margin: 0 0 12px; }
+.dk-shell .dk-lead { color: var(--muted); margin: 0; }
+.dk-shell .dk-head-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.dk-shell .dk-badge { font-size: 12px; font-weight: 700; border-radius: 5px; background: #edf1e8; padding: 4px 9px;
+  display: inline-block; color: var(--text); white-space: nowrap; }
+.dk-shell .dk-badge.gold { background: #fbefd7; color: #80551d; }
+.dk-shell .dk-badge.red { background: #fae6df; color: var(--danger); }
+.dk-shell .dk-badge.green { background: #e4efdc; color: #386042; }
+
+/* ── 공용 클래스 밝은 판 ────────────────────────────────────────────────────── */
+.dk-shell .card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 18px; }
+.dk-shell .section h3 { font-size: 18px; color: var(--text); text-transform: none; letter-spacing: -0.4px; margin-bottom: 10px; }
+.dk-shell .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px;
+  border: 1px solid var(--border); border-radius: 9px; background: #fff; color: var(--text); padding: 8px 16px;
+  font-weight: 700; font-size: 14px; text-decoration: none; font-family: inherit; }
+.dk-shell .btn:hover:not(:disabled) { border-color: var(--accent); background: #eef4e8; }
+.dk-shell .btn.pick { background: var(--accent); color: #fff; border-color: var(--accent); }
+.dk-shell .btn.pick:hover:not(:disabled) { background: #1d513b; border-color: #1d513b; }
+.dk-shell .btn.reject { color: var(--danger); border-color: #e7c2b9; }
+.dk-shell .btn.btn-warnline { color: var(--warn); border-color: #e5d2a8; }
+.dk-shell .btn[data-active="true"] { background: var(--text); color: #fff; border-color: var(--text); }
+.dk-shell .btn:disabled, .dk-shell .btn[aria-disabled="true"] { background: #e7e9e4; color: #79837d; border-color: #ddd; opacity: 1; cursor: not-allowed; }
+.dk-shell .pill, .dk-shell .status-pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 5px;
+  border: 0; background: #edf1e8; color: var(--text); }
+.dk-shell .pill.on, .dk-shell .pill.pick, .dk-shell .pill.dk-ok { background: #e4efdc; color: #386042; }
+.dk-shell .pill.dk-warn { background: #fbefd7; color: #80551d; }
+.dk-shell .pill.dk-bad, .dk-shell .pill.reject { background: #fae6df; color: var(--danger); }
+.dk-shell .dk-ok { color: #386042; }
+.dk-shell .banner-ok { background: #e9f2df; border: 1px solid #c9dcb6; color: #2f5a3a; border-radius: 10px; padding: 14px 16px; }
+.dk-shell .banner-warn { background: #fff1e5; border: 1px solid #edcfb5; color: #854c24; border-radius: 10px; padding: 14px 16px; }
+.dk-shell .banner-info { background: #eff3e9; border: 1px solid #dbe4d0; color: var(--text); border-radius: 10px; padding: 14px 16px; }
+.dk-shell .banner-block { background: #fff0eb; border: 1px solid #f0cbbf; color: #a23b2c; border-radius: 10px; padding: 14px 16px; }
+.dk-shell .banner-block .muted, .dk-shell .banner-warn .muted { color: inherit; opacity: .8; }
+.dk-shell .verdict.good { color: #386042; border-color: #9cb48c; }
+.dk-shell .list-row { border-bottom-color: var(--border); }
+.dk-shell table.grid tr:hover td { background: #f6f8f2; }
+.dk-shell input, .dk-shell select, .dk-shell textarea { font-family: inherit; color: var(--text); }
+.dk-shell input:not([type="checkbox"]):not([type="radio"]), .dk-shell select, .dk-shell textarea {
+  border: 1px solid var(--dk-input-line); border-radius: 8px; padding: 9px 11px; background: #fff; font-size: 14px; }
+.dk-shell .dk-field input, .dk-shell .dk-field select, .dk-shell .dk-field textarea { background: #fff; border-color: var(--dk-input-line); }
+.dk-shell .dk-field > span { color: var(--muted); }
+.dk-shell input[type="checkbox"], .dk-shell input[type="radio"] { accent-color: var(--accent); }
+.dk-shell details > summary { cursor: pointer; }
+.dk-shell .check-chip { background: #f4f6f0; border: 1px solid transparent; border-radius: 9px; }
+.dk-shell .check-chip:has(input:checked) { border-color: #9cb48c; }
+.dk-shell .dk-sub { background: #fff; }
+.dk-shell .dk-quote { background: #eff3e9; }
+.dk-shell .seq-ko { background: #f4f6f0; }
+.dk-shell .empty { color: var(--muted); }
+
+/* 탭(?tab=) — 목업처럼 알약 버튼 */
+.dk-shell .dk-tabs { gap: 6px; border-bottom: 0; margin: 18px 0; }
+.dk-shell .dk-tabs a { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 16px; border: 1px solid var(--border);
+  border-radius: 9px; background: #fff; color: var(--text); font-weight: 700; text-decoration: none; }
+.dk-shell .dk-tabs a:hover { border-color: var(--accent); background: #eef4e8; }
+.dk-shell .dk-tabs a[data-active="true"] { background: var(--text); color: #fff; border-color: var(--text); }
+
+/* 확인 모달 */
+.dk-shell .modal-backdrop { background: #132d2866; }
+.dk-shell .modal { background: #fff; border: 0; border-radius: 16px; padding: 28px; box-shadow: 0 30px 80px #102d2940;
+  max-height: calc(100vh - 32px); overflow-y: auto; color: var(--text); }
+.dk-shell .modal h3 { font-size: 22px; letter-spacing: -0.6px; line-height: 1.4; margin-bottom: 12px; }
+.dk-shell .modal p { color: var(--text); font-size: 15px; }
+.dk-shell .modal .actions { margin-top: 20px; }
+
+/* ── 오늘 할 일(홈) ─────────────────────────────────────────────────────────── */
+.dk-shell .next-action { background: var(--dk-hero); border: 1px solid var(--dk-hero-line); border-radius: 14px; padding: 30px;
+  margin: 0 0 18px; display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 20px; align-items: stretch; }
+.dk-shell .next-action.done { border-color: var(--dk-hero-line); border-left-color: var(--dk-hero-line); }
+.dk-shell .next-action-kicker, .dk-shell .next-action.done .next-action-kicker { display: inline-block; font-size: 12px; font-weight: 700;
+  letter-spacing: 0; text-transform: none; color: var(--text); background: #edf1e8; border-radius: 5px; padding: 4px 9px; }
+.dk-shell .next-action-kicker .pill { background: transparent; padding: 0; font-size: 12px; color: inherit; }
+.dk-shell .next-action-headline { font-size: 30px; font-weight: 800; line-height: 1.4; letter-spacing: -1px; margin: 16px 0 12px; max-width: 650px; }
+.dk-shell .next-action-body > p { font-size: 15px; }
+.dk-shell .next-action-cta { display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start; gap: 12px; }
+.dk-shell .next-action-art { background: #284c36; border-radius: 80px 80px 14px 14px; display: grid; place-content: center; text-align: center;
+  color: #e7e9cb; font-size: 65px; line-height: 1.2; min-height: 200px; }
+.dk-shell .next-action-art small { font-size: 12px; color: #d4ddc6; display: block; margin-top: 12px; }
+.dk-shell .next-action .dk-hero-cta { margin-top: 10px; }
+.dk-shell .next-action .btn.pick { min-height: 46px; padding: 10px 18px; font-size: 15px; }
+.dk-shell .summary-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0 0 18px; }
+.dk-shell .summary-tile { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 20px; color: var(--text);
+  display: flex; flex-direction: column; }
+.dk-shell .summary-tile:hover { border-color: #709770; }
+.dk-shell .summary-tile .n { order: 2; font-size: 31px; font-weight: 800; line-height: 1.3; color: var(--text); }
+.dk-shell .summary-tile .k { order: 1; font-size: 15px; color: var(--muted); margin: 0 0 4px; }
+.dk-shell .summary-tile .s { order: 3; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.dk-shell .summary-tile.has-work { border-color: var(--border); }
+.dk-shell .summary-tile.has-work .n { color: var(--text); }
+.dk-shell .dk-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.dk-shell .dk-panel { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 18px; min-width: 0; }
+.dk-shell .dk-panel > h2 { font-size: 23px; letter-spacing: -0.7px; margin: 0 0 12px; }
+.dk-shell .dk-panel > .dk-panel-lead { color: var(--muted); margin: 0 0 8px; }
+.dk-shell .dk-weekly { display: grid; grid-template-columns: 140px minmax(0, 1fr) 70px; align-items: center; gap: 14px; margin: 18px 0; }
+.dk-shell .dk-weekly small { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+.dk-shell .dk-track { height: 9px; background: #ecede6; border-radius: 20px; overflow: hidden; }
+.dk-shell .dk-track i { display: block; background: #769451; height: 100%; }
+.dk-shell .dk-text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+.dk-shell .dk-follow { display: flex; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--border); align-items: flex-start; }
+.dk-shell .dk-follow:last-of-type { border-bottom: 0; }
+.dk-shell .dk-follow .num { background: #e4ecd7; color: #4c6c32; width: 36px; height: 36px; flex-shrink: 0; display: grid; place-items: center;
+  border-radius: 50%; font-weight: 800; }
+.dk-shell .dk-follow.block .num { background: #fae6df; color: var(--danger); }
+.dk-shell .dk-follow.warn .num { background: #fbefd7; color: #80551d; }
+.dk-shell .dk-follow p { margin: 0; font-size: 14px; }
+.dk-shell .dk-note { background: #eff3e9; padding: 13px 16px; border-radius: 8px; font-size: 13px; margin: 14px 0 0; }
+.dk-shell .dk-note.warn { background: #fff1e5; color: #854c24; }
+
+/* ── 소재 고르기 ────────────────────────────────────────────────────────────── */
+.dk-shell .dk-counts { margin: 0; font-size: 15px; color: var(--muted); }
+.dk-shell .dk-counts b { color: var(--text); }
+.dk-shell .dk-counts-sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.dk-shell .dk-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.dk-shell .dk-toolbar form { display: flex; gap: 6px; align-items: center; }
+.dk-shell .dk-toolbar select { min-height: 40px; }
+.dk-shell .dk-topic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 18px; }
+.dk-shell .dk-topic { display: flex; flex-direction: column; min-height: 235px; margin: 0; }
+.dk-shell .dk-topic-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.dk-shell .dk-topic-top .dk-cat { font-size: 12px; color: var(--muted); text-align: right; }
+.dk-shell .dk-topic h2 { font-size: 21px; line-height: 1.45; letter-spacing: -0.5px; margin: 15px 0 10px; font-weight: 800; }
+.dk-shell .dk-topic .dk-one { font-size: 12px; color: var(--muted); margin: 0; }
+.dk-shell .dk-topic-foot { margin-top: auto; padding-top: 16px; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dk-shell .dk-topic-foot .btn { min-height: 44px; }
+.dk-shell .dk-topic .btn.pick.dk-pick-trigger { background: #fff; color: var(--text); border-color: var(--border); }
+.dk-shell .dk-topic .btn.pick.dk-pick-trigger:hover { border-color: var(--accent); background: #eef4e8; }
+.dk-shell .dk-blocked-why { flex-basis: 100%; font-size: 12px; color: var(--muted); margin: 0; text-align: right; }
+.dk-shell .dk-more-info { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.dk-shell .dk-more-info > summary { font-size: 12px; font-weight: 700; color: var(--muted); }
+.dk-shell .dk-more-info[open] > summary { margin-bottom: 6px; }
+.dk-shell .dk-more-info .dk-kv { margin: 4px 0; }
+.dk-shell .dk-more-info .dk-row { margin: 4px 0; }
+.dk-shell .dk-pager { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 18px; }
+.dk-shell .dk-budget { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: #fff; border: 1px solid var(--border); border-left: 5px solid var(--accent); border-radius: 10px; padding: 16px 20px; margin: 0 0 18px; }
+.dk-shell .dk-budget--warn { background: #fff8f0; border-color: #edcfb5; border-left-color: #c58a3a; }
+.dk-shell .dk-budget-body { min-width: 0; flex: 1 1 320px; }
+.dk-shell .dk-budget p { margin: 0; }
+.dk-shell .dk-budget-main { font-size: 16px; font-weight: 700; }
+.dk-shell .dk-budget-main b { font-weight: 800; }
+.dk-shell .dk-budget-sub { font-size: 12px; color: var(--muted); margin-top: 2px !important; }
+.dk-shell .dk-budget-note { font-size: 13px; color: var(--muted); margin-top: 6px !important; }
+.dk-shell .dk-budget-act { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.dk-shell .dk-budget-act .btn { min-height: 44px; }
+.dk-shell .dk-budget-why { font-size: 12px; color: var(--muted); }
+.dk-shell .dk-budget-err { color: var(--danger); font-size: 13px; margin-top: 8px !important; }
+@media (max-width: 650px) { .dk-shell .dk-budget-act { align-items: stretch; width: 100%; } .dk-shell .dk-budget-act .btn { width: 100%; } }
+
+/* [이걸로 →] 모달 — 큰 체크 줄(목업 .check) */
+.dk-shell .dk-checks-big { display: grid; gap: 12px; margin: 0 0 14px; }
+.dk-shell .dk-check { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; background: #f4f6f0; border-radius: 8px;
+  border: 1px solid transparent; cursor: pointer; font-weight: 400; }
+.dk-shell .dk-check:has(input:checked) { border-color: #cfdcc3; }
+.dk-shell .dk-check input { width: 18px; height: 18px; margin: 3px 0 0; flex-shrink: 0; }
+.dk-shell .dk-check b { font-size: 16px; }
+.dk-shell .dk-check small { display: block; color: var(--muted); font-size: 13px; }
+.dk-shell .dk-modal-label { display: block; font-weight: 700; margin: 14px 0 6px; }
+.dk-shell .dk-modal-label > input, .dk-shell .dk-modal-label > select { display: block; width: 100%; margin-top: 6px; font-weight: 400; min-height: 44px; }
+.dk-shell .dk-modal-info { background: #eff3e9; padding: 13px 16px; border-radius: 8px; font-size: 13px; margin: 16px 0 10px; }
+.dk-shell .dk-modal-info p { margin: 0; font-size: 13px; }
+.dk-shell .dk-cost-line { font-size: 12px; color: #7b5926; margin: 0 0 4px; }
+.dk-shell .dk-modal-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-start; margin-top: 22px; }
+.dk-shell .dk-modal-actions .btn { min-height: 46px; padding: 10px 16px; font-size: 15px; }
+.dk-shell .dk-modal-extra { margin: 12px 0 0; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px 15px; }
+.dk-shell .dk-modal-extra > summary { font-weight: 700; font-size: 14px; }
+
+/* ── 만들기 · 작업공간 ──────────────────────────────────────────────────────── */
+.dk-shell .dw-formats-card { padding: 24px; }
+.dk-shell .dw-formats-card h2 { font-size: 23px; letter-spacing: -0.7px; margin: 0 0 12px; }
+.dk-shell .dw-formats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.dk-shell .dw-format { display: grid; gap: 5px; border: 1px solid var(--border); border-radius: 10px; padding: 15px; background: #fff; color: var(--text); }
+.dk-shell .dw-format:hover { border-color: var(--accent); }
+.dk-shell .dw-format b { font-size: 15px; font-weight: 700; }
+.dk-shell .dw-format span { font-size: 13px; color: var(--text); }
+.dk-shell .dw-format[data-current="true"] { background: var(--dk-hero); border: 2px solid #456c37; box-shadow: none; padding: 14px; }
+.dk-shell .dw-format[data-blocked="true"] span { color: var(--danger); }
+.dk-shell .dw-decision { top: 0; z-index: 5; background: #fffefa; border: 1px solid #9cb48c; border-left: 5px solid var(--accent);
+  box-shadow: 0 5px 20px #173b2312; padding: 17px 20px; border-radius: 10px; margin: 0 0 20px; gap: 16px; }
+.dk-shell .dw-now-label { display: block; font-size: 12px; color: var(--muted); }
+.dk-shell .dw-now-title { display: block; font-size: 19px; font-weight: 800; letter-spacing: -0.4px; }
+.dk-shell .dw-decision .btn.dw-primary { min-height: 46px; padding: 10px 20px; font-size: 15px; }
+.dk-shell .dw-chip { border-radius: 6px; }
+.dk-shell .dw-chip--block { background: #fff0eb; border-color: #f0cbbf; color: #a23b2c; }
+.dk-shell .dw-chip--warn { background: #fff1e5; border-color: #edcfb5; color: #854c24; }
+.dk-shell .dw-menu-list { box-shadow: 0 10px 30px #102d2920; }
+.dk-shell .dw-menu-list button:hover { background: #eef4e8; }
+.dk-shell .dw-steps { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 22px; }
+.dk-shell .dw-steps button { font: inherit; font-size: 12px; background: transparent; border: 0; border-bottom: 3px solid #dfe4d9; padding: 8px 10px;
+  color: #7b857d; cursor: pointer; border-radius: 0; min-height: 0; }
+.dk-shell .dw-steps button[data-open="true"] { border-color: #729050; color: #3f6547; font-weight: 700; }
+.dk-shell .dw-steps button[data-now="true"] { border-color: var(--accent); background: #e6eed9; color: var(--text); font-weight: 800; }
+.dk-shell .dw-sections { gap: 14px; }
+.dk-shell .dw-section { background: #fff; border: 1px solid var(--border); border-radius: 14px; }
+.dk-shell .dw-section > summary { padding: 18px 24px; font-size: 18px; font-weight: 800; letter-spacing: -0.4px; }
+.dk-shell .dw-section[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.dk-shell .dw-section > summary:focus-visible { outline: 2px solid #456c37; outline-offset: -2px; border-radius: 14px; }
+.dk-shell .dw-step { background: #e4ecd7; border: 0; color: #4c6c32; font-weight: 800; width: 28px; height: 28px; font-size: 13px; }
+.dk-shell .dw-section-body { padding: 0 24px 24px; }
+.dk-shell .dw-history { margin-bottom: 18px; }
+.dk-shell .dk-work-group h2 { font-size: 19px; margin: 0; letter-spacing: -0.4px; }
+
+/* ── 반응형(목업과 같은 두 문턱: 1000px · 650px) ────────────────────────────── */
+@media (max-width: 1000px) {
+  .dk-shell { grid-template-columns: 175px minmax(0, 1fr); }
+  .dk-shell .container { padding: 25px; }
+  .dk-topstrip { padding: 14px 25px; }
+  .dk-shell .next-action { grid-template-columns: minmax(0, 1fr); }
+  .dk-shell .next-action-art { display: none; }
+  .dk-shell .dk-grid2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 650px) {
+  .dk-shell { display: block; font-size: 15px; }
+  .dk-sidebar { height: auto; position: relative; padding: 14px 16px; overflow: visible; }
+  .dk-brand { font-size: 22px; padding: 0; display: flex; align-items: baseline; gap: 12px; }
+  .dk-brand small { font-size: 10px; }
+  .dk-nav { display: flex; flex-wrap: wrap; margin-top: 16px; gap: 4px; }
+  .dk-nav-group { display: contents; }
+  .dk-nav-item { padding: 8px 9px; font-size: 13px; white-space: nowrap; }
+  .dk-nav-num, .dk-side-note { display: none; }
+  /* 묶음의 하위 항목은 그 묶음에 들어와 있을 때만 아랫줄에 보인다(발행 ↔ 성과·전략). */
+  .dk-subnav { display: none; }
+  .dk-nav-group[data-active="true"] .dk-subnav { display: flex; order: 10; flex-basis: 100%; padding: 2px 0 0; }
+  .dk-more { margin: 0; border: 0; padding: 0; order: 5; }
+  .dk-more > summary { font-size: 13px; padding: 8px 9px; letter-spacing: 0; font-weight: 400; color: #c9dbcf; }
+  .dk-more[open] { flex-basis: 100%; }
+  .dk-more-list { display: flex; flex-wrap: wrap; gap: 2px; }
+  .dk-more-list a { padding: 6px 9px; font-size: 12px; }
+  .dk-topstrip { padding: 10px 16px; font-size: 11px; }
+  .dk-shell .container { padding: 24px 16px 40px; }
+  .dk-shell .dk-h1 { font-size: 29px; }
+  .dk-shell .dk-head-row { display: block; }
+  .dk-shell .dk-head-row > .dk-badge { margin-top: 10px; }
+  .dk-shell .card, .dk-shell .dk-panel { padding: 18px; }
+  .dk-shell .next-action { padding: 23px; }
+  .dk-shell .next-action-headline { font-size: 25px; }
+  .dk-shell .summary-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .dk-shell .summary-tile { padding: 13px 10px; }
+  .dk-shell .summary-tile .n { font-size: 25px; }
+  .dk-shell .summary-tile .k, .dk-shell .summary-tile .s { font-size: 11px; }
+  .dk-shell .dk-weekly { grid-template-columns: 88px minmax(0, 1fr) 48px; gap: 10px; font-size: 12px; }
+  .dk-shell .dk-topic-grid { grid-template-columns: minmax(0, 1fr); }
+  .dk-shell .dk-topic { min-height: 210px; }
+  .dk-shell .dw-formats { grid-template-columns: minmax(0, 1fr); }
+  .dk-shell .dw-format { padding: 12px; }
+  .dk-shell .dw-decision { padding: 12px; gap: 10px; align-items: stretch; flex-direction: column; }
+  .dk-shell .dw-decision-left { flex: 0 0 auto; }
+  .dk-shell .dw-decision-right { width: 100%; margin-left: 0; }
+  .dk-shell .dw-decision .btn.dw-primary { flex: 1 1 auto; }
+  .dk-shell .dw-now-title { font-size: 16px; }
+  .dk-shell .dw-steps { gap: 3px; }
+  .dk-shell .dw-steps button { padding: 6px; font-size: 11px; }
+  .dk-shell .dw-section > summary { padding: 14px 16px; font-size: 16px; }
+  .dk-shell .dw-section-body { padding: 0 16px 18px; }
+  .dk-shell .modal { padding: 22px 18px; }
+  .dk-shell .dk-blocked-why { text-align: left; }
+}
