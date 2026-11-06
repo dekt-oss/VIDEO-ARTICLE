@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./drinks-theme.css";
 import AppShell from "@/components/AppShell";
 import { ToastProvider } from "@/components/Toast";
 

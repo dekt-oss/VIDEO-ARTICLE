@@ -5,6 +5,7 @@
 // 세 공장(논문=파랑 / 리포트=바이올렛 / 주류=호박색)의 화면이 색으로 즉시 구분된다.
 import { usePathname } from "next/navigation";
 import TopBar from "@/components/TopBar";
+import { DrinksSidebar, DrinksTopStrip } from "@/components/drinks/DrinksSidebar";
 
 export type Factory = "paper" | "finance" | "drinks";
 
@@ -20,6 +21,19 @@ export function factoryOf(pathname: string): Factory {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const factory = factoryOf(pathname);
+  // 주류 공장만 승인 목업(docs/mockups/drinks/)의 셸 — 왼쪽 세로 메뉴 + 밝은 종이색. 색·모양은 drinks-theme.css 가
+  // [data-factory="drinks"] 아래에서만 바꾸므로 논문·리포트 공장 화면은 한 픽셀도 달라지지 않는다.
+  if (factory === "drinks") {
+    return (
+      <div className="app-shell dk-shell" data-factory={factory}>
+        <DrinksSidebar />
+        <div className="app-main dk-main">
+          <DrinksTopStrip />
+          {children}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="app-shell" data-factory={factory}>
       <TopBar factory={factory} />
