@@ -33,7 +33,7 @@
 | 길이 지정 | **칸은 있음, 형식은 미검증** — `duration` 이 문자열이라는 것만 문서에 있다 | `"8s"`(protobuf Duration 표기)로 보낸다. 틀리면 400 → `ExplainerNotSent`(청구 없음). 문장에도 "About 8 seconds" 를 같이 쓴다. `DRINKS_EXPLAINER_OMNI_SEND_DURATION=False` 로 칸을 뺄 수 있다 |
 | 응답에서 영상 위치 | **검증됨(설명)** `steps[].{type:"model_output"}.content[].{type:"video", data|uri, mime_type}` — 다만 문서의 예시 응답은 글 모델 것뿐이다 | 파서를 `steps` 로 바꿨다. **옛 가정 `outputs[]` 는 더 읽지 않는다**(시험이 못 박음). 모양이 다르면 `ExplainerOutcomeUnknown` |
 | 청구 단위 | **검증됨** 토큰. `usage.total_output_tokens`·`output_tokens_by_modality[{modality:"video"}]`. $17.50/100만 토큰, 720p 초당 5,792토큰 | 영상 모달리티 토큰이 있으면 그것, 없으면 total |
-| 동기/폴링 | **검증됨** 기본 동기(한 응답에 `status:"completed"`). `background:true` 면 `GET interactions/{id}` 로 상태를 본다 | `background·store·stream=false` 로 보낸다(문서 권장). `status` 가 `in_progress` 면 결과 불명으로 멈춘다 |
+| 동기/폴링 | **검증됨** 기본 동기(한 응답에 `status:"completed"`). `background:true` 면 `GET interactions/{id}` 로 상태를 본다 | `background·stream=false` 로 보낸다(`store` 는 2026-11-03 true 로 변경, 아래 미검증 절). `status` 가 `in_progress` 면 결과 불명으로 멈춘다 |
 | 결과 불명 정정 | **검증됨** `GET v1beta/interactions/{id}` 가 영상을 inline 으로 다시 준다 | `fetch_omni_interaction` — 코드만. 운영자가 닫는 흐름(대시보드)은 그대로이고 이 함수를 부르는 화면은 아직 없다 |
 | 부정 프롬프트·seed | **검증됨: 칸 없음**(문서: "parameter 로 지원 안 함, 문장에 쓴다") | 보내지 않는다. 금지할 오해는 문장에 그대로(종전과 같다) |
 | 무료 사전 검증 | **검증됨** `GET v1beta/models/{model}` → `{name, displayName, version, supportedGenerationMethods[]}` | `omni_preflight`: 404·이름 불일치면 **보내기 전에** 거절. 메서드 이름은 기록만(어떤 값이 오는지 미검증) |
@@ -95,7 +95,7 @@
 - **모델이 새 지시문(continuity·motion_prompt 필수)을 실제로 따르는가**: S0.5 에서 본다. 못 따르면 재작성 1회 뒤 저장하지 않는다(종전 규칙).
 - **B3·B7 근거**: 소재 개발 엔진이 승인 수집원·공식 목록에서 찾는다. 못 찾으면 운영자가 출처를 붙여야 한다 — 그 뒤에야 48초가 된다.
 - **운영 DB 0067 미적용**: S2 전 결재 대상.
-- **`fetch_omni_interaction` 을 부르는 화면·명령 없음**(위).
+- **결과 불명 조회(2026-11-03):** `scripts/explainer_lookup.py` 가 생겼다. 시도 행에 요청 ID 를 남기고, 물어본 결과만 보여 준다. DB 를 쓰지 않아 닫기는 여전히 운영자 몫이다. 문서가 조회를 보관에 묶어 설명해 `store` 기본값을 true 로 바꿨다(`DRINKS_EXPLAINER_OMNI_STORE`, 유료 등급 55일 보관). store=false 조회 가능 여부·GET 과금·동기 호출에서 ID 를 받는 시점은 문서에 없다(미검증). 응답 전에 끊기면 ID 가 없어 조회할 수 없다.
 - **게시 캡션에 "AI 생성 영상" 자동 삽입 없음**(게시 워커는 다른 작업 중).
 - `supportedGenerationMethods` 에 무엇이 오는지 모른다 — `preflight` 가 기록한다.
 

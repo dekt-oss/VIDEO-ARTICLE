@@ -241,6 +241,8 @@ def buy(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: str, out_dir: s
                                      "provider": "gemini" if item.kind == "image" else "veo", "model": item.model,
                                      "est_usd": item.est_usd, "note": f"{item.position}번 장면", **(lease or {})})
     hold_id = hold["hold_id"]
+    from .providers.image import ImageNotSent
+
     try:
         cost = (generate or _generate)(item, out, ref_path)
     except Exception as exc:
@@ -248,6 +250,11 @@ def buy(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: str, out_dir: s
         if billed:   # Veo 가 만들고 받기만 실패 — 청구됐을 가능성이 높다(엔진 VeoBilledRejection)
             rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "settled", "actual_usd": item.est_usd,
                                         "note": f"생성 완료 후 받기 실패(청구 유력): {type(exc).__name__}"})
+        elif item.kind == "image" and not isinstance(exc, (ImageNotSent, PaidError)):
+            # 리뷰 R1: 그림은 "확실히 안 보냄"만 해제한다. 그 밖의 실패는 생성·청구됐을 수 있다 — 가잡기를 남겨 결재 상한을 계속 차지하게 하고
+            # (같은 항목 재구매는 DB 가 hold_in_progress 로 막는다) 운영자가 drinks_close_orphan_hold 로 billed/void 를 정한다.
+            raise PaidError("unknown_billed", f"{item.item_key}: 그림 결과를 모릅니다({type(exc).__name__}) — 가잡기 {hold_id} 를 유지합니다. "
+                                              "청구 내역을 확인해 운영자가 닫기 전에는 다시 사지 않습니다") from exc
         else:
             rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "released", "note": f"생성 실패(청구 없음): {type(exc).__name__}"})
         raise
@@ -282,9 +289,9 @@ def _generate(item: OrderItem, out: str, ref_path: Optional[str]) -> float:
     if item.kind == "image":
         from .providers import image as image_provider
 
-        with _paid_provider("image"):
-            _, cost = image_provider.generate_image(item.cut, HEADER, out, model=item.model, ref_path=ref_path)
-        return cost
+        # 리뷰 R1: 재시도 데코레이터가 붙은 generate_image 를 쓰지 않는다 — POST 한 번, 실패는 안 보냄/모름 둘로만.
+        image_provider.gemini_image_once(item.cut, HEADER, out, model=item.model, ref_path=ref_path)
+        return float(config.PRICING.get(item.model, {}).get("image_standard", 0)) or item.est_usd
     from .providers import video as video_provider
 
     if not ref_path:
@@ -343,17 +350,21 @@ class LiveAdapter:
         return video_provider.generate_explainer_clip(inp, out, provider=self.provider, approval_id=approval_id, idempotency_key=idempotency_key)
 
 
-def clip_actual_usd(item: OrderItem, billing_unit: Optional[str], billed_units: Optional[float]) -> float:
-    """공급자가 토큰 수를 주면 그것으로 계산한다. 아니면 예상 금액(청구서 대조 전 — 원장에 추정으로 남는다)."""
-    if billing_unit == "tokens" and billed_units is not None and item.provider == "omni":
-        return omni_usd_from_tokens(billed_units)
-    return item.est_usd
-
-
-def omni_usd_from_tokens(billed_units: float) -> float:
+def omni_tokens_usd(billed_units: float) -> float:
     """Omni 청구 토큰 → 달러(출력 토큰 + 시작 그림 입력). 단가는 config.DRINKS_EXPLAINER_PRICES 하나에서 온다."""
     p = config.DRINKS_EXPLAINER_PRICES["omni"]
     return round(float(billed_units) * p["output_usd_per_mtok"] / 1_000_000 + p["input_image_tokens"] * p["input_usd_per_mtok"] / 1_000_000, 4)
+
+
+def clip_actual_usd(item: OrderItem, billing_unit: Optional[str], billed_units: Optional[float]) -> float:
+    """공급자가 토큰 수를 주면 그것으로 계산한다. 아니면 예상 금액(청구서 대조 전 — 원장에 추정으로 남는다)."""
+    if billing_unit == "tokens" and billed_units is not None and item.provider == "omni":
+        return omni_tokens_usd(billed_units)
+    return item.est_usd
+
+
+# 같은 계산의 다른 이름 — main(#141, engine/drinks_explainer_lookup.py)이 이 이름을 쓴다. 정의는 omni_tokens_usd 하나다.
+omni_usd_from_tokens = omni_tokens_usd
 
 
 def _event(rpc: Rpc, attempt_id: str, to_state: str, **extra: Any) -> None:
@@ -381,7 +392,8 @@ def buy_clip_attempt(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: st
                                      "est_usd": item.est_usd, "note": f"{item.position}번 장면 후보 {item.candidate_id[-2:]}", **(lease or {})})
     hold_id = hold["hold_id"]
     try:
-        att = rpc("drinks_explainer_open_attempt", {"candidate_id": item.candidate_id, "approval_id": approval_id, "provider": item.provider})
+        # 리뷰 R4: 가잡기를 시도 행에 처음부터 묶는다 — generating 전에 끊겨도 sweep 이 그 가잡기를 찾아 해제한다.
+        att = rpc("drinks_explainer_open_attempt", {"candidate_id": item.candidate_id, "approval_id": approval_id, "provider": item.provider, "hold_id": hold_id})
     except Exception:
         rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "released", "note": "시도 행을 만들지 못함(호출 안 함)"})
         raise
@@ -399,13 +411,11 @@ def buy_clip_attempt(item: OrderItem, *, rpc: Rpc, storage: Any, approval_id: st
         rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "released", "note": f"생성 전 거절(청구 없음): {str(exc)[:300]}"})
         raise PaidError("attempt_failed_unbilled", f"{attempt_id}: {str(exc)[:300]}") from exc
     except video_provider.ExplainerBilledBadFile as exc:
-        _event(rpc, attempt_id, "failed_billed", error_code="bad_file", actual_usd=item.est_usd)
+        _event(rpc, attempt_id, "failed_billed", error_code="bad_file", actual_usd=item.est_usd, provider_request_id=getattr(exc, "request_id", "") or None)
         rpc("drinks_settle_spend", {"hold_id": hold_id, "outcome": "settled", "actual_usd": item.est_usd, "note": "받았지만 쓸 수 없음(청구 유력, 예상 금액)"})
         raise PaidError("attempt_failed_billed", f"{attempt_id}: {str(exc)[:300]}") from exc
     except Exception as exc:  # noqa: BLE001 — 보낸 뒤의 어떤 예외도 "모름"이다. 다시 부르지 않고 운영자에게 넘긴다.
-        # interaction id 를 알면 남긴다 — 없으면 운영자가 조회로 정정할 길이 없다(engine/drinks_explainer_lookup.py).
-        _event(rpc, attempt_id, "unknown_billed", error_code=type(exc).__name__[:100],
-               provider_request_id=(str(getattr(exc, "request_id", "") or "")[:500] or None))
+        _event(rpc, attempt_id, "unknown_billed", error_code=type(exc).__name__[:100], provider_request_id=getattr(exc, "request_id", "") or None)
         raise PaidError("unknown_billed", f"{attempt_id}: 결과를 모릅니다({type(exc).__name__}) — 운영자가 billed/void 로 닫기 전에는 이 후보를 다시 사지 않습니다") from exc
     actual = clip_actual_usd(item, getattr(res, "billing_unit", None), getattr(res, "billed_units", None))
     _event(rpc, attempt_id, "received", provider_request_id=getattr(res, "request_id", "") or None, billed_units=getattr(res, "billed_units", None), actual_usd=actual)

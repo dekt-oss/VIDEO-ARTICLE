@@ -24,6 +24,7 @@ from engine import drinks_paid as dpaid
 from engine import drinks_produce as dp
 from engine.drinks_collect import DbError
 from engine.providers import video as pv
+from scripts import explainer_lookup as lookup
 from scripts import explainer_queue_rehearsal as qr
 from scripts import explainer_rehearsal as base
 
@@ -405,7 +406,7 @@ def test_omni_request_shape_matches_the_documented_interactions_api():
     assert [p["type"] for p in b["input"]] == ["image", "image", "text"] and b["input"][0] == {"type": "image", "mime_type": "image/png", "data": "QUJD"}
     assert b["generation_config"] == {"video_config": {"task": "image_to_video"}}, "첫 그림이 시작 프레임[문서]"
     assert b["response_format"] == {"type": "video", "aspect_ratio": "9:16", "resolution": "720p", "delivery": "inline", "duration": "8s"}
-    assert b["background"] is False and b["store"] is False and b["stream"] is False
+    assert b["background"] is False and b["store"] is True and b["stream"] is False, "store 를 끄면 결과 불명을 조회할 수 없다"
     assert "seed" not in str(b) and "negative" not in str(b).lower(), "문서에 없는 칸은 보내지 않는다"
     assert "8 seconds" in b["input"][-1]["text"], "길이는 문장에도 말한다(duration 형식이 미검증)"
     assert pv.build_omni_fetch_request("abc").url.endswith("/v1beta/interactions/abc") and pv.build_omni_fetch_request("abc").method == "GET"
@@ -419,6 +420,53 @@ def test_fetch_interaction_corrects_unknown_outcome(live):
     assert parsed.request_id == "int-9" and parsed.video_bytes == b"ABC" and parsed.billed_units == 23168.0 and client.n == 0
     with pytest.raises(pv.ExplainerSendRefused):
         pv.fetch_omni_interaction("int-9", approval_id="", client=client)
+
+
+def test_unknown_outcome_keeps_the_provider_id_when_it_got_one(live, tmp_path):
+    clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="the glass tilts", clip_sec=8)
+    client = Client(Resp(200, interaction(status="in_progress", iid="int-7")))
+    with pytest.raises(pv.ExplainerOutcomeUnknown) as e:
+        pv.generate_explainer_clip(clip, str(tmp_path / "a.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=client)
+    assert e.value.request_id == "int-7"
+
+
+def test_lookup_lists_unknown_and_never_calls_provider_without_an_id():
+    status = {"slots": [{"candidates": [{"attempts": [
+        {"attempt_id": "c#a1", "state": "unknown_billed", "provider": "omni", "provider_request_id": None, "approval_id": "ap", "est_usd": 1.0},
+        {"attempt_id": "c#a2", "state": "unknown_billed", "provider": "omni", "provider_request_id": "int-9", "approval_id": "ap", "est_usd": 1.0},
+        {"attempt_id": "c#a3", "state": "stored", "provider": "omni", "provider_request_id": "int-8", "approval_id": "ap"}]}]}]}
+    rows = lookup.unknown_attempts(status)
+    assert [r["attempt_id"] for r in rows] == ["c#a1", "c#a2"]
+    calls = []
+
+    def fetch(iid, *, approval_id):
+        calls.append((iid, approval_id))
+        return pv.ExplainerParsed(provider="omni", request_id=iid, billing_unit="tokens", billed_units=23168.0, video_bytes=b"ABC")
+
+    no_id = lookup.lookup_one(rows[0], fetch)
+    assert no_id["outcome"] == "no_id" and calls == [], "ID 가 없으면 부르지 않는다"
+    found = lookup.lookup_one(rows[1], fetch)
+    assert calls == [("int-9", "ap")] and found["outcome"] == "completed" and found["video_bytes"] == 3
+    assert found["usd"] == round(23168 * 17.5 / 1e6 + 1120 * 1.5 / 1e6, 4)
+
+
+def test_lookup_reports_not_retrievable_and_in_progress():
+    row = {"attempt_id": "c#a2", "provider": "omni", "provider_request_id": "int-9", "approval_id": "ap", "est_usd": 1.0}
+
+    def gone(iid, *, approval_id):
+        raise pv.ExplainerNotSent("omni 404: not found")
+
+    def running(iid, *, approval_id):
+        return pv.ExplainerParsed(provider="omni", request_id=iid, billing_unit="tokens", billed_units=None, done=False)
+
+    assert lookup.lookup_one(row, gone)["outcome"] == "not_retrievable"
+    assert lookup.lookup_one(row, running)["outcome"] == "in_progress"
+
+
+def test_lookup_script_has_no_db_write_and_no_switch():
+    src = (Path(__file__).resolve().parent.parent / "scripts" / "explainer_lookup.py").read_text(encoding="utf-8")
+    assert "drinks_explainer_close_unknown" not in src and "drinks_explainer_attempt_event" not in src and "drinks_settle_spend" not in src, "닫기는 운영자 몫이다"
+    assert "PROVIDER_SEND_ENABLED =" not in src and "os.environ[" not in src, "스위치를 코드가 켜지 않는다"
 
 
 @needs_ffmpeg
@@ -545,3 +593,153 @@ def test_can_transition_matches_sql():
                 assert r["ok"] is dx.can_transition(a, r["to_state"]), (a, r["to_state"])
     finally:
         db.close()
+
+
+# ── 리뷰 R5(2026-11-04): 요청 ID 는 해석보다 먼저 보존한다 · 조회는 모든 오류를 분류한다 ──
+
+def _bad(**over):
+    d = interaction("QUJD", iid="int-55")
+    d.update(over)
+    return d
+
+
+@pytest.mark.parametrize("data,why", [
+    (_bad(usage={"total_output_tokens": "bad", "output_tokens_by_modality": []}), "usage 문자열"),
+    (_bad(usage={"output_tokens_by_modality": {"modality": "video"}}), "배열 자리에 객체"),
+    (_bad(usage=["x"]), "usage 가 배열"),
+    (_bad(steps=[{"type": "model_output", "content": [{"type": "video", "data": "%%%not-base64"}]}]), "base64 아님"),
+    (_bad(status="failed"), "실패 상태"),
+])
+def test_unknown_outcome_keeps_the_id_for_every_unreadable_success(live, tmp_path, data, why):
+    clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="m", clip_sec=4)
+    with pytest.raises(pv.ExplainerOutcomeUnknown) as e:
+        pv.generate_explainer_clip(clip, str(tmp_path / "a.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=Client(Resp(200, data)))
+    assert e.value.request_id == "int-55", why
+
+
+def test_bad_file_after_receipt_keeps_the_id(live, tmp_path):
+    clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="m", clip_sec=4)
+    with pytest.raises(pv.ExplainerBilledBadFile) as e:   # 'ABC' 는 영상이 아니다 — 받았지만 못 쓴다
+        pv.generate_explainer_clip(clip, str(tmp_path / "a.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=Client(Resp(200, interaction("QUJD", iid="int-56"))))
+    assert e.value.request_id == "int-56"
+
+
+def test_response_without_an_id_is_no_id(live, tmp_path):
+    clip = pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="m", clip_sec=4)
+    d = interaction("QUJD")
+    d.pop("id")
+    d["usage"] = {"total_output_tokens": "bad"}
+    with pytest.raises(pv.ExplainerOutcomeUnknown) as e:
+        pv.generate_explainer_clip(clip, str(tmp_path / "a.mp4"), provider="omni", approval_id="ap", idempotency_key="k", client=Client(Resp(200, d)))
+    assert e.value.request_id == ""
+    row = {"attempt_id": "c#a1", "provider_request_id": None, "approval_id": "ap", "est_usd": 1.0}
+    assert lookup.lookup_one(row, lambda *a, **k: pytest.fail("ID 없으면 부르지 않는다"))["outcome"] == "no_id"
+
+
+def test_lookup_classifies_every_shape_without_raising(live):
+    row = {"attempt_id": "c#a2", "provider": "omni", "provider_request_id": "int-9", "approval_id": "ap", "est_usd": 1.0}
+    fetch = lambda data: (lambda iid, *, approval_id: pv.fetch_omni_interaction(iid, approval_id=approval_id, client=Client(model=Resp(200, data))))  # noqa: E731
+    assert lookup.lookup_one(row, fetch(_bad(usage={"total_output_tokens": "bad"})))["outcome"] == "unreadable"
+    assert lookup.lookup_one(row, fetch(["not", "an", "object"]))["outcome"] == "unreadable"
+    assert lookup.lookup_one(row, fetch(_bad(status="failed")))["outcome"] == "failed"
+    assert lookup.lookup_one(row, fetch(_bad(status="cancelled")))["outcome"] == "cancelled"
+    assert lookup.lookup_one(row, fetch(interaction(status="in_progress")))["outcome"] == "in_progress"
+    done = lookup.lookup_one(row, fetch(interaction(uri="https://generativelanguage.googleapis.com/v1beta/files/f:download")))
+    assert done["outcome"] == "completed" and done["delivery"] == "uri" and done["video_bytes"] == 0, "주소로 온 결과는 받지 않고 보고만 한다"
+
+    def boom(iid, *, approval_id):
+        raise ValueError("이상한 값")
+    assert lookup.lookup_one(row, boom)["outcome"] == "unreadable"
+
+
+def test_error_text_never_carries_the_key(monkeypatch, tmp_path):
+    secret = "FAKE-SECRET-1234567890"
+    monkeypatch.setattr(config, "DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED", True)
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(gemini_api_key=secret))
+    req = pv.build_omni_request(pv.ExplainerClipInput(start_image_b64="QUJD", motion_prompt="m", clip_sec=4))
+    for status in (400, 500):
+        with pytest.raises(pv.ExplainerProviderError) as e:
+            pv.send_explainer_request(req, approval_id="ap", client=Client(Resp(status, text=f"echo x-goog-api-key: {secret}")))
+        assert secret not in str(e.value), status
+    row = {"attempt_id": "c#a2", "provider_request_id": "int-9", "approval_id": "ap", "est_usd": 1.0}
+
+    def echo(iid, *, approval_id):
+        raise pv.ExplainerNotSent(f"404 {secret}")
+
+    def weird(iid, *, approval_id):
+        raise ValueError(secret)
+    for f in (echo, weird):
+        assert secret not in repr(lookup.lookup_one(row, f)), f.__name__
+
+
+# ── 리뷰 R9(2026-11-04): 공급자가 준 다운로드 주소 검증 · 인증 헤더는 지정 호스트에만 ──
+
+@pytest.mark.parametrize("url", [
+    "http://generativelanguage.googleapis.com/v1beta/files/f",          # https 아님
+    "https://generativelanguage.googleapis.com:8443/v1beta/files/f",    # 다른 포트
+    "https://evil.example.com/v1beta/files/f",                          # 다른 호스트
+    "https://generativelanguage.googleapis.com.evil.com/x",             # 이름 덧붙이기
+    "https://127.0.0.1/x", "https://[::ffff:127.0.0.1]/x", "https://169.254.169.254/latest/meta-data",
+    "https://user:pw@generativelanguage.googleapis.com/x",
+])
+def test_omni_download_refuses_bad_urls_and_sends_no_key(live, tmp_path, url):
+    sent = []
+
+    class Spy:
+        def get(self, u, headers=None, params=None):
+            sent.append((u, headers))
+            return Resp(200, {})
+
+    parsed = pv.ExplainerParsed(provider="omni", request_id="int-1", billing_unit="tokens", billed_units=1.0, gcs_uri=url)
+    with pytest.raises(pv.ExplainerBilledBadFile):
+        pv._omni_download_uri(parsed, Spy())
+    assert sent == [], "검사를 못 지난 주소에는 요청도, 키도 보내지 않는다"
+
+
+def test_omni_download_allows_the_gemini_host_and_stops_at_redirects(live):
+    class Spy:
+        def __init__(self, status):
+            self.status, self.sent = status, []
+
+        def get(self, u, headers=None, params=None):
+            self.sent.append(u)
+            r = Resp(self.status)
+            r.content = b"VIDEO"
+            return r
+    ok = Spy(200)
+    url = "https://generativelanguage.googleapis.com/v1beta/files/f:download"
+    got = pv._omni_download_uri(pv.ExplainerParsed(provider="omni", request_id="i", billing_unit="tokens", billed_units=1.0, gcs_uri=url), ok)
+    assert got.video_bytes == b"VIDEO" and ok.sent == [url]
+    with pytest.raises(pv.ExplainerBilledBadFile):
+        pv._omni_download_uri(pv.ExplainerParsed(provider="omni", request_id="i", billing_unit="tokens", billed_units=1.0, gcs_uri=url), Spy(302))
+
+
+def test_pinned_client_refuses_private_addresses_and_dns_changes():
+    """연결 직전 재해석: 이름이 사설·루프백·링크로컬·IPv4-mapped 로 풀리면 붙지 않는다(DNS 가 검사 뒤 바뀌어도 같은 곳에서 막힌다)."""
+    from engine import drinks_fetch as df
+
+    for ips in (["10.0.0.5"], ["127.0.0.1"], ["169.254.169.254"], ["::ffff:10.0.0.1"], ["8.8.8.8", "192.168.0.1"]):
+        backend = df.PinnedBackend(lambda h, p, ips=ips: ips)
+        with pytest.raises(df.FetchError) as e:
+            backend.connect_tcp("generativelanguage.googleapis.com", 443)
+        assert e.value.code == "private_address", ips
+    assert df.pinned_client(timeout=5).follow_redirects is False
+
+
+def test_apify_video_download_checks_the_url_before_any_request():
+    from engine import drinks_meme_refine as rf
+
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return httpx.Response(200, content=b"x")
+    c = rf.ApifyClient("TEST-not-real", transport=httpx.MockTransport(handler))
+    try:
+        for bad in ("https://evil.example.com/v.mp4", "http://scontent-x.cdninstagram.com/v.mp4", "https://127.0.0.1/v.mp4"):
+            with pytest.raises(rf.RefineStop) as e:
+                c.download(bad, "/dev/null", max_bytes=10)
+            assert e.value.code == "video_url_rejected"
+        assert seen == []
+    finally:
+        c.close()

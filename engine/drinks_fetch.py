@@ -22,7 +22,7 @@ import ipaddress
 import socket
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
@@ -112,6 +112,33 @@ def check_url(url: str, allowed_hosts: Iterable[str]) -> tuple[str, str]:
     return host, url
 
 
+def _host_matches(host: str, allowed: Iterable[str]) -> bool:
+    """정확히 같은 이름, 또는 '.' 으로 시작하는 항목의 하위 도메인(".cdninstagram.com" → "scontent-x.cdninstagram.com")."""
+    for a in (h.lower() for h in allowed):
+        if a.startswith("."):
+            if host.endswith(a) and len(host) > len(a):
+                return True
+        elif host == a:
+            return True
+    return False
+
+
+def check_provider_url(url: str, allowed_hosts: Iterable[str]) -> str:
+    """공급자 **응답이 준** 다운로드 주소 검사(리뷰 R9, 2026-11-04). https·443·계정 정보 없음·IP 숫자 아님·허용 호스트만.
+    실패는 ValueError(코드만 — 주소에 서명·토큰이 들어 있을 수 있어 문장에 싣지 않는다). 공개 IP 여부는 연결 직전 PinnedBackend 가 본다."""
+    try:
+        host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        raise ValueError("url_invalid") from None
+    if not host or not _host_matches(host, allowed_hosts):
+        raise ValueError("host_not_allowed")
+    try:
+        check_url(url, [host])
+    except FetchError as exc:
+        raise ValueError(exc.code) from None
+    return host
+
+
 Resolver = Callable[[str, int], list[str]]
 
 
@@ -148,6 +175,15 @@ class PinnedBackend(httpcore.SyncBackend):
             except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
                 last = exc
         raise last  # type: ignore[misc]  # ips 가 비어 있으면 위에서 이미 막혔다
+
+
+def pinned_client(*, timeout: Any, resolver: "Resolver" = None, transport: Optional[httpx.BaseTransport] = None) -> httpx.Client:  # type: ignore[assignment]
+    """공급자 다운로드용 요청기 — 연결 직전에 DNS 를 다시 풀어 공개 IP 인지 보고 그 IP 로만 붙는다(재바인딩 방어), 리다이렉트 안 따라감,
+    환경 프록시 안 씀. transport 를 주면(시험) 그대로 쓴다."""
+    if transport is None:
+        transport = httpx.HTTPTransport(retries=0)
+        transport._pool._network_backend = PinnedBackend(resolver or system_resolver)
+    return httpx.Client(transport=transport, follow_redirects=False, timeout=timeout, trust_env=False)
 
 
 class SafeFetcher:

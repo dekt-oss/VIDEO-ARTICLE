@@ -61,6 +61,11 @@ def ceil_cents(x: float) -> float:
     return math.ceil(round(x, 6) * 100) / 100
 
 
+def floor_cents(x: float) -> float:
+    """상한(잔액)은 내림이다 — 올리면 편 전체 합산이 결재액을 넘는다(리뷰 R10: $8.90 − $2.2111 을 $6.69 로 올려 합 $8.9011)."""
+    return math.floor(round(x, 6) * 100) / 100
+
+
 # ─────────────────────────────────────────────────────────────
 # 지시서 표 — S2·S3 가 돈을 쓰기 전에 화면에 찍는 것
 # ─────────────────────────────────────────────────────────────
@@ -112,10 +117,16 @@ def s3_scope(directive: dict[str, Any], *, s2_spent_usd: float, selected_slots: 
     rows = [r for r in slot_rows(directive) if r["n"] not in set(selected_slots)]
     estimate = rows_total(rows)
     reserve = float(directive.get("estimate", {}).get("reserve_usd") or 0.0)
-    cap = ceil_cents(cap_for("s3") - float(s2_spent_usd))
+    # s2_spent_usd = 이 편의 결재들이 확정한 금액 + 가잡기 중인 금액(explainer_s3.s2_spent_from_status) — S3 를 다시 이을 때 S3 가 이미 쓴 몫도 들어간다.
+    remaining = cap_for("s3") - float(s2_spent_usd)
+    cap = max(0.0, floor_cents(remaining))
     headroom = round(cap - estimate, 4)
-    return {"rows": rows, "estimate_usd": round(estimate, 4), "retry_reserve_usd": round(reserve, 4), "headroom_usd": headroom, "retry_covered": headroom >= reserve,
-            "cap_usd": cap, "s2_spent_usd": round(float(s2_spent_usd), 4), "fits": ceil_cents(estimate) <= cap and cap > 0, "skipped_slots": sorted(set(selected_slots))}
+    out = {"rows": rows, "estimate_usd": round(estimate, 4), "retry_reserve_usd": round(reserve, 4), "headroom_usd": headroom, "retry_covered": headroom >= reserve,
+           "cap_usd": cap, "s2_spent_usd": round(float(s2_spent_usd), 4), "fits": ceil_cents(estimate) <= cap and cap > 0, "skipped_slots": sorted(set(selected_slots))}
+    if remaining < 0:
+        # 이미 편 전체 상한을 넘었다 — 숨기지 않고 남기고(fits=False 라 더 사지 않는다) 화면·보고에 그대로 보인다.
+        out["over_episode_cap_usd"] = round(-remaining, 4)
+    return out
 
 
 # ─────────────────────────────────────────────────────────────

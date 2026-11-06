@@ -197,14 +197,17 @@ def test_all_restricted_is_failed_but_billed():
     p = r.calls[-1][1]
     assert p["outcome"] == "failed" and p["error_code"] == "age_restricted" and p["actual_usd"] == pytest.approx(0.0088)
     assert [x["status"] for x in p["results"]] == ["age_restricted"] * 3 and p["fields"] == []
-    assert prov.calls[0]["cap_usd"] == config.DRINKS_APIFY_RUN_CAP_USD["meme_refine"]
+    # 리뷰 R2(의도한 변경): Apify 에는 상한 전체가 아니라 분석 예약액을 뺀 몫만 준다.
+    assert prov.calls[0]["cap_usd"] == pytest.approx(rf.split_budget(config.DRINKS_APIFY_RUN_CAP_USD["meme_refine"], 3)["apify_cap_usd"])
 
 
-def test_unknown_usage_is_recorded_as_estimate_not_zero():
+def test_unknown_usage_is_recorded_as_the_apify_cap_not_estimate():
+    """리뷰 R2(의도한 변경): 사용액을 못 읽으면 예상액($0.0088)이 아니라 Apify 에 건 상한으로 적는다 — 작게 적지 않는다."""
     prov = rf.FakeApify(items=[{"inputUrl": u, "error": "x"} for u in URLS], usage_usd=None)
     r = Rpc()
     rf.process_job(job(), r, provider=prov, analyzer=rf.no_analyzer)
-    assert r.calls[-1][1]["actual_usd"] == pytest.approx(rf.estimate_usd(3, analyze=False))
+    assert r.calls[-1][1]["actual_usd"] == pytest.approx(prov.calls[0]["cap_usd"])
+    assert r.calls[-1][1]["actual_usd"] >= rf.estimate_usd(3, analyze=False)
 
 
 def test_worker_exception_closes_the_request_as_failed():
@@ -233,3 +236,173 @@ def test_rehearsal_runs_end_to_end_and_shares_the_meme_engine_path(tmp_path):
     assert not list((tmp_path / "out").glob("_tmp*")) and not list((tmp_path / "out").glob("_fake_videos*")), "빌린 영상·임시 폴더가 남지 않는다"
     saved = json.loads((tmp_path / "out" / "report.json").read_text(encoding="utf-8"))
     assert "cdninstagram" not in json.dumps(saved) and saved["cost_usd"] == 0
+
+
+
+# ── 리뷰 R2(2026-11-04): Apify + 분석 합산 상한을 호출 전에 강제한다 ──
+
+def _ok_items():
+    return [{"inputUrl": u, "videoUrl": f"/fake/{i}.mp4", "videoDuration": 12.0, "videoPlayCount": 100 - i} for i, u in enumerate(URLS)]
+
+
+class _Prov(rf.FakeApify):
+    def download(self, url, dest, *, max_bytes):
+        Path(dest).write_bytes(b"\0" * 64)
+        return 64
+
+
+@pytest.fixture
+def fake_measure(monkeypatch):
+    monkeypatch.setattr(rf, "measure_video", lambda p: {"duration_sec": 12.0, "cut_lengths": [3.0, 4.0, 5.0], "beat_count": 3, "bytes": 64})
+
+
+class Counting:
+    def __init__(self, usd=0.003, exc=None):
+        self.n, self.usd, self.exc = 0, usd, exc
+
+    def __call__(self, path, duration, cuts):
+        self.n += 1
+        if self.exc:
+            raise self.exc
+        return {"frame": "selfie", "text_position": "top"}, self.usd
+
+
+def test_budget_is_split_before_any_call():
+    b = rf.split_budget(0.02, 3)
+    assert b["analysis_reserve_usd"] == pytest.approx(3 * config.DRINKS_APIFY_ANALYSIS_EST_USD)
+    assert b["apify_cap_usd"] + b["analysis_reserve_usd"] <= 0.02 + 1e-9
+
+
+def test_apify_using_the_whole_cap_means_zero_analysis_calls(fake_measure):
+    """재현(리뷰 R2): Apify 실제액이 상한 $0.02 를 다 쓰면 분석은 한 번도 부르지 않는다. 예전엔 $0.023 이 done 이었다."""
+    an = Counting()
+    r = Rpc()
+    rf.process_job(job(), r, provider=_Prov(items=_ok_items(), usage_usd=0.020), analyzer=an)
+    p = r.calls[-1][1]
+    assert an.n == 0
+    assert p["actual_usd"] == pytest.approx(0.020)
+    assert all(v.get("skip") == "budget_exhausted" for v in p["analysis"]["per_video"])
+
+
+def test_overspend_reported_by_provider_is_recorded_not_hidden(fake_measure):
+    an = Counting()
+    r = Rpc()
+    rf.process_job(job(), r, provider=_Prov(items=_ok_items(), usage_usd=0.025), analyzer=an)
+    p = r.calls[-1][1]
+    assert an.n == 0 and p["actual_usd"] == pytest.approx(0.025)
+    assert p["analysis"]["over_cap_usd"] == pytest.approx(0.005)
+
+
+def test_no_new_call_when_confirmed_plus_reserve_would_cross_the_cap(fake_measure):
+    """새 호출은 '확정액 + 분석 1편 예약액 ≤ 승인액'일 때만. 예상보다 비싸게 나온 분석이 쌓이면 다음 분석을 부르지 않는다."""
+    reserve = config.DRINKS_APIFY_ANALYSIS_EST_USD
+    seen = []
+
+    class Spy(Counting):
+        def __call__(self, *a):
+            seen.append(round(0.0088 + self.usd * self.n, 4))   # 이 호출 직전의 확정액
+            return super().__call__(*a)
+    an = Spy(usd=0.0055)
+    r = Rpc()
+    rf.process_job(job(), r, provider=_Prov(items=_ok_items(), usage_usd=0.0088), analyzer=an)
+    p = r.calls[-1][1]
+    assert all(before + reserve <= 0.02 + 1e-9 for before in seen), seen
+    assert an.n == 2 and p["analysis"]["per_video"][2]["skip"] == "budget_exhausted"
+    assert p["actual_usd"] == pytest.approx(0.0088 + 2 * 0.0055)
+
+
+def test_overrun_of_the_last_allowed_call_is_recorded_with_a_warning(fake_measure):
+    """한계(정직하게): 분석 1편 금액에는 공급자 쪽 하드 상한이 없다. 허용된 마지막 호출이 예약액보다 비싸면 그 차이만큼 넘을 수 있고,
+    그 금액은 숨기지 않고 over_cap_usd 로 남는다."""
+    an = Counting(usd=0.004)
+    r = Rpc()
+    rf.process_job(job(), r, provider=_Prov(items=_ok_items(), usage_usd=0.0088), analyzer=an)
+    p = r.calls[-1][1]
+    assert an.n == 3 and p["actual_usd"] == pytest.approx(0.0208)
+    assert p["analysis"]["over_cap_usd"] == pytest.approx(0.0008)
+
+
+@pytest.mark.parametrize("exc", [TimeoutError("응답 늦음"), rf.RefineStop("analysis_unavailable", "503")])
+def test_analysis_failure_counts_the_reserve_and_stops_paid_analysis(fake_measure, exc):
+    an = Counting(exc=exc)
+    r = Rpc()
+    rf.process_job(job(), r, provider=_Prov(items=_ok_items(), usage_usd=0.0088), analyzer=an)
+    p = r.calls[-1][1]
+    assert an.n == 1, "결과를 모르는 분석 뒤에는 유료 분석을 더 부르지 않는다"
+    assert p["actual_usd"] == pytest.approx(0.0088 + config.DRINKS_APIFY_ANALYSIS_EST_USD), "0원으로 줄이지 않는다"
+    assert [v.get("skip") for v in p["analysis"]["per_video"]] == ["analysis_unknown"] * 3
+
+
+def test_missing_analysis_usage_is_recorded_as_the_reserve(fake_measure):
+    an = Counting(usd=None)
+    r = Rpc()
+    rf.process_job(job(), r, provider=_Prov(items=_ok_items(), usage_usd=0.0088), analyzer=an)
+    assert r.calls[-1][1]["actual_usd"] == pytest.approx(0.0088 + 3 * config.DRINKS_APIFY_ANALYSIS_EST_USD)
+
+
+def test_gemini_analyzer_without_usage_returns_unknown(monkeypatch):
+    monkeypatch.setattr(rf, "gemini_video_json", lambda *a, **k: ({"frame": "selfie"}, {}))
+    assert rf.gemini_analyzer("x", 1.0, [])[1] is None
+
+
+# ── 리뷰 R8(2026-11-04): 남의 영상 삭제 실패를 성공으로 적지 않는다 ──
+
+def _old(tmp_path, name):
+    d = tmp_path / f"{rf.TMP_PREFIX}{name}"
+    d.mkdir()
+    (d / "a.mp4").write_bytes(b"x")
+    os.utime(d, (time.time() - 30 * 3600, time.time() - 30 * 3600))
+    return d
+
+
+def test_sweep_reports_a_folder_it_could_not_delete(tmp_path, monkeypatch):
+    stuck = _old(tmp_path, "stuck")
+    monkeypatch.setattr(rf.shutil, "rmtree", lambda p, **k: None)   # 지우기가 아무 일도 못 하게(권한 오류 흉내)
+    res = rf.sweep_tmp(str(tmp_path))
+    assert res == {"deleted": [], "failed": [str(stuck)]} and stuck.exists()
+    assert rf.sweep_old_tmp(str(tmp_path)) == [], "남은 폴더를 지운 것으로 돌려주지 않는다"
+
+
+def test_borrowed_videos_reports_failed_delete(tmp_path, monkeypatch):
+    monkeypatch.setattr(rf.shutil, "rmtree", lambda p, **k: None)
+    with rf.BorrowedVideos(str(tmp_path)) as box:
+        (Path(box.path) / "reel0.mp4").write_bytes(b"v")
+    assert box.deleted is False and Path(box.path).exists()
+
+
+@pytest.mark.parametrize("where", ["analysis", "download"])
+def test_failure_mid_run_still_deletes_and_reports(tmp_path, fake_measure, where):
+    class Breaks(_Prov):
+        def download(self, url, dest, *, max_bytes):
+            if where == "download":
+                Path(dest).write_bytes(b"half")
+                raise rf.RefineStop("download_failed", "중간에 끊김")
+            return super().download(url, dest, max_bytes=max_bytes)
+    an = Counting(exc=RuntimeError("분석 예외")) if where == "analysis" else Counting()
+    r = Rpc()
+    rf.process_job(job(), r, provider=Breaks(items=_ok_items(), usage_usd=0.0088), analyzer=an, tmp_root=str(tmp_path))
+    p = r.calls[-1][1]
+    assert p["analysis"]["deleted"] is True and p["analysis"]["tmp_leftovers"] == 0
+    assert list(tmp_path.glob(f"{rf.TMP_PREFIX}*")) == []
+
+
+def test_leftover_from_a_killed_run_is_cleaned_by_the_next_start_and_the_clean_command(tmp_path, monkeypatch, capsys):
+    _old(tmp_path, "killed")
+    monkeypatch.setattr(rf.tempfile, "gettempdir", lambda: str(tmp_path))
+    fresh = tmp_path / f"{rf.TMP_PREFIX}fresh"
+    fresh.mkdir()
+    assert rf.main(["--clean-tmp"]) == 0, "나이와 상관없이 지운다"
+    assert list(tmp_path.glob(f"{rf.TMP_PREFIX}*")) == []
+    assert "남음 0개" in capsys.readouterr().out
+
+
+def test_workflow_cleans_borrowed_videos_even_when_refine_fails():
+    assert "--clean-tmp" in WF and "if: always()" in WF
+
+
+def test_borrowed_videos_never_live_in_the_repo_or_storage():
+    """임시 폴더는 시스템 임시 디렉터리 아래다. 저장소(Storage.put)·Git 경로로 가는 코드가 없다."""
+    with rf.BorrowedVideos() as box:
+        assert not Path(box.path).resolve().is_relative_to(ROOT)
+    code = _code(SRC)
+    assert "storage.put" not in code and ".put(" not in code

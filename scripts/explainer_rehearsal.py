@@ -139,6 +139,7 @@ class Tripwire:
         self._wire(video, "_veo_i2v", "video._veo_i2v")
         self._wire(video, "send_explainer_request", "video.send_explainer_request")
         self._wire(image, "generate_image", "image.generate_image")
+        self._wire(image, "gemini_image_once", "image.gemini_image_once")
         self._wire(drinks_paid, "buy", "drinks_paid.buy")
         if not self.allow_network:
             self._wire(socket.socket, "connect", "socket.connect")

@@ -20,7 +20,7 @@ def test_offline_job_runs_the_worker_path_without_db_or_model(tmp_path, monkeypa
     rc = cpr.main(["--offline", "--out", str(tmp_path)])
     assert rc == 0
     rep = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
-    assert rep["status"] == "succeeded" and rep["db_writes"] == 0 and rep["saved_to_db"] is False and rep["actual_usd"] == 0.0
+    assert rep["status"] == "succeeded" and rep["db_writes"] == {"plan_saves": 0, "cost_ledger_rows_attempted": 0} and rep["saved_to_db"] is False and rep["actual_usd"] == 0.0
     assert "drinks_develop_save_plan" in rep["rpc_calls"] and not any(re.search(r"approve|submit|select", c) for c in rep["rpc_calls"])
     assert rep["estimate_usd_per_call"] * (1 + config.DRINKS_DEVELOP_MAX_REWRITES) <= config.DRINKS_CARD_PLAN_RUN_CAP_USD, "한 소재는 상한 $0.10 안에서 다시 쓰기까지 된다"
     plan = json.loads((tmp_path / "plan.json").read_text(encoding="utf-8"))

@@ -155,9 +155,12 @@ def test_buy_releases_hold_on_failure_and_settles_billed_video(tmp_path, monkeyp
     it = dpaid.image_item(1, "reality", "A shelf of bottles")
     rpc = FakeRpc()
 
+    # 리뷰 R1(2026-11-04, 의도한 변경): 해제는 "확실히 안 보냄"(ImageNotSent)일 때만이다. 예전엔 아무 예외나 해제했다.
+    from engine.providers.image import ImageNotSent
+
     def boom(*a):
-        raise RuntimeError("429")
-    with pytest.raises(RuntimeError):
+        raise ImageNotSent("429 from gemini image")
+    with pytest.raises(ImageNotSent):
         dpaid.buy(it, rpc=rpc, storage=FakeStorage(), approval_id="ap", out_dir=str(tmp_path), generate=boom)
     assert rpc.calls[-1][0] == "drinks_settle_spend" and rpc.calls[-1][1]["outcome"] == "released"
 
@@ -219,3 +222,116 @@ def test_spend_migration_is_service_role_only_and_ci_worker_stays_keyless():
     actions = (ROOT / "web" / "lib" / "drinks" / "actions.ts").read_text(encoding="utf-8")
     for fn in ["drinks_hold_spend", "drinks_settle_spend", "drinks_register_generated"]:
         assert fn not in actions, fn
+
+
+# ─────────────────────────────────────────────────────────────
+# 리뷰 R1(2026-11-04): 시작 그림의 숨은 재시도·잘못된 해제
+# ─────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("exc", [RuntimeError("죽음"), TimeoutError("t")])
+def test_image_failure_of_unknown_kind_keeps_the_hold(tmp_path, monkeypatch, exc):
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(gemini_api_key="TEST-not-real"))
+    it = dpaid.image_item(1, "reality", "A shelf of bottles")
+    rpc = FakeRpc()
+
+    def boom(*a):
+        raise exc
+    with pytest.raises(dpaid.PaidError) as e:
+        dpaid.buy(it, rpc=rpc, storage=FakeStorage(), approval_id="ap", out_dir=str(tmp_path), generate=boom)
+    assert e.value.code == "unknown_billed"
+    assert "drinks_settle_spend" not in rpc.names(), "보냈을 수 있는 그림의 가잡기는 풀지 않는다"
+
+
+def _fake_gemini(monkeypatch, handler):
+    """httpx.Client 를 가짜 전송으로 바꾼다 — 소켓을 열지 않는다. 보낸 POST 수를 센다."""
+    import httpx
+
+    from engine.providers import image as img
+
+    sent = []
+
+    def counted(request):
+        sent.append(request)
+        return handler(request)
+    real = httpx.Client
+    monkeypatch.setattr(img.httpx, "Client", lambda **k: real(transport=httpx.MockTransport(counted), **k))
+    monkeypatch.setattr(img._image_limiter, "wait", lambda: None)
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(gemini_api_key="TEST-not-real"))
+    return sent
+
+
+def _read_timeout(request):
+    import httpx
+
+    raise httpx.ReadTimeout("공급자가 접수한 뒤 응답이 늦음", request=request)
+
+
+@pytest.mark.parametrize("handler,why", [
+    (_read_timeout, "접수 후 타임아웃"),
+    (lambda r: __import__("httpx").Response(503, request=r), "5xx"),
+    (lambda r: __import__("httpx").Response(200, content=b"{not json", request=r), "응답 해석 실패"),
+    (lambda r: __import__("httpx").Response(200, json={"candidates": [{"content": {"parts": [{"text": "no image"}]}}]}, request=r), "그림 없음"),
+])
+def test_paid_image_posts_once_and_keeps_the_hold_when_outcome_is_unknown(tmp_path, monkeypatch, handler, why):
+    sent = _fake_gemini(monkeypatch, handler)
+    it = dpaid.image_item(1, "reality", "A shelf of bottles")
+    rpc = FakeRpc()
+    with pytest.raises(dpaid.PaidError) as e:
+        dpaid.buy(it, rpc=rpc, storage=FakeStorage(), approval_id="ap", out_dir=str(tmp_path))
+    assert len(sent) == 1, f"{why}: 유료 POST 는 한 번만 — 자동 재전송 0회"
+    assert e.value.code == "unknown_billed" and "drinks_settle_spend" not in rpc.names(), why
+
+
+@pytest.mark.parametrize("status", [429, 400, 403])
+def test_paid_image_rejected_before_generation_releases_the_hold(tmp_path, monkeypatch, status):
+    import httpx
+
+    sent = _fake_gemini(monkeypatch, lambda r: httpx.Response(status, request=r))
+    it = dpaid.image_item(1, "reality", "A shelf of bottles")
+    rpc = FakeRpc()
+    from engine.providers.image import ImageNotSent
+
+    with pytest.raises(ImageNotSent):
+        dpaid.buy(it, rpc=rpc, storage=FakeStorage(), approval_id="ap", out_dir=str(tmp_path))
+    assert len(sent) == 1
+    assert rpc.calls[-1][0] == "drinks_settle_spend" and rpc.calls[-1][1]["outcome"] == "released"
+
+
+def test_paid_image_connect_failure_is_not_sent(tmp_path, monkeypatch):
+    import httpx
+
+    def refuse(request):
+        raise httpx.ConnectError("연결 거부", request=request)
+    _fake_gemini(monkeypatch, refuse)
+    from engine.providers.image import ImageNotSent
+
+    rpc = FakeRpc()
+    with pytest.raises(ImageNotSent):
+        dpaid.buy(dpaid.image_item(1, "reality", "A shelf of bottles"), rpc=rpc, storage=FakeStorage(), approval_id="ap", out_dir=str(tmp_path))
+    assert rpc.calls[-1][1]["outcome"] == "released"
+
+
+def test_paid_image_success_still_settles_and_registers(tmp_path, monkeypatch):
+    import base64
+    import io
+
+    import httpx
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (1080, 1920), (1, 2, 3)).save(buf, "PNG")
+    body = {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "image/png", "data": base64.b64encode(buf.getvalue()).decode()}}]}}]}
+    sent = _fake_gemini(monkeypatch, lambda r: httpx.Response(200, json=body, request=r))
+    rpc = FakeRpc()
+    b = dpaid.buy(dpaid.image_item(1, "reality", "A shelf of bottles"), rpc=rpc, storage=FakeStorage(), approval_id="ap", out_dir=str(tmp_path))
+    assert len(sent) == 1 and not b.reused and b.cost_usd > 0
+    assert [c[1].get("outcome") for c in rpc.calls if c[0] == "drinks_settle_spend"] == ["settled"]
+    assert "drinks_register_generated" in rpc.names()
+
+
+def test_paper_factory_image_path_keeps_its_retry():
+    """논문 공장 경로(_gemini_image)는 결재 원장이 없다 — 이번 수정 범위 밖이라 재시도를 그대로 둔다."""
+    from engine.providers import image as img
+
+    assert hasattr(img._gemini_image, "retry")
+    assert not hasattr(img.gemini_image_once, "retry")

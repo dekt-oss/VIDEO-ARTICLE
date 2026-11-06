@@ -271,6 +271,51 @@ def _gemini_image(cut: dict[str, Any], header: dict[str, Any], out_path: str,
         f.write(base64.b64decode(b64))
 
 
+class ImageNotSent(RuntimeError):
+    """공급자가 생성을 시작하지 않은 것이 확실한 실패(연결 전 실패·키 없음·429·4xx). 청구 없음 — 가잡기를 풀어도 된다."""
+
+
+class ImageOutcomeUnknown(RuntimeError):
+    """요청이 공급자에 닿은 뒤의 실패(읽기 타임아웃·끊김·5xx·응답 해석 실패·저장 실패). 생성·청구됐을 수 있다 —
+    다시 사지 않고 가잡기를 유지한다(리뷰 R1, 2026-11-04)."""
+
+
+def gemini_image_once(cut: dict[str, Any], header: dict[str, Any], out_path: str,
+                      model: str = "", ref_path: str | None = None) -> None:
+    """유료 그림 한 장 — **POST 를 정확히 한 번** 보낸다(자동 재시도 없음). 결재 원장을 쓰는 경로(engine/drinks_paid.py)용.
+
+    ★ 왜 따로 있나(리뷰 R1): `_gemini_image` 는 tenacity 로 타임아웃·5xx 를 최대 HTTP_MAX_RETRIES 번 다시 보낸다.
+      공급자가 이미 접수한 뒤 읽기 타임아웃이 나면 같은 그림을 여러 번 사고, 원장은 실패로 보고 가잡기를 풀었다
+      (가짜 HTTP 로 POST 4회 재현). 논문 공장 경로는 결재 원장이 없어 그대로 둔다.
+    실패는 둘로만 가른다: 확실히 안 보냄(ImageNotSent) / 보냈을 수 있음(ImageOutcomeUnknown)."""
+    if not config.SECRETS.gemini_api_key:
+        raise ImageNotSent("GEMINI_API_KEY 가 없습니다")
+    model = model or config.image_model_for(cut.get("visual_role"))
+    url = f"{config.GEMINI_BASE}/{model}:generateContent"
+    body = _image_request_body(cut, header, ref_path=ref_path)
+    _image_limiter.wait()
+    try:
+        with httpx.Client(timeout=config.HTTP_TIMEOUT_SEC) as client:
+            resp = client.post(url, headers=gemini_auth(), json=body)
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.UnsupportedProtocol) as exc:
+        raise ImageNotSent(f"연결 전 실패: {type(exc).__name__}") from exc
+    except httpx.HTTPError as exc:   # 읽기 타임아웃·쓰기 타임아웃·끊김 — 보냈을 수 있다
+        raise ImageOutcomeUnknown(f"보낸 뒤 실패: {type(exc).__name__}") from exc
+    if resp.status_code >= 500:
+        raise ImageOutcomeUnknown(f"{resp.status_code} from gemini image")
+    if resp.status_code >= 400:   # 429·400·401·403·404 — 생성 전 거절
+        raise ImageNotSent(f"{resp.status_code} from gemini image")
+    try:
+        b64 = _extract_inline_image_b64(resp.json())
+        if not b64:
+            raise ValueError("inlineData 없음")
+        raw = base64.b64decode(b64, validate=True)
+        with open(out_path, "wb") as f:
+            f.write(raw)
+    except Exception as exc:  # noqa: BLE001 — 200 을 받은 뒤의 실패는 전부 "청구됐을 수 있음"이다
+        raise ImageOutcomeUnknown(f"응답 해석·저장 실패: {type(exc).__name__}") from exc
+
+
 # 컷 번호로 배경색을 정해 컷 구분이 눈에 보이게(플레이스홀더 식별용).
 _PALETTE = [
     (34, 40, 49), (57, 62, 70), (0, 173, 181), (78, 52, 46),

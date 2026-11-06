@@ -193,6 +193,10 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
         else:
             from .drinks_cards import render_carousel   # 카드뉴스 렌더(정적 이미지)
 
+            # 리뷰 R7: 승인 뒤 사람이 고친 글까지 — 렌더에 넘길 **바로 그 글**을 검사한다. 막히면 파일을 하나도 만들지 않는다(캐러셀·카드 릴스 공통).
+            card_rep = script_check.check_card_texts(job.get("plan") or {}, job.get("claims") or [], sources=job.get("sources"))
+            if card_rep.blocks:
+                raise RenderError("card_text_unsupported", "; ".join(f.message for f in card_rep.blocks)[:1500])
             rendered = render_carousel(job, os.path.join(work, "pages"))
         rpc("drinks_heartbeat_render", lease)
         assets = []

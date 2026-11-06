@@ -13,7 +13,7 @@ const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../supabase/migrat
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);
-for (const m of readdirSync(DIR).filter((f) => /^00(5\d|6\d)_drinks_.*\.sql$/.test(f)).sort()) await db.exec(readFileSync(join(DIR, m), "utf8"));
+for (const m of readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort()) await db.exec(readFileSync(join(DIR, m), "utf8"));
 process.stdout.write(JSON.stringify({ ready: true }) + "\n");
 
 // 줄은 순서대로 하나씩 처리한다(워커는 동기 호출이다).
