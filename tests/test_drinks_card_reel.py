@@ -160,7 +160,8 @@ def job(**kw):
 def deps(**kw):
     def boom(*a, **k):
         raise AssertionError("이 경로에서 부르면 안 된다")
-    return dd.Deps(**{"extract_claims": boom, "write_plan": boom, "write_card_plan": boom, "jev_check": lambda n, s: None, **kw})
+    return dd.Deps(**{"extract_claims": boom, "write_plan": boom, "write_card_plan": boom, "jev_check": lambda n, s: None,
+                      "factcheck": lambda *a: {"assertions": [], "claim_checks": []}, **kw})
 
 
 def test_worker_writes_card_plan_saves_and_never_approves():
