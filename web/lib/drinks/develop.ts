@@ -114,7 +114,7 @@ export function developButtons(i: DevelopInput): Record<DevelopKind, ButtonState
   const closedTopic = CLOSED_TOPIC.has(i.topicStatus);
   const common = (k: DevelopKind): string | null => {
     if (closedTopic) return "보류·제외·중복 처리된 소재입니다 — 다시 연 뒤에 만드세요";
-    if (!i.hasBudget) return "열린 개발 결재가 없습니다 — 위에서 결재를 먼저 등록하세요";
+    if (!i.hasBudget) return "이번 주 AI 초안 한도가 남아 있지 않습니다 — 소재 고르기 맨 위 한도 칸에서 [한도 +$1]로 올리세요";
     if (activeOf(k)) return `${DEVELOP_KIND_LABEL[k]}을(를) 이미 만드는 중입니다`;
     return null;
   };

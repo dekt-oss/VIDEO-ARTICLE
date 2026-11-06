@@ -1,11 +1,13 @@
 "use client";
 
 // 내용 승인 탭 — 근거표(원문 인용)·주장별 확인·핵심 메시지·대본·장면 지시·금액을 한 화면에서 보고 [승인] 한 번으로 근거와 제작안을 함께 승인한다.
-// ★ 주장별 뒷받침 확인(support_review)은 사람이 이 화면에서 한다. 자동으로 채우지 않는다.
+// ★ 주장별 뒷받침 확인(support_review): AI 사실 확인을 통과한 주장은 워커가 '확인됨'으로 미리 채운다(2026-11-06 운영자 승인,
+//   docs/deviation-drinks-auto-factcheck.md). 나머지는 사람이 이 화면에서 고른다. 최종 관문은 그대로 [승인] 한 번이다.
 // ★ 근거 문장을 고치거나 주장을 빼면 그 근거로 쓴 대본은 서버가 무효로 만든다 — [이 근거로 대본 다시 만들기] 뒤에야 승인할 수 있다.
 // ★ 버튼 잠금은 편의다. 막는 것은 DB(drinks_approve_content + 기존 승인 함수들)다.
 // ★ 승인 금액은 기록만 한다. 결재를 열지 않고 돈이 나가지 않는다 — 제작 화면의 결재는 지시서의 실측 금액을 보고 따로 연다(docs/deviation-drinks-explainer-queue.md).
 // ★ 카드뉴스(0065)도 같은 화면이다. 금액을 받지 않는다 — 렌더가 로컬 0원이다.
+import Link from "next/link";
 import { useState } from "react";
 
 import {
@@ -14,6 +16,7 @@ import {
 } from "@/lib/drinks/contentApproval";
 import type { DevelopBudgetRow, DevelopRequestRow } from "@/lib/drinks/develop";
 import { requestNote } from "@/lib/drinks/develop";
+import { isAutoSupported } from "@/lib/drinks/factcheck";
 import { FORMAT_INTENT_LABEL, type FormatIntent } from "@/lib/drinks/formatRecommend";
 import {
   FORMAT_FIT_MIN, QUOTE_LABEL, SELECT_THRESHOLD, SUPPORT_LABEL, VISUAL_ROLE_LABEL, blockerLabel, fitOk, nextMonday, weightedScore, type Scores,
@@ -153,7 +156,7 @@ export default function ContentApprovalTab({
           {pick && <> · 편성 주차 <b>{pick.editorial_week}</b> (승인할 때 편성됩니다)</>}
           {pick?.recommended_format && pick.recommended_format !== pick.format_intent && <> · 추천은 {pick.recommended_format === "unknown" ? "없었음" : FORMAT_INTENT_LABEL[pick.recommended_format as FormatIntent]}</>}
         </p>
-        {!budget && <p className="banner-warn">열린 개발 결재가 없습니다 — 아래 개발 카드에서 결재를 연 뒤에 이어 만들 수 있습니다. 결재 없이는 모델을 부르지 않습니다.</p>}
+        {!budget && <p className="banner-warn">이번 주 AI 초안 한도가 남아 있지 않습니다 — <Link href="/drinks/topics">소재 고르기</Link> 맨 위 &lsquo;이번 주 AI 초안 한도&rsquo;에서 남은 금액을 보고 [한도 +$1]로 올린 뒤 이어 만들 수 있습니다. 한도 없이는 AI 를 부르지 않습니다.</p>}
         <div className="actions">
           {!pick && (
             <>
@@ -180,7 +183,8 @@ export default function ContentApprovalTab({
         <section className="section">
           <h3>근거표 — 버전 {review.revision_no}</h3>
           <p className="muted">
-            주장마다 <b>원문 인용이 그 주장을 정말 뒷받침하는지</b> 직접 읽고 고르세요. 이 칸은 사람만 채웁니다. 코드는 인용이 원문에 글자 그대로 있는지만 봅니다.
+            AI 사실 확인을 통과한 주장은 <b>&lsquo;확인됨&rsquo;이 미리 채워져 있습니다</b>(<span className="pill dk-ok">AI 확인</span> 표시). 표시가 없는 주장만
+            원문 인용이 그 주장을 정말 뒷받침하는지 읽고 고르세요. AI 가 채운 값도 틀렸다고 보이면 바꾸면 됩니다 — 최종 확인은 아래 [승인]입니다.
             뒷받침 확인과 핵심 메시지는 고쳐도 대본이 그대로지만, 주장 문장을 고치거나 핵심에서 빼면 대본이 무효가 됩니다.
           </p>
           {claims.length === 0 && <p className="muted">주장이 없습니다.</p>}
@@ -191,7 +195,7 @@ export default function ContentApprovalTab({
                 <label className="dk-checks"><input type="checkbox" disabled={!editable} checked={selected.includes(c.claim_id)}
                   onChange={(e) => setSelected(e.target.checked ? [...selected, c.claim_id] : selected.filter((x) => x !== c.claim_id))} /> 핵심 주장</label>
                 {c.claim_type === "opinion" ? <span className="muted">주관 평가 — 지지 확인 해당 없음</span> : (
-                  <label className="dk-checks">뒷받침 확인
+                  <label className="dk-checks">뒷받침 확인{isAutoSupported(c) && <span className="pill dk-ok">AI 확인</span>}
                     <select value={c.support_review} disabled={!editable} onChange={(e) => {
                       const next = [...claims]; next[idx] = { ...c, support_review: e.target.value as Claim["support_review"] }; setClaims(next);
                     }}>

@@ -16,7 +16,9 @@
     상한(결재 금액·요청 1건 $0.5·호출 20번)은 DB 가 센다 — 이 코드는 예상 금액을 정직하게 말할 뿐이다.
   · 모델 호출은 전부 주입 함수(Deps)다. 테스트는 가짜를 넣는다(실제 모델·네트워크 호출 0).
   · 원문에 없는 인용은 버린다. 인용 대조는 DB 의 quote_check(drinks_norm_text)와 같은 기준으로 하되, 더 보수적이다(아래 verify_quote).
-  · 주장 문장(text)이 인용을 벗어났는지는 코드가 숫자만 본다 — 뜻의 비약은 Jev(켜졌을 때)와 운영자 검토가 본다. support_review 는 not_reviewed 로 둔다.
+  · 주장 문장(text)이 인용을 벗어났는지는 코드가 숫자만 본다 — 뜻의 비약은 AI 사실 확인·Jev(켜졌을 때)와 운영자 검토가 본다.
+  · support_review: AI 사실 확인(run_factcheck)을 코드 규칙까지 통과한 주장만 'supported'(한계 칸에 '자동' 표시), 나머지는 not_reviewed.
+    2026-11-06 운영자 승인 — 0064 머리말 18행 정책의 반대. 근거·되돌리기: docs/deviation-drinks-auto-factcheck.md
 """
 
 from __future__ import annotations
@@ -394,7 +396,13 @@ class Deps:
     write_plan: Callable[..., dict[str, Any]] = llm_write_plan
     write_card_plan: Callable[..., dict[str, Any]] = _llm_write_card_plan   # 카드뉴스(0065, engine/drinks_card_plan.py)
     jev_check: Callable[[str, str], Optional[float]] = jev_unsupported_p
+    # (topic, context, claims) → 모델 JSON. None 이면 llm_factcheck(실제 모델) — 테스트는 가짜를 넣는다
+    factcheck: Optional[Callable[..., Any]] = None
     fetcher_factory: Optional[Callable[[list[str]], Any]] = None   # hosts → SafeFetcher 같은 것(get 메서드)
+
+    def __post_init__(self) -> None:
+        if self.factcheck is None:
+            self.factcheck = llm_factcheck
 
     def fetcher(self, hosts: list[str]) -> Any:
         if self.fetcher_factory:
@@ -459,6 +467,31 @@ def _decode(res: Any) -> str:
     return body.decode(getattr(res, "charset", None) or "utf-8", "replace")
 
 
+# 워커가 직접 가져온 출처의 연결 메모. 화면(web/lib/drinks/model.ts::depthLabel)이 이 글로 '직접 입력'이 아님을 알아본다 — 바꾸면 둘 다 바꾼다.
+AUTO_SOURCE_NOTE = "자동 개발: 공식 출처 목록에서 가져온 원문"
+_SECOND_LEVEL = {"co", "or", "go", "ac", "ne", "re", "gov", "org", "com", "net", "edu", "nhs", "mil", "lg", "ed", "gr", "ad"}
+
+
+def registrable_domain(url: Optional[str]) -> Optional[str]:
+    """주소 → 등록 도메인(대강). www.nta.go.jp → nta.go.jp, www.legislation.gov.uk → legislation.gov.uk, encykorea.aks.ac.kr → aks.ac.kr."""
+    from urllib.parse import urlsplit
+
+    host = (urlsplit(url or "").hostname or "").lower().strip(".")
+    if not host:
+        return None
+    parts = host.split(".")
+    if len(parts) >= 3 and len(parts[-1]) == 2 and parts[-2] in _SECOND_LEVEL:
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:]) if len(parts) >= 2 else host
+
+
+def origin_group_of(publisher: Optional[str], url: Optional[str]) -> Optional[str]:
+    """원출처 묶음을 자동으로(2026-11-06, 운영자 승인 — docs/deviation-drinks-auto-factcheck.md §C). 발행처가 있으면 발행처, 없으면 등록 도메인.
+    ★ 0050 의 '운영자가 정한 묶음만 센다'(정책 ②)를 뒤집는 것이다. 비교 주장의 '독립 출처 2곳' 경고가 이 값으로 계산된다. 운영자는 고급 칸에서 바꿀 수 있다."""
+    p = re.sub(r"\s+", " ", str(publisher or "")).strip()
+    return p[:120] if p else registrable_domain(url)
+
+
 def find_europepmc(topic: dict[str, Any], fetcher: Any) -> tuple[list[Source], list[str]]:
     """오픈액세스(CC 라이선스) 논문. 기본 꺼짐(config.DRINKS_DEVELOP_EUROPEPMC_ENABLED). 영어 낱말이 없으면 건너뛴다."""
     from .drinks_fetch import FEED_TYPES, JSON_TYPES, FetchError
@@ -497,7 +530,8 @@ def find_europepmc(topic: dict[str, Any], fetcher: Any) -> tuple[list[Source], l
                           usage_terms=f"{lic.upper()} — 저자·출처 표기", new_source={
                               "canonical_url": url, "title": title, "publisher": publisher, "source_kind": "expert", "depth": "full_text",
                               "body_text": text[: config.DRINKS_MAX_BODY_CHARS], "rights_status": rights,
-                              "usage_terms": f"{lic.upper()} — 저자·출처 표기 (Europe PMC {pmcid})", "original_language": "en"}))
+                              "usage_terms": f"{lic.upper()} — 저자·출처 표기 (Europe PMC {pmcid})", "original_language": "en",
+                              "origin_group": origin_group_of(publisher, url), "relation_note": AUTO_SOURCE_NOTE}))
     return out, notes
 
 
@@ -519,6 +553,9 @@ def find_official(topic: dict[str, Any], deps: Deps) -> tuple[list[Source], list
             continue
         if any(a in t for a in ent.get("not_for") or [] for t in terms):
             continue
+        need = ent.get("requires_any") or []
+        if need and not any(k in t for k in need for t in terms):
+            continue   # 보관·기한 전용 쪽 — 그런 질문이 아니면 읽지 않는다(모델 호출 낭비 방지)
         url = str(ent.get("url") or "")
         host = (urlsplit(url).hostname or "").lower()
         fetcher = deps.fetcher([host])
@@ -540,23 +577,38 @@ def find_official(topic: dict[str, Any], deps: Deps) -> tuple[list[Source], list
                               "canonical_url": url, "title": page.title or ent.get("name"), "publisher": ent.get("publisher"),
                               "source_kind": ent.get("source_kind") or "official", "depth": "full_text",
                               "body_text": text[: config.DRINKS_MAX_BODY_CHARS], "rights_status": ent.get("rights_status") or "unknown",
-                              "usage_terms": ent.get("usage_terms"), "original_language": ent.get("language")}))
+                              "usage_terms": ent.get("usage_terms"), "original_language": ent.get("language"),
+                              "origin_group": origin_group_of(ent.get("publisher"), url), "relation_note": AUTO_SOURCE_NOTE}))
     return out, notes
 
 
-def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: Deps) -> tuple[list[Source], list[dict[str, Any]]]:
-    """출처 후보를 모은다. 반환: (쓸 수 있는 출처 — 순서 = 우선순위, 쓰지 못한 출처와 이유 목록)."""
+def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: Deps,
+                   context_out: Optional[list[dict[str, Any]]] = None) -> tuple[list[Source], list[dict[str, Any]]]:
+    """출처 후보를 모은다. 반환: (쓸 수 있는 출처 — 순서 = 우선순위, 쓰지 못한 출처와 이유 목록).
+    context_out 을 주면 '질문이 나온 곳'(질문·인기 신호 출처·커뮤니티 글)의 제목·앞부분을 담는다 — 사실 근거가 아니라 AI 사실 확인이
+    '사람들이 무엇을 믿고 있나'를 읽는 데만 쓴다."""
     topic = job["topic"]
     skipped: list[dict[str, Any]] = []
     usable: list[Source] = []
     rows = rpc("drinks_develop_sources", {**lease, "terms": topic_terms(topic)}) or []
+
+    def keep_context(r: dict[str, Any], label: Any) -> None:
+        if context_out is None or len(context_out) >= config.DRINKS_DEVELOP_FACTCHECK_CONTEXT_MAX:
+            return
+        body = clean_source_text(str(r.get("body_text") or ""))[: config.DRINKS_DEVELOP_FACTCHECK_CONTEXT_CHARS]
+        if label or body:
+            context_out.append({"title": str(label or ""), "text": body})
+
     for r in rows:
         kind = r.get("source_kind") or "other"
         label = r.get("title") or r.get("canonical_url") or r.get("snapshot_id")
         if r.get("linked") and r.get("role") == "discovery":
+            keep_context(r, label)
             skipped.append({"title": label, "why": "질문·인기 신호로 붙은 출처라 사실 근거로 쓰지 않음(근거 역할로 바꾸면 쓴다)"})
             continue
         if kind in config.DRINKS_DEVELOP_SOURCE_KINDS_NEVER:
+            if r.get("linked"):
+                keep_context(r, label)
             skipped.append({"title": label, "why": f"출처 종류가 {kind} 라 사실 근거로 쓰지 않음"})
             continue
         if not r.get("linked") and kind not in config.DRINKS_DEVELOP_SOURCE_KINDS_AUTO:
@@ -603,7 +655,8 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
     topic = job["topic"]
     question = topic["question"]
     beat("sources")
-    sources, skipped = gather_sources(job, rpc, lease, deps)
+    context: list[dict[str, Any]] = []
+    sources, skipped = gather_sources(job, rpc, lease, deps, context)
     kept_all: list[dict[str, Any]] = []   # {text, original_quote, claim_type, src: Source}
     report: list[dict[str, Any]] = []
     for src in sources:
@@ -651,6 +704,10 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
             c["attribution"] = s.publisher or s.title
         claims.append(c)
     flags = _claim_flags(claims, deps)
+    sources_of = {c["claim_id"]: {"title": k["src"].title, "url": k["src"].url, "publisher": k["src"].publisher} for c, k in zip(claims, kept_all)}
+    beat("factcheck")
+    factcheck = run_factcheck(topic, context, claims, sources_of, ledger, deps, flags)
+    apply_factcheck(claims, factcheck)
     cids = [c["claim_id"] for c in claims]
     fmt = chain_format(job)
     brief = {"audience_question": question, "selected_claim_ids": cids, "proposed_formats": [fmt],
@@ -658,11 +715,190 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
     beat("save")
     saved = rpc("drinks_develop_save_evidence", {**lease, "evidence_pack": {"claims": claims}, "brief": brief})
     qc = saved.get("quote_check") or {}
+    unchecked = [c["claim_id"] for c in claims if c["claim_type"] != "opinion" and c["support_review"] != "supported"]
     return {"review_id": saved.get("review_id"), "claims_kept": len(claims), "sources": report, "skipped": skipped,
-            "quote_check": qc, "jev_claim_flags": flags,
+            "quote_check": qc, "jev_claim_flags": flags, "factcheck": factcheck,
             "dropped_total": sum(sum(r["dropped_by"].values()) for r in report),
-            "needs_operator": ["핵심 메시지(core_takeaway) 한 줄", "주장별 지지 검토(support_review)", "출처 사용 조건 확인"]
+            "needs_operator": ["핵심 메시지(core_takeaway) 한 줄"]
+            + ([f"AI 가 확인하지 못한 주장 {len(unchecked)}개({', '.join(unchecked)}) — 직접 읽고 '뒷받침 확인'을 고르세요"] if unchecked else [])
+            + ["출처 사용 조건 확인"]
             + (["DB 인용 대조가 일치하지 않은 인용이 있음 — 화면에서 확인"] if qc.get("unmatched") else [])}
+
+
+# ─────────────────────────────────────────────────────────────
+# AI 사실 확인(2026-11-06) — docs/deviation-drinks-auto-factcheck.md
+#   모델은 판정을 낸다. 코드는 그 판정을 믿지 않고 다시 잰다(없는 근거 번호·근거 없는 판정·인용에 없는 숫자 → 불확실).
+#   통과한 판정이 댄 주장만 support_review='supported'. 실패(모양 오류·예산·네트워크)는 작업을 멈추지 않고 전부 '불확실'로 남긴다.
+#   ★ 이 단계도 승인·제출 함수를 부르지 않는다. 최종 관문은 사람의 [승인] 한 번이다.
+# ─────────────────────────────────────────────────────────────
+
+VERDICTS = ("TRUE", "FALSE", "UNCERTAIN")
+_CLAIM_ID_TOKEN = re.compile(r"(?<![A-Za-z0-9])c\d+(?![A-Za-z0-9])", re.I)
+
+FACTCHECK_SYSTEM = (
+    "너는 술(위스키·사케·전통주) 숏폼의 팩트체커다. 입력: ① 소재 질문(사람들이 궁금해하거나 믿는 것) ② 그 질문이 나온 곳의 글 일부(있으면) "
+    "③ 원문 인용이 확인된 근거 주장 목록(claim_id·주장 문장·원문 인용).\n"
+    "할 일:\n"
+    "1. 소재 질문과 나온 곳의 글이 담고 있는 **확인할 주장**(사람들의 믿음·전제)을 한국어 한 문장씩 적는다(최대 {n}개).\n"
+    "2. 주장마다 근거 주장들의 **원문 인용만** 보고 판정한다: TRUE(인용이 맞다고 말함) · FALSE(인용이 틀렸다고·다르다고 말함) · "
+    "UNCERTAIN(인용만으로는 판단 불가). 일반 상식·추측으로 판정하지 않는다 — 인용에 없으면 UNCERTAIN 이다.\n"
+    "3. TRUE·FALSE 에는 판정의 근거가 된 claim_ids 를 단다(목록에 있는 번호만). reason_ko 는 한두 문장 쉬운 말로, 숫자는 인용에 있는 숫자만 쓴다.\n"
+    "4. claim_checks: 근거 주장마다 '주장 문장이 원문 인용이 말하는 범위 안인가'(faithful true/false)와 짧은 이유. "
+    "인용보다 더 나가면(일반화·숫자·권고 추가) false.\n"
+    "답은 JSON 만: {{\"assertions\": [{{\"assertion_ko\": \"…\", \"verdict\": \"TRUE\", \"claim_ids\": [\"c1\"], \"reason_ko\": \"…\"}}], "
+    "\"claim_checks\": [{{\"claim_id\": \"c1\", \"faithful\": true, \"reason_ko\": \"…\"}}]}}"
+)
+
+
+def factcheck_system() -> str:
+    return FACTCHECK_SYSTEM.format(n=config.DRINKS_DEVELOP_FACTCHECK_MAX_ASSERTIONS)
+
+
+def factcheck_user_prompt(topic: dict[str, Any], context: list[dict[str, Any]], claims: list[dict[str, Any]]) -> str:
+    rows = [{"claim_id": c["claim_id"], "text": c["text"], "claim_type": c["claim_type"],
+             "quotes": [r["original_quote"] for r in c.get("source_refs") or []]} for c in claims]
+    parts = [f"소재 제목: {topic.get('title') or ''}", f"소재 질문: {topic.get('question') or ''}"]
+    if context:
+        parts.append("질문이 나온 곳(사실 근거 아님 — 무엇을 믿는지 읽는 데만 쓴다):\n" + "\n".join(f"- {x['title']}: {x['text']}" for x in context))
+    parts.append("근거 주장(원문 인용 확인됨):\n" + json.dumps(rows, ensure_ascii=False))
+    return "\n\n".join(parts)
+
+
+def llm_factcheck(topic: dict[str, Any], context: list[dict[str, Any]], claims: list[dict[str, Any]]) -> dict[str, Any]:
+    from . import llm
+
+    llm.set_text_purpose("drinks_develop_factcheck")
+    return llm.call_json(model=config.DRINKS_DEVELOP_FACTCHECK_MODEL, system=factcheck_system(),
+                         user=factcheck_user_prompt(topic, context, claims), max_tokens=config.DRINKS_DEVELOP_FACTCHECK_MAX_TOKENS)
+
+
+def _norm_nums(s: str) -> set[str]:
+    """숫자 집합(전각 숫자 정리). claim_id(c3) 의 숫자는 숫자로 치지 않는다."""
+    return script_check._nums(_CLAIM_ID_TOKEN.sub(" ", unicodedata.normalize("NFKC", s or "")))
+
+
+def judge_verdicts(out: Any, claims: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """모델 응답 → 코드가 다시 잰 판정. 응답 모양이 틀리면 None(다시 묻거나 전부 불확실).
+
+    규칙(모델을 믿지 않는다):
+      · 판정 값이 TRUE·FALSE·UNCERTAIN 이 아니면 UNCERTAIN.
+      · 댄 claim_id 중 하나라도 근거 목록에 없으면(지어낸 번호) UNCERTAIN.
+      · TRUE·FALSE 인데 claim_ids 가 없으면 UNCERTAIN.
+      · 이유(reason_ko)의 숫자가 댄 근거의 원문 인용에 없으면 UNCERTAIN.
+    model_verdict 에 모델이 낸 값을, code_note 에 코드가 바꾼 이유를 남긴다."""
+    if not isinstance(out, dict) or not isinstance(out.get("assertions"), list):
+        return None
+    by_id = {c["claim_id"]: c for c in claims}
+    assertions: list[dict[str, Any]] = []
+    for a in out["assertions"][: config.DRINKS_DEVELOP_FACTCHECK_MAX_ASSERTIONS]:
+        if not isinstance(a, dict):
+            continue
+        text = str(a.get("assertion_ko") or "").strip()[:300]
+        if not text:
+            continue
+        model_v = str(a.get("verdict") or "").strip().upper()
+        raw_ids = a.get("claim_ids") if isinstance(a.get("claim_ids"), list) else []
+        ids = list(dict.fromkeys(str(x).strip() for x in raw_ids if str(x).strip()))
+        reason = str(a.get("reason_ko") or "").strip()[:500]
+        v, note = model_v, None
+        unknown = [x for x in ids if x not in by_id]
+        if model_v not in VERDICTS:
+            v, note = "UNCERTAIN", f"판정 값을 알 수 없음({model_v or '없음'})"
+        elif unknown:
+            v, note = "UNCERTAIN", f"근거 목록에 없는 번호를 댔음({', '.join(unknown)})"
+        elif v in ("TRUE", "FALSE") and not ids:
+            v, note = "UNCERTAIN", "근거 번호 없이 판정함"
+        elif v in ("TRUE", "FALSE"):
+            quotes = " ".join(r["original_quote"] for x in ids for r in by_id[x].get("source_refs") or [])
+            extra = _norm_nums(reason) - _norm_nums(quotes)
+            if extra:
+                v, note = "UNCERTAIN", f"이유에 인용에 없는 숫자({', '.join(sorted(extra))})"
+        assertions.append({"assertion_ko": text, "verdict": v, "model_verdict": model_v or None,
+                           "claim_ids": [x for x in ids if x in by_id], "reason_ko": reason, "code_note": note})
+    checks: dict[str, dict[str, Any]] = {}
+    for ck in out.get("claim_checks") or []:
+        if isinstance(ck, dict) and str(ck.get("claim_id") or "") in by_id:
+            checks[str(ck["claim_id"])] = {"faithful": ck.get("faithful") is True, "reason_ko": str(ck.get("reason_ko") or "").strip()[:300]}
+    return {"assertions": assertions, "claim_checks": checks}
+
+
+def _not_supported_why(cid: str, status: str, cited: set[str], ck: Optional[dict[str, Any]], flagged: set[str]) -> Optional[str]:
+    if status != "ok":
+        return "AI 사실 확인을 하지 못함"
+    if cid not in cited:
+        return "맞음·틀림 판정의 근거로 쓰이지 않음"
+    if not ck:
+        return "주장 문장 대조 결과가 없음"
+    if not ck["faithful"]:
+        return "주장 문장이 인용보다 더 나간다고 봄" + (f" — {ck['reason_ko']}" if ck["reason_ko"] else "")
+    if cid in flagged:
+        return "Jev 근거 판정이 걸었음"
+    return None
+
+
+def _factcheck_result(status: str, claims: list[dict[str, Any]], judged: Optional[dict[str, Any]], sources_of: dict[str, Any],
+                      flags: list[dict[str, Any]], note: Optional[str] = None) -> dict[str, Any]:
+    """판정 + 주장별 결론. auto_supported = TRUE·FALSE 판정이 댔고, 주장 문장이 인용 범위 안이고(faithful), Jev 가 안 건 주장."""
+    judged = judged or {"assertions": [], "claim_checks": {}}
+    assertions = judged["assertions"]
+    for a in assertions:
+        a["sources"] = [dict(sources_of[x], claim_id=x) for x in a["claim_ids"] if x in sources_of]
+    flagged = {f["claim_id"] for f in flags}
+    cited = {x for a in assertions if a["verdict"] in ("TRUE", "FALSE") for x in a["claim_ids"]}
+    supported: list[str] = []
+    not_supported: list[dict[str, str]] = []
+    for c in claims:
+        if c["claim_type"] == "opinion":
+            continue
+        why = _not_supported_why(c["claim_id"], status, cited, judged["claim_checks"].get(c["claim_id"]), flagged)
+        if why:
+            not_supported.append({"claim_id": c["claim_id"], "why": why, "text": c["text"]})
+        else:
+            supported.append(c["claim_id"])
+    counts = {v: sum(1 for a in assertions if a["verdict"] == v) for v in VERDICTS}
+    return {"enabled": True, "status": status, "model": config.DRINKS_DEVELOP_FACTCHECK_MODEL, "note": note,
+            "assertions": assertions, "counts": counts, "auto_supported": supported, "not_supported": not_supported,
+            "claim_checks": judged["claim_checks"]}
+
+
+def run_factcheck(topic: dict[str, Any], context: list[dict[str, Any]], claims: list[dict[str, Any]], sources_of: dict[str, Any],
+                  ledger: Ledger, deps: Deps, flags: list[dict[str, Any]]) -> dict[str, Any]:
+    """판정 1회(모양이 틀리면 한 번 더). 결재·상한·실패는 작업을 멈추지 않는다 — 전부 '불확실'로 남기고 운영자가 직접 확인한다.
+    취소(canceled)만은 그대로 올린다(운영자가 멈추라고 했다). 돈은 Ledger(가잡기 → 확정)로만 — 주간 한도·요청 1건 상한 안에서 센다."""
+    if not config.DRINKS_DEVELOP_FACTCHECK_ENABLED:
+        return {"enabled": False, "status": "disabled", "assertions": [], "counts": {v: 0 for v in VERDICTS},
+                "auto_supported": [], "not_supported": [], "claim_checks": {}}
+    if not any(c["claim_type"] != "opinion" for c in claims):
+        return _factcheck_result("no_claims", claims, None, sources_of, flags)
+    model = config.DRINKS_DEVELOP_FACTCHECK_MODEL
+    est = estimate_usd(model, len(factcheck_system()) + len(factcheck_user_prompt(topic, context, claims)),
+                       config.DRINKS_DEVELOP_FACTCHECK_MAX_TOKENS)
+    last = "응답 모양이 틀림"
+    for attempt in range(1, config.DRINKS_DEVELOP_FACTCHECK_ATTEMPTS + 1):
+        try:
+            out = ledger.run(model, est, lambda: deps.factcheck(topic, context, claims), f"AI 사실 확인({attempt}회째)")
+        except DevelopError as exc:
+            if exc.code == "canceled":
+                raise
+            return _factcheck_result("skipped", claims, None, sources_of, flags, f"{exc.code}: {exc.message}")
+        except DbError:
+            raise   # 임대를 잃었으면(lease_lost) 결과를 쓰지 않는다 — 위(process_job)가 처리한다
+        except Exception as exc:  # noqa: BLE001 — 파싱 실패·네트워크 오류는 한 번 더 묻고, 그래도 안 되면 전부 불확실
+            last = f"{type(exc).__name__}: {str(exc)[:200]}"
+            continue
+        judged = judge_verdicts(out, claims)
+        if judged is not None:
+            return _factcheck_result("ok", claims, judged, sources_of, flags)
+    return _factcheck_result("failed", claims, None, sources_of, flags, last)
+
+
+def apply_factcheck(claims: list[dict[str, Any]], factcheck: dict[str, Any]) -> None:
+    """통과한 주장만 '확인됨'으로. 나머지는 not_reviewed 그대로(운영자가 고른다). ★ 0064 머리말 18행의 반대 — 운영자 승인(2026-11-06)."""
+    ok = set(factcheck.get("auto_supported") or [])
+    for c in claims:
+        if c["claim_id"] in ok:
+            c["support_review"] = "supported"
+            c["limitations"] = config.DRINKS_DEVELOP_FACTCHECK_NOTE
 
 
 def chain_format(job: dict[str, Any]) -> str:

@@ -1,0 +1,115 @@
+{
+ "topic": {
+  "title": "사케 유통기한",
+  "question": "사케는 유통기한이 없나요? 개봉하면 냉장 보관해야 하나요?",
+  "categories": [
+   "sake"
+  ]
+ },
+ "add_source": [
+  {
+   "source": {
+    "canonical_url": "https://www.nta.go.jp/law/tsutatsu/kihon/sake/8-09a.htm",
+    "title": "酒類の表示の基準",
+    "publisher": "国税庁",
+    "source_kind": "official",
+    "depth": "full_text",
+    "body_text": "Whisky enthusiasts often also add a few drops of water to the spirit before drinking in order to further enhance the taste Chemically, the smoky flavour is attributed to phenols, and in particular guaiacol, which is much more common in Scottish whiskies than in American or Irish ones primarily found at the liquid-air interface in mixtures that contain up to 45 vol-% of ethanol. At ethanol concentrations of 59 vol-% or higher, guaiacol is increasingly surrounded by ethanol molecules and is driven to the bulk an alcohol content of 55–65 vol-% of cask-strength whisky. Before bottling, the whisky is diluted to around 40 vol-% Additional background sentence about sake storage and labelling rules. Additional background sentence about sake storage and labelling rules. Additional background sentence about sake storage and labelling rules.",
+    "rights_status": "quote_ok",
+    "usage_terms": "公共データ利用規約 1.0. 출처 표기: 国税庁ホームページ「第86条の6 酒類の表示の基準」(해당 쪽 주소). 번역·요약했으면 가공 표시",
+    "original_language": "ja",
+    "origin_group": "国税庁",
+    "relation_note": "자동 개발: 공식 출처 목록에서 가져온 원문"
+   }
+  }
+ ],
+ "save_evidence": {
+  "evidence_pack": {
+   "claims": [
+    {
+     "claim_id": "c1",
+     "text": "주장 가",
+     "claim_type": "process",
+     "support_review": "supported",
+     "source_refs": [
+      {
+       "snapshot_id": "new1",
+       "original_quote": "Whisky enthusiasts often also add a few drops of water to the spirit before drinking in order to further enhance the taste"
+      }
+     ],
+     "limitations": "AI 사실 확인(자동) — 근거 인용 대조 통과"
+    },
+    {
+     "claim_id": "c2",
+     "text": "주장 나",
+     "claim_type": "process",
+     "support_review": "supported",
+     "source_refs": [
+      {
+       "snapshot_id": "new1",
+       "original_quote": "Chemically, the smoky flavour is attributed to phenols, and in particular guaiacol, which is much more common in Scottish whiskies than in American or Irish ones"
+      }
+     ],
+     "limitations": "AI 사실 확인(자동) — 근거 인용 대조 통과"
+    },
+    {
+     "claim_id": "c3",
+     "text": "주장 다",
+     "claim_type": "process",
+     "support_review": "supported",
+     "source_refs": [
+      {
+       "snapshot_id": "new1",
+       "original_quote": "primarily found at the liquid-air interface in mixtures that contain up to 45 vol-% of ethanol. At ethanol concentrations of 59 vol-% or higher, guaiacol is increasingly surrounded by ethanol molecules and is driven to the bulk"
+      }
+     ],
+     "limitations": "AI 사실 확인(자동) — 근거 인용 대조 통과"
+    },
+    {
+     "claim_id": "c4",
+     "text": "주장 라",
+     "claim_type": "process",
+     "support_review": "not_reviewed",
+     "source_refs": [
+      {
+       "snapshot_id": "new1",
+       "original_quote": "an alcohol content of 55–65 vol-% of cask-strength whisky. Before bottling, the whisky is diluted to around 40 vol-%"
+      }
+     ]
+    }
+   ]
+  },
+  "brief": {
+   "audience_question": "사케는 유통기한이 없나요? 개봉하면 냉장 보관해야 하나요?",
+   "selected_claim_ids": [
+    "c1",
+    "c2",
+    "c3",
+    "c4"
+   ],
+   "proposed_formats": [
+    "video"
+   ],
+   "required_claims": {
+    "video": [
+     "c1",
+     "c2",
+     "c3"
+    ]
+   }
+  }
+ },
+ "factcheck": {
+  "status": "ok",
+  "counts": {
+   "TRUE": 1,
+   "FALSE": 1,
+   "UNCERTAIN": 1
+  },
+  "auto_supported": [
+   "c1",
+   "c2",
+   "c3"
+  ]
+ }
+}

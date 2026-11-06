@@ -32,12 +32,12 @@ test("결재 고르기: 남은 금액이 큰 것, 같으면 기한이 늦은 것
   assert.equal(pickBudget([a, b, c], NOW)?.budget_id, "c");
 });
 
-test("버튼: 결재가 없으면 둘 다 잠기고 이유를 말한다", () => {
+test("버튼: 이번 주 한도(결재)가 없으면 둘 다 잠기고 이유를 말한다", () => {
   const r = developButtons({ topicStatus: "researching", hasBudget: false, approvedEvidence: true, requests: [] });
   assert.equal(r.evidence.enabled, false);
-  assert.match(r.evidence.reason ?? "", /결재/);
+  assert.match(r.evidence.reason ?? "", /AI 초안 한도/);
   assert.equal(r.plan.enabled, false);
-  assert.match(r.plan.reason ?? "", /결재/);
+  assert.match(r.plan.reason ?? "", /AI 초안 한도/);
 });
 
 test("버튼: 결재가 있으면 근거 초안은 열리고, 대본 초안은 승인된 근거가 있어야 열린다", () => {

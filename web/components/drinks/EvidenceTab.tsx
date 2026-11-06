@@ -5,13 +5,21 @@
 //   quote_check 는 저장할 때 서버가 원문과 대조해 정한다 — 화면에서 고를 수 없다.
 // ★ 정책 ②: 다른 URL 에 같은 본문이 있어도 자동으로 같은 원출처로 묶지 않는다 — 후보로 보여주고 운영자가 묶는다.
 // ★ 출처 원문은 바뀌지 않는다. 사용 조건 확인·재확인·정정·권리 철회는 기록으로 쌓이고, 판정은 그 유효 값을 쓴다.
+// ★ 2026-11-06(운영자 승인, docs/deviation-drinks-auto-factcheck.md): 맨 위에 AI 사실 확인 요약. 원출처 묶음은 워커가 발행처·도메인으로 채운다
+//   (비교 주장 경고에만 쓰이고 승인을 막지 않는다) — 입력 칸은 '고급'에 접었다. 질문이 나온 곳(질문·인기 신호·커뮤니티)은 근거 카드가 아니라
+//   접힌 묶음에 둔다. AI 초안 요청이 대기·진행 중이면 근거를 고치지 못하게 잠근다(저장하면 그 요청이 draft_exists 로 실패한다).
 import { useMemo, useState } from "react";
 
+import type { DevelopRequestRow } from "@/lib/drinks/develop";
+import { evidenceLockReason, factcheckFor, isAutoFetched, isAutoSupported, isQuestionOrigin } from "@/lib/drinks/factcheck";
 import {
   ATTEST_FIELDS, ATTEST_KIND_LABEL, CLAIM_TYPE_LABEL, DEDUP_LABEL, depthLabel, QUOTE_LABEL, RIGHTS_LABEL, ROLE_LABEL,
   SOURCE_KIND_LABEL, SUPPORT_LABEL, blockerLabel, effectiveMeta, originSummary, type AttestKind,
 } from "@/lib/drinks/model";
+import { isOfficialSourceUrl } from "@/lib/drinks/officialSources";
 import type { AttestationRow, Claim, ReviewRow, SnapshotRow, TopicRow, TopicSourceRow } from "@/lib/drinks/types";
+import { AutoRefresh } from "./DevelopControls";
+import FactcheckSummary from "./FactcheckSummary";
 import SourceFields, { EMPTY_SOURCE, hasSource, sourcePayload, type SourceInput } from "./SourceFields";
 import { useDrinksAction } from "./useDrinksAction";
 
@@ -57,6 +65,7 @@ export default function EvidenceTab({
   attestations,
   sameBody,
   sharedWith,
+  developRequests,
 }: {
   topic: TopicRow;
   review: ReviewRow | null;
@@ -64,6 +73,8 @@ export default function EvidenceTab({
   attestations: Record<string, AttestationRow[]>;
   sameBody: Record<string, SameBodyCandidate[]>;
   sharedWith: Record<string, number>;
+  /** 이 소재의 AI 초안 요청(drinks_develop_status). 주면 AI 사실 확인 요약을 띄우고, 대기·진행 중일 때 근거를 잠근다 */
+  developRequests?: readonly DevelopRequestRow[];
 }) {
   const { run, busy } = useDrinksAction();
   const [adding, setAdding] = useState(false);
@@ -71,11 +82,20 @@ export default function EvidenceTab({
   const [lastDedup, setLastDedup] = useState<string | null>(null);
   const [diff, setDiff] = useState<Record<string, { current: unknown; incoming: string }> | null>(null);
   const [claims, setClaims] = useState<Claim[]>(review?.evidence_pack?.claims ?? []);
-  const target = reviewEditTarget(topic, review);
+  const lockReason = evidenceLockReason(developRequests ?? []);
+  const baseTarget = reviewEditTarget(topic, review);
+  const target = lockReason ? { ...baseTarget, editable: false, lockedReason: lockReason } : baseTarget;
+  const factcheck = factcheckFor(developRequests ?? [], review?.id ?? null);
   const evidence = sources.filter((s) => s.role === "evidence");
+  const evidenceCards = sources.filter((s) => !isQuestionOrigin(s.role, s.snapshot.source_kind));
+  const originCards = sources.filter((s) => isQuestionOrigin(s.role, s.snapshot.source_kind));
   const snapById = useMemo(() => new Map(sources.map((s) => [s.snapshot.id, s.snapshot])), [sources]);
   const sum = originSummary(evidence.map((s) => s.snapshot));
   const sameBodyCount = sources.filter((s) => (sameBody[s.snapshot.id] ?? []).length > 0).length;
+  const card = (s: LinkedSource) => (
+    <SourceCard key={s.snapshot.id} topicId={topic.id} link={s} attestations={attestations[s.snapshot.id] ?? []}
+      candidates={sameBody[s.snapshot.id] ?? []} sharedWith={sharedWith[s.snapshot.id] ?? 0} locked={Boolean(lockReason)} />
+  );
 
   const addSource = async () => {
     const r = await run("add_source", { topic_id: topic.id, source: sourcePayload(src) }, "출처를 처리했습니다", "출처 저장");
@@ -98,19 +118,26 @@ export default function EvidenceTab({
 
   return (
     <div>
+      <AutoRefresh active={Boolean(lockReason)} />
+      {factcheck && <FactcheckSummary fc={factcheck.fc} sameReview={factcheck.sameReview} />}
+      {lockReason && <p className="banner-info" role="status">{lockReason}</p>}
       <section className="section">
         <h3>
-          출처 {sources.length}개 · 사실 근거 {evidence.length}개 · 확인된 원출처 {sum.confirmedGroups}묶음 · 묶음 미확인{" "}
-          {sum.unconfirmed}개{sameBodyCount > 0 ? ` · 같은 본문 후보 있음 ${sameBodyCount}개` : ""}
+          사실 근거 {evidence.length}개 · 원출처 {sum.confirmedGroups}곳{sum.unconfirmed > 0 ? ` · 원출처 미정 ${sum.unconfirmed}개` : ""}
+          {originCards.length > 0 ? ` · 질문이 나온 곳 ${originCards.length}개` : ""}{sameBodyCount > 0 ? ` · 같은 본문 후보 있음 ${sameBodyCount}개` : ""}
         </h3>
         <p className="muted">
-          독립 원출처는 운영자가 묶음을 정한 것만 셉니다. 묶음 미확인 출처는 독립 출처로 치지 않습니다.
+          원출처(같은 곳에서 나온 글끼리의 묶음)는 AI 가 발행처·사이트 주소로 자동으로 정합니다. &lsquo;A가 B보다&rsquo; 같은 비교 주장에서
+          서로 다른 곳이 2곳 이상인지 세는 데만 쓰이고, 승인을 막지 않습니다. 바꿔야 할 때만 카드의 &lsquo;고급&rsquo;을 여세요.
         </p>
         {sources.length === 0 && <p className="muted">연결된 출처가 없습니다.</p>}
-        {sources.map((s) => (
-          <SourceCard key={s.snapshot.id} topicId={topic.id} link={s} attestations={attestations[s.snapshot.id] ?? []}
-            candidates={sameBody[s.snapshot.id] ?? []} sharedWith={sharedWith[s.snapshot.id] ?? 0} />
-        ))}
+        {evidenceCards.map(card)}
+        {originCards.length > 0 && (
+          <details className="dk-origins">
+            <summary>질문이 나온 곳 {originCards.length}개 — 사실 근거가 아닙니다(무엇을 궁금해하는지 보여 주는 글)</summary>
+            {originCards.map(card)}
+          </details>
+        )}
         {lastDedup && (
           <p className="banner-info">
             {lastDedup === "promoted"
@@ -135,12 +162,14 @@ export default function EvidenceTab({
           <div className="dk-sub">
             <SourceFields value={src} onChange={setSrc} />
             <div className="actions">
-              <button className="btn pick" disabled={busy || !hasSource(src)} onClick={addSource}>출처 저장</button>
+              <button className="btn pick" disabled={busy || !hasSource(src) || Boolean(lockReason)} onClick={addSource}>출처 저장</button>
               <button className="btn" onClick={() => setAdding(false)}>취소</button>
             </div>
           </div>
         ) : (
-          topic.status !== "duplicate" && <button className="btn" onClick={() => setAdding(true)}>+ 출처 추가</button>
+          topic.status !== "duplicate" && (
+            <button className="btn" disabled={Boolean(lockReason)} title={lockReason ?? ""} onClick={() => setAdding(true)}>+ 출처 추가</button>
+          )
         )}
       </section>
 
@@ -195,15 +224,19 @@ interface Impact {
   plans?: { id: string; format: string; revision_no: number }[];
 }
 
-function SourceCard({ topicId, link, attestations, candidates, sharedWith }: {
+function SourceCard({ topicId, link, attestations, candidates, sharedWith, locked }: {
   topicId: string;
   link: LinkedSource;
   attestations: AttestationRow[];
   candidates: SameBodyCandidate[];
   sharedWith: number;
+  locked: boolean;
 }) {
-  const { run, busy } = useDrinksAction();
+  const { run, busy: actionBusy } = useDrinksAction();
+  const busy = actionBusy || locked;
   const s = link.snapshot;
+  const autoFetched = isAutoFetched(link.relation_note, isOfficialSourceUrl(s.canonical_url));
+  const questionOrigin = isQuestionOrigin(link.role, s.source_kind);
   const m = effectiveMeta(s as unknown as Record<string, string | null>, attestations);
   const [group, setGroup] = useState(s.origin_group ?? "");
   const [mergeIds, setMergeIds] = useState<string[]>([]);
@@ -234,7 +267,7 @@ function SourceCard({ topicId, link, attestations, candidates, sharedWith }: {
     <div className="dk-sub">
       <div className="dk-row">
         <span className="pill">{ROLE_LABEL[link.role]}</span>
-        <span className={s.depth === "metadata_only" ? "pill dk-warn" : "pill"}>{depthLabel(s.depth, s.capture_method)}</span>
+        <span className={s.depth === "metadata_only" ? "pill dk-warn" : "pill"}>{depthLabel(s.depth, s.capture_method, autoFetched)}</span>
         <span className={m.rights_status === "quote_ok" || m.rights_status === "summary_only" ? "pill" : "pill dk-warn"}>
           {RIGHTS_LABEL[(m.rights_status ?? "unknown") as keyof typeof RIGHTS_LABEL]}
         </span>
@@ -243,7 +276,7 @@ function SourceCard({ topicId, link, attestations, candidates, sharedWith }: {
         {s.capture_method === "collected" && <span className="pill">수집 문서(사람 확인 전)</span>}
         {m.attestationCount > 0 && <span className="pill">정정·확인 기록 {m.attestationCount}건</span>}
         {sharedWith > 0 && <span className="pill dk-warn">다른 소재 {sharedWith}개와 공유</span>}
-        <span className="pill">{s.origin_group ? `원출처: ${s.origin_group}` : "원출처 묶음 미확인"}</span>
+        {!questionOrigin && <span className="pill">{s.origin_group ? `원출처: ${s.origin_group}` : "원출처 미정(비교 주장에만 영향)"}</span>}
       </div>
       <p style={{ margin: "6px 0" }}>
         <b>{m.title || m.publisher || "(제목 없음)"}</b> {m.publisher && m.title ? `· ${m.publisher}` : ""}
@@ -295,23 +328,31 @@ function SourceCard({ topicId, link, attestations, candidates, sharedWith }: {
           </ul>
         </div>
       )}
-      <div className="dk-row" style={{ marginTop: 6 }}>
-        <label className="dk-field" style={{ flex: "1 1 220px" }}>
-          <span>원출처 묶음 이름{mergeable.length > 0 ? " (체크한 같은 본문 출처도 함께 묶음)" : ""}</span>
-          <input value={group} onChange={(e) => setGroup(e.target.value)} />
-        </label>
-        <button className="btn" disabled={busy || (group === (s.origin_group ?? "") && mergeIds.length === 0)}
-          onClick={async () => {
-            const r = await run("set_origin_group", { topic_id: topicId, snapshot_ids: [s.id, ...mergeIds], origin_group: group || null },
-              "원출처 묶음을 바꿨습니다", "원출처 묶음 저장");
-            const aff = (r.result?.affected_topics as { title: string }[] | undefined) ?? [];
-            if (r.ok && aff.length > 0) setImpact({ topics: aff as Impact["topics"] });
-            if (r.ok) setMergeIds([]);
-          }}>
-          묶음 저장
-        </button>
-        <button className="btn" onClick={() => setOpenAttest(!openAttest)}>정보 정정·확인 기록</button>
-      </div>
+      {!questionOrigin && (
+        <div className="actions">
+          <button className="btn" disabled={locked} onClick={() => setOpenAttest(!openAttest)}>정보 정정·확인 기록</button>
+        </div>
+      )}
+      <details className="dk-adv" open={candidates.length > 0 && mergeable.length > 0}>
+        <summary>고급 — 원출처 묶음{s.origin_group ? `(${s.origin_group})` : ""} 바꾸기{questionOrigin ? " · 정보 정정·확인 기록" : ""}</summary>
+        <div className="dk-row" style={{ marginTop: 6 }}>
+          <label className="dk-field" style={{ flex: "1 1 220px" }}>
+            <span>원출처 묶음 이름{mergeable.length > 0 ? " (체크한 같은 본문 출처도 함께 묶음)" : ""} — 보통은 자동으로 정해진 값 그대로 둡니다</span>
+            <input value={group} onChange={(e) => setGroup(e.target.value)} />
+          </label>
+          <button className="btn" disabled={busy || (group === (s.origin_group ?? "") && mergeIds.length === 0)}
+            onClick={async () => {
+              const r = await run("set_origin_group", { topic_id: topicId, snapshot_ids: [s.id, ...mergeIds], origin_group: group || null },
+                "원출처 묶음을 바꿨습니다", "원출처 묶음 저장");
+              const aff = (r.result?.affected_topics as { title: string }[] | undefined) ?? [];
+              if (r.ok && aff.length > 0) setImpact({ topics: aff as Impact["topics"] });
+              if (r.ok) setMergeIds([]);
+            }}>
+            묶음 저장
+          </button>
+          {questionOrigin && <button className="btn" disabled={locked} onClick={() => setOpenAttest(!openAttest)}>정보 정정·확인 기록</button>}
+        </div>
+      </details>
       {openAttest && (
         <div className="dk-sub">
           <div className="dk-grid">
@@ -400,8 +441,10 @@ function ClaimEditor({
           </label>
         ) : (
           <label className="dk-field">
-            <span>지지 검토 (사람이 판단)</span>
+            <span>뒷받침 확인 {isAutoSupported(claim) ? <span className="pill dk-ok">AI 확인</span> : "(직접 판단)"}</span>
             <select value={claim.support_review} disabled={disabled}
+              // ★ 한계 칸(자동 문구)은 건드리지 않는다 — 그 칸은 근거 내용 지문(0064 drinks_evidence_content_hash)에 들어가서, 지우면 이 근거로 쓴 대본이 무효가 된다.
+              //   '확인됨' 말고 다른 값을 고르면 isAutoSupported 가 false 라 'AI 확인' 표시는 저절로 사라진다.
               onChange={(e) => set("support_review", e.target.value as Claim["support_review"])}>
               {(["not_reviewed", "supported", "insufficient", "conflicting"] as const).map((k) => (
                 <option key={k} value={k}>{SUPPORT_LABEL[k]}</option>
