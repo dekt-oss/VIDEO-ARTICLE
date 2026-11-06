@@ -4445,6 +4445,10 @@ DRINKS_DISCOVERY_CANDIDATE_SIMILAR_MIN: float = 0.5
 DRINKS_DISCOVERY_TOPIC_DUP_SIMILAR_MIN: float = 0.5
 DRINKS_SAME_Q_OVERLAP_MIN: float = 0.5    # 내용 낱말 겹침 계수 문턱
 DRINKS_SAME_Q_STRONG_WORD_CHARS: int = 3  # 겹친 낱말 중 이 길이 이상이 하나는 있어야 한다
+# 겹친 내용 낱말이 이만큼은 있어야 묶는다(한쪽 질문의 내용 낱말이 하나뿐일 때만 예외). 2026-11-06 운영 미리보기 실측:
+#   하나만 겹친 묶음이 틀렸다 — "막걸리 왜 이렇게 달죠" ↔ "990원 막걸리 이렇게 쌀까", "오크통 왜 태울까" ↔ "추워지면 오크통 속 위스키".
+#   합치기는 되돌릴 수 없어서 덜 묶는 쪽을 택한다(놓친 중복은 운영자가 [합치기]로 붙인다).
+DRINKS_SAME_Q_MIN_SHARED: int = 2
 DRINKS_SAME_Q_SHORT_NOUNS: tuple[str, ...] = (   # 2글자라도 술 이야기에서 뜻이 또렷한 명사(칸 낱말·주종 이름은 어차피 빠진다)
     "도수", "효모", "산도", "당도", "탄산", "가격", "향기", "오크", "피트", "쌀알", "정미", "병입", "색깔", "곰팡",
 )
@@ -4461,6 +4465,7 @@ DRINKS_SAME_Q_STOPWORDS: frozenset[str] = frozenset("""
 어떻게 어떤 무슨 무엇 뭔가요 뭘까요 언제 얼마나 얼마 어디 어디서 누가 있나요 있나 있을까 있을까요 없을까 없을까요 없나요 없나 있는지 없는지
 될까 될까요 되나요 되나 되는지 해야 해야하나요 해야할까요 하나요 하나 하는 하면 해도 할까 할까요 인가요 일까요 건가요 궁금 궁금해요 궁금합니다
 질문 질문이요 알려주세요 아시는 아시는분 분 있으신가요 받은 지나면 지난 같은 이런 저런 그런 경우 정도 관련 대해 대한 때 것 거 게 건
+이렇게 저렇게 그렇게 어떤게 어떤거 그렇다 그렇다면 뭐가 정확히 걸까 급질문 괜찮은거 가이드 입문
 """.split())
 # 수요 가점(2026-10-29): 같은 칸에서 서로 다른 글이 같은 것을 물으면 임시 점수가 오른다. 추가 글 하나당 +N, 상한 M. 총점은 100 을 넘지 않는다.
 DRINKS_DEMAND_BONUS_PER_ITEM: int = 3
@@ -4654,10 +4659,12 @@ DRINKS_DEVELOP_EUROPEPMC_PAGE_SIZE: int = 5
 # 운영자가 이용 조건을 확인한 공식·전문 출처(2026-11-02 등록, 운영자 "등록하고" — 약관 판정·근거: docs/주류_근거출처_후보_2026-11-02.md).
 #   항목: {"name","publisher","url"(https),"source_kind"(official|expert),"rights_status"(quote_ok|summary_only),
 #          "usage_terms","terms_verified": True, "terms_url", "keywords": [..](소재 낱말이 하나라도 있으면 사용),
-#          "not_for": [..](소재에 있으면 이 쪽에 답이 없으므로 쓰지 않는다 — 모델 호출 낭비 방지), "language"}
+#          "not_for": [..](소재에 있으면 이 쪽에 답이 없으므로 쓰지 않는다 — 모델 호출 낭비 방지), "language",
+#          "requires_any": [..](선택. 있으면 소재에 이 낱말이 하나라도 있어야 쓴다 — 보관·기한 질문 전용 쪽)}
 #   terms_verified 가 True 가 아닌 항목은 쓰지 않는다.
 #   ★ 이름·낱말·not_for 를 바꾸면 web/lib/drinks/officialSources.ts 도 같이 바꾼다(tests/test_drinks_develop.py 가 대조).
-#   ★ 보관·개봉 후·왜 안 상하나·왜 시큼한가는 이 목록으로 안 채워진다 — 근거 부족으로 멈추는 것이 맞다.
+#   ★ 보관·개봉 후·왜 안 상하나·왜 시큼한가는 이 목록으로 안 채워졌다 — 2026-11-06 맨 아래 두 쪽(보관·기한 전용)을 더했다.
+#     그래도 막걸리 보관·개봉 후 맛 변화는 비어 있다(약관을 통과한 쪽을 못 찾음 — docs/deviation-drinks-auto-factcheck.md §B).
 _DRINKS_NOT_AGING: tuple[str, ...] = ("보관", "개봉", "유통기한", "소비기한", "상하", "변질")
 _DRINKS_ENCYKOREA: dict = {
     "publisher": "한국학중앙연구원", "source_kind": "expert", "rights_status": "quote_ok", "terms_verified": True, "language": "ko",
@@ -4709,9 +4716,39 @@ DRINKS_DEVELOP_OFFICIAL_SOURCES: list[dict] = [
      "keywords": ["숙취", "hangover"], "not_for": []},
     {**_DRINKS_NIAAA, "name": "미국 NIAAA — 알코올 대사", "url": "https://www.niaaa.nih.gov/publications/alcohol-metabolism",
      "keywords": ["숙취", "알코올 분해", "아세트알데히드", "얼굴 빨개", "대사"], "not_for": []},
+    # ── 보관·유통기한 질문용(2026-11-06, 운영자 "유통기한·보관 질문에 쓸 공식 사이트를 더한다"). docs/deviation-drinks-auto-factcheck.md §B
+    #   위 항목들은 not_for 에 보관·개봉·유통기한이 있어 그런 질문에 근거가 0건이었다. 아래 항목은 **그 질문에만** 쓴다(requires_any) —
+    #   사케·위스키 소재마다 읽으면 모델 호출만 는다. 약관은 2026-11-06 에 쪽과 약관 쪽을 엔진 수집기(SafeFetcher)로 다시 받아 읽었다.
+    {**_DRINKS_NTA, "name": "일본 국세청 — 酒類 표시기준 해석(生酒 보관 주의·제조시기)", "url": "https://www.nta.go.jp/law/tsutatsu/kihon/sake/8-09a.htm",
+     # 8,286자(2026-11-06 실측). 「保存又は飲用上の注意事項」=「要冷蔵」「冷蔵庫に保管してください。」「冷やしてお早めにお飲みください。」 등,
+     # 製造時期 = 용기에 채워 밀봉한 시기, 賞味期限을 적으면 식품표시법을 따른다. 약관: 利用規約(copy.htm) — 저작권은 국세청, 권리 표기가 없으면
+     # 公共データ利用規約(第1.0版) 준거(출처 기재, 가공 시 가공 표시). 이 쪽에 별도 권리 표기 없음(확인).
+     "usage_terms": "公共データ利用規約 1.0. 출처 표기: 国税庁ホームページ「第86条の6 酒類の表示の基準」(해당 쪽 주소). 번역·요약했으면 가공 표시",
+     "keywords": ["사케", "일본주", "생주", "나마자케"], "requires_any": [*_DRINKS_NOT_AGING, "냉장", "제조일"], "not_for": ["숙취"]},
+    {**_DRINKS_UK_LAW, "name": "영국 식품정보 규정(EU 1169/2011) 부속서 X — 소비기한 표시 면제",
+     "url": "https://www.legislation.gov.uk/eur/2011/1169/annex/X",
+     # 11,099자(2026-11-06 실측). 「beverages containing 10 % or more by volume of alcohol」 은 최소 보존기한(date of minimum durability) 표시
+     # 의무에서 빠진다(영국 현행본). 약관: 쪽 아래 "All content is available under the Open Government Licence v3.0 except where otherwise stated.
+     # This site additionally contains content derived from EUR-Lex, reused under the terms of the Commission Decision 2011/833/EU" — 둘 다 출처 표기 조건의 재이용 허용.
+     # ★ 영국 법의 표시 의무 이야기다. "개봉 후 맛이 변하나"에는 답하지 않는다 — 근거가 모자라면 멈추는 것이 맞다.
+     "usage_terms": "Open Government Licence v3.0 + EUR-Lex 재이용 결정(2011/833/EU). 출처 표기: legislation.gov.uk, Regulation (EU) No 1169/2011 Annex X (영국 현행본)",
+     "terms_url": "https://www.legislation.gov.uk/help",
+     "keywords": ["위스키", "스카치", "버번", "증류주"], "requires_any": [*_DRINKS_NOT_AGING], "not_for": ["숙취"]},
 ]
 DRINKS_DEVELOP_JEV_ENABLED: bool = _get_bool("DRINKS_DEVELOP_JEV_ENABLED", False)   # 대본 근거 판정(Jev). 0단계는 끔
 DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN: float = _get_float("DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN", 0.6)
+# AI 사실 확인(2026-11-06, 운영자 "AI 가 사실 확인에 통과한 근거는 '확인됨'으로 자동 표시" — docs/deviation-drinks-auto-factcheck.md §A).
+#   근거 추출 뒤 모델 1회가 소재 질문의 주장마다 맞음·틀림·불확실을 판정한다. 코드가 그 판정을 다시 잰다(없는 근거 번호·근거 없는 판정·
+#   인용에 없는 숫자 → 불확실). 통과한 판정이 댄 주장만 support_review='supported' 로 저장한다. 끄면 0064 이전처럼 전부 not_reviewed.
+#   ★ 최종 관문은 그대로 사람의 [승인] 한 번이다. 이 단계는 '확인됨' 칸을 미리 채울 뿐 승인·제출 함수를 부르지 않는다.
+DRINKS_DEVELOP_FACTCHECK_ENABLED: bool = _get_bool("DRINKS_DEVELOP_FACTCHECK_ENABLED", True)
+DRINKS_DEVELOP_FACTCHECK_MODEL: str = os.getenv("DRINKS_DEVELOP_FACTCHECK_MODEL", DRINKS_DEVELOP_EXTRACT_MODEL)   # 추출과 같은 모델·백엔드
+DRINKS_DEVELOP_FACTCHECK_MAX_TOKENS: int = 4_000
+DRINKS_DEVELOP_FACTCHECK_MAX_ASSERTIONS: int = 6     # 판정할 주장(소재 질문이 담은 믿음) 상한
+DRINKS_DEVELOP_FACTCHECK_ATTEMPTS: int = 2           # 응답 모양이 틀리면 한 번 더 묻는다(그래도 틀리면 전부 불확실 — 작업은 실패시키지 않는다)
+DRINKS_DEVELOP_FACTCHECK_CONTEXT_MAX: int = 4        # 판정 입력에 넣는 '질문이 나온 곳' 요약 수
+DRINKS_DEVELOP_FACTCHECK_CONTEXT_CHARS: int = 600    # 그 요약 하나의 글자 상한
+DRINKS_DEVELOP_FACTCHECK_NOTE: str = "AI 사실 확인(자동) — 근거 인용 대조 통과"   # 자동으로 '확인됨'이 된 주장의 한계·주의 칸. 화면이 이 글로 '자동'을 알아본다
 DRINKS_DEVELOP_SOURCE_KINDS_AUTO: tuple[str, ...] = ("official", "expert", "manufacturer")   # 운영자가 붙이지 않은 출처(수집원·공식 목록·논문)에서 자동으로 쓰는 종류
 DRINKS_DEVELOP_SOURCE_KINDS_NEVER: tuple[str, ...] = ("community", "reader", "retailer")      # 운영자가 붙였어도 사실 근거로 쓰지 않는 종류(질문·후기·판매글)
 DRINKS_DEVELOP_SCENES: tuple[int, int] = (8, 11)     # 대본 장면 수 범위 — 설명형(기획 v2 §9 D1). 2026-11-02 전에는 (5, 7)

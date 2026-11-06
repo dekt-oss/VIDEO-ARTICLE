@@ -165,7 +165,8 @@ export function buildTopicLane(input: TopicLaneInput): SectionView[] {
 
   nodes.evidence = (
     <>
-      <EvidenceTab key={reviewKey} topic={topic} review={review} sources={sources} attestations={attestations} sameBody={sameBody} sharedWith={sharedWith} />
+      <EvidenceTab key={reviewKey} topic={topic} review={review} sources={sources} attestations={attestations} sameBody={sameBody} sharedWith={sharedWith}
+        developRequests={developOk?.requests ?? []} />
       <details className="dk-sub">
         <summary className="muted">공통 기획 (옛 경로)</summary>
         <BriefTab key={`brief-${reviewKey}`} topic={topic} review={review} reviews={reviews} plans={plans} today={today} />

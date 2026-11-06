@@ -142,7 +142,7 @@ export default async function DrinksTopicPage(props: {
       {tab === "overview" && <TopicPanel key={topic.version} topic={topic} canonical={canonical} />}
       {tab === "evidence" && (
         <EvidenceTab key={reviewKey} topic={topic} review={review} sources={sources}
-          attestations={attestations} sameBody={sameBody} sharedWith={sharedWith} />
+          attestations={attestations} sameBody={sameBody} sharedWith={sharedWith} developRequests={developOk?.requests ?? []} />
       )}
       {tab === "brief" && <BriefTab key={reviewKey} topic={topic} review={review} reviews={reviews} plans={plans} today={todayInSeoul()} />}
       {(tab === "video" || tab === "carousel") && (

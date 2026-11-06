@@ -130,6 +130,11 @@ def boom(*a, **k):
     raise AssertionError("모델을 부르면 안 됩니다")
 
 
+def no_verdicts(topic, context, claims):
+    """AI 사실 확인 가짜 — 판정 0건(아무것도 '확인됨'이 되지 않는다). 판정 규칙은 tests/test_drinks_factcheck.py 가 잰다."""
+    return {"assertions": [], "claim_checks": []}
+
+
 @pytest.fixture(autouse=True)
 def _old_short_shape(monkeypatch):
     """이 파일의 금본위 사례(whisky-water-v1)와 사고 사례들은 2026-11-02 이전 모양(5~7장면·30~40초·시각 주장표 없음)이다.
@@ -141,7 +146,8 @@ def _old_short_shape(monkeypatch):
 
 
 def deps(**kw):
-    base = {"extract_claims": boom, "write_plan": boom, "jev_check": lambda n, s: None, "fetcher_factory": lambda hosts: boom()}
+    base = {"extract_claims": boom, "write_plan": boom, "jev_check": lambda n, s: None, "fetcher_factory": lambda hosts: boom(),
+            "factcheck": no_verdicts}
     base.update(kw)
     return dd.Deps(**base)
 
@@ -191,7 +197,7 @@ def test_evidence_keeps_only_verified_quotes_links_used_sources_and_saves_a_draf
     assert rpc.finish["outcome"] == "succeeded"
     pack = rpc.saved_evidence["evidence_pack"]["claims"]
     assert [c["claim_id"] for c in pack] == ["c1", "c2", "c3", "c4"]
-    assert all(c["support_review"] == "not_reviewed" for c in pack), "의미 검토는 운영자 몫"
+    assert all(c["support_review"] == "not_reviewed" for c in pack), "AI 판정이 하나도 없으면 전부 운영자 몫(not_reviewed)"
     assert [c["source_refs"][0]["original_quote"] for c in pack] == [dd.clean_source_text(q) for q in QUOTES[:4]]
     assert all(c["source_refs"][0]["snapshot_id"] == "s1" for c in pack)
     brief = rpc.saved_evidence["brief"]
@@ -202,8 +208,9 @@ def test_evidence_keeps_only_verified_quotes_links_used_sources_and_saves_a_draf
     assert r["claims_kept"] == 4 and r["dropped_total"] == 1
     assert {s["title"]: s["claims_kept"] for s in r["sources"]} == {"논문 A": 4, "쓸모없는 글": 0}
     assert r["cost"]["calls"] and r["cost"]["spent_usd"] > 0
-    # 호출마다 가잡기 → 확정, 승인·제출 함수는 없다
-    assert rpc.names.count("drinks_develop_hold") == rpc.names.count("drinks_develop_settle") == 2
+    # 호출마다 가잡기 → 확정(출처 2곳 추출 + AI 사실 확인 1회), 승인·제출 함수는 없다
+    assert rpc.names.count("drinks_develop_hold") == rpc.names.count("drinks_develop_settle") == 3
+    assert r["factcheck"]["status"] == "ok" and r["factcheck"]["auto_supported"] == []
     assert not any(re.search(r"approve|submit|review_action|plan_action|select", n) for n in rpc.names)
 
 
@@ -540,7 +547,7 @@ def test_official_sources_without_operator_verified_terms_are_ignored(monkeypatc
 
 
 def test_registered_official_sources_are_complete_and_https():
-    assert len(config.DRINKS_DEVELOP_OFFICIAL_SOURCES) == 13
+    assert len(config.DRINKS_DEVELOP_OFFICIAL_SOURCES) == 15
     for ent in config.DRINKS_DEVELOP_OFFICIAL_SOURCES:
         assert ent["url"].startswith("https://") and ent["terms_url"].startswith("https://"), ent["name"]
         assert ent["terms_verified"] is True and ent["usage_terms"] and ent["publisher"] and ent["keywords"], ent["name"]
@@ -566,11 +573,48 @@ def test_official_sources_pick_by_keyword_and_skip_questions_they_cannot_answer(
     assert any("regulation/3" in u for u in urls("버번 스카치 차이", "뭐가 다른가"))
     assert any("hangovers" in u for u in urls("숙취는 왜 생기나", "왜 머리가 아픈가"))
     # 낱말은 걸려도 답이 없는 소재는 모델 호출 전에 뺀다
-    assert urls("막걸리 유통기한", "언제까지 마시나") == []
+    assert urls("막걸리 유통기한", "언제까지 마시나") == []   # 막걸리 보관·기한은 약관을 통과한 쪽이 아직 없다
     assert urls("막걸리는 왜 시큼한가", "왜 그런가") == []
-    assert urls("스카치 개봉 후 보관", "얼마나 가나") == []
     # 아무 낱말도 안 걸리면 쓰지 않는다
     assert urls("와인 잔 고르기", "뭐가 좋나") == []
+
+
+STORAGE_NTA = "https://www.nta.go.jp/law/tsutatsu/kihon/sake/8-09a.htm"
+STORAGE_UK = "https://www.legislation.gov.uk/eur/2011/1169/annex/X"
+
+
+def test_storage_questions_find_the_storage_sources_and_only_those():
+    """2026-11-06 운영자 "유통기한·보관 질문에 쓸 공식 사이트를 더한다" — 보관·기한 질문은 새 두 쪽만 집어 든다(옛 쪽은 not_for 그대로)."""
+    urls = lambda title, q: [s.url for s in _official({"title": title, "question": q})]
+    sake = urls("사케 유통기한", "언제까지 마셔도 되나")
+    assert STORAGE_NTA in sake and STORAGE_UK not in sake   # 옛 표시기준 쪽(제조 시기)도 그대로 함께 걸린다 — not_for 에 유통기한이 없었다
+    assert urls("개봉한 위스키 보관", "얼마나 두고 마시나") == [STORAGE_UK]
+    assert urls("스카치 개봉 후 보관", "얼마나 가나") == [STORAGE_UK]
+    assert STORAGE_NTA in urls("생주는 왜 냉장 보관하나", "사케 보관법")
+    # 보관·기한 질문이 아니면 보관 전용 쪽은 읽지 않는다(모델 호출 낭비 방지)
+    assert not {STORAGE_NTA, STORAGE_UK} & set(urls("사케 라벨", "정미보합이 뭔가"))
+    assert not {STORAGE_NTA, STORAGE_UK} & set(urls("버번 스카치 차이", "뭐가 다른가"))
+
+
+def test_storage_sources_record_their_terms_and_old_entries_are_unchanged():
+    new = [e for e in config.DRINKS_DEVELOP_OFFICIAL_SOURCES if e.get("requires_any")]
+    assert {e["url"] for e in new} == {STORAGE_NTA, STORAGE_UK}
+    for e in new:
+        assert e["terms_verified"] is True and e["rights_status"] == "quote_ok" and e["terms_url"].startswith("https://")
+        assert "출처 표기" in e["usage_terms"], e["name"]
+        assert not ({"보관", "개봉", "유통기한"} & set(e["not_for"])), "보관 전용 쪽은 보관 질문을 막지 않는다"
+    old = [e for e in config.DRINKS_DEVELOP_OFFICIAL_SOURCES if not e.get("requires_any")]
+    assert len(old) == 13 and all("보관" in e["not_for"] for e in old if "숙취" not in e["keywords"])
+
+
+def test_auto_sources_carry_an_origin_group_and_an_auto_note():
+    src = _official({"title": "사케 유통기한", "question": "언제까지"})[0]
+    assert src.new_source["origin_group"] == "国税庁"
+    assert src.new_source["relation_note"] == dd.AUTO_SOURCE_NOTE
+    assert dd.origin_group_of(None, "https://www.legislation.gov.uk/x") == "legislation.gov.uk"
+    assert dd.origin_group_of("", "https://encykorea.aks.ac.kr/Article/E1") == "aks.ac.kr"
+    assert dd.origin_group_of(None, "https://www.nta.go.jp/a") == "nta.go.jp"
+    assert dd.origin_group_of(None, None) is None
 
 
 def test_official_source_language_reaches_the_saved_source():
@@ -580,9 +624,13 @@ def test_official_source_language_reaches_the_saved_source():
 
 def test_official_source_hints_match_config():
     ts = (ROOT / "web" / "lib" / "drinks" / "officialSources.ts").read_text(encoding="utf-8")
-    rows = re.findall(r'\{ name: "([^"]+)", keywords: \[([^\]]*)\], notFor: \[([^\]]*)\], chars: \d+ \}', ts)
-    web = {n: (re.findall(r'"([^"]+)"', k), re.findall(r'"([^"]+)"', a)) for n, k, a in rows}
-    assert web == {e["name"]: (e["keywords"], e["not_for"]) for e in config.DRINKS_DEVELOP_OFFICIAL_SOURCES}
+    rows = re.findall(r'\{ name: "([^"]+)", url: "([^"]+)", keywords: \[([^\]]*)\], notFor: \[([^\]]*)\], requiresAny: \[([^\]]*)\], chars: \d+ \}', ts)
+    q = lambda x: re.findall(r'"([^"]+)"', x)
+    web = {n: (u, q(k), q(a), q(r)) for n, u, k, a, r in rows}
+    assert web == {e["name"]: (e["url"], e["keywords"], e["not_for"], e.get("requires_any") or []) for e in config.DRINKS_DEVELOP_OFFICIAL_SOURCES}
+    # 워커가 가져온 출처의 메모·자동 확인 표시 — 화면이 같은 글로 알아본다
+    fc = (ROOT / "web" / "lib" / "drinks" / "factcheck.ts").read_text(encoding="utf-8")
+    assert f'"{dd.AUTO_SOURCE_NOTE}"' in fc and f'"{config.DRINKS_DEVELOP_FACTCHECK_NOTE}"' in fc
 
 
 # ── 제한값 · 파일 점검 ─────────────────────────────────────────
