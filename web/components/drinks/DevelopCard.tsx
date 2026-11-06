@@ -53,9 +53,9 @@ function Body({ topicId, topicStatus, approvedEvidence, plans, develop }: {
       </p>
 
       <div className="dk-sub">
-        <b>개발 결재</b>
+        <b>이번 주 AI 초안 한도</b>
         {budgets.length === 0 ? (
-          <p className="muted" style={{ margin: "6px 0" }}>열린 개발 결재 없음 — 근거·대본 초안은 결재가 있어야 만듭니다.</p>
+          <p className="muted" style={{ margin: "6px 0" }}>이번 주 AI 초안 한도가 없습니다 — 소재 고르기 맨 위 &lsquo;이번 주 AI 초안 한도&rsquo;에서 확인하세요. 한도가 있어야 근거·대본 초안을 만듭니다.</p>
         ) : budgets.map((b) => (
           <div key={b.budget_id} className="list-row">
             <span>

@@ -381,3 +381,21 @@ body:has(> .dk-shell), body:has(.dk-shell) { background: #f4f4ee; }
 .dk-shell .dk-optional[open] { padding-bottom: 12px; }
 /* 휴대폰 브라우저의 '강제 다크 모드'가 밝은 주류 화면을 어둡게 뒤집지 않게(Chrome 은 only light 를 보면 건너뛴다). */
 html:has(.dk-shell) { color-scheme: only light; }
+
+/* AI 사실 확인 요약(2026-11-06) — 근거 칸 맨 위. components/drinks/FactcheckSummary.tsx */
+.dk-shell .dk-fc { background: #fff; border: 1px solid var(--border); border-left: 5px solid var(--accent); border-radius: 10px; padding: 14px 18px; margin: 0 0 16px; }
+.dk-shell .dk-fc p { margin: 0; }
+.dk-shell .dk-fc-head { font-size: 16px; font-weight: 700; }
+.dk-shell .dk-fc-head b { font-weight: 800; }
+.dk-shell .dk-fc-sub { font-size: 13px; color: var(--muted); margin-top: 4px !important; }
+.dk-shell .dk-fc-list { margin: 10px 0 0; padding-left: 22px; }
+.dk-shell .dk-fc-item { margin: 8px 0; overflow-wrap: anywhere; }
+.dk-shell .dk-fc-reason { margin-top: 2px; }
+.dk-shell .dk-fc-note { font-size: 12px; color: var(--warn); margin-top: 2px; }
+.dk-shell .dk-fc-src { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.dk-shell .dk-fc-todo { margin-top: 10px; padding: 10px 12px; background: #fff8f0; border: 1px solid #edcfb5; border-radius: 8px; }
+.dk-shell .dk-fc-todo ul { margin: 6px 0 0; padding-left: 18px; }
+.dk-shell .dk-fc-done { margin-top: 10px !important; padding: 8px 12px; background: var(--accent-soft); border-radius: 8px; font-weight: 700; color: #386042; }
+.dk-shell .dk-origins { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; background: #fff; }
+.dk-shell .dk-origins > summary { cursor: pointer; padding: 10px 0; font-weight: 700; }
+.dk-shell .dk-adv > summary { cursor: pointer; font-size: 12px; color: var(--muted); margin-top: 6px; }
