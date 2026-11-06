@@ -5,6 +5,7 @@
 import Link from "next/link";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
+import { OpenDevelopBudget } from "@/components/drinks/DevelopControls";
 import CandidateCard from "@/components/drinks/topics/CandidateCard";
 import ManualEntry from "@/components/drinks/topics/ManualEntry";
 import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
@@ -118,7 +119,11 @@ async function CandidatesTab({ page, fit }: { page: number; fit: FitFilter }) {
       </div>
       {est.state !== "ok" && d.candidates.length > 0 && <p className="muted" style={{ fontSize: 12 }}>형식별 예상 비용을 읽지 못해 모달에 &ldquo;모름&rdquo;으로 보입니다(0원이 아닙니다).</p>}
       {d.budgets && !budget && d.candidates.length > 0 && (
-        <p className="banner-warn" role="status">열린 개발 결재가 없습니다 — 모든 후보가 &ldquo;막힘&rdquo;입니다. 결재는 <Link href="/drinks/review">소재 화면의 개발 카드</Link>에서 엽니다.</p>
+        <div className="banner-warn" role="status">
+          <p style={{ margin: 0 }}>열린 개발 결재가 없어 후보를 고를 수 없습니다. 아래에서 초안용 결재를 한 번 열면 기간 동안 모든 후보에 씁니다.</p>
+          <p className="muted" style={{ margin: "4px 0 8px", fontSize: 12 }}>결재는 돈을 쓰는 것이 아니라 상한을 정하는 것입니다 — 근거·대본 초안(LLM)만 이 상한 안에서 쓰고, 영상 구매는 따로 결재합니다.</p>
+          <OpenDevelopBudget />
+        </div>
       )}
       {cards.map(({ c, rec, ev, pick }) => (
         <CandidateCard key={c.id} c={c} rec={rec} evidence={ev} evidenceLoaded={d.evidence !== null}

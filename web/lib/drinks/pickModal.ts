@@ -180,6 +180,6 @@ export function pickability(c: {
   if (c.duplicate_topic_ids.length > 0) {
     return { ok: false, code: "duplicate", reason: `비슷한 기존 소재 ${c.duplicate_topic_ids.length}건 — 새로 만들지 말고 그 소재에 형식을 더하세요` };
   }
-  if (!hasBudget) return { ok: false, code: "no_budget", reason: "열린 개발 결재가 없어 초안을 쓸 수 없습니다 — 결재를 먼저 여세요" };
+  if (!hasBudget) return { ok: false, code: "no_budget", reason: "열린 개발 결재가 없어 초안을 쓸 수 없습니다 — 이 화면 맨 위 칸에서 결재를 여세요" };
   return { ok: true };
 }
