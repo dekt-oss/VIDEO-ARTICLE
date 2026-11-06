@@ -8,14 +8,17 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 
 import { runDrinksAction } from "./actions.ts";
+import { assertDbFollowsTestClock, pinTestClock } from "./dbTestClock.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
 const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0068_drinks_stage5_publish_loop.sql"));
+pinTestClock();   // 게시 창(0071 R6)·claim 유예를 실제 시각과 무관하게 — 밤에 돌려도 같은 결과(dbTestClock.ts)
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);
 for (const m of MIGS) await db.exec(readFileSync(join(DIR, m), "utf8"));
+await assertDbFollowsTestClock(db);
 
 type Any = any;
 const exec = async (fn: string, p: Record<string, unknown>) => {
@@ -49,6 +52,7 @@ const rpc = async (fn: string, p: Record<string, unknown>): Promise<Any> => {
 };
 const row = async (sql: string, params: unknown[] = []): Promise<Any> => (await db.query(sql, params)).rows[0];
 const uniq = () => Math.random().toString(36).slice(2, 8);
+// 고정 시계 기준 1분 전 = 늘 KST 11:59 쯤 — 게시 창 안이고, 워커가 바로 받는다(publish_at ≤ now, 2시간 유예 안)
 const SOON = () => new Date(Date.now() - 60_000).toISOString();
 
 let seq = 0;
