@@ -335,3 +335,11 @@ body:has(> .dk-shell), body:has(.dk-shell) { background: #f4f4ee; }
   .dk-shell .modal { padding: 22px 18px; }
   .dk-shell .dk-blocked-why { text-align: left; }
 }
+
+/* [이걸로] 창 — 선택 입력(2026-11-06: 비워 두면 기본값으로 진행) */
+.dk-shell .dk-defaults { margin: 14px 0 6px; padding: 10px 14px; background: var(--accent-faint); border-radius: 8px; font-size: 14px; line-height: 1.5; }
+.dk-shell .dk-optional { margin: 6px 0 4px; border: 1px solid var(--border); border-radius: 8px; padding: 0 14px; }
+.dk-shell .dk-optional > summary { cursor: pointer; padding: 12px 0; font-weight: 700; list-style-position: inside; }
+.dk-shell .dk-optional[open] { padding-bottom: 12px; }
+/* 휴대폰 브라우저의 '강제 다크 모드'가 밝은 주류 화면을 어둡게 뒤집지 않게(Chrome 은 only light 를 보면 건너뛴다). */
+html:has(.dk-shell) { color-scheme: only light; }
