@@ -688,3 +688,49 @@ details.render-group[open] > summary { margin-bottom: 10px; }
 .dk-bad { color: var(--danger); }
 .dk-warn { color: var(--warn); }
 @media (max-width: 560px) { .dk-grid { grid-template-columns: 1fr; } }
+
+/* ── 주류 작업공간 (/drinks/work/[topicId], 2026-11-05 복수 형식) ──
+   형식 카드 → 고정 결정 바(주 버튼 하나) → 단계 섹션(현재 것만 펼침). 논문 공장의 .work-decision 과 같은 뼈대이지만
+   주류 전용 이름(dw-)이다 — 두 공장의 화면을 따로 고칠 수 있게. 폭 1280·1024·390 에서 결정 바가 본문에 가려지지 않는다. */
+.container--dw { max-width: 1100px; }
+.dw-title { font-size: 22px; margin: 6px 0 4px; }
+.dw-formats-card h2 { font-size: 16px; margin: 0 0 4px; }
+.dw-formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px; }
+.dw-format { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px;
+  text-decoration: none; color: var(--text); background: var(--bg); }
+.dw-format b { font-size: 15px; }
+.dw-format span { font-size: 13px; color: var(--muted); }
+.dw-format[data-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.dw-format[data-blocked="true"] span { color: var(--danger); }
+.dw-decision { position: sticky; top: var(--topbar-h, 0px); z-index: 30; display: flex; flex-wrap: wrap; gap: 10px;
+  align-items: center; justify-content: space-between; padding: 10px 12px; margin: 10px 0 14px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+@media (max-width: 720px) { .dw-decision { top: 0; } }
+.dw-decision-left { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; min-width: 0; flex: 1 1 320px; }
+.dw-decision-right { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; margin-left: auto; }
+.dw-primary { font-weight: 700; padding: 8px 16px; }
+.dw-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); }
+.dw-chip--block { border-color: var(--danger); color: var(--danger); background: rgba(255,92,92,0.1); }
+.dw-chip--warn { border-color: var(--warn); color: var(--warn); background: rgba(255,176,32,0.1); }
+.dw-chip .btn { padding: 1px 8px; font-size: 12px; }
+.dw-menu { position: relative; }
+.dw-menu-list { position: absolute; right: 0; top: 100%; z-index: 40; display: flex; flex-direction: column;
+  min-width: 180px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 6px; }
+.dw-menu-list button { text-align: left; background: transparent; border: none; color: var(--text);
+  padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.dw-menu-list button:hover { background: var(--bg); }
+.dw-menu-list button:disabled { opacity: .5; cursor: default; }
+.dw-history { margin-bottom: 12px; }
+.dw-sections { display: flex; flex-direction: column; gap: 8px; }
+.dw-section { border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.dw-section > summary { cursor: pointer; list-style: none; padding: 12px 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.dw-section > summary::-webkit-details-marker { display: none; }
+.dw-section > summary::before { content: "▸"; color: var(--muted); }
+.dw-section[open] > summary::before { content: "▾"; }
+.dw-section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 12px; }
+.dw-step { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 999px;
+  background: var(--bg); border: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.dw-now { margin-left: auto; }
+.dw-section-body { padding: 0 14px 14px; }
+.dw-section-body .section { margin-top: 8px; }
+.dw-section-body .section:first-child { margin-top: 0; }

@@ -86,7 +86,17 @@ export const DRINKS_ACTIONS = {
   explainer_select: "drinks_explainer_select",
   explainer_close_unknown: "drinks_explainer_close_unknown",
   explainer_review: "drinks_explainer_review",
+  // 한 소재 · 여러 형식(0072, docs/deviation-drinks-multi-format.md §3-5): 읽기 전용 rpc 셋. 작업 목록·소재의 형식별 행·개발 비용 견적.
+  // 쓰기는 위의 pick_topic(formats 배열)·approve_content(format_intent)·request_develop(format_intent) 가 그대로 받는다 — 새 쓰기 경로 없음.
+  develop_estimate: "drinks_develop_estimate",
+  topic_formats: "drinks_topic_formats",
+  work_items: "drinks_work_items",
 } as const;
+
+/** 형식 의도(0064 drink_topic_picks.format_intent). 한 번에 고를 수 있는 최대 수 = 형식 수. */
+export const FORMAT_INTENTS = ["explainer", "card", "meme"] as const;
+export type FormatIntentName = (typeof FORMAT_INTENTS)[number];
+const isFormatIntent = (v: unknown): v is FormatIntentName => (FORMAT_INTENTS as readonly string[]).includes(v as string);
 
 export type DrinksAction = keyof typeof DRINKS_ACTIONS;
 
@@ -360,9 +370,25 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     if (p.kind !== "evidence" && p.kind !== "plan") {
       return { status: 400, body: { error: "만들 초안 종류(evidence·plan)를 고르세요", code: "invalid_input" } };
     }
+    // 대본 초안은 형식마다 다르다(0072) — 어느 형식의 대본인지 없이는 큐에 넣지 않는다. 근거 초안은 형식 무관 공유라 묻지 않는다.
+    if (p.kind === "plan" && !isFormatIntent(p.format_intent)) {
+      return { status: 400, body: { error: "대본 초안은 형식(설명형·카드뉴스·밈형)을 함께 적어야 합니다", code: "invalid_input" } };
+    }
   }
-  if (action === "pick_topic" && p.format !== "explainer" && p.format !== "card" && p.format !== "meme") {
-    return { status: 400, body: { error: "형식(설명형·카드뉴스·밈형)을 고르세요", code: "invalid_input" } };
+  if (action === "pick_topic") {
+    // 0072: formats 배열(1~3개, 중복 없음)이 정본. 옛 호출의 format 하나도 그대로 받는다(DB 함수가 둘 다 읽는다). 둘 다 없으면 거부.
+    if (p.formats !== undefined && p.formats !== null) {
+      const arr = Array.isArray(p.formats) ? p.formats : null;
+      if (!arr || arr.length < 1 || arr.length > FORMAT_INTENTS.length || !arr.every(isFormatIntent) || new Set(arr).size !== arr.length) {
+        return { status: 400, body: { error: "형식은 설명형·카드뉴스·밈형 중 1~3개를 중복 없이 고르세요", code: "invalid_input" } };
+      }
+    } else if (!isFormatIntent(p.format)) {
+      return { status: 400, body: { error: "형식(설명형·카드뉴스·밈형)을 고르세요", code: "invalid_input" } };
+    }
+  }
+  if (action === "approve_content" && p.format_intent !== "explainer" && p.format_intent !== "card") {
+    // 승인은 작업 단위(소재 × 형식)마다 한다. 밈은 밈 제작안 승인(meme_draft_action)으로 따로 간다.
+    return { status: 400, body: { error: "어느 형식(설명형·카드뉴스)의 내용을 승인하는지 적어야 합니다", code: "invalid_input" } };
   }
   if (action === "explainer_verdict") {
     // 화면에서 오는 판정은 사람 판정뿐이다. 자동 판정 칸은 입력을 믿지 않고 지운다.

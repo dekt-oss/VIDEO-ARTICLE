@@ -1,7 +1,7 @@
 // 주류 공장 쓰기 동작 순수 테스트(가짜 rpc 실행기). DB 까지 태우는 테스트는 supabase/tests/drinks_phase_a.test.mjs.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DRINKS_ACTIONS, PHASE_A_EXCLUDED, mapDbError, normalizeUrl, runDrinksAction, type RpcExec } from "./actions.ts";
+import { DRINKS_ACTIONS, FORMAT_INTENTS, PHASE_A_EXCLUDED, mapDbError, normalizeUrl, runDrinksAction, type RpcExec } from "./actions.ts";
 
 function recorder(result: { data?: unknown; error?: { message: string; details?: string; code?: string } } = {}) {
   const calls: { fn: string; p: Record<string, unknown> }[] = [];
@@ -88,9 +88,52 @@ test("개발 요청: 종류가 evidence·plan 이 아니면 rpc 전에 거부, �
   assert.equal((await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t", kind: "script" } })).status, 400);
   assert.equal((await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t" } })).status, 400);
   assert.equal(calls.length, 0);
-  const ok = await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t", kind: "plan", budget_id: "b" } });
+  // 0072: 대본(plan) 초안은 형식 의도가 필수다 — 없으면 rpc 전에 거부. 근거(evidence)는 형식 무관.
+  assert.equal((await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t", kind: "plan", budget_id: "b" } })).status, 400);
+  assert.equal(calls.length, 0);
+  const ok = await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t", kind: "plan", budget_id: "b", format_intent: "card" } });
   assert.equal(ok.status, 200);
-  assert.deepEqual(calls[0], { fn: "drinks_request_develop", p: { topic_id: "t", kind: "plan", budget_id: "b" } });
+  assert.deepEqual(calls[0], { fn: "drinks_request_develop", p: { topic_id: "t", kind: "plan", budget_id: "b", format_intent: "card" } });
+  const ev = await runDrinksAction(exec, { action: "request_develop", payload: { topic_id: "t", kind: "evidence" } });
+  assert.equal(ev.status, 200);
+});
+
+test("여러 형식(0072): 읽기 rpc 셋이 허용 목록에 있고 쓰기 이름은 새로 생기지 않았다", () => {
+  for (const [k, fn] of [["develop_estimate", "drinks_develop_estimate"], ["topic_formats", "drinks_topic_formats"], ["work_items", "drinks_work_items"]]) {
+    assert.equal((DRINKS_ACTIONS as Record<string, string>)[k], fn);
+  }
+  assert.deepEqual(FORMAT_INTENTS, ["explainer", "card", "meme"]);
+});
+
+test("[이걸로] pick_topic: formats 배열은 1~3개·중복 없음·세 형식만; 옛 format 하나도 통과; 둘 다 없으면 거부", async () => {
+  const { exec, calls } = recorder();
+  const run = (payload: Record<string, unknown>) => runDrinksAction(exec, { action: "pick_topic", payload: { topic_id: "t", editorial_week: "2026-11-09", ...payload } });
+  for (const bad of [{}, { formats: [] }, { formats: "card" }, { formats: ["card", "card"] }, { formats: ["card", "reel"] },
+    { formats: ["explainer", "card", "meme", "card"] }, { format: "reel" }, { formats: [1] }]) {
+    assert.equal((await run(bad)).status, 400, JSON.stringify(bad));
+  }
+  assert.equal(calls.length, 0);
+  assert.equal((await run({ formats: ["explainer", "card", "meme"] })).status, 200);
+  assert.deepEqual(calls[0].p.formats, ["explainer", "card", "meme"]);
+  assert.equal((await run({ formats: ["meme"] })).status, 200);
+  assert.equal((await run({ format: "card" })).status, 200, "옛 호출(format 하나)은 그대로 통과");
+  assert.equal(calls[2].p.format, "card");
+  assert.equal(calls.length, 3);
+});
+
+test("[승인] approve_content: 형식 의도(explainer·card)가 없으면 rpc 전에 거부 — 밈은 이 길이 아니다", async () => {
+  const { exec, calls } = recorder();
+  const base = { topic_id: "t", expected_topic_version: 1, review_id: "r", expected_review_version: 1, plan_revision_id: "p", expected_plan_version: 1 };
+  for (const bad of [{}, { format_intent: "meme" }, { format_intent: "video" }]) {
+    assert.equal((await runDrinksAction(exec, { action: "approve_content", payload: { ...base, ...bad } })).status, 400, JSON.stringify(bad));
+  }
+  assert.equal(calls.length, 0);
+  for (const f of ["explainer", "card"]) {
+    const r = await runDrinksAction(exec, { action: "approve_content", payload: { ...base, format_intent: f } });
+    assert.equal(r.status, 200, f);
+  }
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].fn, "drinks_approve_content");
 });
 
 test("개발 결재 열기: 결재자는 서버가 정하고, 결재 문장·단계·상한은 rpc 전에 검사", async () => {

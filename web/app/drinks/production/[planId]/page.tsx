@@ -2,6 +2,7 @@
 // ★ 렌더 요청은 로컬·무료(대체 이미지 + 무료 TTS)다. 유료 렌더는 이 제작안 전용 결재(0054)가 있을 때만 큐에 들어가고,
 //   그림마다 DB 가 결재 금액 안인지 잰다(drinks_hold_spend). 화면은 결재를 열고 닫고 요청할 뿐 돈을 쓰지 못한다.
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { CancelRender, CloseSpendApproval, OpenSpendApproval, OutputReview, PaidRenderRequest, RenderRequest } from "@/components/drinks/ProductionControls";
 import ExplainerProduction from "@/components/drinks/ExplainerProduction";
@@ -10,6 +11,7 @@ import LoadProblem from "@/components/drinks/LoadProblem";
 import { fmtTime } from "@/components/drinks/RunPill";
 import { FORMAT_LABEL, VERSION_STATUS_LABEL, type Format } from "@/lib/drinks/model";
 import { loadPlanProduction } from "@/lib/drinks/productionQueries";
+import { LEGACY_BYPASS_PARAM, productionRedirect } from "@/lib/drinks/work/redirects";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +24,22 @@ const BLOCK_TEXT: Record<string, string> = {
   not_found: "제작안 없음", explainer_engine_not_wired: "설명형은 전부 영상이어야 해서 옛 그림 나열식으로 만들지 않습니다(0067 적용 전)",
 };
 
-export default async function PlanProductionPage(props: { params: Promise<{ planId: string }> }) {
+export default async function PlanProductionPage(props: { params: Promise<{ planId: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
   const { planId } = await props.params;
+  const sp = await props.searchParams;
   const v = await loadPlanProduction(planId);
-  if (v.state === "not_found") return <main className="container"><p className="banner-warn">제작안을 찾지 못했습니다.</p></main>;
+  if (v.state === "not_found") {
+    return (
+      <main className="container">
+        <h1 style={{ fontSize: 20 }}>찾지 못했습니다</h1>
+        <p className="banner-warn">제작안을 찾지 못했습니다 — 주소가 옛것이거나 지워졌을 수 있습니다.</p>
+        <p><Link href="/drinks/work">만들기 목록으로 →</Link></p>
+      </main>
+    );
+  }
   if (v.state !== "ok") return <main className="container"><LoadProblem state={v.state} error={v.state === "failed" ? v.error : undefined} /></main>;
+  // 2026-11-05 동선 개편: 제작은 작업공간의 제작 칸이 정본이다(기획 v2 §5 동적 조회). `?legacy=1` 이면 이 옛 화면을 그대로 연다.
+  if (!sp[LEGACY_BYPASS_PARAM]) redirect(productionRedirect(v.data.plan.topic_id, v.data.plan.format, v.data.plan.id));
   const { plan, topic, review, renderable, jobs, manifests, costs, spend, explainer } = v.data;
   const isExplainer = explainer.is_explainer;
   const f = plan.format as Format;

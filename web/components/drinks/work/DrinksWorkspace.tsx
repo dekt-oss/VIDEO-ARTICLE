@@ -1,0 +1,223 @@
+"use client";
+
+// 작업공간 껍데기(클라이언트) — 형식 카드 · 고정 결정 바(주 버튼 하나) · 레인 섹션(현재 것만 펼침) · ▾ 메뉴(보류·되돌리기·이력) ·
+// 미저장 입력 복원. 섹션 **내용**은 서버가 기존 컴포넌트로 만들어 ReactNode 로 넘긴다(여기서는 배치만 한다).
+// 계약: docs/deviation-drinks-multi-format.md §3-5 · 기획 v2 §6-3. 결정은 web/lib/drinks/work/decision.ts 가 하고, 여기는 그 결과를 보여 줄 뿐이다.
+//
+// ★ 주 버튼 하나의 규칙:
+//   ① 같은 열쇠로 등록된 폼(primaryBridge)이 있으면 그 폼의 submit 을 부른다(폼의 금액·체크·캡션이 실린다).
+//   ② 없고 결정이 동작(payload)을 줬으면 그대로 보낸다 — 단 지문(expected_digest)이 드는 동작은 보내지 않고 그 칸으로 간다
+//      (사람이 지문을 보고 눌러야 한다. RequestActions 가 그 자리에 있다).
+//   ③ 그 밖에는 결정이 가리키는 섹션을 펼치고 포커스를 옮긴다.
+//   서버가 "다른 곳에서 바뀜"(409) 을 돌려주면 새로 불러오기 안내를 띄운다.
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+
+import { useDrinksAction } from "@/components/drinks/useDrinksAction";
+import { primaryKey, requiresInPanelConfirm, type SectionKey } from "@/lib/drinks/work/lanes";
+import { FORMAT_LABEL, type Decision, type FormatIntent } from "@/lib/drinks/work/types";
+import { PrimaryBridgeProvider, usePrimaryBridge } from "./primaryBridge";
+import { useDraftRestore } from "./useDraftRestore";
+
+export interface FormatCardView {
+  lane: FormatIntent;
+  /** 결정 함수의 primary.label — 단계 이름으로 쓴다 */
+  stage: string;
+  href: string;
+  current: boolean;
+  blocked: boolean;
+}
+
+export interface SectionView {
+  key: SectionKey;
+  label: string;
+  node: ReactNode;
+}
+
+const CONFLICT_CODES = new Set(["version_conflict", "review_changed", "plan_changed", "review_not_current", "plan_not_current", "digest_mismatch", "stale_strategy"]);
+
+export default function DrinksWorkspace({
+  topicId, lane, title, question, formats, decision, decisionProblem, sections, openKey, primarySection, history, hold, storageKey, legacyHref,
+}: {
+  topicId: string;
+  lane: FormatIntent;
+  title: string;
+  question: string | null;
+  formats: FormatCardView[];
+  decision: Decision | null;
+  /** 작업 단위를 못 읽었을 때 그 이유(결정 없음 ≠ 할 일 없음) */
+  decisionProblem: string | null;
+  sections: SectionView[];
+  openKey: SectionKey;
+  /** 결정이 가리키는 섹션(lanes.primarySectionOf). 바의 버튼이 스크롤·포커스할 곳이고 "지금 할 일" 표가 붙는다 */
+  primarySection: SectionKey | null;
+  history: ReactNode;
+  /** 소재 보류(topic_action hold)에 필요한 것. 카드 밈은 null */
+  hold: { topicId: string; version: number } | null;
+  storageKey: string;
+  legacyHref: string | null;
+}) {
+  const key = primaryKey(decision?.primary.action);
+  return (
+    <PrimaryBridgeProvider primaryKey={key}>
+      <Body topicId={topicId} lane={lane} title={title} question={question} formats={formats} decision={decision} decisionProblem={decisionProblem}
+        sections={sections} openKey={openKey} primarySection={primarySection} history={history} hold={hold} storageKey={storageKey} legacyHref={legacyHref} />
+    </PrimaryBridgeProvider>
+  );
+}
+
+function Body({ lane, title, question, formats, decision, decisionProblem, sections, openKey, primarySection, history, hold, storageKey, legacyHref }: {
+  topicId: string; lane: FormatIntent; title: string; question: string | null; formats: FormatCardView[]; decision: Decision | null;
+  decisionProblem: string | null; sections: SectionView[]; openKey: SectionKey; primarySection: SectionKey | null; history: ReactNode;
+  hold: { topicId: string; version: number } | null; storageKey: string; legacyHref: string | null;
+}) {
+  const router = useRouter();
+  const { run, busy } = useDrinksAction();
+  // null = 사람이 펼친 칸을 직접 닫았다(모두 접힘).
+  const [open, setOpen] = useState<SectionKey | null>(openKey);
+  const [showHistory, setShowHistory] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const { restored, dirty, discard } = useDraftRestore(bodyRef, storageKey);
+
+  const primary = decision?.primary ?? null;
+  const bridge = usePrimaryBridge(primaryKey(primary?.action));
+
+  useEffect(() => setOpen(openKey), [openKey, lane]);
+
+  const focusSection = useCallback((k: SectionKey, scroll: boolean) => {
+    setOpen(k);
+    // 펼쳐진 뒤 제목으로 포커스. 바에서 눌렀을 때만 스크롤한다(처음 열릴 때는 형식 카드·결정 바가 위에 있어야 한다).
+    window.setTimeout(() => {
+      const el = bodyRef.current?.querySelector<HTMLElement>(`[data-section="${k}"] > summary`);
+      if (!el) return;
+      if (scroll) el.scrollIntoView({ block: "start", behavior: "smooth" });
+      el.focus({ preventScroll: true });
+    }, 0);
+  }, []);
+
+  // 처음 그려질 때 '지금 할 일' 섹션에 포커스(스크롤 없음).
+  useEffect(() => { focusSection(openKey, false); }, [openKey, focusSection]);
+
+  const onPrimary = async () => {
+    if (!primary || primary.busy) return;
+    setConflict(false);
+    if (bridge) {
+      if (primarySection) focusSection(primarySection, true);
+      await bridge.submit();
+      return;
+    }
+    if (primary.action && !requiresInPanelConfirm(primary.action)) {
+      const r = await run(primary.action.name, primary.action.payload, `${primary.label} — 처리했습니다`, primary.label);
+      if (!r.ok && (r.status === 409 || (r.code && CONFLICT_CODES.has(r.code)))) setConflict(true);
+      return;
+    }
+    if (primarySection) { focusSection(primarySection, true); return; }
+    if (primary.href) router.push(primary.href);
+  };
+
+  const onHold = async () => {
+    setMenu(false);
+    if (!hold) return;
+    const reason = window.prompt("보류 사유(필수)") ?? "";
+    if (!reason.trim()) return;
+    const until = window.prompt("재검토일(YYYY-MM-DD, 비우면 없음)") ?? "";
+    const r = await run("topic_action", { topic_id: hold.topicId, expected_version: hold.version, action: "hold", reason: reason.trim(), hold_until: until.trim() || null },
+      "보류했습니다", "소재 보류");
+    if (!r.ok && r.status === 409) setConflict(true);
+  };
+  const onUndo = () => {
+    setMenu(false);
+    // 되돌리기는 단계마다 서버 규칙이 달라 여기서 보내지 않는다 — 그 칸의 버튼([고치러 되돌리기]·[초안으로 되돌리기]·[승인 철회]·[초안으로])으로 한다.
+    const target: SectionKey = sections.some((s) => s.key === "post") && decision?.primary.panel === "post" ? "post" : open ?? openKey;
+    focusSection(target, true);
+    setHint("되돌리기는 펼친 칸 안의 버튼으로 합니다 — 게시 요청은 [고치러 되돌리기], 밈은 [초안으로 되돌리기], 파일은 [승인 철회].");
+  };
+
+  const disabled = busy || Boolean(primary?.busy) || (bridge ? bridge.disabled : false) || !primary;
+  const btnTitle = bridge?.disabled ? bridge.title ?? "펼친 칸의 조건을 먼저 채우세요" : primary?.busy ? "진행 중" : "";
+
+  return (
+    <div className="dw" ref={bodyRef}>
+      <h1 className="dw-title">{title}</h1>
+      {question && <p className="oneliner">Q. {question}</p>}
+
+      <section className="card dw-formats-card" aria-label="이 소재로 만드는 형식">
+        <h2>이 소재로 만드는 {formats.length}가지</h2>
+        <p className="muted">소재·근거는 함께, 기획·승인·제작·게시는 형식마다 따로 갑니다. 카드를 누르면 그 형식의 작업으로 바뀝니다.</p>
+        <div className="dw-formats">
+          {formats.map((f) => (
+            <Link key={f.lane} href={f.href} className="dw-format" data-current={f.current} data-blocked={f.blocked} aria-current={f.current ? "page" : undefined}>
+              <b>{FORMAT_LABEL[f.lane]}</b>
+              <span>{f.stage}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <div className="dw-decision" role="region" aria-label="지금 할 일">
+        <div className="dw-decision-left">
+          <span className="pill on">{FORMAT_LABEL[lane]}</span>
+          {primary && <span className="pill">{primary.label}</span>}
+          {decision?.blocks.map((b) => (
+            <span key={b.code} className="dw-chip dw-chip--block">
+              {b.message}{b.href && <> · <Link href={b.href}>복구 →</Link></>}
+            </span>
+          ))}
+          {decision?.warnings.map((w) => <span key={w} className="dw-chip dw-chip--warn">{w}</span>)}
+          {decisionProblem && <span className="dw-chip dw-chip--block">결정을 못 읽음 — {decisionProblem}</span>}
+          {conflict && (
+            <span className="dw-chip dw-chip--block">
+              다른 곳에서 바뀜 — <button type="button" className="btn" onClick={() => { setConflict(false); router.refresh(); }}>새로 불러오기</button>
+            </span>
+          )}
+          {restored > 0 && (
+            <span className="dw-chip dw-chip--warn">
+              복원됨(서버 저장 아님) {restored}칸 <button type="button" className="btn" onClick={discard}>버리기</button>
+            </span>
+          )}
+          {dirty && restored === 0 && <span className="muted">미저장 입력 있음</span>}
+          {hint && <span className="muted">{hint}</span>}
+        </div>
+        <div className="dw-decision-right">
+          <button type="button" className="btn pick dw-primary" disabled={disabled} title={btnTitle} onClick={onPrimary}>
+            {primary ? (primary.busy ? `${primary.label}…` : primary.label) : "할 일 없음"}
+          </button>
+          <div className="dw-menu">
+            <button type="button" className="btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>▾</button>
+            {menu && (
+              <div className="dw-menu-list" role="menu">
+                <button type="button" role="menuitem" disabled={!hold || busy} onClick={onHold}>보류</button>
+                <button type="button" role="menuitem" onClick={onUndo}>되돌리기…</button>
+                <button type="button" role="menuitem" onClick={() => { setMenu(false); setShowHistory((v) => !v); }}>{showHistory ? "이력 닫기" : "이력"}</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showHistory && <section className="card dw-history" aria-label="이력">{history}</section>}
+
+      <div className="dw-sections">
+        {sections.map((s, i) => (
+          <details key={s.key} className="dw-section" data-section={s.key} open={open === s.key}
+            onToggle={(e) => {
+              const isOpen = (e.currentTarget as HTMLDetailsElement).open;
+              setOpen((cur) => (isOpen ? s.key : cur === s.key ? null : cur));
+            }}>
+            <summary tabIndex={-1}>
+              <span className="dw-step">{i + 1}</span> {s.label}
+              {primarySection === s.key && <span className="pill on dw-now">지금 할 일</span>}
+            </summary>
+            <div className="dw-section-body">{s.node}</div>
+          </details>
+        ))}
+      </div>
+
+      {legacyHref && <p className="muted" style={{ marginTop: 16 }}><Link href={legacyHref}>옛 화면으로 보기</Link> · 같은 데이터입니다.</p>}
+    </div>
+  );
+}

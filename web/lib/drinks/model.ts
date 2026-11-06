@@ -547,6 +547,14 @@ export function deriveTopic(
   };
 }
 
+/**
+ * 주간 제작 목표(형식별, 게시 완료 기준) — 오늘 할 일 화면의 진행표가 읽는다(2026-11-05, 다중 형식 §3-5).
+ * 운영 가설이지 보장이 아니다. 설명형은 1~2편(영상 구매 결재에 묶인다), 카드뉴스 5, 밈 3.
+ */
+export const DRINKS_WEEKLY_TARGETS: Record<"explainer" | "card" | "meme", { min: number; max: number }> = {
+  explainer: { min: 1, max: 2 }, card: { min: 5, max: 5 }, meme: { min: 3, max: 3 },
+};
+
 /** 편성 주차 기본값: 다음 주 월요일(YYYY-MM-DD). today 는 Asia/Seoul 기준 날짜 문자열. */
 export function nextMonday(today: string): string {
   const [y, m, d] = today.split("-").map(Number);

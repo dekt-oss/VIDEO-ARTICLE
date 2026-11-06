@@ -11,7 +11,7 @@ import { runDrinksAction } from "./actions.ts";
 import { boardHealth, type IgRunRow } from "./igTrends.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d)_drinks_.*\.sql$/.test(f)).sort().map((f) => join(DIR, f));
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort().map((f) => join(DIR, f));
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);

@@ -59,23 +59,14 @@ export const GROUPS_FINANCE: NavGroup[] = [
   },
 ];
 
-// 주류 공장(2026-10-22~) — /drinks 접두. 논문·리포트와 메뉴가 다르다: 수집 → 작업함 → 제작(렌더·검수) → 발행·성과.
-//   설정은 지금 되는 것과 안 하는 것을 정직하게 보여준다.
+// 주류 공장(2026-10-22~) — /drinks 접두. 2026-11-05 동선 개편(docs/deviation-drinks-multi-format.md §3-5, 기획 v2 §5):
+//   매일 쓰는 셋은 직접 탭 — 오늘 할 일(/drinks) · 소재 고르기(/drinks/topics) · 만들기(/drinks/work). 발행·성과와 자료·설정은 드롭다운.
+//   옛 화면(/drinks/review·/drinks/production)은 지우지 않았다 — 메뉴에서 뺐을 뿐이고 주소로 열면 작업공간으로 넘긴다(middleware,
+//   `?legacy=1` 이면 옛 화면 그대로). 설정은 지금 되는 것과 안 하는 것을 정직하게 보여준다.
 export const GROUPS_DRINKS: NavGroup[] = [
-  { title: "선별", items: [{ href: "/drinks", label: "선별", match: "exact" }] },
-  {
-    title: "수집",
-    items: [
-      { href: "/drinks/discover", label: "소재 발견", match: "prefix" },
-      { href: "/drinks/trends", label: "커뮤니티 동향", match: "prefix" },
-      { href: "/drinks/memes", label: "밈 보드", match: "prefix" },
-      { href: "/drinks/collected", label: "수집 문서", match: "prefix" },
-      { href: "/drinks/sources", label: "수집원", match: "prefix" },
-      { href: "/drinks/runs", label: "실행 기록", match: "prefix" },
-    ],
-  },
-  { title: "작업함", items: [{ href: "/drinks/review", label: "작업함", match: "prefix" }] },
-  { title: "제작", items: [{ href: "/drinks/production", label: "제작", match: "prefix" }] },
+  { title: "오늘 할 일", items: [{ href: "/drinks", label: "오늘 할 일", match: "exact" }] },
+  { title: "소재 고르기", items: [{ href: "/drinks/topics", label: "소재 고르기", match: "prefix" }] },
+  { title: "만들기", items: [{ href: "/drinks/work", label: "만들기", match: "prefix" }] },
   // D단계 순환(2026-10-27): 발행(인스타 예약·게시 여부 확인)·성과(스냅샷 + 전략 제안)
   {
     title: "발행·성과",
@@ -84,7 +75,19 @@ export const GROUPS_DRINKS: NavGroup[] = [
       { href: "/drinks/analytics", label: "성과·전략", match: "prefix" },
     ],
   },
-  { title: "설정", items: [{ href: "/drinks/settings", label: "설정·지원 범위", match: "prefix" }] },
+  {
+    title: "자료·설정",
+    items: [
+      // 발견함은 소재 고르기의 후보 탭으로 넘어간다(middleware). 옛 화면은 ?legacy=1.
+      { href: "/drinks/discover", label: "소재 발견", match: "prefix" },
+      { href: "/drinks/trends", label: "커뮤니티 동향", match: "prefix" },
+      { href: "/drinks/memes", label: "밈 보드", match: "prefix" },
+      { href: "/drinks/collected", label: "수집 문서", match: "prefix" },
+      { href: "/drinks/sources", label: "수집원", match: "prefix" },
+      { href: "/drinks/runs", label: "실행 기록", match: "prefix" },
+      { href: "/drinks/settings", label: "설정·지원 범위", match: "prefix" },
+    ],
+  },
 ];
 
 export const BRAND: Record<Factory, { emoji: string; label: string; home: string }> = {
