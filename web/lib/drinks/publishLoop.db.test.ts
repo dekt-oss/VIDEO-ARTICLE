@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d)_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0068_drinks_stage5_publish_loop.sql"));
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;

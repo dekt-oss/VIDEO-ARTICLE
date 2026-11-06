@@ -633,6 +633,7 @@ def test_plan_save_refused_keeps_the_paid_plan_in_the_request_result():
 # ── 내용 승인 한 번(0064): 이어 만들기 ─────────────────────────
 
 SQL_64 = (ROOT / "supabase" / "migrations" / "0064_drinks_single_approval.sql").read_text(encoding="utf-8")
+SQL_72 = (ROOT / "supabase" / "migrations" / "0072_drinks_multi_format.sql").read_text(encoding="utf-8")   # 0064·0065 함수를 교체한다 — 같은 감시를 받는다
 FORMAT_TS = (ROOT / "web" / "lib" / "drinks" / "formatRecommend.ts").read_text(encoding="utf-8")
 APPROVAL_TS = (ROOT / "web" / "lib" / "drinks" / "contentApproval.ts").read_text(encoding="utf-8")
 
@@ -764,24 +765,55 @@ def test_engine_never_calls_the_content_approval_function():
         assert f'"{name}"' not in src
 
 
-def test_migration_0064_keeps_the_safety_rules():
-    for f in re.findall(r"create or replace function (drinks_\w+)\(", SQL_64):
+@pytest.mark.parametrize("sql", [SQL_64, SQL_72], ids=["0064", "0072"])
+def test_migration_0064_keeps_the_safety_rules(sql):
+    for f in re.findall(r"create or replace function (drinks_\w+)\(", sql):
         if f in ("drinks_approve_content", "drinks_pick_topic"):
             continue
-        body = SQL_64.split(f"create or replace function {f}(")[1].split("$$;")[0]
+        body = sql.split(f"create or replace function {f}(")[1].split("$$;")[0]
         for forbidden in ("drinks_review_action", "drinks_plan_action", "drinks_select(", "drinks_approve_content"):
             assert forbidden not in body, f"{f} 는 {forbidden} 를 부르면 안 된다"
     # 승인 경로는 기존 함수를 그대로 거친다 — 검사가 새로 쓰이거나 줄지 않는다
-    approve = SQL_64.split("create or replace function drinks_approve_content(")[1].split("$$;")[0]
-    for must in ("drinks_review_action", "drinks_select(", "drinks_plan_action", "drinks_evidence_content_hash", "plan_stale"):
+    approve = sql.split("create or replace function drinks_approve_content(")[1].split("$$;")[0]
+    for must in ("drinks_review_action", "drinks_select(", "drinks_plan_action", "drinks_evidence_content_hash", "plan_stale",
+                 "version_conflict", "plan_not_current", "plan_blocked", "develop_in_progress", "max_cap_usd"):
         assert must in approve
     approve_code = "\n".join(line.split("--")[0] for line in approve.splitlines())
     assert "support_review" not in approve_code, "주장별 확인을 이 함수가 채우지 않는다"
+    assert "drinks_open_spend_approval" not in approve_code and "drink_spend_approvals" not in approve_code, "승인이 지출 결재를 열지 않는다"
+    assert "alter function %s set search_path = public, pg_temp" in sql
+    assert "되돌리기" in sql
+
+
+def test_migration_0072_estimate_params_match_engine_config():
+    """형식별 예상 비용(drinks_develop_estimate)은 engine 과 같은 상수·단가로 센다 — 어긋나면 화면이 다른 돈을 말한다."""
+    params = SQL_72.split("create or replace function drinks_develop_estimate_params()")[1].split("$$;")[0]
+    assert f"'max_sources', {config.DRINKS_DEVELOP_MAX_SOURCES}," in params
+    assert f"'source_max_chars', {config.DRINKS_DEVELOP_SOURCE_MAX_CHARS}," in params
+    assert f"'extract_max_tokens', {config.DRINKS_DEVELOP_EXTRACT_MAX_TOKENS}," in params
+    assert f"'plan_max_tokens', {config.DRINKS_DEVELOP_PLAN_MAX_TOKENS}," in params
+    assert f"'chars_per_token', {config.DRINKS_DEVELOP_CHARS_PER_TOKEN}," in params
+    assert f"'fallback_model', '{config.LLM_PAYMENT_FALLBACK_MODEL}'" in params
+    prices = SQL_72.split("create or replace function drinks_develop_price(")[1].split("$$;")[0]
+    for model in ("gemini-2.5-flash", "deepseek-v4-pro"):
+        p = config.TEXT_PRICING[model]
+        inp, out = round(p["text_input_per_token"] * 1e6, 2), round(p["text_output_per_token"] * 1e6, 2)
+        assert re.search(rf"when '{re.escape(model)}'\s+then jsonb_build_object\('in', {inp:.2f} / 1e6, 'out', {out:.2f} / 1e6\)", prices), model
+    assert "모르는 비용을 0 으로 쓰지 않는다" in SQL_72
+
+
+def test_migration_0072_never_overwrites_picks_and_chain_is_per_format():
+    pick = SQL_72.split("create or replace function drinks_pick_topic(")[1].split("$$;")[0]
+    assert "on conflict (topic_id, format_intent) do nothing" in pick and "on conflict (topic_id) do nothing" in pick
+    assert "do update" not in pick, "다시 골라도 승인 시각·금액을 덮어쓰지 않는다"
+    chain = SQL_72.split("create or replace function drinks_develop_chain_next(")[1].split("$$;")[0]
+    assert "'format_intent', f.format_intent" in chain and "v_out := v_out || v_item" in chain
+
+
+def test_migration_0064_file_level_rules():
     assert "drinks_open_spend_approval" not in SQL_64 and "drink_spend_approvals" not in SQL_64.split("-- 표·칸")[1], "승인이 지출 결재를 열지 않는다"
-    assert "alter function %s set search_path = public, pg_temp" in SQL_64
     # 옛 파일은 고치지 않았다(0060 규칙은 표시 없는 요청에 그대로)
     assert "review_not_approved" in SQL
-    assert "되돌리기" in SQL_64
 
 
 

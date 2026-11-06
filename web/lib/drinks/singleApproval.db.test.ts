@@ -1,4 +1,4 @@
-// 내용 승인 한 번(0064) DB 통합 테스트 — PGlite 위에 00(5x|6x)_drinks_*.
+// 내용 승인 한 번(0064) DB 통합 테스트 — PGlite 위에 00(5x|6x|7x)_drinks_*. 0072 부터 result.chain 은 형식마다 한 항목인 배열이다.
 // 운영자 동작은 라우트와 같은 runDrinksAction 경로, 워커 함수는 rpc 직접. 모델·네트워크 호출 0.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d)_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0064_drinks_single_approval.sql"), "0064 가 목록에 있어야 한다");
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
@@ -121,7 +121,7 @@ async function operatorFills(reviewId: string, topic: string) {
 async function approvePayload(topic: string, reviewId: string, planId: string, extra: Record<string, unknown> = {}) {
   const [t, r, p] = [await topicRow(topic), await reviewRow(reviewId), await planRow(planId)];
   return { topic_id: topic, expected_topic_version: t.version, review_id: reviewId, expected_review_version: r.version,
-    plan_revision_id: planId, expected_plan_version: p.version, approved_amount_usd: 8.9, ...extra };
+    plan_revision_id: planId, expected_plan_version: p.version, approved_amount_usd: 8.9, format_intent: "explainer", ...extra }; // format_intent: 0072 라우트 검증(작업 단위 = 소재 × 형식)
 }
 
 test("[이걸로]: 후보 → 소재 올리기 + 임시 점수 옮기기 + 조사 + 형식 의도 + 근거 요청을 한 번에. 돈은 안 나가고 편성은 아직", async () => {
@@ -162,8 +162,8 @@ test("[이걸로]: 후보 → 소재 올리기 + 임시 점수 옮기기 + 조�
 test("이어 만들기: 근거 성공 → 같은 트랜잭션에서 대본 요청 → 승인 전 근거로 초안 저장(표시됨) → 근거·대본은 초안 그대로", async () => {
   const b = await budget();
   const { topic, reviewId, evidenceRequest, fin } = await pickAndEvidence(b);
-  assert.equal(fin.result.chain.queued, true);
-  const planReq = await reqRow(fin.result.chain.request_id);
+  assert.equal(fin.result.chain[0].queued, true);
+  const planReq = await reqRow(fin.result.chain[0].request_id);
   assert.equal(planReq.kind, "plan");
   assert.equal(planReq.draft_evidence, true);
   assert.equal(planReq.budget_id, b.budget_id, "같은 결재를 쓴다");
@@ -355,7 +355,7 @@ test("근거를 고치면 대본이 무효가 되고, 다시 만들어야 승인
   await assert.rejects(db.query("update drink_plan_revisions set blocked_at = null, blocked_reason = null where id = $1", [planId]), /drinks:immutable:/);
 
   // 다시 만들면 승인된다
-  const q = await ok("request_develop", { topic_id: topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id });
+  const q = await ok("request_develop", { topic_id: topic, kind: "plan", format_intent: "explainer", draft_evidence: true, budget_id: b.budget_id });
   assert.equal(q.draft_evidence, true);
   const { planId: planId2 } = await draftPlan();
   assert.notEqual(planId2, planId);
@@ -392,7 +392,7 @@ test("승인 직전 값 대조: 대본이 기댄 근거가 지금 승인하는 �
   assert.notEqual(sv.review_id, reviewId);
   await fails("approve_content", await approvePayload(topic, sv.review_id, planId), "plan_stale");
   await fails("approve_content", await approvePayload(topic, reviewId, planId), "review_not_current");
-  await ok("request_develop", { topic_id: topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id });
+  await ok("request_develop", { topic_id: topic, kind: "plan", format_intent: "explainer", draft_evidence: true, budget_id: b.budget_id });
   assert.match((await planRow(planId)).blocked_reason, /^evidence_edited:/, "옛 근거의 대본은 차단된다");
   const { planId: fresh } = await draftPlan();
   const res = await ok("approve_content", await approvePayload(topic, sv.review_id, fresh));
@@ -414,7 +414,7 @@ test("대본을 쓰는 사이 근거가 바뀌면 저장을 거부하고, 쓰던
   assert.equal((await reqRow(l.request_id)).status, "canceled");
 
   // 취소를 놓친 경우에도(값 대조) 저장되지 않는다
-  await ok("request_develop", { topic_id: topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id });
+  await ok("request_develop", { topic_id: topic, kind: "plan", format_intent: "explainer", draft_evidence: true, budget_id: b.budget_id });
   const g2 = await rpc("drinks_start_develop", { worker_id: "t" });
   const l2 = { request_id: g2.job.request_id, lease_token: g2.job.lease_token };
   await db.query("update drink_develop_requests set evidence_hash = 'stale' where id = $1 and evidence_hash is null", [l2.request_id]);
@@ -490,9 +490,9 @@ test("결재가 없으면 이어 만들기가 멈춘다 — 모델을 못 부르
     return { fin: await rpc("drinks_finish_develop", { ...l2, outcome: "succeeded", result: {} }) };
   })();
   assert.equal(fin.status, "succeeded", "근거 초안 자체는 성공이다");
-  assert.equal(fin.result.chain.queued, false);
-  assert.equal(fin.result.chain.code, "approval_closed");
-  assert.match(fin.result.chain.message, /닫힌 결재/);
+  assert.equal(fin.result.chain[0].queued, false);
+  assert.equal(fin.result.chain[0].code, "approval_closed");
+  assert.match(fin.result.chain[0].message, /닫힌 결재/);
 });
 
 test("근거에 돈 쓰기 전에 고칠 곳이 있으면 이어 만들지 않고 이유를 남긴다 / 카드뉴스·밈은 조용히 건너뛰지 않고 멈춘다", async () => {
@@ -506,18 +506,18 @@ test("근거에 돈 쓰기 전에 고칠 곳이 있으면 이어 만들지 않�
   const saved = await rpc("drinks_develop_save_evidence", { ...l, evidence_pack: { claims: [{ claim_id: "c1", text: "주장", claim_type: "process", source_refs: [{ snapshot_id: s.snapshot_id, original_quote: "not in the source at all, this phrase" }] }] },
     brief: { audience_question: "왜", selected_claim_ids: ["c1"], proposed_formats: ["video"], required_claims: { video: ["c1"] } } });
   const fin = await rpc("drinks_finish_develop", { ...l, outcome: "succeeded", result: {} });
-  assert.equal(fin.result.chain.queued, false);
-  assert.equal(fin.result.chain.code, "evidence_not_usable");
-  assert.deepEqual(fin.result.chain.blockers, ["claim_quote_unmatched:c1"]);
+  assert.equal(fin.result.chain[0].queued, false);
+  assert.equal(fin.result.chain[0].code, "evidence_not_usable");
+  assert.deepEqual(fin.result.chain[0].blockers, ["claim_quote_unmatched:c1"]);
   await rpcFails("drinks_request_develop", { topic_id: topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id }, "evidence_not_usable");
   assert.equal(saved.quote_check.unmatched, 1);
 
   // 카드뉴스: 0065 부터 대본까지 이어 간다(자세한 것은 cardReel.db.test.ts)
   const card = await pickAndEvidence(b, "card");
-  assert.equal(card.fin.result.chain.queued, true);
+  assert.equal(card.fin.result.chain[0].queued, true);
   const rv = await reviewRow(card.reviewId);
   assert.deepEqual(rv.brief.proposed_formats, ["carousel"]);
-  await rpc("drinks_cancel_develop", { request_id: card.fin.result.chain.request_id });
+  await rpc("drinks_cancel_develop", { request_id: card.fin.result.chain[0].request_id });
 
   // 밈: 모델을 부르지 않는다. 의도만 적고 이유를 돌려준다
   const memeTopic = await researching();
@@ -539,8 +539,10 @@ test("한 번 승인은 고른 형식의 표시된 대본만 받는다", async (
   const { topic, reviewId } = await pickAndEvidence(b);
   const { planId } = await draftPlan();
   await operatorFills(reviewId, topic);
-  await ok("pick_topic", { topic_id: topic, format: "card", editorial_week: WEEK, budget_id: b.budget_id });
-  await fails("approve_content", await approvePayload(topic, reviewId, planId), "format_not_selected");
+  // 0072: 카드를 더하면 카드 대본 요청이 따로 들어간다(설명형 선택은 그대로). 설명형 대본을 카드 형식으로 승인할 수는 없다.
+  const addCard = await ok("pick_topic", { topic_id: topic, format: "card", editorial_week: WEEK, budget_id: b.budget_id });
+  await fails("approve_content", await approvePayload(topic, reviewId, planId, { format_intent: "card" }), "format_not_selected");
+  await rpc("drinks_cancel_develop", { request_id: addCard.chain.request_id });
   await ok("pick_topic", { topic_id: topic, format: "explainer", editorial_week: WEEK, budget_id: b.budget_id });
   // 다른 소재의 근거·대본은 받지 않는다
   const other = await researching();
@@ -591,9 +593,13 @@ test("기존 소재의 두 단계 흐름은 그대로다 — 표시 없는 대�
   await ok("plan_action", { revision_id: p.id, expected_version: p.version, action: "approve" });
   assert.equal((await planRow(p.id)).plan_status, "approved");
   assert.ok((await ok("request_render", { plan_revision_id: p.id })).job_id);
-  // 근거가 승인된 소재에는 [이걸로]·한 번 승인을 쓰지 않는다
-  await fails("pick_topic", { topic_id: topic, format: "explainer", editorial_week: WEEK, budget_id: b.budget_id }, "invalid_state");
-  await fails("approve_content", await approvePayload(topic, r.id, p.id), "format_not_selected");
+  // 0072: 근거가 승인된 소재에도 형식을 더할 수 있다(G4) — 승인된 근거로 일반 대본 요청이 들어간다. 이미 승인된 대본을 한 번 승인으로 다시 승인할 수는 없다.
+  const late = await ok("pick_topic", { topic_id: topic, format: "explainer", editorial_week: WEEK, budget_id: b.budget_id });
+  assert.equal(late.status, "selected");
+  assert.equal(late.chain.kind, "plan");
+  assert.equal((await reqRow(late.chain.request_id)).draft_evidence, false, "승인된 근거를 쓴다");
+  await rpc("drinks_cancel_develop", { request_id: late.chain.request_id });
+  await fails("approve_content", await approvePayload(topic, r.id, p.id), "invalid_state");
   // 예전 근거 초안 요청(표시 없음)도 그대로 — 성공해도 이어지지 않는다
   const t2 = await researching();
   const s2 = await ok("add_source", { topic_id: t2, source: { url: `https://example.org/${uniq()}`, body_text: BODY, rights_status: "quote_ok" } });

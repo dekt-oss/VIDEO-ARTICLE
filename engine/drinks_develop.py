@@ -666,7 +666,8 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
 
 
 def chain_format(job: dict[str, Any]) -> str:
-    """[이걸로]에서 고른 형식 → 브리프의 형식 칸(0064 머리말의 대응표). 형식을 고르지 않은 요청은 0단계 그대로 영상이다."""
+    """요청의 형식(job.format_intent — 0072 부터 요청 칸, 없으면 DB 가 대표 형식을 채운다) → 브리프의 형식 칸(0064 머리말의 대응표).
+    card 면 carousel, 그 밖(explainer·없음)은 0단계 그대로 영상이다."""
     return "carousel" if job.get("format_intent") == "card" else "video"
 
 
@@ -976,12 +977,18 @@ def log_chain(job: dict[str, Any], done: Any) -> None:
     """이어 만들기는 DB 가 끝내기와 같은 트랜잭션에서 넣는다(drinks_finish_develop) — 근거만 끝나고 대본 요청이 빠지는 틈이 없다.
     여기서는 어떻게 됐는지 로그에 남길 뿐이다. 막힌 이유는 요청 기록(result.chain)으로 화면에 나간다."""
     chain = ((done or {}).get("result") or {}).get("chain") if isinstance(done, dict) else None
-    if not job.get("chain") or not isinstance(chain, dict):
+    if not job.get("chain"):
         return
-    if chain.get("queued"):
-        log.info("drinks: 개발 %s 이어서 대본 요청 %s", job["request_id"], chain.get("request_id"))
-    else:
-        log.warning("drinks: 개발 %s 근거에서 멈춤 — %s: %s", job["request_id"], chain.get("code"), chain.get("message"))
+    # 0072 부터 형식마다 한 항목인 배열이다(설명형·카드뉴스 각각). 0065 까지의 객체 하나도 그대로 읽는다.
+    items = chain if isinstance(chain, list) else ([chain] if isinstance(chain, dict) else [])
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        fmt = item.get("format_intent") or job.get("format_intent") or "-"
+        if item.get("queued"):
+            log.info("drinks: 개발 %s 이어서 대본 요청 %s (%s)", job["request_id"], item.get("request_id"), fmt)
+        else:
+            log.warning("drinks: 개발 %s 근거에서 멈춤 (%s) — %s: %s", job["request_id"], fmt, item.get("code"), item.get("message"))
 
 
 def run_queue(rpc: Rpc, deps: Deps, *, worker_id: str, max_jobs: int = 5) -> list[dict[str, Any]]:

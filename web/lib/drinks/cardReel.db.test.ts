@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d)_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0065_drinks_card_reels.sql"), "0065 가 목록에 있어야 한다");
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
@@ -118,7 +118,8 @@ async function fills(reviewId: string, topic: string) {
 
 async function approvePayload(topic: string, reviewId: string, planId: string) {
   const [t, r, p] = [await topicRow(topic), await reviewRow(reviewId), await planRow(planId)];
-  return { topic_id: topic, expected_topic_version: t.version, review_id: reviewId, expected_review_version: r.version, plan_revision_id: planId, expected_plan_version: p.version };
+  return { topic_id: topic, expected_topic_version: t.version, review_id: reviewId, expected_review_version: r.version, plan_revision_id: planId, expected_plan_version: p.version,
+    format_intent: "card" }; // 0072 라우트 검증(작업 단위 = 소재 × 형식)
 }
 
 /** 승인된 카드 제작안 → 렌더(릴스 포함) → 검수 승인까지. */
@@ -175,7 +176,7 @@ const SOON = () => new Date(Date.now() - 60_000).toISOString();
 test("카드뉴스: [이걸로] → 근거 → 대본 요청이 이어지고, 승인 전 초안은 제작으로 못 간다", async () => {
   const b = await budget();
   const { topic, reviewId, fin } = await pickCard(b);
-  assert.equal(fin.result.chain.queued, true, "card_plan_not_built 로 멈추지 않는다");
+  assert.equal(fin.result.chain[0].queued, true, "card_plan_not_built 로 멈추지 않는다");
   const { planId } = await draftCard();
   const p = await planRow(planId);
   assert.equal(p.format, "carousel");
@@ -214,7 +215,7 @@ test("근거를 고치면 카드 제작안도 무효 — 승인이 막히고 다
   await ok("save_review", { topic_id: topic, review_id: reviewId, expected_version: r.version, evidence_pack: { claims }, brief: r.brief, scores: SCORES });
   assert.ok((await planRow(planId)).blocked_at, "근거 내용이 바뀌면 트리거가 차단한다");
   await fails("approve_content", await approvePayload(topic, reviewId, planId), "plan_blocked");
-  const again = await ok("request_develop", { topic_id: topic, kind: "plan", draft_evidence: true, budget_id: b.budget_id });
+  const again = await ok("request_develop", { topic_id: topic, kind: "plan", format_intent: "card", draft_evidence: true, budget_id: b.budget_id });
   assert.equal(again.existing, false);
   const { planId: fresh } = await draftCard();
   await ok("approve_content", await approvePayload(topic, reviewId, fresh));
@@ -237,22 +238,28 @@ test("결재가 없으면 대본을 이어 만들지 않는다. 제작안 모양
   await rpc("drinks_cancel_develop", { request_id: g.job.request_id });
 });
 
-test("설명형에서 카드로 바꾸면 대기 중 대본 요청을 거두고, 필수 주장을 카드 형식으로 채운다", async () => {
+test("카드에 설명형을 더하면(0072: 형식은 바꾸는 게 아니라 더한다) 대기 중 카드 대본 요청은 그대로고, 필수 주장을 카드 형식으로 채운다", async () => {
+  // 0065 까지는 형식을 바꾸면 옛 요청을 거뒀다. 0072 부터 요청이 자기 형식을 알아 둘이 나란히 산다 — 의도한 변경(docs/deviation-drinks-multi-format.md G1·G8).
   const b = await budget();
   const { topic, reviewId, fin } = await pickCard(b, "video");   // 브리프가 영상용인 근거
-  assert.equal(fin.result.chain.queued, true);
-  // 설명형으로 바꾸면 대기 중인 카드 대본 요청이 취소되고 새 요청이 들어간다
+  assert.equal(fin.result.chain[0].queued, true);
+  const cardReq = fin.result.chain[0].request_id;
   const toVideo = await ok("pick_topic", { topic_id: topic, format: "explainer", editorial_week: WEEK, budget_id: b.budget_id });
-  assert.notEqual(toVideo.chain.request_id, fin.result.chain.request_id);
-  assert.equal((await row("select status from drink_develop_requests where id = $1", [fin.result.chain.request_id])).status, "canceled");
-  // 다시 카드로
+  assert.notEqual(toVideo.chain.request_id, cardReq, "설명형 대본 요청이 따로 들어간다");
+  assert.equal((await row("select status from drink_develop_requests where id = $1", [cardReq])).status, "queued", "카드 대본 요청은 거두지 않는다");
+  assert.equal((await row("select format_intent from drink_topic_picks where topic_id = $1", [topic])).format_intent, "card", "대표 형식은 바뀌지 않는다");
+  assert.equal((await row("select count(*)::int n from drink_topic_format_picks where topic_id = $1", [topic])).n, 2);
+  // 다시 카드로 — 이미 있는 요청을 돌려준다
   const toCard = await ok("pick_topic", { topic_id: topic, format: "card", editorial_week: WEEK, budget_id: b.budget_id });
   assert.equal(toCard.chain.queued, true);
-  const { planId } = await draftCard();
+  assert.equal(toCard.chain.existing, true);
+  assert.equal(toCard.chain.request_id, cardReq);
+  const { planId } = await draftCard();   // 먼저 들어간 카드 요청이 먼저 나온다
   const brief = (await reviewRow(reviewId)).brief;
   assert.deepEqual(brief.required_claims.carousel, ["c1"], "다른 형식의 필수 주장을 가져온다");
-  assert.deepEqual(brief.proposed_formats, ["carousel"]);
+  assert.deepEqual(brief.proposed_formats, ["carousel", "video"], "형식 목록은 더한다(덮어쓰지 않는다)");
   assert.equal((await planRow(planId)).blocked_at, null, "저장하면서 채운 값이 이 제작안을 무효로 만들지 않는다");
+  await rpc("drinks_cancel_develop", { request_id: toVideo.chain.request_id });   // 진행 중 요청이 있으면 승인하지 않는다(규칙 그대로)
   await fills(reviewId, topic);
   await ok("approve_content", await approvePayload(topic, reviewId, planId));
 });
