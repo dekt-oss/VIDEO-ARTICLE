@@ -142,11 +142,17 @@ function Body({ lane, title, question, formats, decision, decisionProblem, secti
 
   return (
     <div className="dw" ref={bodyRef}>
-      <h1 className="dw-title">{title}</h1>
-      {question && <p className="oneliner">Q. {question}</p>}
+      <div className="dk-head dk-head-row">
+        <div>
+          <p className="dk-eyebrow">MAKE / {FORMAT_LABEL[lane]}</p>
+          <h1 className="dw-title dk-h1">{title}</h1>
+          {question ? <p className="dk-lead">Q. {question}</p> : <p className="dk-lead">한 화면에서, 지금 필요한 결정부터.</p>}
+        </div>
+        <span className="dk-badge">{FORMAT_LABEL[lane]}</span>
+      </div>
 
       <section className="card dw-formats-card" aria-label="이 소재로 만드는 형식">
-        <h2>이 소재로 만드는 {formats.length}가지</h2>
+        <h2>이 소재로 만드는 {formats.length}가지 콘텐츠</h2>
         <p className="muted">소재·근거는 함께, 기획·승인·제작·게시는 형식마다 따로 갑니다. 카드를 누르면 그 형식의 작업으로 바뀝니다.</p>
         <div className="dw-formats">
           {formats.map((f) => (
@@ -160,8 +166,10 @@ function Body({ lane, title, question, formats, decision, decisionProblem, secti
 
       <div className="dw-decision" role="region" aria-label="지금 할 일">
         <div className="dw-decision-left">
-          <span className="pill on">{FORMAT_LABEL[lane]}</span>
-          {primary && <span className="pill">{primary.label}</span>}
+          <span style={{ flexBasis: "100%", minWidth: 0 }}>
+            <span className="dw-now-label">지금 할 일 · {FORMAT_LABEL[lane]}</span>
+            <strong className="dw-now-title">{primary ? primary.label : "지금 할 일이 없습니다"}</strong>
+          </span>
           {decision?.blocks.map((b) => (
             <span key={b.code} className="dw-chip dw-chip--block">
               {b.message}{b.href && <> · <Link href={b.href}>복구 →</Link></>}
@@ -200,6 +208,15 @@ function Body({ lane, title, question, formats, decision, decisionProblem, secti
       </div>
 
       {showHistory && <section className="card dw-history" aria-label="이력">{history}</section>}
+
+      {sections.length > 1 && (
+        <nav className="dw-steps" aria-label="진행 단계">
+          {sections.map((s) => (
+            <button key={s.key} type="button" data-open={open === s.key} data-now={primarySection === s.key}
+              aria-current={primarySection === s.key ? "step" : undefined} onClick={() => focusSection(s.key, true)}>{s.label}</button>
+          ))}
+        </nav>
+      )}
 
       <div className="dw-sections">
         {sections.map((s, i) => (

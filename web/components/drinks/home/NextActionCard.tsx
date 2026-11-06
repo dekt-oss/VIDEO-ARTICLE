@@ -29,8 +29,9 @@ export default function NextActionCard({ items, decisions }: { items: WorkItem[]
           <p className="muted" style={{ margin: "4px 0 0" }}>
             {snoozed.size > 0 ? "미룬 것은 24시간 뒤 다시 올라옵니다. 실행 차단은 풀리지 않았습니다." : "다음 소재를 고르면 여기에 첫 결정이 올라옵니다."}
           </p>
+          <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/topics">다음 소재 고르기 →</Link></div>
         </div>
-        <div className="next-action-cta"><Link className="btn pick" href="/drinks/topics">다음 소재 고르기 →</Link></div>
+        <div className="next-action-art" aria-hidden>✓<small>오늘 결정 끝</small></div>
       </section>
     );
   }
@@ -54,15 +55,16 @@ export default function NextActionCard({ items, decisions }: { items: WorkItem[]
         <p style={{ margin: "4px 0" }}>{d.primary.label}</p>
         {block && <p className="dk-bad" style={{ margin: "4px 0", fontSize: 13 }}>막힘: {block.message}</p>}
         {d.warnings.length > 0 && <p className="muted" style={{ margin: "4px 0", fontSize: 13 }}>{d.warnings.join(" · ")}</p>}
-        <div className="actions" style={{ marginTop: 8 }}>
+        <div className="next-action-cta dk-hero-cta">
+          <Link className="btn pick" href={workHref(it, d.primary.panel)}>{block ? "막힌 이유 보기 →" : `${d.primary.label} →`}</Link>
+        </div>
+        <div className="actions" style={{ marginTop: 12, flexWrap: "wrap" }}>
           <button className="btn" type="button" onClick={snooze} title="표시 순서만 바꿉니다. 실행 차단을 풀지 않습니다">확인했음 — 나중에</button>
           {ranked.length > 1 && <button className="btn" type="button" onClick={() => setOffset(offset + 1)}>다른 작업 보기</button>}
         </div>
         <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>[확인했음 — 나중에]는 24시간 동안 순서만 미룹니다 · 실행 차단을 풀지 않습니다.</p>
       </div>
-      <div className="next-action-cta">
-        <Link className="btn pick" href={workHref(it, d.primary.panel)}>{block ? "막힌 이유 보기 →" : `${d.primary.label} →`}</Link>
-      </div>
+      <div className="next-action-art" aria-hidden>{String(offset % ranked.length + 1).padStart(2, "0")}<small>{offset % ranked.length === 0 ? "오늘의 첫 결정" : "다음 결정"}</small></div>
     </section>
   );
 }
