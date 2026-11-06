@@ -7,12 +7,14 @@ import Link from "next/link";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import CandidateCard from "@/components/drinks/topics/CandidateCard";
 import ManualEntry from "@/components/drinks/topics/ManualEntry";
+import WeeklyBudgetCard from "@/components/drinks/topics/WeeklyBudgetCard";
 import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
 import MineTab from "@/components/drinks/topics/MineTab";
 import { todayInSeoul } from "@/lib/date";
 import { pickBudget } from "@/lib/drinks/develop";
 import { recommendFormat } from "@/lib/drinks/formatRecommend";
 import { UNKNOWN_ESTIMATE, normalizeEstimate, pickability, weekOptions, type EstimateMap } from "@/lib/drinks/pickModal";
+import { loadWeeklyBudget } from "@/lib/drinks/weeklyBudget";
 import { loadTopicCandidates, type FitFilter, type TopicsCandidatesView } from "@/lib/drinks/topicsQueries";
 import { decide, rankForHome } from "@/lib/drinks/work/decision";
 import { loadDevelopEstimate, loadWorkItems } from "@/lib/drinks/work/queries";
@@ -90,6 +92,8 @@ function Pager({ v, tab, fit }: { v: TopicsCandidatesView; tab: Tab; fit: FitFil
 }
 
 async function CandidatesTab({ page, fit }: { page: number; fit: FitFilter }) {
+  // 이번 주 한도 줄을 먼저 확보한다(없으면 DB 가 $5 로 만든다) — 그래야 아래 결재 목록에 잡혀 [이걸로]가 열린다.
+  const wb = await loadWeeklyBudget();
   const [v, est] = await Promise.all([
     loadTopicCandidates({ statuses: ["suggested"], page, fit }),
     loadDevelopEstimate(["explainer", "card", "meme"]),
@@ -108,9 +112,7 @@ async function CandidatesTab({ page, fit }: { page: number; fit: FitFilter }) {
   const pickable = cards.filter((x) => x.pick.ok).length;
   return (
     <>
-      {/* TODO(부모 세션): 이번 주 AI 초안 한도 카드 자리 — loadWeeklyBudget() 결과를 넣는다.
-          <WeeklyBudgetCard budget={wb.state === "ok" ? wb.data : null} error={wb.state === "error" ? wb.message : undefined} />
-          (components/drinks/topics/WeeklyBudgetCard.tsx) */}
+      <WeeklyBudgetCard budget={wb.state === "ok" ? wb.data : null} error={wb.state === "error" ? wb.message : undefined} />
       <div className="dk-toolbar">
         <Header v={d} pickable={pickable} />
         <form method="get" action="/drinks/topics" className="dk-row">
