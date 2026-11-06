@@ -109,7 +109,7 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
                   <div className="dk-kv">
                     결재: {budget
                       ? <b>잔액 ${Number(budget.remaining_usd).toFixed(2)} · {budget.expires_at.slice(0, 10)}까지</b>
-                      : <><b className="dk-bad">열린 개발 결재 없음</b> — <Link href="/drinks/review">예산 열기(소재 화면의 개발 카드)</Link></>}
+                      : <><b className="dk-bad">열린 개발 결재 없음</b> — <Link href="/drinks/topics?tab=candidates">소재 고르기 맨 위 칸에서 결재를 여세요</Link></>}
                   </div>
                   <div className="dk-kv" style={{ marginTop: 4 }}>
                     예상 초안 비용: {cost.lines.length === 0 ? <span>형식을 고르면 보입니다</span>
