@@ -16,6 +16,10 @@ const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);
 for (const m of MIGS) await db.exec(readFileSync(join(DIR, m), "utf8"));
+// 이 파일의 시험은 게시 '창'(0071 R6, 07:00~23:30 KST)을 재지 않는다 — 예약 시각을 '조금 전'으로 잡아 워커 claim 까지 보는데,
+// 밤에 돌리면 창 밖이라 시각만으로 실패했다(2026-11-06 00:10 KST 실측). 창 규칙 자체는 tests/test_drinks_review_fixes.py 가 잰다.
+await db.exec(`create or replace function drinks_publish_window() returns jsonb language sql immutable set search_path = public, pg_temp as $$
+  select jsonb_build_object('timezone', 'Asia/Seoul', 'start', '00:00', 'end', '23:59:59.999') $$;`);
 
 type Any = any;
 const exec = async (fn: string, p: Record<string, unknown>) => {
