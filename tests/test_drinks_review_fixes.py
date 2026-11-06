@@ -25,8 +25,11 @@ from engine.providers import video as pv
 from engine.providers.instagram import FakeInstagram
 
 ROOT = Path(__file__).resolve().parents[1]
-needs_db = pytest.mark.skipif(not (shutil.which("node") and (ROOT / "web" / "node_modules" / "@electric-sql" / "pglite").exists()),
-                              reason="node·web 의존성(@electric-sql/pglite)이 없다 — web 에서 npm ci")
+# 모듈 단위로 한 번만 건너뛴다(test_drinks_loop_e2e.py 와 같은 규칙). 시험 16개가 각각 건너뛰면 CI 의 '건너뜀 건수' 감시(기준 14)를
+# 넘긴다 — 2026-11-06 PR #143 파이썬 잡이 25건으로 실패했다. CI 에서는 웹 의존성이 있는 web 잡이 이 파일을 따로 돌린다.
+if shutil.which("node") is None or not (ROOT / "web" / "node_modules" / "@electric-sql" / "pglite").exists():
+    pytest.skip("node·web 의존성(@electric-sql/pglite)이 없어 리뷰 후속 DB 시험을 건너뜁니다 — web 에서 npm ci", allow_module_level=True)
+needs_db = pytest.mark.skipif(False, reason="")   # 모듈 상단에서 이미 걸렀다. 표시는 남겨 어느 시험이 DB 를 쓰는지 보이게 한다
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg 없음")
 
 

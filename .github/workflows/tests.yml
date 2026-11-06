@@ -126,7 +126,8 @@ jobs:
         working-directory: .
         run: |
           pip install -r engine/requirements.txt
-          python -m pytest -q tests/test_drinks_loop_e2e.py tests/test_drinks_stage5_publish_loop.py
+          # 리뷰 후속 DB 시험(0071·0072, 2026-11-06)도 PGlite 가 있는 이 잡에서만 돈다 — 파이썬 잡은 모듈째 1건 건너뛴다.
+          python -m pytest -q tests/test_drinks_loop_e2e.py tests/test_drinks_stage5_publish_loop.py tests/test_drinks_review_fixes.py
       - name: tsc --noEmit
         run: npx tsc --noEmit
       - name: lint
