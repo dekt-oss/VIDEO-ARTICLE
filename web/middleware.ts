@@ -20,6 +20,7 @@ import {
   OPERATOR_TOKEN_PREFIX,
   safeEqual,
 } from "@/lib/operatorConst";
+import { legacyDrinksRedirect } from "@/lib/drinks/work/redirects";
 
 /** apiGuard.operatorToken() 의 Edge 판. 같은 입력 → 같은 hex 를 내야 한다. */
 async function edgeOperatorToken(key: string): Promise<string> {
@@ -39,7 +40,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // 로컬 개발은 통과. 키 없이 npm run dev 가 막히면 개발이 불가능하다.
-  if (process.env.NODE_ENV === "development") return NextResponse.next();
+  if (process.env.NODE_ENV === "development") return passThrough(request, pathname, search);
 
   const key = process.env.OPERATOR_KEY;
 
@@ -52,9 +53,21 @@ export async function middleware(request: NextRequest) {
 
   const got = request.cookies.get(OPERATOR_COOKIE)?.value ?? "";
   if (got.length > 0 && safeEqual(got, await edgeOperatorToken(key))) {
-    return NextResponse.next();
+    return passThrough(request, pathname, search);
   }
   return denied(request, pathname, search, "locked");
+}
+
+/** 게이트를 통과한 요청. 주류 옛 주소(/drinks/review/<id>)는 작업공간으로 넘긴다(2026-11-05 동선 개편, `?legacy=1` 이면 옛 화면).
+ *  게이트 **뒤**에서만 넘긴다 — 잠긴 기기는 먼저 /unlock 으로 가고, 해제 뒤 옛 주소가 다시 들어오면 그때 넘어간다. */
+function passThrough(request: NextRequest, pathname: string, search: string) {
+  const to = legacyDrinksRedirect(pathname, search);
+  if (!to) return NextResponse.next();
+  const url = request.nextUrl.clone();
+  const [p, q] = to.split("?");
+  url.pathname = p;
+  url.search = q ? `?${q}` : "";
+  return NextResponse.redirect(url, 307);
 }
 
 function denied(request: NextRequest, pathname: string, search: string, reason: string) {

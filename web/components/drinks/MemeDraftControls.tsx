@@ -10,6 +10,7 @@ import {
   type MemeBudgetRow, type MemeDraftRow, type MemeFrame, type MemeReviewOption, type MemeSound,
 } from "@/lib/drinks/meme";
 import { useDrinksAction } from "./useDrinksAction";
+import { useRegisterPrimary } from "./work/primaryBridge";
 
 const beatsToText = (d?: MemeDraftRow): string =>
   (d?.spec.beats ?? []).map((b) => {
@@ -109,22 +110,32 @@ export function MemeDraftForm({ cardId, topicId, draft, budgets, reviews }: {
   );
 }
 
-export function MemeDraftActions({ draft }: { draft: MemeDraftRow }) {
+export function MemeDraftActions({ draft, hidePrimary = false }: {
+  draft: MemeDraftRow;
+  /** 작업공간 결정 바가 [승인]·[링크 등록]을 대신 누른다(primaryBridge). 옛 밈 보드는 false */
+  hidePrimary?: boolean;
+}) {
   const { run, busy } = useDrinksAction();
   const [url, setUrl] = useState("");
   const act = (action: string, ok: string, extra: Record<string, unknown> = {}) =>
     run("meme_draft_action", { draft_id: draft.id, expected_version: draft.version, action, ...extra }, ok, "제작안 동작");
   const canReopen = ["approved", "stopped", "failed", "publish_waiting", "manual_audio"].includes(draft.status);
   const canReject = ["draft", "approved", "stopped", "failed", "publish_waiting", "manual_audio"].includes(draft.status);
+  const approve = () => act("approve", "승인했습니다 — 제작 워커가 로컬로 만듭니다(0원)");
+  const approveClaimed = useRegisterPrimary("meme_draft_action:approve", { submit: approve, disabled: busy || draft.blockers.length > 0,
+    title: draft.blockers.length > 0 ? "차단 사유를 먼저 고치세요" : "" }, hidePrimary && draft.status === "draft");
+  const posted = () => act("manual_posted", "게시 링크를 등록했습니다", { url: url.trim() });
+  const postedClaimed = useRegisterPrimary("meme_draft_action:manual_posted", { submit: posted, disabled: busy || !url.trim(), title: !url.trim() ? "앱에서 올린 릴스 주소를 적으세요" : "" },
+    hidePrimary && draft.status === "manual_audio");
   return (
     <div className="actions">
-      {draft.status === "draft" && <button className="btn pick" disabled={busy || draft.blockers.length > 0} onClick={() => act("approve", "승인했습니다 — 제작 워커가 로컬로 만듭니다(0원)")}>승인</button>}
+      {draft.status === "draft" && !approveClaimed && <button className="btn pick" disabled={busy || draft.blockers.length > 0} onClick={approve}>승인</button>}
       {canReopen && <button className="btn" disabled={busy} onClick={() => act("reopen", "초안으로 되돌렸습니다")}>초안으로 되돌리기</button>}
       {canReject && <button className="btn" disabled={busy} onClick={() => act("reject", "버렸습니다")}>버리기</button>}
       {draft.status === "manual_audio" && (
         <span className="dk-row">
           <input value={url} aria-label="게시한 릴스 주소" placeholder="앱에서 올린 릴스 주소" onChange={(e) => setUrl(e.target.value)} />
-          <button className="btn" disabled={busy || !url.trim()} onClick={() => act("manual_posted", "게시 링크를 등록했습니다", { url: url.trim() })}>링크 등록</button>
+          {!postedClaimed && <button className="btn" disabled={busy || !url.trim()} onClick={posted}>링크 등록</button>}
         </span>
       )}
     </div>

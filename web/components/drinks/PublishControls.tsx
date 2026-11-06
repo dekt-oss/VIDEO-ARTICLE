@@ -10,6 +10,7 @@ import {
 } from "@/lib/drinks/audio";
 import { publishWindowProblem } from "@/lib/drinks/publishWindow";
 import { useDrinksAction } from "./useDrinksAction";
+import { useRegisterPrimary } from "./work/primaryBridge";
 
 /** 음원 고르기: 수집된 인기 음원 중 하나 + 볼륨 + 박자 등급. 제목·가수는 서버가 음원 표에서 복사한다. 미리듣기는 음원만 된다(합성 미리보기는 공급자가 지원하지 않는다). */
 function AudioFields({ options, value, onChange }: { options: AudioOption[]; value: AudioChoice; onChange: (v: AudioChoice) => void }) {
@@ -116,10 +117,12 @@ export function AccountActions({ id, version, status, publishEnabled }: { id: st
 }
 
 /** 발행안 작성: 계정을 고르고(기본 계정 없음) 캡션·게시 시각(한국 시각)을 적는다. */
-export function CreatePublication({ outputReviewId, accounts, postType, slotHint, audioOptions, audioRequired = false }: {
+export function CreatePublication({ outputReviewId, accounts, postType, slotHint, audioOptions, audioRequired = false, hidePrimary = false }: {
   outputReviewId: string; accounts: { id: string; label: string; postTypes: string[] }[]; postType: "carousel" | "reel"; slotHint: string | null;
   /** 0065: 카드 묶음을 릴스로 올리면 음원이 필수다 */
   audioOptions?: AudioOption[]; audioRequired?: boolean;
+  /** 작업공간 결정 바가 [발행안 만들기]를 대신 누른다(계정·캡션·시각·음원은 여기서 채운다). 옛 발행 화면은 false */
+  hidePrimary?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
   const usable = accounts.filter((a) => a.postTypes.includes(postType));
@@ -127,6 +130,14 @@ export function CreatePublication({ outputReviewId, accounts, postType, slotHint
   const [caption, setCaption] = useState("");
   const [when, setWhen] = useState("");
   const [choice, setChoice] = useState<AudioChoice>(defaultChoice());
+  const windowProblem = publishWindowProblem(when);
+  const cannot = !acc ? "계정을 고르세요" : audioRequired && !choice.audioId ? "음원을 고르세요(필수)" : windowProblem || "";
+  const submit = () => run("create_publication", {
+    output_review_id: outputReviewId, account_id: acc, caption, post_type: postType,
+    publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
+    ...(audioRequired ? { audio: audioPayload(choice) } : {}),
+  }, "발행안을 만들었습니다(작성 중)", "발행안 작성");
+  const claimed = useRegisterPrimary("create_publication", { submit, disabled: busy || Boolean(cannot), title: cannot }, hidePrimary && usable.length > 0);
   if (usable.length === 0) return <span className="muted">이 형식({postType === "carousel" ? "카드뉴스" : "릴스"})을 올릴 수 있는 계정이 없습니다 — 위에서 계정을 등록하세요.</span>;
   return (
     <div className="dk-row" style={{ flexWrap: "wrap", gap: 6 }}>
@@ -140,19 +151,17 @@ export function CreatePublication({ outputReviewId, accounts, postType, slotHint
       {publishWindowProblem(when) && <span className="banner-warn">{publishWindowProblem(when)}</span>}
       {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
       {audioRequired && <AudioFields options={audioOptions ?? []} value={choice} onChange={setChoice} />}
-      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId) || !!publishWindowProblem(when)} onClick={() => run("create_publication", {
-        output_review_id: outputReviewId, account_id: acc, caption, post_type: postType,
-        publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
-        ...(audioRequired ? { audio: audioPayload(choice) } : {}),
-      }, "발행안을 만들었습니다(작성 중)", "발행안 작성")}>발행안 만들기</button>
+      {!claimed && <button className="btn" disabled={busy || Boolean(cannot)} title={cannot} onClick={submit}>발행안 만들기</button>}
     </div>
   );
 }
 
 /** 0068: 게시 대기 밈 제작안 → 발행안. 캡션을 비우면 제작안의 캡션(승인된 글)을 쓴다. 박자 맞춤은 여기 오지 않는다(DB 가 목록에서 뺀다). */
-export function CreateMemePublication({ draftId, accounts, defaultCaption, slotHint, audioOptions, audioRequired, boughtScene }: {
+export function CreateMemePublication({ draftId, accounts, defaultCaption, slotHint, audioOptions, audioRequired, boughtScene, hidePrimary = false }: {
   draftId: string; accounts: { id: string; label: string; postTypes: string[] }[]; defaultCaption: string; slotHint: string | null;
   audioOptions?: AudioOption[]; audioRequired: boolean; boughtScene: boolean;
+  /** 작업공간 결정 바가 [발행안 만들기]를 대신 누른다. 옛 발행 화면은 false */
+  hidePrimary?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
   const usable = accounts.filter((a) => a.postTypes.includes("reel"));
@@ -160,6 +169,13 @@ export function CreateMemePublication({ draftId, accounts, defaultCaption, slotH
   const [caption, setCaption] = useState(defaultCaption);
   const [when, setWhen] = useState("");
   const [choice, setChoice] = useState<AudioChoice>(defaultChoice());
+  const cannot = !acc ? "계정을 고르세요" : audioRequired && !choice.audioId ? "음원을 고르세요(필수)" : publishWindowProblem(when) || "";
+  const submit = () => run("create_meme_publication", {
+    draft_id: draftId, account_id: acc, caption,
+    publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
+    ...(audioRequired ? { audio: audioPayload(choice) } : {}),
+  }, "밈 발행안을 만들었습니다(작성 중)", "밈 발행안 작성");
+  const claimed = useRegisterPrimary("create_meme_publication", { submit, disabled: busy || Boolean(cannot), title: cannot }, hidePrimary && usable.length > 0);
   if (usable.length === 0) return <span className="muted">릴스를 올릴 수 있는 계정이 없습니다 — 위에서 계정을 등록하세요.</span>;
   return (
     <div className="dk-row" style={{ flexWrap: "wrap", gap: 6 }}>
@@ -173,25 +189,26 @@ export function CreateMemePublication({ draftId, accounts, defaultCaption, slotH
       {publishWindowProblem(when) && <span className="banner-warn">{publishWindowProblem(when)}</span>}
       {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
       {audioRequired && <AudioFields options={audioOptions ?? []} value={choice} onChange={setChoice} />}
-      <button className="btn" disabled={busy || !acc || (audioRequired && !choice.audioId) || !!publishWindowProblem(when)} onClick={() => run("create_meme_publication", {
-        draft_id: draftId, account_id: acc, caption,
-        publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
-        ...(audioRequired ? { audio: audioPayload(choice) } : {}),
-      }, "밈 발행안을 만들었습니다(작성 중)", "밈 발행안 작성")}>발행안 만들기</button>
+      {!claimed && <button className="btn" disabled={busy || Boolean(cannot)} title={cannot} onClick={submit}>발행안 만들기</button>}
     </div>
   );
 }
 
-export function RequestActions({ id, version, status, digest, summary }: {
+export function RequestActions({ id, version, status, digest, summary, hidePrimary = false }: {
   id: string; version: number; status: string; digest: string | null; summary: string;
+  /** 작업공간 결정 바가 [승인 요청]·[예약]을 대신 누른다. [승인(공개 게시)]은 지문을 사람이 보고 눌러야 해서 **항상 여기 남는다**. 옛 발행 화면은 false */
+  hidePrimary?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
   const go = (action: string, msg: string, extra: Record<string, unknown> = {}) =>
     run("publication_action", { request_id: id, expected_version: version, action, ...extra }, msg, "발행");
   const ask = (q: string) => window.prompt(q) ?? "";
+  const submitClaimed = useRegisterPrimary("publication_action:submit", { submit: () => go("submit", "승인 요청했습니다"), disabled: busy }, hidePrimary && status === "draft");
+  const scheduleClaimed = useRegisterPrimary("publication_action:schedule", { submit: () => go("schedule", "예약했습니다 — 예약 시각에 워커가 게시합니다"), disabled: busy },
+    hidePrimary && status === "approved");
   return (
     <span className="dk-row" style={{ flexWrap: "wrap" }}>
-      {status === "draft" && <button className="btn pick" disabled={busy} onClick={() => go("submit", "승인 요청했습니다")}>승인 요청</button>}
+      {status === "draft" && !submitClaimed && <button className="btn pick" disabled={busy} onClick={() => go("submit", "승인 요청했습니다")}>승인 요청</button>}
       {status === "awaiting_approval" && (
         <>
           <button className="btn pick" disabled={busy || !digest} onClick={() => {
@@ -202,7 +219,7 @@ export function RequestActions({ id, version, status, digest, summary }: {
           <button className="btn" disabled={busy} onClick={() => go("withdraw", "작성 중으로 되돌렸습니다")}>고치러 되돌리기</button>
         </>
       )}
-      {status === "approved" && <button className="btn pick" disabled={busy} onClick={() => go("schedule", "예약했습니다 — 예약 시각에 워커가 게시합니다")}>예약</button>}
+      {status === "approved" && !scheduleClaimed && <button className="btn pick" disabled={busy} onClick={() => go("schedule", "예약했습니다 — 예약 시각에 워커가 게시합니다")}>예약</button>}
       {status === "paused" && <button className="btn" disabled={busy} onClick={() => go("resume", "다시 예약했습니다")}>다시 예약</button>}
       {status === "failed" && <button className="btn" disabled={busy} onClick={() => go("retry", "다시 예약했습니다")}>다시 시도</button>}
       {(status === "approved" || status === "scheduled") && (

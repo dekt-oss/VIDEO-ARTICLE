@@ -22,9 +22,10 @@ import type { Brief, CarouselPage, Claim, PlanRow, ReviewRow, SnapshotRow, Topic
 import { AutoRefresh } from "./DevelopControls";
 import ScoreInputs from "./ScoreInputs";
 import { useDrinksAction } from "./useDrinksAction";
+import { useRegisterPrimary } from "./work/primaryBridge";
 
 export default function ContentApprovalTab({
-  topic, review, plan, pick, requests, budget, snapshots, developProblem, today,
+  topic, review, plan, pick, requests, budget, snapshots, developProblem, today, formatIntent, hidePrimary = false,
 }: {
   topic: TopicRow;
   review: ReviewRow | null;
@@ -38,6 +39,10 @@ export default function ContentApprovalTab({
   /** 개발 상태를 못 읽었을 때 그 사실(요청 0건이 아니다) */
   developProblem: string | null;
   today: string;
+  /** 0072 복수 형식: 이 화면이 승인하는 형식. 없으면 대표 pick 의 형식(옛 화면) */
+  formatIntent?: "explainer" | "card";
+  /** 작업공간 결정 바가 [승인]을 대신 누른다(primaryBridge — 금액·예외 사유는 이 폼의 값이 실린다). 옛 화면은 false */
+  hidePrimary?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
   const savedClaims = review?.evidence_pack?.claims ?? [];
@@ -59,7 +64,8 @@ export default function ContentApprovalTab({
     || JSON.stringify(scores) !== JSON.stringify(review?.scores ?? {})
     || claims.some((c) => c.support_review !== savedClaims.find((s) => s.claim_id === c.claim_id)?.support_review);
   const score = weightedScore(scores as Record<string, unknown>);
-  const isCard = pick?.format_intent === "card";
+  const intent = formatIntent ?? pick?.format_intent ?? null;
+  const isCard = intent === "card";
   const planFormat = isCard ? "carousel" : "video";
   const fitRaw = isCard ? scores.fit_carousel : scores.fit_video;
   const formatFit = typeof fitRaw === "number" ? fitRaw : null;
@@ -69,6 +75,8 @@ export default function ContentApprovalTab({
     formatFit, fitMin: FORMAT_FIT_MIN, fitException: fitExc, amountUsd: Number(amount),
   }, blockerLabel);
   const editable = review !== null && review.status === "draft" && topic.status === "researching";
+  // 0072 G4: 다른 형식이 먼저 승인돼 소재가 ready/selected 여도, 이 형식의 제작안이 아직 승인 전이면 **제작안만** 승인한다(근거는 현재 승인본 그대로).
+  const secondFormat = Boolean(formatIntent) && ["ready", "selected"].includes(topic.status) && plan !== null && plan.plan_status !== "approved";
 
   const save = () => {
     if (!review) return;
@@ -83,11 +91,14 @@ export default function ContentApprovalTab({
     const r = await run("approve_content", {
       topic_id: topic.id, expected_topic_version: topic.version, review_id: review.id, expected_review_version: review.version,
       plan_revision_id: plan.id, expected_plan_version: plan.version, ...(isCard ? {} : { approved_amount_usd: Number(amount) }),
+      ...(formatIntent ? { format_intent: formatIntent } : {}),
       ...(scoreExc.trim() ? { score_exception_reason: scoreExc.trim() } : {}),
       ...(fitExc.trim() ? { format_exceptions: { [planFormat]: fitExc.trim() } } : {}),
     }, "근거와 대본을 함께 승인하고 편성했습니다", "내용 승인");
     setServerBlockers(!r.ok && Array.isArray(r.detail) ? (r.detail as string[]) : null);
   };
+  const approveClaimed = useRegisterPrimary("approve_content", { submit: approve, disabled: busy || locks.length > 0 || !review || !plan,
+    title: locks.length > 0 ? locks.join(" · ") : "" }, hidePrimary && (["triaged", "researching"].includes(topic.status) || secondFormat));
   const regenerate = async () => {
     const r = await run("request_develop", { topic_id: topic.id, kind: "plan", draft_evidence: true, ...(budget ? { budget_id: budget.budget_id } : {}) },
       "이 근거로 대본을 다시 요청했습니다", "대본 다시 만들기");
@@ -103,7 +114,7 @@ export default function ContentApprovalTab({
     }
   };
 
-  if (["ready", "selected"].includes(topic.status)) {
+  if (["ready", "selected"].includes(topic.status) && !secondFormat) {
     return (
       <section className="section">
         <h3>내용 승인</h3>
@@ -115,7 +126,7 @@ export default function ContentApprovalTab({
       </section>
     );
   }
-  if (!["triaged", "researching"].includes(topic.status)) {
+  if (!["triaged", "researching"].includes(topic.status) && !secondFormat) {
     return <section className="section"><h3>내용 승인</h3><p className="muted">조사 후보로 고른 소재만 이 화면을 씁니다. 요약 탭에서 먼저 처리하세요.</p></section>;
   }
 
@@ -306,7 +317,7 @@ export default function ContentApprovalTab({
             <ul style={{ margin: "6px 0 0 18px" }}>{serverBlockers.map((b) => <li key={b}>{blockerLabel(b)}</li>)}</ul>
           </div>
         )}
-        <div className="actions"><button className="btn pick" disabled={busy || locks.length > 0} onClick={approve}>승인</button></div>
+        {!approveClaimed && <div className="actions"><button className="btn pick" disabled={busy || locks.length > 0} onClick={approve}>승인</button></div>}
       </section>
     </div>
   );

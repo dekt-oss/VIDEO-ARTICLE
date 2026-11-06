@@ -5,6 +5,7 @@
 import { useState } from "react";
 
 import { useDrinksAction } from "./useDrinksAction";
+import { useRegisterPrimary } from "./work/primaryBridge";
 import {
   EPISODE_LABEL, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, canSelect, kstMinute, nextStep, slotCosts,
   type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus,
@@ -113,7 +114,11 @@ function OpenApproval({ planId, cap, orderHash }: { planId: string; cap: number;
   );
 }
 
-export default function ExplainerProduction({ planId, status, activeJob }: { planId: string; status: ExplainerStatus; activeJob: { renderer: string; status: string } | null }) {
+export default function ExplainerProduction({ planId, status, activeJob, hidePrimary = false }: {
+  planId: string; status: ExplainerStatus; activeJob: { renderer: string; status: string } | null;
+  /** 작업공간 결정 바가 [지시서]·[구매 요청]·[조립] 버튼을 대신 누른다(primaryBridge). 옛 제작 화면은 false */
+  hidePrimary?: boolean;
+}) {
   const { run, busy } = useDrinksAction();
   const [through, setThrough] = useState("");
   const [note, setNote] = useState<string | null>(null);
@@ -125,6 +130,19 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
   const open = status.approvals.find((a) => a.status === "open" && !a.expired && a.allowed_kinds.includes("image") && a.allowed_kinds.includes("video"));
   const total = costs.length ? costs[costs.length - 1].cumulativeUsd : 0;
   const busyJob = Boolean(activeJob);
+  const busyTitle = busyJob ? "진행 중인 작업이 있습니다" : "";
+  const requestPlan = () => run("explainer_request_plan", { plan_revision_id: planId }, "지시서 작업을 넣었습니다(0원)", "지시서");
+  const planClaimed = useRegisterPrimary("explainer_request_plan", { submit: requestPlan, disabled: busy || busyJob, title: busyTitle }, hidePrimary && step === "request_plan");
+  const requestBuy = async () => {
+    if (!open) return;
+    if (!window.confirm(`결재 "${open.stage}" 안에서 구매를 요청합니다. 남은 금액 ${usd(open.remaining_usd)}. 진행할까요?`)) return;
+    const r = await run("explainer_request_buy", { plan_revision_id: planId, spend_approval_id: open.approval_id, ...(through.trim() ? { through_n: Number(through) } : {}) }, "구매를 요청했습니다", "구매 요청");
+    if (r.ok) setNote("큐에 넣었습니다. 구매는 실호출 스위치를 켠 워커만 처리합니다 — 스위치가 꺼진 워커가 집으면 아무것도 사지 않고 실패로 닫힙니다.");
+  };
+  const buyClaimed = useRegisterPrimary("explainer_request_buy", { submit: requestBuy, disabled: busy || busyJob || !open, title: !open ? "열린 결재가 없습니다" : busyTitle },
+    hidePrimary && step === "request_buy" && Boolean(open));
+  const requestAssemble = () => run("explainer_request_assemble", { plan_revision_id: planId }, "조립을 요청했습니다(0원, 사지 않습니다)", "조립");
+  const assembleClaimed = useRegisterPrimary("explainer_request_assemble", { submit: requestAssemble, disabled: busy || busyJob, title: busyTitle }, hidePrimary && step === "request_assemble");
   return (
     <section className="section">
       <h3>설명형 제작 <span className="pill">{ep ? EPISODE_LABEL[ep.state] : "시작 전"}</span></h3>
@@ -134,7 +152,7 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
 
       {step === "request_plan" && (
         <div className="actions">
-          <button className="btn pick" disabled={busy || busyJob} onClick={() => run("explainer_request_plan", { plan_revision_id: planId }, "지시서 작업을 넣었습니다(0원)", "지시서")}>장면별 지시서 만들기 (0원)</button>
+          {!planClaimed && <button className="btn pick" disabled={busy || busyJob} onClick={requestPlan}>장면별 지시서 만들기 (0원)</button>}
           <span className="muted">무료 TTS 로 길이를 재서 지시서·금액을 만듭니다. 아무것도 사지 않습니다.</span>
         </div>
       )}
@@ -179,11 +197,7 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
           {open && ["directive_ready", "approved", "buying", "blocked_budget"].includes(ep?.state ?? "") && (
             <div className="actions">
               <label className="muted">이 슬롯까지만 <input style={{ width: 60 }} placeholder="전부" value={through} onChange={(e) => setThrough(e.target.value)} /></label>
-              <button className="btn pick" disabled={busy || busyJob} title={busyJob ? "진행 중인 작업이 있습니다" : ""} onClick={async () => {
-                if (!window.confirm(`결재 "${open.stage}" 안에서 구매를 요청합니다. 남은 금액 ${usd(open.remaining_usd)}. 진행할까요?`)) return;
-                const r = await run("explainer_request_buy", { plan_revision_id: planId, spend_approval_id: open.approval_id, ...(through.trim() ? { through_n: Number(through) } : {}) }, "구매를 요청했습니다", "구매 요청");
-                if (r.ok) setNote("큐에 넣었습니다. 구매는 실호출 스위치를 켠 워커만 처리합니다 — 스위치가 꺼진 워커가 집으면 아무것도 사지 않고 실패로 닫힙니다.");
-              }}>{status.slots.length ? "이어서 구매 요청" : "구매 요청"}</button>
+              {!buyClaimed && <button className="btn pick" disabled={busy || busyJob} title={busyTitle} onClick={requestBuy}>{status.slots.length ? "이어서 구매 요청" : "구매 요청"}</button>}
               {note && <span className="muted">{note}</span>}
             </div>
           )}
@@ -211,8 +225,8 @@ export default function ExplainerProduction({ planId, status, activeJob }: { pla
 
       {step === "request_assemble" && (
         <div className="actions">
-          <button className="btn pick" disabled={busy || busyJob} onClick={() => run("explainer_request_assemble", { plan_revision_id: planId }, "조립을 요청했습니다(0원, 사지 않습니다)", "조립")}>
-            {ep?.state === "assets_complete" ? "조립 요청 (0원)" : "다시 조립 (0원)"}</button>
+          {!assembleClaimed && <button className="btn pick" disabled={busy || busyJob} onClick={requestAssemble}>
+            {ep?.state === "assets_complete" ? "조립 요청 (0원)" : "다시 조립 (0원)"}</button>}
           <span className="muted">선택된 클립만 잘라 잇습니다. 자동 검사를 통과해야 파일이 생깁니다.</span>
         </div>
       )}

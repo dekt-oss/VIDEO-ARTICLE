@@ -5,6 +5,7 @@
 import { useState } from "react";
 
 import { useDrinksAction, type DrinksResult } from "./useDrinksAction";
+import { useRegisterPrimary } from "./work/primaryBridge";
 
 function note(r: DrinksResult): string | null {
   if (!r.ok) return null;
@@ -13,13 +14,19 @@ function note(r: DrinksResult): string | null {
   return "대기열에 넣었습니다. 워커 자동 깨우기가 설정되지 않아 수동 실행(python -m engine.drinks_produce) 때 처리됩니다.";
 }
 
-export function RenderRequest({ planId, retryOf, label }: { planId: string; retryOf?: string; label: string }) {
+export function RenderRequest({ planId, retryOf, label, hidePrimary = false }: {
+  planId: string; retryOf?: string; label: string;
+  /** 작업공간 결정 바가 이 버튼을 대신 누른다(primaryBridge). 옛 화면은 false */
+  hidePrimary?: boolean;
+}) {
   const { run, busy } = useDrinksAction();
   const [msg, setMsg] = useState<string | null>(null);
+  const submit = async () => setMsg(note(await run("request_render",
+    { plan_revision_id: planId, ...(retryOf ? { retry_of: retryOf } : {}) }, "렌더를 요청했습니다(로컬·무료)", "렌더 요청")));
+  const claimed = useRegisterPrimary("request_render", { submit, disabled: busy }, hidePrimary && !retryOf);
   return (
     <span>
-      <button className="btn pick" disabled={busy} onClick={async () => setMsg(note(await run("request_render",
-        { plan_revision_id: planId, ...(retryOf ? { retry_of: retryOf } : {}) }, "렌더를 요청했습니다(로컬·무료)", "렌더 요청")))}>{label}</button>
+      {!claimed && <button className="btn pick" disabled={busy} onClick={submit}>{label}</button>}
       {msg && <span className="muted"> {msg}</span>}
     </span>
   );
@@ -103,14 +110,21 @@ const REEL_CHECKS = [
   ["reel_hook_share_ok", "첫 화면 훅 제목과 마지막 화면 저장/보내기 한 줄이 맞다"],
 ] as const;
 
-export function OutputReview({ review, format, usableNow, hasReel = false }: {
+export function OutputReview({ review, format, usableNow, hasReel = false, hidePrimary = false }: {
   review: { id: string; version: number; status: string }; format: "video" | "carousel"; usableNow: boolean; hasReel?: boolean;
+  /** 작업공간 결정 바가 [이 파일 묶음 승인]을 대신 누른다(체크리스트는 여기서 채운다). 옛 화면은 false */
+  hidePrimary?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
   const items: readonly (readonly [string, string])[] = hasReel && format === "carousel" ? [...CHECKS[format], ...REEL_CHECKS] : CHECKS[format];
   const [ck, setCk] = useState<Record<string, boolean>>({});
   const [reason, setReason] = useState("");
   const all = items.every(([k]) => ck[k]);
+  const approveTitle = !usableNow ? "제작안·근거가 지금 유효하지 않습니다" : !all ? "모든 항목을 확인하세요" : "";
+  const approve = () => run("output_review_action", { review_id: review.id, expected_version: review.version, action: "approve", checklist: ck },
+    "파일 묶음을 승인했습니다", "파일 승인");
+  const claimed = useRegisterPrimary("output_review_action:approve", { submit: approve, disabled: busy || !all || !usableNow, title: approveTitle },
+    hidePrimary && review.status !== "approved" && review.status !== "blocked");
   if (review.status === "approved") {
     return (
       <div className="dk-row">
@@ -130,10 +144,7 @@ export function OutputReview({ review, format, usableNow, hasReel = false }: {
         </label>
       ))}
       <div className="actions">
-        <button className="btn pick" disabled={busy || !all || !usableNow}
-          title={!usableNow ? "제작안·근거가 지금 유효하지 않습니다" : !all ? "모든 항목을 확인하세요" : ""}
-          onClick={() => run("output_review_action", { review_id: review.id, expected_version: review.version, action: "approve", checklist: ck },
-            "파일 묶음을 승인했습니다", "파일 승인")}>이 파일 묶음 승인</button>
+        {!claimed && <button className="btn pick" disabled={busy || !all || !usableNow} title={approveTitle} onClick={approve}>이 파일 묶음 승인</button>}
         <input placeholder="고칠 점" value={reason} onChange={(e) => setReason(e.target.value)} />
         <button className="btn" disabled={busy || !reason} onClick={() => run("output_review_action",
           { review_id: review.id, expected_version: review.version, action: "request_changes", reason, checklist: ck }, "고칠 점을 남겼습니다", "고칠 점")}>
