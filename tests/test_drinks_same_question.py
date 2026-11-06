@@ -130,3 +130,25 @@ def test_merge_script_without_env_explains_what_is_missing(monkeypatch, capsys):
     monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
     assert mc.main([]) == 2
     assert "SUPABASE_SERVICE_KEY" in capsys.readouterr().err
+
+
+# 2026-11-06 운영 미리보기에서 실제로 잘못 묶였던 쌍 — 이제 따로 남아야 한다.
+import pytest as _pt
+@_pt.mark.parametrize("a,b", [
+    ("요즘 막걸리 왜 이렇게 다 달죠?", "990원 막걸리 , 어떻게 이렇게 쌀까?"),
+    ("위스키 오크통은 왜 태울까?", "날씨가 추워지면 오크통 속 위스키 는 어떻게 변할까?"),
+    ("[ 위스키 입문 가이드 2편] 위스키 는 왜 오크통에서 숙성 할까?", "[ 위스키 입문 가이드 3편] 위스키 어떻게 마실까?"),
+    ("전통주 괜찮은거 어떤게 있을까요?", "급질문) 막걸리 와 맥주 중 어떤게 더 살찔까요?"),
+    ("그렇다면 스카치 , 버번 , 일본 위스키는 무엇이 다를까?", "그렇다면 캐스크 스트렝스 위스키는 일반 위스키와 정확히 뭐가 다른 걸까요?"),
+])
+def test_preview_false_merges_stay_apart(a, b):
+    assert not dd.same_question(a, b)
+
+
+@_pt.mark.parametrize("a,b", [
+    ("사케 , 따뜻하게?", "사케 는 무조건 따뜻하게 마시나요?"),
+    ("위스키 에 물을 몇 방울 넣는 이유 ｜향과 맛은 어떻게 달라질까?", "위스키 에 물 몇 방울 넣으면 왜 향과 맛이 달라질까?"),
+    ("몽키숄더는 왜 ‘ 싱글몰트 ’가 아닐까?", "몽키숄더는 왜 ‘ 싱글몰트 ’가 아닐까?"),
+])
+def test_preview_true_merges_still_merge(a, b):
+    assert dd.same_question(a, b)

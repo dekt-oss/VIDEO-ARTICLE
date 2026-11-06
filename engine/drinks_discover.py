@@ -580,6 +580,8 @@ def same_question(a: Optional[str], b: Optional[str]) -> bool:
     both = wa & wb
     if not both or len(both) / min(len(wa), len(wb)) < config.DRINKS_SAME_Q_OVERLAP_MIN:
         return False
+    if len(both) < config.DRINKS_SAME_Q_MIN_SHARED and min(len(wa), len(wb)) > 1:
+        return False   # 낱말 하나만 겹친 긴 질문끼리는 묶지 않는다(실측 오병합 — config 주석)
     return any(len(w) >= config.DRINKS_SAME_Q_STRONG_WORD_CHARS or w in config.DRINKS_SAME_Q_SHORT_NOUNS for w in both)
 
 
