@@ -143,6 +143,7 @@ export default async function DrinksWorkspacePage(props: {
         hold={["inbox", "triaged", "researching", "ready", "selected"].includes(topic.status) ? { topicId: topic.id, version: topic.version } : null}
         storageKey={storageKey}
         legacyHref={legacyHref}
+        editorialWeek={item?.editorial_week ?? null}
       />
     </main>
   );
@@ -185,6 +186,7 @@ async function CardMemeWorkspace({ memeDraftId, panel }: { memeDraftId: string |
         hold={null}
         storageKey={draftStorageKey("meme", "meme", memeDraftId)}
         legacyHref="/drinks/memes?legacy=1"
+        editorialWeek={item?.editorial_week ?? null}
       />
     </main>
   );
