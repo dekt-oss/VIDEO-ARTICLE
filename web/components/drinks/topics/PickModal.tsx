@@ -12,6 +12,7 @@ import { CATEGORIES, CATEGORY_LABEL, QUESTION_KIND_LABEL } from "@/lib/drinks/mo
 import {
   PICK_BRANCH_LABEL, PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL, costSummary, pickOutcomes, toggleFormat, validateFormats,
   type EstimateMap, type PickFormat, type PickOutcome, type WeekOption,
+  pickDefaults,
 } from "@/lib/drinks/pickModal";
 import { workHref } from "@/lib/drinks/work/types";
 import { useDrinksAction } from "../useDrinksAction";
@@ -34,19 +35,24 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
   const [title, setTitle] = useState("");
   const [question, setQuestion] = useState("");
   const [value, setValue] = useState(c.reader_value ?? "");
-  const [cats, setCats] = useState<string[]>([]);
+  const defaults = pickDefaults(c.key_question);
+  // 주종: 손대기 전에는 문장에서 고른 값(defaults.categories). 한 번 손대면 그 선택을 쓴다.
+  const [cats, setCats] = useState<string[]>(defaults.categories);
   const [kind, setKind] = useState("");
   const [outcomes, setOutcomes] = useState<{ topicId: string | null; rows: PickOutcome[] } | null>(null);
   const check = validateFormats(formats);
   const cost = costSummary(estimate, formats);
-  const canSubmit = check.ok && Boolean(week && title.trim() && question.trim()) && cats.length > 0 && !busy;
+  // 비워 둔 칸은 기본값으로(운영자 지시 2026-11-06). 운영자는 방향을 바꾸고 싶을 때만 입력한다.
+  const effTitle = title.trim() || defaults.title;
+  const effQuestion = question.trim() || defaults.question;
+  const canSubmit = check.ok && Boolean(week && effTitle && effQuestion) && cats.length > 0 && !busy;
 
   const submit = async (confirm = false) => {
     if (!check.ok) return;
     const r = await run("pick_topic", {
       candidate_id: c.id, expected_version: c.version,
       formats: check.formats, format: check.formats[0],   // format = 대표(첫) 형식 — 옛 검증·drink_topic_picks 호환(G1)
-      editorial_week: week, title: title.trim(), question: question.trim(), reader_value: value, categories: cats, lane: "reader_question",
+      editorial_week: week, title: effTitle, question: effQuestion, reader_value: value, categories: cats, lane: "reader_question",
       recommended_format: recommended.format, recommended_reason: recommended.reason, confirm_not_duplicate: confirm,
       ...(kind ? { question_kind: kind } : {}), ...(budget ? { budget_id: budget.budget_id } : {}),
     }, "소재로 올렸습니다 — 형식별 결과는 아래에 있습니다", "[이걸로]");
@@ -64,7 +70,7 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
         <div className="modal-backdrop" role="presentation" onClick={() => !busy && setOpen(false)}>
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby={`pick-${c.id}`} style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
             <p className="dk-eyebrow" style={{ marginBottom: 6 }}>한 소재, 여러 형식</p>
-            <h3 id={`pick-${c.id}`}>{c.key_question}</h3>
+            <h3 id={`pick-${c.id}`}>{defaults.question}</h3>
             {outcomes ? (
               <Outcomes topicId={outcomes.topicId} rows={outcomes.rows} onClose={() => setOpen(false)} />
             ) : (
@@ -83,9 +89,13 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
                   ))}
                 </div>
                 {!check.ok && <p className="dk-warn" style={{ margin: "0 0 10px", fontSize: 14 }}>{check.reason}</p>}
-                <p className="muted" style={{ fontSize: 13, margin: "0 0 4px" }}>원문을 옮기지 말고 술째리고의 질문·각도로 다시 쓰세요.</p>
-                <label className="dk-modal-label">소재 제목<input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} /></label>
-                <label className="dk-modal-label">독자 질문(한국어)<input value={question} maxLength={1000} onChange={(e) => setQuestion(e.target.value)} /></label>
+                <p className="dk-defaults">
+                  <b>이대로 진행합니다</b> — 제목 &ldquo;{effTitle}&rdquo; · 주종 {cats.length > 0 ? cats.map((k) => CATEGORY_LABEL[k as keyof typeof CATEGORY_LABEL] ?? k).join("·") : <b className="dk-bad">못 찾음</b>}
+                </p>
+                <details className="dk-optional" open={defaults.categories.length === 0 ? true : undefined}>
+                  <summary>방향 직접 정하기 <span className="muted">(선택 — 바꾸고 싶을 때만)</span></summary>
+                <label className="dk-modal-label">소재 제목<input value={title} maxLength={200} placeholder={defaults.title} onChange={(e) => setTitle(e.target.value)} /></label>
+                <label className="dk-modal-label">독자 질문(한국어)<input value={question} maxLength={1000} placeholder={defaults.question} onChange={(e) => setQuestion(e.target.value)} /></label>
                 <label className="dk-modal-label">독자 효용<input value={value} onChange={(e) => setValue(e.target.value)} /></label>
                 <div className="dk-checks" style={{ margin: "12px 0 0" }} role="group" aria-label="주종">
                   <span style={{ fontWeight: 700 }}>주종</span>
@@ -94,15 +104,16 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
                       onChange={(e) => setCats(e.target.checked ? [...cats, k] : cats.filter((x) => x !== k))} /> {CATEGORY_LABEL[k]}</label>
                   ))}
                 </div>
-                <label className="dk-modal-label">만들 주
-                  <select value={week} onChange={(e) => setWeek(e.target.value)}>
-                    {weeks.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
-                  </select>
-                </label>
                 <label className="dk-modal-label">질문 유형 <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>(비우면 후보 신호에서 자동)</span>
                   <select value={kind} onChange={(e) => setKind(e.target.value)}>
                     <option value="">자동(후보 신호에서)</option>
                     {Object.entries(QUESTION_KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                </label>
+                </details>
+                <label className="dk-modal-label">만들 주
+                  <select value={week} onChange={(e) => setWeek(e.target.value)}>
+                    {weeks.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
                   </select>
                 </label>
                 <div className="dk-modal-info">
@@ -126,7 +137,7 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
                     {busy ? "보내는 중…" : check.ok ? `선택한 ${check.formats.length}개 형식으로 기획하기 →` : "형식을 하나 이상 골라 주세요"}
                   </button>
                 </div>
-                {check.ok && !canSubmit && !busy && <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>소재 제목 · 독자 질문 · 주종을 채우면 누를 수 있습니다.</p>}
+                {check.ok && !canSubmit && !busy && <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>이 질문에서 주종을 찾지 못했습니다 — 위 [방향 직접 정하기]에서 주종을 하나 골라 주세요.</p>}
               </>
             )}
           </div>

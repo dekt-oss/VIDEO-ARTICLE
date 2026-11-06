@@ -183,3 +183,47 @@ export function pickability(c: {
   if (!hasBudget) return { ok: false, code: "no_budget", reason: "열린 개발 결재가 없어 초안을 쓸 수 없습니다 — 이 화면 맨 위 칸에서 결재를 여세요" };
   return { ok: true };
 }
+
+// ── 기본값(운영자 지시 2026-11-06: "입력안해도 기본값은 니가 만들어내 — 방향성 구체화하고 싶을 때 입력") ──────────────
+// 후보 질문(key_question)은 발견 자료의 글 제목에서 온다. 비워 두면 그것을 다듬어 소재 제목·독자 질문으로 쓰고,
+// 주종은 문장 속 낱말로 고른다. 돈이 들지 않는 규칙 처리다(모델 호출 없음). 대본은 이후 근거로 새로 쓴다.
+
+export type PickCategory = "sake" | "traditional" | "whisky";
+
+const CATEGORY_WORDS: Record<PickCategory, RegExp> = {
+  sake: /사케|니혼슈|일본주|준마이|긴조|다이긴조|정미율|sake/i,
+  whisky: /위스키|싱글\s*몰트|블렌디드|버번|스카치|라이 위스키|whisk(e)?y|bourbon|scotch/i,
+  traditional: /막걸리|전통주|약주|청주|탁주|소주|증류식|누룩|과실주|동동주|한국 술|우리 술/,
+};
+
+/** 문장 속 낱말로 주종을 고른다. 하나도 없으면 빈 배열(운영자가 고른다). */
+export function inferCategories(text: string): PickCategory[] {
+  return (Object.keys(CATEGORY_WORDS) as PickCategory[]).filter((k) => CATEGORY_WORDS[k].test(text));
+}
+
+const PARTICLE = /([가-힣A-Za-z0-9])\s+(은|는|이|가|을|를|의|도|에|에서|으로|로|과|와|이란|란)(?=[\s?!.,~]|$)/g;
+
+/** 글 제목을 질문 문장으로 다듬는다: 괄호 머리말·이모지 제거, 조사 앞 띄어쓰기, 공백 정리. */
+export function tidyQuestion(raw: string): string {
+  let s = (raw ?? "").normalize("NFC");
+  s = s.replace(/[[【［(（]\s*[^\]】］)）]{0,20}[\]】］)）]/g, " ");          // [후기] (펌) 같은 머리말
+  s = s.replace(/[\p{Extended_Pictographic}\u{FE0F}]/gu, " ");
+  s = s.replace(/\s*[|｜]\s*/g, " | ");
+  s = s.replace(/\s+/g, " ").trim();
+  for (let i = 0; i < 2; i++) s = s.replace(PARTICLE, "$1$2");
+  s = s.replace(/\s+([?!.,])/g, "$1");
+  return s.trim();
+}
+
+export interface PickDefaults { title: string; question: string; categories: PickCategory[] }
+
+/** 비워 두면 쓸 값. 제목은 "|" 앞 첫 마디(60자 안), 질문은 다듬은 전체(1000자 안). */
+export function pickDefaults(keyQuestion: string): PickDefaults {
+  const q = tidyQuestion(keyQuestion);
+  // 제목: "|" 앞 첫 마디. 없으면 첫 물음 문장(뒤에 다른 문장이 이어질 때만).
+  let head = q.split(" | ")[0].trim() || q;
+  const firstQ = head.match(/^.+?[?？](?=\s+\S)/);
+  if (firstQ) head = firstQ[0].trim();
+  const title = head.length > 60 ? `${head.slice(0, 59).trimEnd()}…` : head;
+  return { title, question: q.replace(/ \| /g, " — ").slice(0, 1000), categories: inferCategories(keyQuestion) };
+}
