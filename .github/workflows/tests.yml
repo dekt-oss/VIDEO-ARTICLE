@@ -110,8 +110,9 @@ jobs:
       #   비용 산정·렌더 오류 분류·버전 라우팅이라 tsc·lint 로는 동작이 검사되지 않는다.
       #   새 테스트 파일이 다른 폴더에 생기면 여기도 함께 넓힌다.
       #   lib/drinks/ 는 주류 공장(2026-10-22) — 다음 행동·점수·URL 정규화·제외 기능 거부.
+      #   lib/drinks/work/ 와 components/drinks/topics/ 는 한 소재·여러 형식(2026-11-05) — 결정 함수·레인·리다이렉트·선택 모달.
       - name: node --test
-        run: node --test lib/*.test.ts lib/work/*.test.ts lib/drinks/*.test.ts
+        run: node --test lib/*.test.ts lib/work/*.test.ts lib/drinks/*.test.ts lib/drinks/work/*.test.ts components/drinks/topics/*.test.ts
       # 주류 순환 한 바퀴(2026-10-27): PGlite 다리 위에서 Python 워커가 수집→카드→발행(가짜 인스타)→성과→전략까지 돈다.
       # 웹 의존성(PGlite)과 엔진 의존성이 둘 다 있어야 해서 이 잡에서 돌린다. 외부 호출·시크릿 0.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
