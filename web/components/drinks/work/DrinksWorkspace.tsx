@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useDrinksAction } from "@/components/drinks/useDrinksAction";
 import { primaryKey, requiresInPanelConfirm, type SectionKey } from "@/lib/drinks/work/lanes";
 import { FORMAT_LABEL, type Decision, type FormatIntent } from "@/lib/drinks/work/types";
+import { FLOW_STATE_LABEL, flowSteps, weekRangeLabel } from "./flowSteps";
 import { PrimaryBridgeProvider, usePrimaryBridge } from "./primaryBridge";
 import { useDraftRestore } from "./useDraftRestore";
 
@@ -38,7 +39,7 @@ export interface SectionView {
 const CONFLICT_CODES = new Set(["version_conflict", "review_changed", "plan_changed", "review_not_current", "plan_not_current", "digest_mismatch", "stale_strategy"]);
 
 export default function DrinksWorkspace({
-  topicId, lane, title, question, formats, decision, decisionProblem, sections, openKey, primarySection, history, hold, storageKey, legacyHref,
+  topicId, lane, title, question, formats, decision, decisionProblem, sections, openKey, primarySection, history, hold, storageKey, legacyHref, editorialWeek = null,
 }: {
   topicId: string;
   lane: FormatIntent;
@@ -57,20 +58,23 @@ export default function DrinksWorkspace({
   hold: { topicId: string; version: number } | null;
   storageKey: string;
   legacyHref: string | null;
+  /** 작업 단위 행의 편성 주차(월요일). 오른쪽 "이 소재의 흐름" 칸에 보이기만 한다 */
+  editorialWeek?: string | null;
 }) {
   const key = primaryKey(decision?.primary.action);
   return (
     <PrimaryBridgeProvider primaryKey={key}>
       <Body topicId={topicId} lane={lane} title={title} question={question} formats={formats} decision={decision} decisionProblem={decisionProblem}
-        sections={sections} openKey={openKey} primarySection={primarySection} history={history} hold={hold} storageKey={storageKey} legacyHref={legacyHref} />
+        sections={sections} openKey={openKey} primarySection={primarySection} history={history} hold={hold} storageKey={storageKey} legacyHref={legacyHref}
+        editorialWeek={editorialWeek} />
     </PrimaryBridgeProvider>
   );
 }
 
-function Body({ lane, title, question, formats, decision, decisionProblem, sections, openKey, primarySection, history, hold, storageKey, legacyHref }: {
+function Body({ lane, title, question, formats, decision, decisionProblem, sections, openKey, primarySection, history, hold, storageKey, legacyHref, editorialWeek }: {
   topicId: string; lane: FormatIntent; title: string; question: string | null; formats: FormatCardView[]; decision: Decision | null;
   decisionProblem: string | null; sections: SectionView[]; openKey: SectionKey; primarySection: SectionKey | null; history: ReactNode;
-  hold: { topicId: string; version: number } | null; storageKey: string; legacyHref: string | null;
+  hold: { topicId: string; version: number } | null; storageKey: string; legacyHref: string | null; editorialWeek: string | null;
 }) {
   const router = useRouter();
   const { run, busy } = useDrinksAction();
@@ -142,11 +146,17 @@ function Body({ lane, title, question, formats, decision, decisionProblem, secti
 
   return (
     <div className="dw" ref={bodyRef}>
-      <h1 className="dw-title">{title}</h1>
-      {question && <p className="oneliner">Q. {question}</p>}
+      <div className="dk-head dk-head-row">
+        <div>
+          <p className="dk-eyebrow">MAKE / {FORMAT_LABEL[lane]}</p>
+          <h1 className="dw-title dk-h1">{title}</h1>
+          {question ? <p className="dk-lead">Q. {question}</p> : <p className="dk-lead">한 화면에서, 지금 필요한 결정부터.</p>}
+        </div>
+        <span className="dk-badge">{FORMAT_LABEL[lane]}</span>
+      </div>
 
       <section className="card dw-formats-card" aria-label="이 소재로 만드는 형식">
-        <h2>이 소재로 만드는 {formats.length}가지</h2>
+        <h2>이 소재로 만드는 {formats.length}가지 콘텐츠</h2>
         <p className="muted">소재·근거는 함께, 기획·승인·제작·게시는 형식마다 따로 갑니다. 카드를 누르면 그 형식의 작업으로 바뀝니다.</p>
         <div className="dw-formats">
           {formats.map((f) => (
@@ -160,8 +170,10 @@ function Body({ lane, title, question, formats, decision, decisionProblem, secti
 
       <div className="dw-decision" role="region" aria-label="지금 할 일">
         <div className="dw-decision-left">
-          <span className="pill on">{FORMAT_LABEL[lane]}</span>
-          {primary && <span className="pill">{primary.label}</span>}
+          <span style={{ flexBasis: "100%", minWidth: 0 }}>
+            <span className="dw-now-label">지금 할 일 · {FORMAT_LABEL[lane]}</span>
+            <strong className="dw-now-title">{primary ? primary.label : "지금 할 일이 없습니다"}</strong>
+          </span>
           {decision?.blocks.map((b) => (
             <span key={b.code} className="dw-chip dw-chip--block">
               {b.message}{b.href && <> · <Link href={b.href}>복구 →</Link></>}
@@ -201,6 +213,16 @@ function Body({ lane, title, question, formats, decision, decisionProblem, secti
 
       {showHistory && <section className="card dw-history" aria-label="이력">{history}</section>}
 
+      {sections.length > 1 && (
+        <nav className="dw-steps" aria-label="진행 단계">
+          {sections.map((s) => (
+            <button key={s.key} type="button" data-open={open === s.key} data-now={primarySection === s.key}
+              aria-current={primarySection === s.key ? "step" : undefined} onClick={() => focusSection(s.key, true)}>{s.label}</button>
+          ))}
+        </nav>
+      )}
+
+      <div className="dw-layout">
       <div className="dw-sections">
         {sections.map((s, i) => (
           <details key={s.key} className="dw-section" data-section={s.key} open={open === s.key}
@@ -216,8 +238,56 @@ function Body({ lane, title, question, formats, decision, decisionProblem, secti
           </details>
         ))}
       </div>
+      <FlowAside lane={lane} sections={sections} primarySection={primarySection} decision={decision} editorialWeek={editorialWeek}
+        onPick={(k) => focusSection(k, true)} />
+      </div>
 
-      {legacyHref && <p className="muted" style={{ marginTop: 16 }}><Link href={legacyHref}>옛 화면으로 보기</Link> · 같은 데이터입니다.</p>}
+      <details className="dw-flow-help">
+        <summary>이전 단계와 이후 단계는 어떻게 이어지나요?</summary>
+        <p>{sections.map((s) => s.label).join(" → ")}</p>
+        <p className="muted">승인, 금액 결재, 제작 시작, 게시 승인, 예약은 각각 따로 확인합니다. 한 단계를 누른다고 다음 단계가 저절로 진행되지 않습니다.</p>
+      </details>
+
+      <footer className="dw-foot">
+        승인·결재·제작·게시의 규칙은 서버가 지킵니다. 이 화면은 상태를 보여 주고 요청만 보냅니다.<br />
+        <Link href="/drinks/work">만들기 목록</Link> · <Link href="/drinks">오늘 할 일</Link>
+        {legacyHref && <> · <Link href={legacyHref}>옛 화면으로 보기</Link>(같은 데이터)</>}
+      </footer>
     </div>
+  );
+}
+
+/** 오른쪽 "이 소재의 흐름" 칸(목업 03·04·05). 결정 함수가 고른 칸과 섹션 순서만으로 칠한다(flowSteps) — 새 판단 없음. */
+function FlowAside({ lane, sections, primarySection, decision, editorialWeek, onPick }: {
+  lane: FormatIntent; sections: SectionView[]; primarySection: SectionKey | null; decision: Decision | null; editorialWeek: string | null;
+  onPick: (k: SectionKey) => void;
+}) {
+  const steps = flowSteps(sections, primarySection, decision);
+  const week = weekRangeLabel(editorialWeek);
+  return (
+    <aside className="dw-aside" aria-label="이 소재의 흐름">
+      <div className="dw-flow">
+        <h3>이 소재의 흐름</h3>
+        <p className="dw-flow-sub">선택 → 대본 → 제작 → 게시</p>
+        <ol className="dw-flow-steps">
+          {steps.map((st) => (
+            <li key={st.key} data-state={st.state} aria-current={st.state === "now" || st.state === "blocked" || st.state === "busy" ? "step" : undefined}>
+              <button type="button" onClick={() => onPick(st.key as SectionKey)}>
+                <span className="dw-flow-dot" aria-hidden="true">{st.state === "done" ? "✓" : ""}</span>
+                <span className="dw-flow-label">{st.label}</span>
+                <span className="dw-flow-state">{FLOW_STATE_LABEL[st.state]}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="dw-timeline">
+          <p><b>형식</b><br />{FORMAT_LABEL[lane]}</p>
+          <p><b>편성</b><br />{week ?? "아직 없음"}</p>
+          <p><b>내가 할 일</b><br />{decision ? decision.primary.label : "정하지 못함"}</p>
+        </div>
+      </div>
+      <div className="dw-aside-note">승인, 금액 결재, 제작 시작, 게시 승인, 예약은 각각 따로 확인합니다.</div>
+      <Link href="/drinks/topics?tab=mine" className="dk-text-link">내 소재로 돌아가기 →</Link>
+    </aside>
   );
 }

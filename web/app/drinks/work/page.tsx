@@ -35,9 +35,10 @@ export default async function DrinksWorkListPage(props: { searchParams: Promise<
   const { items, state, error } = unpack(res);
   return (
     <main className="container">
-      <div className="header">
-        <h1>🍶 만들기</h1>
-        <span className="muted">소재 하나의 형식마다 한 줄 — 지금 할 일부터</span>
+      <div className="dk-head">
+        <p className="dk-eyebrow">MAKE</p>
+        <h1 className="dk-h1">만들기</h1>
+        <p className="dk-lead">소재 하나의 형식마다 한 줄 — 지금 할 일부터</p>
       </div>
       <nav className="dk-tabs" aria-label="만들기 필터">
         {FILTERS.map(([k, label]) => <Link key={k} href={`/drinks/work?filter=${k}`} data-active={k === filter}>{label}</Link>)}
@@ -48,9 +49,9 @@ export default async function DrinksWorkListPage(props: { searchParams: Promise<
         <p className="muted">해당하는 작업이 없습니다(정상 0건). <Link href="/drinks/topics">소재 고르기</Link>에서 형식을 고르면 여기 생깁니다.</p>
       ) : (
         groupByTopic(items).map((g) => (
-          <section key={g.key} className="card" style={{ marginBottom: 10 }}>
+          <section key={g.key} className="card dk-work-group">
             <div className="dk-row" style={{ justifyContent: "space-between" }}>
-              <b>{g.title}</b>
+              <h2>{g.title}</h2>
               <span className="muted">{g.week ? `${g.week} 주` : ""}{g.topicStatus ? ` · ${g.topicStatus}` : ""}</span>
             </div>
             {g.items.map((it) => {

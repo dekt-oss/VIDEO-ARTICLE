@@ -15,6 +15,7 @@ import { loadMemeWork } from "@/lib/drinks/memeQueries";
 import { loadPlanProduction } from "@/lib/drinks/productionQueries";
 import { loadPublishBoard } from "@/lib/drinks/publishQueries";
 import { loadDevelop, loadTopic } from "@/lib/drinks/queries";
+import { loadWeeklyBudget } from "@/lib/drinks/weeklyBudget";
 import { decide } from "@/lib/drinks/work/decision";
 import { draftStorageKey, isFormatIntent, openSection, orderLanes, primarySectionOf } from "@/lib/drinks/work/lanes";
 import { loadTopicWork, loadWorkItems } from "@/lib/drinks/work/queries";
@@ -54,6 +55,10 @@ export default async function DrinksWorkspacePage(props: {
   const { topicId } = await props.params;
   const sp = await props.searchParams;
   if (topicId === "meme") return <CardMemeWorkspace memeDraftId={sp.meme ?? null} panel={sp.panel ?? null} />;
+
+  // 이번 주 AI 초안 한도(0073)를 먼저 만든다 — 소재 고르기 화면을 거치지 않고 바로 들어와도 아래 개발 상태가 이번 주 한도를 본다.
+  // 실패해도 화면은 세운다(한도 칸이 '없음'으로 보이고, 버튼이 그 이유를 말한다). 소재 고르기 화면(topics/page.tsx)과 같은 순서다.
+  await loadWeeklyBudget();
 
   // loadTopicWork 가 소재 상세·개발 상태·작업 단위를 한 번에 준다. 0072 전(또는 rpc 실패)이면 작업 단위 없이 옛 로더로 화면을 세운다 —
   // 조회 실패를 "할 일 없음"으로 바꾸지 않고 결정 바에 그 이유를 적는다.
@@ -143,6 +148,7 @@ export default async function DrinksWorkspacePage(props: {
         hold={["inbox", "triaged", "researching", "ready", "selected"].includes(topic.status) ? { topicId: topic.id, version: topic.version } : null}
         storageKey={storageKey}
         legacyHref={legacyHref}
+        editorialWeek={item?.editorial_week ?? null}
       />
     </main>
   );
@@ -185,6 +191,7 @@ async function CardMemeWorkspace({ memeDraftId, panel }: { memeDraftId: string |
         hold={null}
         storageKey={draftStorageKey("meme", "meme", memeDraftId)}
         legacyHref="/drinks/memes?legacy=1"
+        editorialWeek={item?.editorial_week ?? null}
       />
     </main>
   );

@@ -383,7 +383,7 @@ test("작업 단위 뷰: 행 수 = 소재×형식 + 카드 밈 제작안. 조회
   for (const i of items) {
     assert.equal(i.review_id, reviewId);
     assert.equal(i.review_status, "draft");
-    assert.equal(i.review_valid, false);
+    assert.equal(i.review_valid, null, "작업 중 근거는 판단 대상이 아니다(0074) — false 면 화면이 '근거 철회'로 읽는다");
     assert.equal(i.plan_status, "draft");
     assert.equal(i.plan_blocked, false);
     assert.equal(i.develop_kind, "plan", "이 형식의 최근 개발 요청");

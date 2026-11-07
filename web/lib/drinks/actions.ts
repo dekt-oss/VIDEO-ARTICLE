@@ -58,6 +58,8 @@ export const DRINKS_ACTIONS = {
   cancel_develop: "drinks_cancel_develop",
   open_develop_budget: "drinks_open_develop_budget",
   close_develop_budget: "drinks_close_develop_budget",
+  // 주간 AI 초안 한도(0073): [한도 +$1]. 한 번에 $1, 주간 상한 $10 은 DB 가 잰다. 입력값은 받지 않는다.
+  raise_weekly_budget: "drinks_raise_weekly_budget",
   // 밈 보드(0063): 카드 결정·칸 직접 입력·관찰 계정 체크·운영자 링크. 수집·카드 만들기·수명 계산(워커 전용)은 여기 없다.
   // [쓰자]는 결정만 기록한다 - 분석·구매를 시작하는 함수가 이 목록에 없다.
   ig_card_decide: "drinks_ig_card_decide",
@@ -404,6 +406,11 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
     const n = Number(p.through_n);
     if (!Number.isInteger(n) || n < 1) return { status: 400, body: { error: "슬롯 번호는 1 이상의 정수입니다", code: "invalid_input" } };
     p.through_n = n;
+  }
+  if (action === "raise_weekly_budget") {
+    // 금액·주차는 DB 가 정한다(+$1 고정). 화면이 보낸 값은 버리고, 누른 사람은 운영자 키를 통과한 사람으로 적는다.
+    for (const k of Object.keys(p)) delete p[k];
+    p.actor = "operator";
   }
   if (action === "open_develop_budget") {
     // 개발 결재도 운영자 키를 가진 사람만 연다. 결재자 이름은 입력값을 믿지 않고, 결재 문장은 필수(DB 도 검사).

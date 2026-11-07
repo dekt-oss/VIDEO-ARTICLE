@@ -521,6 +521,70 @@ def question_cell(text: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     return category, kind
 
 
+# ── 같은 질문인가(규칙, 0원) ── config.DRINKS_SAME_Q_* 주석에 근거.
+
+_WORD = re.compile(r"[a-z0-9]+|[぀-ヿ㐀-鿿가-힯]+")
+_SUFFIXES = tuple(sorted(config.DRINKS_SAME_Q_SUFFIXES, key=len, reverse=True))
+_CELL_WORDS = tuple(sorted({w.lower() for ws in (*config.DRINKS_CELL_CATEGORY_TERMS.values(), *config.DRINKS_CELL_KIND_KEYWORDS.values())
+                            for w in ws}, key=len, reverse=True))
+
+
+def _strip_suffix(w: str) -> str:
+    """낱말 끝 조사·질문 끝말을 한 번 뗀다. 남는 줄기가 2글자 미만이면 떼지 않는다."""
+    for s in _SUFFIXES:
+        if w.endswith(s) and len(w) - len(s) >= 2:
+            return w[: -len(s)]
+    return w
+
+
+def content_words(text: Optional[str]) -> set[str]:
+    """질문 문장의 내용 낱말: 띄어쓰기·문장부호로 나누고, 조사·질문 끝말·군말·주종 이름·칸 낱말을 뺀다."""
+    t = _URL.sub(" ", (text or "").lower())
+    for w in config.DRINKS_RELEVANCE_FALSE_FRIENDS:
+        t = t.replace(w, " ")
+    out: set[str] = set()
+    for raw in _WORD.findall(t):
+        if raw in config.DRINKS_SAME_Q_STOPWORDS or raw in _STOP:
+            continue
+        if any(raw == c or (raw.startswith(c) and len(raw) - len(c) < 2) for c in _CELL_WORDS):
+            continue   # 같은 칸끼리만 비교하므로 주종 이름·칸 낱말("준마이"·"개봉한")은 이미 같다 — 겹침으로 세면 부풀려진다
+        w = _strip_suffix(raw) if _CJK.match(raw) else raw
+        if w in config.DRINKS_SAME_Q_STOPWORDS or w in _STOP or len(w) < 2 or w in _CELL_WORDS:
+            continue
+        if not _CJK.match(w) and len(w) < config.DRINKS_SAME_Q_STRONG_WORD_CHARS:
+            continue   # 영어 2글자(is·of…)는 낱말로 치지 않는다
+        out.add(w)
+    return out
+
+
+def question_topics(text: Optional[str], kind: Optional[str]) -> set[str]:
+    """칸 유형 안의 주제(예: 보관 칸 → shelf_life / how_to_store). 강한 낱말이 없을 때만 약한 낱말을 본다."""
+    t = re.sub(r"\s+", "", (text or "").lower())
+
+    def hit(table: dict[str, dict[str, tuple[str, ...]]]) -> set[str]:
+        return {topic for topic, words in table.get(kind or "", {}).items() if any(re.sub(r"\s+", "", w) in t for w in words)}
+
+    return hit(config.DRINKS_SAME_Q_TOPICS) or hit(config.DRINKS_SAME_Q_TOPICS_WEAK)
+
+
+def same_question(a: Optional[str], b: Optional[str]) -> bool:
+    """두 질문이 사실상 같은 질문인가. 같은 칸(주종·유형)이고 주종이 잡혀야 한다 — 칸이 다르면 절대 묶지 않는다."""
+    ca, cb = question_cell(a), question_cell(b)
+    if ca != cb or ca[0] is None:
+        return False
+    if ca[1] in config.DRINKS_SAME_Q_TOPICS:
+        ta, tb = question_topics(a, ca[1]), question_topics(b, cb[1])
+        if ta and tb:
+            return bool(ta & tb)   # 둘 다 주제가 잡혔으면 주제로만 정한다(유통기한 ↔ 냉장 보관은 다른 질문)
+    wa, wb = content_words(a), content_words(b)
+    both = wa & wb
+    if not both or len(both) / min(len(wa), len(wb)) < config.DRINKS_SAME_Q_OVERLAP_MIN:
+        return False
+    if len(both) < config.DRINKS_SAME_Q_MIN_SHARED and min(len(wa), len(wb)) > 1:
+        return False   # 낱말 하나만 겹친 긴 질문끼리는 묶지 않는다(실측 오병합 — config 주석)
+    return any(len(w) >= config.DRINKS_SAME_Q_STRONG_WORD_CHARS or w in config.DRINKS_SAME_Q_SHORT_NOUNS for w in both)
+
+
 def item_cell(it: dict) -> tuple[Optional[str], Optional[str]]:
     """자료의 칸. 후보 자격이 있는 질문 중 칸이 가장 또렷한(주종·유형이 다 잡히는) 것으로 정한다. 질문이 없으면 제목으로."""
     qs = good_questions(it) or [it.get("title") or ""]
@@ -592,7 +656,9 @@ def build_card(items: list[dict], topics: list[dict]) -> dict[str, Any]:
     facts = ["공식·전문 원자료로 핵심 사실 확인(발견 자료는 근거가 아님)"] + [f"수치 '{n}' 원출처 확인" for n in nums]
     if signals & {"new_product", "event"}:
         facts.append("제조사·주최 측 공식 공지로 날짜·이름 확인")
-    dups = [t["id"] for t in topics if max(similarity(key_q, t.get("title") or ""), similarity(key_q, t.get("question") or "")) >= 0.5]
+    dups = [t["id"] for t in topics if any(
+        similarity(key_q, x) >= config.DRINKS_DISCOVERY_TOPIC_DUP_SIMILAR_MIN or same_question(key_q, x)
+        for x in (t.get("title") or "", t.get("question") or ""))]
     score_q = 25 if "question" in signals else 0
     score_i = min(indep, 4) * 10
     score_s = min(len(signals - {"question"}), 3) * 5
@@ -615,6 +681,11 @@ def build_card(items: list[dict], topics: list[dict]) -> dict[str, Any]:
     }
 
 
+def _item_texts(it: dict) -> list[str]:
+    """같은 질문 대조에 쓰는 자료의 문장: 제목 + 후보 자격이 있는 질문(길이 상한·술 낱말 — 문단째 잡힌 '질문'은 뺀다)."""
+    return [x for x in [it.get("title") or "", *good_questions(it)] if x]
+
+
 def cluster(items: list[dict], threshold: float = config.DRINKS_DISCOVERY_SIMILAR_MIN) -> list[list[dict]]:
     """비슷한 자료를 묶는다. **같은 칸 안에서만** 묶는다 — 다른 칸의 비슷한 질문(사케 보관 ↔ 위스키 보관)은 따로 둔다."""
     groups: list[list[dict]] = []
@@ -626,7 +697,8 @@ def cluster(items: list[dict], threshold: float = config.DRINKS_DISCOVERY_SIMILA
             if gc != cell:
                 continue
             if any(it.get("summary_hash") and it.get("summary_hash") == o.get("summary_hash") for o in g) or \
-                    max(similarity(text, " ".join([o.get("title") or "", *(o.get("questions") or [])])) for o in g) >= threshold:
+                    max(similarity(text, " ".join([o.get("title") or "", *(o.get("questions") or [])])) for o in g) >= threshold or \
+                    any(same_question(qa, qb) for o in g for qa in _item_texts(it) for qb in _item_texts(o)):
                 g.append(it)
                 break
         else:
@@ -725,7 +797,9 @@ def suggest_candidates(rpc, read_interests: Optional[Callable[[], dict[str, dict
     for g in cluster(eligible):
         first = build_card(g, topics)
         cell = group_cell(g)
-        target = next((c for c in cands if _cand_cell(c) == cell and similarity(first["key_question"], c["key_question"]) >= 0.5), None)
+        target = next((c for c in cands if _cand_cell(c) == cell and (
+            similarity(first["key_question"], c["key_question"]) >= config.DRINKS_DISCOVERY_CANDIDATE_SIMILAR_MIN
+            or same_question(first["key_question"], c["key_question"]))), None)
         # 열린 후보에 더할 때는 그 후보의 **자료 전체**로 카드를 다시 만든다(새 묶음만으로 점수를 덮지 않게 — 검토 지적).
         card = build_card((target.get("items") or []) + g, topics) if target else first
         park: Optional[float] = None

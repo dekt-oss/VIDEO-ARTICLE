@@ -1,0 +1,66 @@
+# 주류 공장 — 열린 후보 정리(손으로만 돌린다, 2026-11-06 운영자 지시 "두 개 다 미리보기 돌리고 적용해")
+#
+# task:
+#   jev_dismiss  scripts/drinks_dismiss_offmap_candidates.py --jev — 질문 지도 밖·Jev 가 '시청자가 궁금해할 술 질문'으로 안 보는 후보 기각
+#                (기각은 되돌릴 수 있다 — 대시보드 [다시 열기]). 판정 1회 약 $0.00004, 566건이면 약 2센트.
+#   merge        scripts/drinks_merge_candidates.py — 같은 질문을 하나로 묶는다(규칙, 0원). ★ 합치기는 되돌리는 버튼이 없다.
+# apply=false(기본)는 미리보기만 — 아무것도 쓰지 않고 결과를 로그와 실행 요약(Summary)에 남긴다.
+# 키는 출력하지 않는다. 크론 없음.
+name: drinks-candidate-cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "jev_dismiss | merge"
+        required: true
+        default: jev_dismiss
+        type: choice
+        options: [jev_dismiss, merge]
+      apply:
+        description: "true 면 실제로 적용한다(기본 false = 미리보기)"
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+concurrency:
+  group: drinks-candidate-cleanup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+      JEV_ENABLED: "1"
+      # 열린 후보 전부를 한 번에 판정한다(수집 1회 상한 150 은 그대로 — 이 일회성 정리에만 넓힌다).
+      DRINKS_DISCOVERY_JEV_MAX_PER_RUN: "1000"
+      TIMEZONE: "Asia/Seoul"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -r engine/requirements.txt
+      - name: run
+        env:
+          TASK: ${{ inputs.task }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          set -o pipefail
+          if [ "$TASK" = "jev_dismiss" ]; then
+            ARGS="--jev"; [ "$APPLY" = "true" ] && ARGS="$ARGS --apply"
+            python -m scripts.drinks_dismiss_offmap_candidates $ARGS | tee /tmp/out.md
+          else
+            ARGS="--out /tmp/out.md"; [ "$APPLY" = "true" ] && ARGS="$ARGS --apply --yes"
+            python -m scripts.drinks_merge_candidates $ARGS
+          fi
+          { echo "## $TASK (apply=$APPLY)"; cat /tmp/out.md; } >> "$GITHUB_STEP_SUMMARY"
