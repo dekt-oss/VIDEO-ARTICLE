@@ -136,7 +136,7 @@ class Rpc:
 
     def __call__(self, fn, p):
         self.calls.append(fn)
-        if fn == "drinks_heartbeat_develop":
+        if fn in ("drinks_heartbeat_develop", "drinks_develop_context"):   # 0076: 부가 정보(수정 지시 없음)
             return {}
         if fn == "drinks_develop_hold":
             self.holds += 1
@@ -544,3 +544,29 @@ def test_graph_sends_audio_as_json_and_token_in_header_only(monkeypatch):
         assert secret not in str(r.url) and r.headers["authorization"] == f"Bearer {secret}"
     with pytest.raises(ig.PublishError):
         g.create_container(acc, kind="carousel", children=["a"], audio_configuration=cfg)
+
+
+def test_rewrite_instruction_reaches_the_writer_and_saves_through_the_superseding_rpc():
+    """0076 스튜디오 [이 방향으로 수정]: 지시와 지금 초안이 프롬프트에 실리고, 저장은 옛 초안을 막는 RPC 로 한 트랜잭션."""
+    class RewriteRpc(Rpc):
+        def __call__(self, fn, p):
+            if fn == "drinks_develop_context":
+                self.calls.append(fn)
+                return {"instruction": "더 짧고 친근하게", "supersedes_plan_id": "old1", "current_plan": {"pages": [{"heading": "옛 표지"}]}}
+            if fn == "drinks_develop_save_rewrite":
+                self.calls.append(fn)
+                self.saved = p
+                return {"revision_id": "pl2", "coverage": {"ok": True}, "superseded_plan_id": "old1"}
+            return super().__call__(fn, p)
+
+    r = RewriteRpc()
+    seen = []
+
+    def write(q, c, b, f=None):
+        seen.append(cp.user_prompt(q, c, b, f))
+        return good_plan()
+
+    res = dd.process_job(job(), r, deps(write_card_plan=write))
+    assert res["status"] == "succeeded", r.finish
+    assert "더 짧고 친근하게" in seen[0] and "옛 표지" in seen[0]
+    assert "drinks_develop_save_rewrite" in r.calls and "drinks_develop_save_plan" not in r.calls

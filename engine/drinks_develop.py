@@ -651,9 +651,55 @@ def insufficient_message(kept: int, report: list[dict[str, Any]], skipped: list[
 # 근거 초안
 # ─────────────────────────────────────────────────────────────
 
+def develop_context(rpc: Rpc, lease: dict[str, Any]) -> dict[str, Any]:
+    """요청 부가 정보(0076): 수정 지시·대체할 초안·다시 쓸 보관 결과. 0076 전 DB(함수 없음)면 빈 값 — 예전처럼 처음부터 만든다."""
+    try:
+        return rpc("drinks_develop_context", lease) or {}
+    except DbError as exc:
+        if exc.code == "lease_lost":
+            raise
+        log.warning("drinks: 요청 부가 정보를 못 읽었습니다(%s) — 처음부터 만듭니다", exc.code)
+        return {}
+
+
+def pick_core(claims: list[dict[str, Any]], factcheck: dict[str, Any]) -> tuple[list[str], list[dict[str, str]]]:
+    """핵심 주장 = AI 사실 확인을 통과한 사실 주장만(0076). 사람에게 '지지 판정'을 넘기지 않고, 통과 못 한 주장은 이유와 함께 뺀다.
+    사실 확인이 꺼져 있으면(DRINKS_DEVELOP_FACTCHECK_ENABLED=false) 예전처럼 전부 핵심으로 두고 사람이 확인한다(옛 화면 경로)."""
+    if not factcheck.get("enabled", True):
+        return [c["claim_id"] for c in claims], []
+    why = {x["claim_id"]: x["why"] for x in factcheck.get("not_supported") or []}
+    core: list[str] = []
+    excluded: list[dict[str, str]] = []
+    for c in claims:
+        if c["claim_type"] == "opinion":
+            excluded.append({"claim_id": c["claim_id"], "why": "의견이라 핵심 주장으로 쓰지 않음", "text": c["text"]})
+        elif c.get("support_review") != "supported":
+            excluded.append({"claim_id": c["claim_id"], "why": why.get(c["claim_id"], "AI 사실 확인을 통과하지 못함"), "text": c["text"]})
+        elif c.get("time_sensitive") and not (c.get("valid_until") and (c.get("scope") or {}).get("region")):
+            excluded.append({"claim_id": c["claim_id"], "why": "시효가 있는 주장인데 유효 기간·지역이 없음", "text": c["text"]})
+        else:
+            core.append(c["claim_id"])
+    return core, excluded
+
+
 def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledger, deps: Deps, beat: Callable[[str], None]) -> dict[str, Any]:
     topic = job["topic"]
     question = topic["question"]
+    ctx = develop_context(rpc, lease)
+    reuse = ctx.get("reusable") if isinstance(ctx.get("reusable"), dict) else None
+    if reuse and isinstance((reuse.get("evidence_pack") or {}).get("claims"), list) and reuse["evidence_pack"]["claims"]:
+        # 저장만 실패했던 결과를 그대로 다시 쓴다 — 출처·사용 조건이 그대로임을 DB 가 확인했다. 모델을 다시 부르지 않는다.
+        beat("reuse")
+        claims = reuse["evidence_pack"]["claims"]
+        factcheck = reuse.get("factcheck") or {}
+        flags = reuse.get("jev_claim_flags") or []
+        if not factcheck.get("status"):
+            # 사실 확인만 실패했던 결과: 추출은 다시 하지 않고 사실 확인만 다시 한다(안 하면 같은 실패가 되풀이된다).
+            beat("factcheck")
+            factcheck = run_factcheck(topic, [], claims, {}, ledger, deps, flags)
+            apply_factcheck(claims, factcheck)
+        return save_evidence(job, rpc, lease, beat, claims, factcheck, reuse.get("report") or [],
+                             reuse.get("skipped") or [], flags, reused_from=reuse.get("from_request_id"))
     beat("sources")
     context: list[dict[str, Any]] = []
     sources, skipped = gather_sources(job, rpc, lease, deps, context)
@@ -708,21 +754,43 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
     beat("factcheck")
     factcheck = run_factcheck(topic, context, claims, sources_of, ledger, deps, flags)
     apply_factcheck(claims, factcheck)
-    cids = [c["claim_id"] for c in claims]
+    return save_evidence(job, rpc, lease, beat, claims, factcheck, report, skipped, flags)
+
+
+def save_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], beat: Callable[[str], None], claims: list[dict[str, Any]],
+                  factcheck: dict[str, Any], report: list[dict[str, Any]], skipped: list[dict[str, Any]], flags: list[dict[str, Any]],
+                  *, reused_from: Optional[str] = None) -> dict[str, Any]:
+    """핵심 주장을 고르고 저장한다. 저장이 거부돼도(0076) 만든 결과를 요청 기록에 보관한다 — 다음 요청이 모델을 다시 부르지 않고 쓴다."""
+    question = job["topic"]["question"]
+    unsaved = {"evidence_pack": {"claims": claims}, "factcheck": factcheck, "report": report, "skipped": skipped, "jev_claim_flags": flags}
+    core, excluded = pick_core(claims, factcheck)
+    if factcheck.get("enabled", True) and factcheck.get("status") not in ("ok", "no_claims"):
+        # 사실 확인을 못 했다(모델 응답 실패·한도) — '자료 부족'이 아니다. 결과를 보관하고 복구 가능한 실패로 닫는다.
+        raise DevelopError("factcheck_unavailable", f"AI 사실 확인을 마치지 못했습니다({factcheck.get('status')}: {factcheck.get('note') or ''})",
+                           "failed", {"unsaved_evidence": {**unsaved, "factcheck": {}}, "excluded": excluded})
+    if len(core) < config.DRINKS_DEVELOP_MIN_CORE_CLAIMS:
+        raise DevelopError("evidence_insufficient",
+                           f"출처에서 확인된 주장이 {len(core)}건입니다(최소 {config.DRINKS_DEVELOP_MIN_CORE_CLAIMS}건) — 이 질문에 답할 자료가 충분하지 않습니다.",
+                           "blocked", {"unsaved_evidence": unsaved, "excluded": excluded, "sources": report, "skipped": skipped, "claims_kept": len(core)})
     fmt = chain_format(job)
-    brief = {"audience_question": question, "selected_claim_ids": cids, "proposed_formats": [fmt],
-             "required_claims": {fmt: cids[: config.DRINKS_DEVELOP_REQUIRED_CLAIMS]}}
+    brief = {"audience_question": question, "selected_claim_ids": core, "proposed_formats": [fmt],
+             "required_claims": {fmt: core[: config.DRINKS_DEVELOP_REQUIRED_CLAIMS]}}
+    unsaved["brief"] = brief
     beat("save")
-    saved = rpc("drinks_develop_save_evidence", {**lease, "evidence_pack": {"claims": claims}, "brief": brief})
+    try:
+        saved = rpc("drinks_develop_save_evidence", {**lease, "evidence_pack": {"claims": claims}, "brief": brief})
+    except DbError as exc:
+        if exc.code == "lease_lost":
+            raise
+        # ★ 2026-11-06 사케 소재 실측: 저장이 draft_exists 로 거절되자 추출 결과가 어디에도 남지 않고 비용만 남았다($0.006).
+        raise DevelopError(exc.code, f"근거는 만들었지만 저장이 거부됐습니다: {exc.message}", "failed",
+                           {"unsaved_evidence": unsaved, "excluded": excluded}) from exc
     qc = saved.get("quote_check") or {}
-    unchecked = [c["claim_id"] for c in claims if c["claim_type"] != "opinion" and c["support_review"] != "supported"]
-    return {"review_id": saved.get("review_id"), "claims_kept": len(claims), "sources": report, "skipped": skipped,
-            "quote_check": qc, "jev_claim_flags": flags, "factcheck": factcheck,
-            "dropped_total": sum(sum(r["dropped_by"].values()) for r in report),
-            "needs_operator": ["핵심 메시지(core_takeaway) 한 줄"]
-            + ([f"AI 가 확인하지 못한 주장 {len(unchecked)}개({', '.join(unchecked)}) — 직접 읽고 '뒷받침 확인'을 고르세요"] if unchecked else [])
-            + ["출처 사용 조건 확인"]
-            + (["DB 인용 대조가 일치하지 않은 인용이 있음 — 화면에서 확인"] if qc.get("unmatched") else [])}
+    return {"review_id": saved.get("review_id"), "claims_kept": len(claims), "core_claim_ids": core, "excluded": excluded,
+            "sources": report, "skipped": skipped, "quote_check": qc, "jev_claim_flags": flags, "factcheck": factcheck,
+            "continued_blank_draft": bool(saved.get("continued_blank_draft")), "reused_from": reused_from,
+            "dropped_total": sum(sum((r.get("dropped_by") or {}).values()) for r in report),
+            "needs_operator": (["DB 인용 대조가 일치하지 않은 인용이 있음 — 화면에서 확인"] if qc.get("unmatched") else [])}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1227,9 +1295,22 @@ def log_chain(job: dict[str, Any], done: Any) -> None:
             log.warning("drinks: 개발 %s 근거에서 멈춤 (%s) — %s: %s", job["request_id"], fmt, item.get("code"), item.get("message"))
 
 
+def sweep_recoveries(rpc: Rpc) -> None:
+    """정해진 실패(저장 충돌·워커 중단·일시 오류)를 같은 실행 안에서 다시 넣는다(0076, 소재당 24시간 3번·같은 결재 안).
+    실패해도 큐 처리는 계속한다 — 복구는 덤이다."""
+    try:
+        res = rpc("drinks_studio_recover_all", {}) or {}
+    except DbError as exc:
+        log.warning("drinks: 자동 복구 확인 실패(%s) — 건너뜁니다", exc.code)
+        return
+    for r in res.get("recovered") or []:
+        log.info("drinks: 소재 %s 자동 복구 요청 %s (%s, 원래 %s)", r.get("topic_id"), r.get("request_id"), r.get("kind"), r.get("recovery_of"))
+
+
 def run_queue(rpc: Rpc, deps: Deps, *, worker_id: str, max_jobs: int = 5) -> list[dict[str, Any]]:
     out = []
     for _ in range(max_jobs):
+        sweep_recoveries(rpc)
         got = rpc("drinks_start_develop", {"worker_id": worker_id}) or {}
         job = got.get("job")
         if not job:

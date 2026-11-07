@@ -407,7 +407,10 @@ test("대본을 쓰는 사이 근거가 바뀌면 저장을 거부하고, 쓰던
   const l = { request_id: g.job.request_id, lease_token: g.job.lease_token };
   const r = await reviewRow(reviewId);
   const edited = r.evidence_pack.claims.map((c: Any) => (c.claim_id === "c1" ? { ...c, text: "고친 주장" } : c));
-  await ok("save_review", { topic_id: topic, review_id: reviewId, expected_version: r.version, evidence_pack: { claims: edited } });
+  // 0076: 화면 저장은 이제 서버가 거절한다(쓰는 중인 결과와 부딪히지 않게). 다른 길(직접 update)로 고쳐도 아래 트리거가 취소를 건다.
+  await fails("save_review", { topic_id: topic, review_id: reviewId, expected_version: r.version, evidence_pack: { claims: edited } }, "develop_in_progress");
+  assert.equal((await rpc("drinks_heartbeat_develop", l)).cancel_requested, false);
+  await db.query(`update drink_topic_reviews set evidence_pack = $2::jsonb where id = $1`, [reviewId, JSON.stringify({ ...r.evidence_pack, claims: edited })]);
   assert.equal((await rpc("drinks_heartbeat_develop", l)).cancel_requested, true);
   await rpcFails("drinks_develop_save_plan", { ...l, plan_json: PLAN }, "canceled");
   await rpc("drinks_finish_develop", { ...l, outcome: "failed", error_code: "canceled" });
