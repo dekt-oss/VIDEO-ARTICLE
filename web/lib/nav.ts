@@ -65,6 +65,8 @@ export const GROUPS_FINANCE: NavGroup[] = [
 //   `?legacy=1` 이면 옛 화면 그대로). 설정은 지금 되는 것과 안 하는 것을 정직하게 보여준다.
 export const GROUPS_DRINKS: NavGroup[] = [
   { title: "오늘 할 일", items: [{ href: "/drinks", label: "오늘 할 일", match: "exact" }] },
+  // 콘텐츠 스튜디오(2026-11-07): 소재 고르기 → 초안 다듬기 → 버전·생성 한 화면. 옛 화면들은 그대로 남는다.
+  { title: "콘텐츠 스튜디오", items: [{ href: "/drinks/studio", label: "콘텐츠 스튜디오", match: "prefix" }] },
   { title: "소재 고르기", items: [{ href: "/drinks/topics", label: "소재 고르기", match: "prefix" }] },
   { title: "만들기", items: [{ href: "/drinks/work", label: "만들기", match: "prefix" }] },
   // D단계 순환(2026-10-27): 발행(인스타 예약·게시 여부 확인)·성과(스냅샷 + 전략 제안)

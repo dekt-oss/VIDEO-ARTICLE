@@ -90,7 +90,10 @@ test("워커가 보내는 그대로: AI 가 '확인됨'으로 채운 주장은 �
   assert.equal(byId.c4.support_review, "not_reviewed");
   const blockers: string[] = (await row("select drinks_review_blockers($1::uuid) as b", [saved.review_id])).b.blockers;
   const support = blockers.filter((x) => x.startsWith("claim_support_not_reviewed:"));
-  assert.deepEqual(support, ["claim_support_not_reviewed:c4"], "AI 가 확인하지 못한 주장만 사람 확인으로 남는다");
+  // 0076: AI 가 확인하지 못한 c4 는 핵심 주장에서 빠졌다 — 사람 확인 숙제로 남지 않는다(근거 기록에는 그대로 있다)
+  assert.deepEqual(support, [], "확인되지 않은 주장은 핵심이 아니라서 필수 조건도 걸지 않는다");
+  assert.deepEqual(rv.brief.selected_claim_ids, ["c1", "c2", "c3"]);
+  assert.deepEqual(blockers, ["brief_takeaway_missing"], "남는 것은 핵심 메시지 한 줄뿐 — 초안 저장 때 초안의 결론으로 채워진다(0064)");
   assert.ok(!blockers.some((x) => /^claim_(quote_unmatched|rights_unconfirmed|metadata_only|no_source):/.test(x)), blockers.join(","));
 });
 

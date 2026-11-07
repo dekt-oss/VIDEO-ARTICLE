@@ -106,6 +106,16 @@ class FakeRpc:
         self.finish = p
         return {"status": p["outcome"]}
 
+    # 0076: 요청 부가 정보(수정 지시·보관 결과)·자동 복구 훑기. 기본은 "없음".
+    context: dict = {}
+    recovered: list = []
+
+    def drinks_develop_context(self, p):
+        return self.context
+
+    def drinks_studio_recover_all(self, p):
+        return {"recovered": self.recovered}
+
 
 def src_row(title="논문 A", *, body=BODY, linked=True, role="evidence", kind="expert", sid="s1", url="https://example.org/a"):
     return {"snapshot_id": sid, "canonical_url": url, "title": title, "publisher": "Sci Rep", "source_kind": kind, "rights_status": "quote_ok",
@@ -135,6 +145,13 @@ def no_verdicts(topic, context, claims):
     return {"assertions": [], "claim_checks": []}
 
 
+def all_verified(topic, context, claims):
+    """AI 사실 확인 가짜 — 사실 주장 전부가 맞다고 판정(0076: 확인된 주장만 핵심 주장이 되므로 기본값은 이것)."""
+    ids = [c["claim_id"] for c in claims if c["claim_type"] != "opinion"]
+    return {"assertions": [{"assertion_ko": "사람들의 믿음", "verdict": "TRUE", "claim_ids": ids, "reason_ko": "인용이 그렇게 말함"}],
+            "claim_checks": [{"claim_id": i, "faithful": True} for i in ids]}
+
+
 @pytest.fixture(autouse=True)
 def _old_short_shape(monkeypatch):
     """이 파일의 금본위 사례(whisky-water-v1)와 사고 사례들은 2026-11-02 이전 모양(5~7장면·30~40초·시각 주장표 없음)이다.
@@ -147,7 +164,7 @@ def _old_short_shape(monkeypatch):
 
 def deps(**kw):
     base = {"extract_claims": boom, "write_plan": boom, "jev_check": lambda n, s: None, "fetcher_factory": lambda hosts: boom(),
-            "factcheck": no_verdicts}
+            "factcheck": all_verified}
     base.update(kw)
     return dd.Deps(**base)
 
@@ -197,7 +214,7 @@ def test_evidence_keeps_only_verified_quotes_links_used_sources_and_saves_a_draf
     assert rpc.finish["outcome"] == "succeeded"
     pack = rpc.saved_evidence["evidence_pack"]["claims"]
     assert [c["claim_id"] for c in pack] == ["c1", "c2", "c3", "c4"]
-    assert all(c["support_review"] == "not_reviewed" for c in pack), "AI 판정이 하나도 없으면 전부 운영자 몫(not_reviewed)"
+    assert all(c["support_review"] == "supported" for c in pack), "AI 사실 확인을 통과한 주장만 핵심 주장이 된다(0076)"
     assert [c["source_refs"][0]["original_quote"] for c in pack] == [dd.clean_source_text(q) for q in QUOTES[:4]]
     assert all(c["source_refs"][0]["snapshot_id"] == "s1" for c in pack)
     brief = rpc.saved_evidence["brief"]
@@ -210,7 +227,9 @@ def test_evidence_keeps_only_verified_quotes_links_used_sources_and_saves_a_draf
     assert r["cost"]["calls"] and r["cost"]["spent_usd"] > 0
     # 호출마다 가잡기 → 확정(출처 2곳 추출 + AI 사실 확인 1회), 승인·제출 함수는 없다
     assert rpc.names.count("drinks_develop_hold") == rpc.names.count("drinks_develop_settle") == 3
-    assert r["factcheck"]["status"] == "ok" and r["factcheck"]["auto_supported"] == []
+    assert r["factcheck"]["status"] == "ok" and r["factcheck"]["auto_supported"] == ["c1", "c2", "c3", "c4"]
+    assert r["core_claim_ids"] == ["c1", "c2", "c3", "c4"] and r["excluded"] == []
+    assert r["needs_operator"] == [], "사람에게 주장 판정·점수·사용 조건 확인을 넘기지 않는다(0076)"
     assert not any(re.search(r"approve|submit|review_action|plan_action|select", n) for n in rpc.names)
 
 
@@ -765,7 +784,7 @@ def test_chain_evidence_brief_follows_the_chosen_format():
         brief = rpc.saved_evidence["brief"]
         assert brief["proposed_formats"] == [fmt] and list(brief["required_claims"]) == [fmt]
         assert brief.get("core_takeaway") is None, "근거 단계에서 핵심 메시지를 지어내지 않는다"
-        assert all(c["support_review"] == "not_reviewed" for c in rpc.saved_evidence["evidence_pack"]["claims"])
+        assert all(c["support_review"] == "supported" for c in rpc.saved_evidence["evidence_pack"]["claims"])
 
 
 class ChainRpc(FakeRpc):
@@ -885,3 +904,88 @@ def test_timed_out_model_call_is_settled_at_estimate_not_released():
 
     dd.process_job(job(), rpc2, deps(extract_claims=refused))
     assert [s["outcome"] for s in rpc2.settles] == ["released"] and rpc2.settled == 0
+
+
+
+# ── 콘텐츠 스튜디오(0076): 확인된 주장만 핵심 · 저장 실패 보관 · 보관 결과 재사용 · 자동 복구 훑기 ─────────────
+
+def test_unverified_claims_are_excluded_and_too_few_is_insufficient_not_a_manual_task():
+    rpc = FakeRpc(sources=[src_row()])
+    res = dd.process_job(job(), rpc, deps(extract_claims=fake_extract(QUOTES[:4]), factcheck=no_verdicts))
+    assert res["status"] == "blocked" and rpc.finish["error_code"] == "evidence_insufficient"
+    assert rpc.saved_evidence is None, "확인된 주장 없이 초안을 저장하지 않는다"
+    r = rpc.finish["result"]
+    assert [x["claim_id"] for x in r["excluded"]] == ["c1", "c2", "c3", "c4"] and all(x["why"] for x in r["excluded"])
+    assert len(r["unsaved_evidence"]["evidence_pack"]["claims"]) == 4, "만든 결과는 보관한다"
+
+
+def test_partial_verification_keeps_only_the_verified_as_core():
+    def two_ok(topic, context, claims):
+        return {"assertions": [{"assertion_ko": "믿음", "verdict": "TRUE", "claim_ids": ["c1", "c3"], "reason_ko": "인용"}],
+                "claim_checks": [{"claim_id": "c1", "faithful": True}, {"claim_id": "c3", "faithful": True}]}
+    rpc = FakeRpc(sources=[src_row()])
+    res = dd.process_job(job(), rpc, deps(extract_claims=fake_extract(QUOTES[:4]), factcheck=two_ok))
+    assert res["status"] == "succeeded", rpc.finish
+    assert rpc.saved_evidence["brief"]["selected_claim_ids"] == ["c1", "c3"]
+    assert [x["claim_id"] for x in rpc.finish["result"]["excluded"]] == ["c2", "c4"]
+
+
+def test_factcheck_failure_is_a_recoverable_failure_not_insufficient():
+    def broken(topic, context, claims):
+        raise ValueError("bad json")
+    rpc = FakeRpc(sources=[src_row()])
+    res = dd.process_job(job(), rpc, deps(extract_claims=fake_extract(QUOTES[:4]), factcheck=broken))
+    assert res["status"] == "failed" and rpc.finish["error_code"] == "factcheck_unavailable"
+    assert rpc.finish["result"]["unsaved_evidence"]["factcheck"] == {}, "다음 요청이 사실 확인만 다시 하도록 판정은 비워 보관"
+
+
+class RejectingSave(FakeRpc):
+    def drinks_develop_save_evidence(self, p):
+        raise dd.DbError("draft_exists", "작성 중인 버전이 이미 있습니다")
+
+
+def test_save_rejection_keeps_the_paid_result_in_the_request_record():
+    """2026-11-06 사케 소재: 저장이 draft_exists 로 거절되자 추출 결과 없이 비용만 남았다. 이제 결과가 남는다."""
+    rpc = RejectingSave(sources=[src_row()])
+    res = dd.process_job(job(), rpc, deps(extract_claims=fake_extract(QUOTES[:4])))
+    assert res["status"] == "failed" and rpc.finish["error_code"] == "draft_exists"
+    kept = rpc.finish["result"]["unsaved_evidence"]
+    assert [c["claim_id"] for c in kept["evidence_pack"]["claims"]] == ["c1", "c2", "c3", "c4"]
+    assert kept["brief"]["selected_claim_ids"] == ["c1", "c2", "c3", "c4"] and kept["factcheck"]["status"] == "ok"
+    assert rpc.finish["result"]["cost"]["spent_usd"] > 0
+
+
+def test_reusable_result_is_saved_without_calling_any_model():
+    first = RejectingSave(sources=[src_row()])
+    dd.process_job(job(), first, deps(extract_claims=fake_extract(QUOTES[:4])))
+    kept = first.finish["result"]["unsaved_evidence"]
+    rpc = FakeRpc(sources=[src_row()])
+    rpc.context = {"reusable": {"from_request_id": "q0", **kept}}
+    res = dd.process_job(job(), rpc, deps(extract_claims=boom, factcheck=boom))
+    assert res["status"] == "succeeded", rpc.finish
+    assert "drinks_develop_hold" not in rpc.names, "돈을 다시 쓰지 않는다"
+    assert rpc.finish["result"]["reused_from"] == "q0"
+    assert rpc.saved_evidence["brief"]["selected_claim_ids"] == ["c1", "c2", "c3", "c4"]
+
+
+def test_run_queue_sweeps_recoveries_before_each_job():
+    rpc = FakeRpc(sources=[])
+    rpc.drinks_start_develop = lambda p: {"job": None}
+    dd.run_queue(rpc, deps(), worker_id="w", max_jobs=1)
+    assert rpc.names[:2] == ["drinks_studio_recover_all", "drinks_start_develop"]
+
+
+def test_reused_extraction_without_a_verdict_reruns_only_the_factcheck():
+    """사실 확인만 실패했던 보관 결과: 추출은 다시 하지 않고 사실 확인만 다시 한다(안 하면 복구가 같은 실패를 되풀이한다)."""
+    def broken(topic, context, claims):
+        raise ValueError("bad json")
+    first = FakeRpc(sources=[src_row()])
+    dd.process_job(job(), first, deps(extract_claims=fake_extract(QUOTES[:4]), factcheck=broken))
+    kept = first.finish["result"]["unsaved_evidence"]
+    assert kept["factcheck"] == {}
+    rpc = FakeRpc(sources=[src_row()])
+    rpc.context = {"reusable": {"from_request_id": "q0", **kept}}
+    res = dd.process_job(job(), rpc, deps(extract_claims=boom, factcheck=all_verified))
+    assert res["status"] == "succeeded", rpc.finish
+    holds = [p["note"] for n, p in rpc.calls if n == "drinks_develop_hold"]
+    assert len(holds) == 1 and holds[0].startswith("AI 사실 확인"), "추출은 다시 사지 않는다"

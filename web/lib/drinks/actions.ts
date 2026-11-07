@@ -93,6 +93,12 @@ export const DRINKS_ACTIONS = {
   develop_estimate: "drinks_develop_estimate",
   topic_formats: "drinks_topic_formats",
   work_items: "drinks_work_items",
+  // 콘텐츠 스튜디오(0076, docs/deviation-drinks-studio.md): 소재 고르기 → 초안 다듬기 → 버전·생성. 규칙은 전부 DB 함수다.
+  studio_prepare: "drinks_studio_prepare",
+  studio_status: "drinks_studio_status",
+  studio_save_draft: "drinks_studio_save_draft",
+  studio_rewrite: "drinks_studio_rewrite",
+  studio_generate: "drinks_studio_generate",
 } as const;
 
 /** 형식 의도(0064 drink_topic_picks.format_intent). 한 번에 고를 수 있는 최대 수 = 형식 수. */
@@ -210,6 +216,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   not_normal_day: 409,
   // 내용 승인 한 번(0064)
   evidence_not_usable: 422, review_not_draft: 422, plan_stale: 409,
+  // 스튜디오(0076)
+  draft_has_edits: 409, draft_changed: 409, numbers_unverified: 422, format_not_supported: 422,
   // 음원 계약(0065)
   audio_required: 422, audio_not_for_carousel: 422, audio_not_found: 422, audio_connection_unsupported: 422, licensed_mix_not_rendered: 422,
   // 밈 제작(0066)

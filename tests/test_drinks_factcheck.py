@@ -94,42 +94,50 @@ def saved_claims(rpc):
 
 
 def test_true_verdict_marks_only_its_cited_faithful_claims_supported_with_the_auto_note():
-    rpc, res = run(lambda t, ctx, cl: good(ids=("c1", "c2"), faithful=("c1",)))
+    rpc, res = run(lambda t, ctx, cl: good(ids=("c1", "c2", "c3"), faithful=("c1", "c3")))
     assert res["status"] == "succeeded"
     c = saved_claims(rpc)
     assert c["c1"]["support_review"] == "supported" and c["c1"]["limitations"] == config.DRINKS_DEVELOP_FACTCHECK_NOTE
     assert c["c2"]["support_review"] == "not_reviewed", "주장 문장 대조(faithful)가 없으면 자동으로 확인됨이 되지 않는다"
-    assert c["c3"]["support_review"] == c["c4"]["support_review"] == "not_reviewed", "판정의 근거로 쓰이지 않은 주장은 운영자 몫"
+    assert c["c4"]["support_review"] == "not_reviewed", "판정의 근거로 쓰이지 않은 주장은 확인됨이 되지 않는다"
     fc = rpc.finish["result"]["factcheck"]
     assert fc["status"] == "ok" and fc["counts"] == {"TRUE": 1, "FALSE": 0, "UNCERTAIN": 0}
-    assert fc["auto_supported"] == ["c1"] and {n["claim_id"] for n in fc["not_supported"]} == {"c2", "c3", "c4"}
+    assert fc["auto_supported"] == ["c1", "c3"] and {n["claim_id"] for n in fc["not_supported"]} == {"c2", "c4"}
     assert fc["assertions"][0]["sources"][0]["title"] == "논문 A"
-    needs = rpc.finish["result"]["needs_operator"]
-    assert any("c2, c3, c4" in n for n in needs) and not any("주장별 지지 검토" in n for n in needs)
+    # 0076: 확인되지 않은 주장은 사람 숙제가 아니라 핵심 주장에서 빠진다(이유와 함께)
+    assert rpc.saved_evidence["brief"]["selected_claim_ids"] == ["c1", "c3"]
+    assert {x["claim_id"] for x in rpc.finish["result"]["excluded"]} == {"c2", "c4"}
+    assert rpc.finish["result"]["needs_operator"] == []
 
 
 def test_false_verdict_also_marks_the_correcting_claims_supported():
-    rpc, _ = run(lambda t, ctx, cl: good(ids=("c3",), verdict="FALSE"))
+    rpc, _ = run(lambda t, ctx, cl: good(ids=("c3", "c4"), verdict="FALSE"))
     assert saved_claims(rpc)["c3"]["support_review"] == "supported"
 
 
 def test_uncertain_and_hallucinated_verdicts_mark_nothing():
+    """0076: 아무것도 확인되지 않으면 사람에게 판정을 넘기지 않고 '자료 부족'으로 멈춘다(초안을 저장하지 않는다)."""
     for out in (good(verdict="UNCERTAIN"), good(ids=("c1", "c77")), good(reason="정확히 100 년 간다")):
         rpc, res = run(lambda t, ctx, cl, o=out: o)
-        assert res["status"] == "succeeded"
-        assert all(c["support_review"] == "not_reviewed" for c in saved_claims(rpc).values()), out
+        assert res["status"] == "blocked" and rpc.finish["error_code"] == "evidence_insufficient", out
+        assert rpc.saved_evidence is None
+        kept = rpc.finish["result"]["unsaved_evidence"]["evidence_pack"]["claims"]
+        assert all(c["support_review"] == "not_reviewed" for c in kept), out
 
 
 def test_jev_flag_keeps_a_claim_for_the_operator():
     rpc = base.FakeRpc(sources=[base.src_row()])
-    d = base.deps(extract_claims=base.fake_extract(QUOTES), factcheck=lambda t, ctx, cl: good(), jev_check=lambda n, s: 0.9 if n == "주장 가" else 0.1)
+    d = base.deps(extract_claims=base.fake_extract(QUOTES), factcheck=lambda t, ctx, cl: good(ids=("c1", "c2", "c3")),
+                  jev_check=lambda n, s: 0.9 if n == "주장 가" else 0.1)
     dd.process_job(base.job(), rpc, d)
     c = saved_claims(rpc)
     assert c["c1"]["support_review"] == "not_reviewed" and c["c2"]["support_review"] == "supported"
+    assert "c1" not in rpc.saved_evidence["brief"]["selected_claim_ids"], "Jev 가 건 주장은 핵심 주장에서 빠진다"
     assert any(n["claim_id"] == "c1" and "Jev" in n["why"] for n in rpc.finish["result"]["factcheck"]["not_supported"])
 
 
-def test_bad_json_retries_once_then_everything_stays_uncertain_and_the_job_still_succeeds():
+def test_bad_json_retries_once_then_closes_as_a_recoverable_failure_keeping_the_extraction():
+    """0076: 사실 확인을 못 했으면 '자료 부족'도 '사람 확인'도 아니다 — 추출 결과를 보관하고 복구 가능한 실패(factcheck_unavailable)로 닫는다."""
     calls = []
 
     def bad(t, ctx, cl):
@@ -137,21 +145,21 @@ def test_bad_json_retries_once_then_everything_stays_uncertain_and_the_job_still
         raise JSONParseError("모델이 JSON 이 아닌 글을 냈다")
 
     rpc, res = run(bad)
-    assert res["status"] == "succeeded" and len(calls) == config.DRINKS_DEVELOP_FACTCHECK_ATTEMPTS == 2
-    assert all(c["support_review"] == "not_reviewed" for c in saved_claims(rpc).values())
-    fc = rpc.finish["result"]["factcheck"]
-    assert fc["status"] == "failed" and fc["auto_supported"] == [] and "JSONParseError" in fc["note"]
+    assert res["status"] == "failed" and len(calls) == config.DRINKS_DEVELOP_FACTCHECK_ATTEMPTS == 2
+    assert rpc.finish["error_code"] == "factcheck_unavailable" and rpc.saved_evidence is None
+    kept = rpc.finish["result"]["unsaved_evidence"]
+    assert len(kept["evidence_pack"]["claims"]) == 4 and kept["factcheck"] == {}, "다음 요청은 추출을 다시 하지 않고 사실 확인만 다시 한다"
     assert rpc.names.count("drinks_develop_hold") == rpc.names.count("drinks_develop_settle") == 1 + 2, "실패한 호출도 가잡기는 해제·확정된다"
 
 
 def test_wrong_shape_then_good_answer_uses_the_second_answer():
-    answers = iter([{"nope": 1}, good(ids=("c4",))])
+    answers = iter([{"nope": 1}, good(ids=("c3", "c4"))])
     rpc, _ = run(lambda t, ctx, cl: next(answers))
     assert saved_claims(rpc)["c4"]["support_review"] == "supported"
     assert rpc.names.count("drinks_develop_hold") == 3
 
 
-def test_budget_refusal_skips_the_factcheck_but_saves_the_evidence():
+def test_budget_refusal_skips_the_factcheck_and_keeps_the_extraction_for_later():
     class CapAfterExtract(base.FakeRpc):
         def drinks_develop_hold(self, p):
             if p["note"].startswith("AI 사실 확인"):
@@ -160,10 +168,9 @@ def test_budget_refusal_skips_the_factcheck_but_saves_the_evidence():
 
     rpc = CapAfterExtract(sources=[base.src_row()])
     res = dd.process_job(base.job(), rpc, base.deps(extract_claims=base.fake_extract(QUOTES), factcheck=base.boom))
-    assert res["status"] == "succeeded" and rpc.saved_evidence is not None
-    fc = rpc.finish["result"]["factcheck"]
-    assert fc["status"] == "skipped" and "budget_exceeded" in fc["note"]
-    assert all(c["support_review"] == "not_reviewed" for c in saved_claims(rpc).values())
+    assert res["status"] == "failed" and rpc.saved_evidence is None and rpc.finish["error_code"] == "factcheck_unavailable"
+    assert "budget_exceeded" in rpc.finish["error_message"]
+    assert len(rpc.finish["result"]["unsaved_evidence"]["evidence_pack"]["claims"]) == 4
 
 
 def test_cancel_during_factcheck_still_stops_the_job():
