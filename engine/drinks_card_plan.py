@@ -22,7 +22,7 @@ from typing import Any, Callable, Optional
 from . import config
 from . import drinks_script_check as script_check
 from .drinks_collect import DbError
-from .drinks_develop import Deps, DevelopError, Ledger, Rpc, assert_review_usable, core_takeaway_draft, estimate_usd, jev_unsupported_p
+from .drinks_develop import Deps, DevelopError, Ledger, Rpc, assert_review_usable, core_takeaway_draft, develop_context, estimate_usd, jev_unsupported_p
 
 FACT_ROLES = ("explain", "compare", "checklist")
 ALL_ROLES = ("cover", *FACT_ROLES, "source")
@@ -77,6 +77,13 @@ def user_prompt(question: str, claims: list[dict[str, Any]], brief: dict[str, An
     parts = [f"소재 질문: {question}", f"핵심 메시지(운영자): {(brief or {}).get('core_takeaway') or '(없음)'}",
              f"필수 주장(빠짐없이 전한다): {', '.join(required_claims(brief)) or '(없음)'}",
              "근거:\n" + json.dumps(rows, ensure_ascii=False)]
+    rewrite = (brief or {}).get("_rewrite") or {}
+    if rewrite.get("instruction"):
+        # 운영자 수정 지시(0076 스튜디오). 근거 밖으로 나가라는 뜻이 아니다 — 위 규칙(인용 밖 숫자·처방 금지)이 그대로 먼저다.
+        parts.append("운영자 수정 지시(근거 규칙을 지키는 범위에서 따른다): " + str(rewrite["instruction"])[:500])
+        if rewrite.get("current_pages"):
+            parts.append("지금 초안(이것을 바탕으로 고쳐 쓴다. 페이지마다 claim_ids 연결은 그대로 둔다):\n"
+                         + json.dumps(rewrite["current_pages"], ensure_ascii=False)[:6000])
     if feedback:
         parts.append("직전 초안이 아래 검사에 막혔다. 같은 문제를 고쳐서 처음부터 다시 쓴다:\n" + "\n".join(f"- {m}" for m in feedback))
     return "\n\n".join(parts)
@@ -267,6 +274,9 @@ def run_card_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: 
     if not claims:
         raise DevelopError("no_core_claims", "근거 버전에 핵심 주장이 없습니다")
     brief = review.get("brief") or {}
+    ctx = develop_context(rpc, lease)
+    if ctx.get("instruction"):
+        brief = {**brief, "_rewrite": {"instruction": ctx["instruction"], "current_pages": (ctx.get("current_plan") or {}).get("pages")}}
     question = topic["question"]
     feedback: Optional[list[str]] = None
     plan: dict[str, Any] = {}
@@ -297,7 +307,9 @@ def run_card_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: 
     beat("save")
     cleaned = clean_plan(plan)
     try:
-        saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": cleaned, **core_takeaway_draft(job, plan)})
+        # 수정 지시면 옛 초안을 막고 새 초안을 한 트랜잭션에서 넣는다(0076 drinks_develop_save_rewrite — 그 사이 사람이 고쳤으면 거절).
+        saved = rpc("drinks_develop_save_rewrite" if ctx.get("supersedes_plan_id") else "drinks_develop_save_plan",
+                    {**lease, "plan_json": cleaned, **core_takeaway_draft(job, plan)})
     except DbError as exc:
         if exc.code == "lease_lost":
             raise

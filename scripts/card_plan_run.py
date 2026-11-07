@@ -156,7 +156,7 @@ class MemRpc:
 
     def __call__(self, fn: str, p: dict[str, Any]) -> Any:
         self.calls.append(fn)
-        if fn == "drinks_heartbeat_develop":
+        if fn in ("drinks_heartbeat_develop", "drinks_develop_context"):   # 0076: 부가 정보(수정 지시 없음)
             return {}
         if fn == "drinks_develop_hold":
             self.holds += 1

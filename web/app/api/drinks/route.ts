@@ -32,7 +32,8 @@ export async function POST(request: Request) {
   }
   // 설명형 지시서·조립도 0원 작업이라 같은 제작 워커를 깨운다. 구매(explainer_request_buy)는 깨우지 않는다 — 실호출 스위치를 켠 워커만 처리할 수 있다.
   const renderAction = (body as { action?: unknown } | null)?.action;
-  if (res.status === 200 && (renderAction === "request_render" || renderAction === "explainer_request_plan" || renderAction === "explainer_request_assemble")
+  if (res.status === 200 && (renderAction === "request_render" || renderAction === "explainer_request_plan" || renderAction === "explainer_request_assemble"
+      || renderAction === "studio_generate")
       && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
     res.body.dispatch = await triggerWorkflow("drinks-produce.yml", null);
   }
@@ -47,7 +48,11 @@ export async function POST(request: Request) {
     // 밈 틀 정밀화 워커(Apify + 영상 분석, 클릭 승인 1회분 — 상한·월 한도는 DB 가 센다). 토큰이 없으면 큐에만 남는다. 게시는 하지 않는다.
     res.body.dispatch = await triggerWorkflow("drinks-apify.yml", null);
   }
-  const queued = action === "pick_topic"
+  // 콘텐츠 스튜디오(0076): 초안 준비·수정 지시는 개발 워커를, 생성(새 제작 작업)은 위의 제작 워커를 깨운다.
+  const studio = res.body.result as { queued?: boolean; existing?: boolean } | undefined;
+  const queued = action === "studio_prepare" || action === "studio_rewrite"
+    ? { queued: action === "studio_rewrite" || studio?.queued === true, existing: studio?.existing }
+    : action === "pick_topic"
     // [이걸로]: 이어 만들기 요청이 새로 들어갔을 때만 깨운다(밈·이미 있는 초안은 큐에 안 들어간다).
     ? (res.body.result as { chain?: { queued?: boolean; existing?: boolean } } | undefined)?.chain
     : action === "request_develop" ? { queued: true, existing: (res.body.result as { existing?: boolean } | undefined)?.existing } : null;

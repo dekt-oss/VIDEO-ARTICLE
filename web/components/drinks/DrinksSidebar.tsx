@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 
 import { GROUPS_DRINKS, isActive } from "@/lib/nav";
 
-const MAIN_COUNT = 4;
+const MAIN_COUNT = 5;
 
 export function DrinksSidebar() {
   const pathname = usePathname() ?? "/drinks";
