@@ -52,6 +52,8 @@ _ADVICE = re.compile(r"(?:보세요|하세요|드세요|마세요|넣으세요|�
 # 받침 ㅂ + 니다 로 끝나는 모든 음절을 잡는다. "아니다" 는 문어체가 아니라 뺀다.
 _FORMAL = re.compile(r"(?<!아)니다[.!?…]*$")
 _SENT_SPLIT = re.compile(r"(?<=[.?!])\s+")
+# 공유 문장의 '권고' 끝맺음이 저장·보내기·공유 동사에 붙은 것(카드 대본 규칙이 요구하는 행동)
+_SHARE_ACTION = re.compile(r"(?:저장|보내|공유)\S*\s*(?:보세요|하세요|해\s?봐요|해\s?보자)[.!?…]*$")
 ADVICE_KINDS = {"practice", "recommendation", "advice", "howto"}
 DERIVED_KINDS = {"calc", "derived", "inference"}
 LONG_SENTENCE_CHARS = 48   # 공백 빼고. 실측: v5 장면 최장 31자, v4 의 문제 장면 46~52자
@@ -301,6 +303,9 @@ def check_card_texts(plan: dict[str, Any], claims: list[dict[str, Any]], *, sour
     by_id = {str(c.get("claim_id")): c for c in claims or [] if isinstance(c, dict)}
     usable_all = [c for c in by_id.values() if not _is_derived(c)]
     meta = " ".join(" ".join(str(v) for v in (s or {}).values()) for s in (sources or []))
+    # 공유 문장은 대본 규칙상 '저장/보내 보세요'가 필수다(drinks_card_plan) — 술에 대한 권고가 아니므로 권고 검사에서만 뺀다(숫자·양은 본다)
+    share = str(((plan or {}).get("reel") or {}).get("share_line") or "").strip()
+    share = share if _SHARE_ACTION.search(share) else None   # "오늘 마셔 보세요" 같은 술 권고는 여전히 막는다
     for pos, texts, cids in card_texts(plan):
         unknown = [c for c in cids if c not in by_id]
         if unknown:
@@ -315,7 +320,7 @@ def check_card_texts(plan: dict[str, Any], claims: list[dict[str, Any]], *, sour
         for m in _QUANTITY.finditer(text):
             if not any(w in low for w in _UNITS.get(m.group(1).lower(), _UNITS.get(m.group(1), ()))):
                 rep.blocks.append(Finding("quantity_unsupported", pos, f"{pos}장: '{m.group(0)}' — 원문에 이 단위(양)가 없습니다"))
-        lines = [x.strip() for x in re.split(r"[\n]+|(?<=[.?!])\s+", text) if x.strip()]
+        lines = [x.strip() for x in re.split(r"[\n]+|(?<=[.?!])\s+", text) if x.strip() and x.strip() != share]
         if any(_ADVICE.search(x) for x in lines) and not any(_kind(c) in ADVICE_KINDS for c in cited):
             rep.blocks.append(Finding("advice_unsupported", pos, f"{pos}장: 권고(~해 보세요)인데 실제 습관·권고를 말한 원문 근거가 없습니다"))
     return rep
