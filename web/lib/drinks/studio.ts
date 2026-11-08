@@ -139,6 +139,28 @@ export function cardCost(plan: StudioPlan | null): { usd: number | null; text: s
   return { usd: e.total_usd, text: `$${e.total_usd.toFixed(2)} · 배경 사진 ${e.images}장(AI 생성, 유료)${reused}` };
 }
 
+/** ① 소재 화면: 소재마다 이미 시작한 유형(started)·초안이 있는 유형(drafts). 어느 소재든 유형을 고를 수 있다. */
+export interface FormatProgress { topicId: string | null; started: string[]; drafts: string[] }
+export type FormatChoice = "card" | "explainer" | "meme";
+
+/** 처음 고른 칸: 초안이 있는 유형 → 시작한 유형 → 카드뉴스. */
+export function defaultFormat(p: FormatProgress | null): FormatChoice {
+  const f = p?.drafts[0] ?? p?.started[0];
+  return f === "explainer" || f === "card" ? f : "card";
+}
+
+/**
+ * 고른 유형으로 무엇을 하나.
+ * open=초안 열기 · prepare=스튜디오 준비(새 소재, 또는 이 유형 하나로 시작해 멈춘 소재 복구) · add=시작한 소재에 유형 더하기(근거는 공유) · meme=밈 보드.
+ * ★ drinks_studio_prepare 는 이미 고른 유형이 있으면 요청한 유형을 따르지 않는다 — 그래서 더하기는 pick_topic 으로 간다.
+ */
+export function formatAction(p: FormatProgress, f: FormatChoice): "open" | "prepare" | "add" | "meme" {
+  if (f === "meme") return "meme";
+  if (p.drafts.includes(f)) return "open";
+  const others = p.started.filter((x) => x !== f);
+  return p.topicId && others.length > 0 ? "add" : "prepare";
+}
+
 /** 초안 구성표 한 줄: 어떤 화면에 무엇을 보여 주고 무엇을 말하는가. */
 export interface DraftRow { title: string; lines: { label: string; text: string }[] }
 

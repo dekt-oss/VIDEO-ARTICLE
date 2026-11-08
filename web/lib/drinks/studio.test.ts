@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { RECOVERABLE, activePlan, cardCost, defaultPublishAt, draftRows, overlayTexts, progressText, studioPhase, type StudioRequest, type StudioStatus } from "./studio.ts";
+import { RECOVERABLE, activePlan, cardCost, defaultFormat, defaultPublishAt, draftRows, formatAction, overlayTexts, progressText, studioPhase, type StudioRequest, type StudioStatus } from "./studio.ts";
 
 const base = (over: Partial<StudioStatus> = {}): StudioStatus => ({
   topic: { id: "t", title: "사케", question: "사케 유통기한?", status: "researching", version: 1 },
@@ -67,6 +67,21 @@ test("진행 문구는 워커가 남긴 단계 이름에서만 — 지어낸 완
   assert.equal(progressText(req({ status: "queued", recovery_of: "x" })), "일시적인 오류를 자동으로 복구하고 있어요.");
   assert.equal(progressText(req({ step: "write:0", instruction: "짧게" })), "말씀하신 방향으로 다시 쓰고 있어요.");
   assert.doesNotMatch(progressText(req({ step: "???" })), /%/);
+});
+
+test("어느 소재든 유형을 고르고, 시작한 소재에는 다른 유형을 더한다", () => {
+  const fresh = { topicId: null, started: [], drafts: [] };
+  assert.equal(defaultFormat(fresh), "card");
+  assert.equal(formatAction(fresh, "explainer"), "prepare");
+  assert.equal(formatAction(fresh, "meme"), "meme");
+  const reel = { topicId: "t", started: ["explainer"], drafts: ["explainer"] };
+  assert.equal(defaultFormat(reel), "explainer", "이미 만든 유형이 먼저 골라져 있다");
+  assert.equal(formatAction(reel, "explainer"), "open");
+  assert.equal(formatAction(reel, "card"), "add", "준비 함수는 고른 유형을 따르지 않으므로 더하기로");
+  const stalled = { topicId: "t", started: ["card"], drafts: [] };
+  assert.equal(formatAction(stalled, "card"), "prepare", "멈춘 소재는 복구");
+  assert.equal(formatAction(stalled, "explainer"), "add");
+  assert.equal(formatAction({ topicId: "t", started: [], drafts: [] }, "explainer"), "prepare");
 });
 
 test("초안 구성표는 화면·내레이션·글자·이미지를 글로 보여 준다", () => {

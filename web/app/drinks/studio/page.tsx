@@ -8,7 +8,8 @@ import { HeldTab, MineSection, STUDIO_TABS, StudioTabNav, type StudioTab } from 
 import ManualEntry from "@/components/drinks/topics/ManualEntry";
 import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
 import WeeklyBudgetCard from "@/components/drinks/topics/WeeklyBudgetCard";
-import { pickDefaults } from "@/lib/drinks/pickModal";
+import { todayInSeoul } from "@/lib/date";
+import { pickDefaults, weekOptions } from "@/lib/drinks/pickModal";
 import { loadPlanProduction } from "@/lib/drinks/productionQueries";
 import { loadPublishBoard } from "@/lib/drinks/publishQueries";
 import { INSUFFICIENT, activePlan, type StudioLane, type StudioStatus } from "@/lib/drinks/studio";
@@ -63,7 +64,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   const [cands, lastRes, planRes, statusRes] = await Promise.all([
     loadStudioCandidates(knownRows.filter((t) => !isTest(t.title)).map((t) => ({ id: t.id, text: `${t.title} ${t.question}`, categories: t.categories ?? [] }))),
     mineIds.length ? db.from("drink_develop_requests").select("topic_id, status, error_code, created_at").in("topic_id", mineIds).order("created_at", { ascending: false }).range(0, 999) : Promise.resolve({ data: [], error: null }),
-    mineIds.length ? db.from("drink_plan_revisions").select("topic_id, format, plan_status").in("topic_id", mineIds).in("plan_status", ["draft", "approved"]).range(0, 999) : Promise.resolve({ data: [], error: null }),
+    mineIds.length ? db.from("drink_plan_revisions").select("topic_id, format, plan_status").in("topic_id", mineIds).in("plan_status", ["draft", "approved"]).is("blocked_at", null).range(0, 999) : Promise.resolve({ data: [], error: null }),
     topicId ? db.rpc("drinks_studio_status", { p: { topic_id: topicId } }) : Promise.resolve(null),
   ]);
 
@@ -79,8 +80,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   for (const t of mineRows) {
     // 자료 부족 등으로 멈춘 소재는 다시 눌러도 같은 실패다 — 고를 목록에서 뺀다(내 소재 탭에는 남는다).
     if (isStopped(lastByTopic.get(t.id), INSUFFICIENT) && !plans.some((p) => p.topic_id === t.id)) { stopped += 1; continue; }
-    const mine = plans.filter((p) => p.topic_id === t.id);
-    items.push({ key: `t:${t.id}`, videoDraft: mine.length > 0 && !mine.some((p) => p.format === "carousel"), topicId: t.id, candidateId: null, title: t.title, question: t.question,
+    items.push({ key: `t:${t.id}`, started: [], drafts: [], topicId: t.id, candidateId: null, title: t.title, question: t.question,
       kind: (t.categories ?? []).map((c) => CATEGORY_LABEL[c as keyof typeof CATEGORY_LABEL] ?? c).join(" · ") || "주제 미정",
       origin: (t.discovery_platforms ?? []).map((p) => PLATFORM_LABEL[p] ?? p).join(" · ") || "직접 등록한 소재",
       angle: null, inProgress: true, payload: {} });
@@ -92,7 +92,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
     summary = `수집한 질문 ${cands.data.total}개 중 자동으로 초안까지 만들 수 있는 것만 보여요. 비슷한 질문은 하나로 묶었어요.${stopped ? ` 자료가 부족해 멈춘 소재 ${stopped}개는 뺐어요.` : ""}`;
     for (const { candidate: c, merged } of cands.data.rows) {
       const d = pickDefaults(c.key_question);
-      items.push({ key: `c:${c.id}`, topicId: c.promoted_topic_id, candidateId: c.promoted_topic_id ? null : c.id, title: d.title, question: d.question,
+      items.push({ key: `c:${c.id}`, started: [], drafts: [], topicId: c.promoted_topic_id, candidateId: c.promoted_topic_id ? null : c.id, title: d.title, question: d.question,
         kind: d.categories.map((x) => CATEGORY_LABEL[x]).join(" · ") || "주제 미정",
         origin: [pathLabel(c.discovery_path), c.interest?.items ? `글 ${c.interest.items}개에서 나온 질문` : null, merged ? `비슷한 질문 ${merged}개 합침` : null]
           .filter(Boolean).join(" · ") || "수집된 질문",
@@ -108,17 +108,18 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
     else status = statusRes.data as StudioStatus;
   }
   if (status && !items.some((x) => x.topicId === status!.topic.id)) {
-    items.unshift({ key: `t:${status.topic.id}`, topicId: status.topic.id, candidateId: null, title: status.topic.title, question: status.topic.question,
+    items.unshift({ key: `t:${status.topic.id}`, started: [], drafts: [], topicId: status.topic.id, candidateId: null, title: status.topic.title, question: status.topic.question,
       kind: "", origin: "", angle: null, inProgress: true, payload: {} });
   }
 
-  // 이미 형식을 고른 소재는 서버가 그 형식을 따른다(drinks_studio_prepare) — 화면이 다른 형식을 고르게 해서 어긋나지 않게 표시해 둔다.
+  // 소재마다 시작한 유형·초안이 있는 유형. ① 화면이 어느 소재든 유형을 고르게 하고, 고른 유형에 맞는 일(열기·만들기·더하기)을 정한다.
   const picks = await selectIn<{ topic_id: string; format_intent: string }>(items.flatMap((i) => (i.topicId ? [i.topicId] : [])),
     (ids) => db.from("drink_topic_format_picks").select("topic_id, format_intent").in("topic_id", ids), "drink_topic_format_picks.topic_id");
+  const intentOf = (format: string) => (format === "carousel" ? "card" : "explainer");
   for (const it of items) {
-    const mine = picks.filter((p) => p.topic_id === it.topicId).map((p) => p.format_intent);
-    it.cardPicked = mine.includes("card");
-    if (mine.includes("explainer") && !it.cardPicked) it.videoDraft = true;   // 설명형으로 시작한 소재는 작업공간에서 잇는다
+    it.started = picks.filter((p) => p.topic_id === it.topicId && p.format_intent !== "meme").map((p) => p.format_intent);
+    const own = status && status.topic.id === it.topicId ? status.plans.filter((p) => p.current && !p.blocked).map((p) => p.format) : plans.filter((p) => p.topic_id === it.topicId).map((p) => p.format);
+    it.drafts = [...new Set(own.map(intentOf))];
   }
 
   // 제작·검수·등록 상태: 승인된 초안의 최신 파일 묶음(서명 URL 1시간). 파일·검사 결과가 있는 것만 '완료'다.
@@ -159,6 +160,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
     <main className="container container--dw">
       <StudioClient items={items} problems={problems} status={status} statusProblem={statusProblem} files={files} resultProblem={resultProblem}
         selectedTopicId={topicId} lane={lane} production={production} publish={publish} summary={summary}
+        pickContext={{ week: weekOptions(todayInSeoul(), 1)[0].value, budgetId: wb.state === "ok" ? wb.data?.budget_id ?? null : null }}
         header={<><StudioTabNav tab={null} /><WeeklyBudgetCard budget={wb.state === "ok" ? wb.data : null} error={wb.state === "error" ? wb.message : undefined} /></>}
         footer={<ManualEntry />} />
     </main>
