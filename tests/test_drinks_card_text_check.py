@@ -45,6 +45,16 @@ def test_card_reel_hook_and_share_line_are_checked_too():
     assert sc.check_card_texts(p, CLAIMS).blocks == []
 
 
+def test_share_prompt_required_by_the_plan_rule_is_not_advice():
+    """2026-11-08 사케 첫 제작 실패: 대본 규칙이 요구한 '보내 보세요'가 권고로 막혔다. 공유 행동만 빼고 술 권고는 그대로 막는다."""
+    p = plan()
+    for ok in ("제조 날짜 궁금한 친구에게 보내 보세요", "나중에 보려면 저장해 보세요"):
+        p["reel"] = {"hook_title": "다이긴조는 왜 비쌀까", "share_line": ok}
+        assert sc.check_card_texts(p, CLAIMS).blocks == [], ok
+    p["reel"] = {"hook_title": "다이긴조는 왜 비쌀까", "share_line": "저장하고 오늘 마셔 보세요"}
+    assert "advice_unsupported" in [f.code for f in sc.check_card_texts(p, CLAIMS).blocks]
+
+
 def test_blocked_card_text_stops_the_render_before_any_file(tmp_path, monkeypatch):
     calls = []
 
