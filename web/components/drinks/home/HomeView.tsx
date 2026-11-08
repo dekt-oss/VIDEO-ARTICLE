@@ -26,7 +26,7 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
             <div className="next-action-kicker">시작</div>
             <div className="next-action-headline">후보도 소재도 아직 없습니다.</div>
             <p className="muted" style={{ margin: "4px 0 0" }}>발견 수집이 돌면 후보가 쌓이고, 질문을 직접 등록할 수도 있습니다.</p>
-            <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/topics">소재 고르기 →</Link></div>
+            <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/studio">소재 고르기 →</Link></div>
           </div>
           <div className="next-action-art" aria-hidden>01<small>첫 소재 고르기</small></div>
         </section>
@@ -37,7 +37,7 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
             <div className="next-action-kicker">시작</div>
             <div className="next-action-headline">고른 소재가 없습니다 — 후보 {candTotal ?? "?"}건이 기다립니다.</div>
             <p className="muted" style={{ margin: "4px 0 0" }}>[소재 고르기]에서 [이걸로 →]를 누르면 첫 결정이 여기에 올라옵니다.</p>
-            <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/topics">소재 고르기 →</Link></div>
+            <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/studio">소재 고르기 →</Link></div>
           </div>
           <div className="next-action-art" aria-hidden>01<small>첫 소재 고르기</small></div>
         </section>
@@ -45,7 +45,7 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
       {(state === "work" || state === "all_done") && <NextActionCard items={items} decisions={decisions} />}
 
       <div className="summary-strip">
-        <Link className={`summary-tile${candTotal ? " has-work" : ""}`} href="/drinks/topics">
+        <Link className={`summary-tile${candTotal ? " has-work" : ""}`} href="/drinks/studio">
           <div className="k">고를 후보</div>
           <div className="n">{candTotal ?? "모름"}</div>
           <div className="s">{candTotal !== null ? `표시 ${Math.min(candTotal, TOPICS_PAGE_SIZE)} / 전체 ${candTotal}` : "조회 실패"}</div>
@@ -78,7 +78,7 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
             );
           })}
           <p className="muted" style={{ fontSize: 12 }}>주간 목표는 운영 가설입니다(설명형은 영상 구매 결재에 묶여 1~2편).</p>
-          <Link className="dk-text-link" href="/drinks/topics">다음 소재 고르기 →</Link>
+          <Link className="dk-text-link" href="/drinks/studio">다음 소재 고르기 →</Link>
         </section>
 
         <section className="dk-panel" aria-labelledby="dk-block-h">

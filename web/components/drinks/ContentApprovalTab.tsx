@@ -156,7 +156,7 @@ export default function ContentApprovalTab({
           {pick && <> · 편성 주차 <b>{pick.editorial_week}</b> (승인할 때 편성됩니다)</>}
           {pick?.recommended_format && pick.recommended_format !== pick.format_intent && <> · 추천은 {pick.recommended_format === "unknown" ? "없었음" : FORMAT_INTENT_LABEL[pick.recommended_format as FormatIntent]}</>}
         </p>
-        {!budget && <p className="banner-warn">이번 주 AI 초안 한도가 남아 있지 않습니다 — <Link href="/drinks/topics">소재 고르기</Link> 맨 위 &lsquo;이번 주 AI 초안 한도&rsquo;에서 남은 금액을 보고 [한도 +$1]로 올린 뒤 이어 만들 수 있습니다. 한도 없이는 AI 를 부르지 않습니다.</p>}
+        {!budget && <p className="banner-warn">이번 주 AI 초안 한도가 남아 있지 않습니다 — <Link href="/drinks/studio">소재 고르기</Link> 맨 위 &lsquo;이번 주 AI 초안 한도&rsquo;에서 남은 금액을 보고 [한도 +$1]로 올린 뒤 이어 만들 수 있습니다. 한도 없이는 AI 를 부르지 않습니다.</p>}
         <div className="actions">
           {!pick && (
             <>

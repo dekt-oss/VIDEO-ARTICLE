@@ -4,10 +4,16 @@
 import "./studio.css";
 
 import StudioClient, { type StudioCollectItem, type StudioResultFile } from "@/components/drinks/studio/StudioClient";
+import { HeldTab, MineSection, STUDIO_TABS, StudioTabNav, type StudioTab } from "@/components/drinks/studio/StudioTabs";
+import ManualEntry from "@/components/drinks/topics/ManualEntry";
+import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
+import WeeklyBudgetCard from "@/components/drinks/topics/WeeklyBudgetCard";
 import { pickDefaults } from "@/lib/drinks/pickModal";
 import { loadPlanProduction } from "@/lib/drinks/productionQueries";
-import { cardPlan, type StudioStatus } from "@/lib/drinks/studio";
-import { loadTopicCandidates } from "@/lib/drinks/topicsQueries";
+import { RECOVERABLE, cardPlan, type StudioStatus } from "@/lib/drinks/studio";
+import { isStopped } from "@/lib/drinks/studioList";
+import { loadStudioCandidates } from "@/lib/drinks/topicsQueries";
+import { loadWeeklyBudget } from "@/lib/drinks/weeklyBudget";
 import { PLATFORM_LABEL } from "@/lib/drinks/discovery";
 import { CATEGORY_LABEL } from "@/lib/drinks/model";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,38 +29,69 @@ function pathLabel(path: string | null): string | null {
   return parts.slice(0, 2).join(" · ") + (parts.length > 2 ? ` 외 ${parts.length - 2}곳` : "");
 }
 
-export default async function StudioPage(props: { searchParams: Promise<{ topic?: string }> }) {
+const isTest = (title: string) => title.startsWith("[테스트]");
+
+export default async function StudioPage(props: { searchParams: Promise<{ topic?: string; tab?: string; page?: string }> }) {
   const sp = await props.searchParams;
   const db = createAdminClient();
   if (!db) return <main className="container"><p className="banner-warn">서버에 SUPABASE_SERVICE_KEY 가 없어 읽을 수 없습니다.</p></main>;
   const topicId = sp.topic && ID.test(sp.topic) ? sp.topic : null;
+  const tab: StudioTab | null = !topicId && sp.tab && sp.tab in STUDIO_TABS ? (sp.tab as StudioTab) : null;
+  if (tab) {
+    return (
+      <main className="container">
+        <div className="dk-head"><p className="dk-eyebrow">CONTENT STUDIO</p><h1 className="dk-h1">{STUDIO_TABS[tab]}</h1></div>
+        <StudioTabNav tab={tab} />
+        {tab === "mine" && <MineSection />}
+        {tab === "memes" && <MemeCardsTab />}
+        {tab === "held" && <HeldTab page={Math.max(1, Number(sp.page) || 1)} />}
+      </main>
+    );
+  }
 
-  const [cands, mine, statusRes] = await Promise.all([
-    loadTopicCandidates({ statuses: ["suggested"], page: 1 }),
-    db.from("drink_topics").select("id, title, question, status, categories, discovery_platforms, updated_at")
-      .in("status", ["researching", "ready", "selected"]).order("updated_at", { ascending: false }).limit(15),
+  // 이번 주 한도 줄을 먼저 확보한다(없으면 DB 가 만든다).
+  const wb = await loadWeeklyBudget();
+  // 이미 있는 소재(제외·중복 처리 포함) — 같은 이야기를 후보로 다시 올리지 않는다. 시험 소재는 세지 않는다.
+  const known = await db.from("drink_topics").select("id, title, question, status, categories, discovery_platforms, updated_at")
+    .order("updated_at", { ascending: false }).range(0, 999);
+  const knownRows = (known.data ?? []) as { id: string; title: string; question: string; status: string; categories: string[] | null; discovery_platforms: string[] | null }[];
+  const mineRows = knownRows.filter((t) => ["researching", "ready", "selected"].includes(t.status) && !isTest(t.title)).slice(0, 15);
+  const mineIds = mineRows.map((t) => t.id);
+  const [cands, lastRes, planRes, statusRes] = await Promise.all([
+    loadStudioCandidates(knownRows.filter((t) => !isTest(t.title)).map((t) => ({ id: t.id, text: `${t.title} ${t.question}`, categories: t.categories ?? [] }))),
+    mineIds.length ? db.from("drink_develop_requests").select("topic_id, status, error_code, created_at").in("topic_id", mineIds).order("created_at", { ascending: false }).range(0, 999) : Promise.resolve({ data: [], error: null }),
+    mineIds.length ? db.from("drink_plan_revisions").select("topic_id, format, plan_status").in("topic_id", mineIds).in("plan_status", ["draft", "approved"]).range(0, 999) : Promise.resolve({ data: [], error: null }),
     topicId ? db.rpc("drinks_studio_status", { p: { topic_id: topicId } }) : Promise.resolve(null),
   ]);
 
   const items: StudioCollectItem[] = [];
   const problems: string[] = [];
-  if (mine.error) problems.push(`만들고 있는 소재: ${mine.error.message}`);
-  for (const t of (mine.data ?? []) as { id: string; title: string; question: string; status: string; categories: string[] | null; discovery_platforms: string[] | null }[]) {
-    items.push({ key: `t:${t.id}`, topicId: t.id, candidateId: null, title: t.title, question: t.question,
+  if (known.error) problems.push(`만들고 있는 소재: ${known.error.message}`);
+  if (lastRes.error) problems.push(`소재 진행 상태: ${lastRes.error.message} — 멈춘 소재가 섞여 보일 수 있어요`);
+  if (planRes.error) problems.push(`초안 형식: ${planRes.error.message}`);
+  const lastByTopic = new Map<string, { status: string; error_code: string | null }>();
+  for (const r of (lastRes.data ?? []) as { topic_id: string; status: string; error_code: string | null }[]) if (!lastByTopic.has(r.topic_id)) lastByTopic.set(r.topic_id, r);
+  const plans = (planRes.data ?? []) as { topic_id: string; format: string }[];
+  let stopped = 0;
+  for (const t of mineRows) {
+    // 자료 부족 등으로 멈춘 소재는 다시 눌러도 같은 실패다 — 고를 목록에서 뺀다(내 소재 탭에는 남는다).
+    if (isStopped(lastByTopic.get(t.id), RECOVERABLE) && !plans.some((p) => p.topic_id === t.id)) { stopped += 1; continue; }
+    const mine = plans.filter((p) => p.topic_id === t.id);
+    items.push({ key: `t:${t.id}`, videoDraft: mine.length > 0 && !mine.some((p) => p.format === "carousel"), topicId: t.id, candidateId: null, title: t.title, question: t.question,
       kind: (t.categories ?? []).map((c) => CATEGORY_LABEL[c as keyof typeof CATEGORY_LABEL] ?? c).join(" · ") || "주제 미정",
       origin: (t.discovery_platforms ?? []).map((p) => PLATFORM_LABEL[p] ?? p).join(" · ") || "직접 등록한 소재",
       angle: null, inProgress: true, payload: {} });
   }
+  let summary: string | undefined;
   if (cands.state !== "ok") problems.push(`수집함: ${cands.state === "failed" ? cands.error : "서버 키 없음"}`);
   else {
-    for (const c of cands.data.candidates) {
-      // shortcut: 임시 점수가 없는 후보는 [이걸로](0072)가 '경량 평가 먼저'로 거절한다 — 보여 주지 않는다. 점수 없이 올리는 경로가 생기면 뺀다.
-      if (c.provisional_score === null || c.provisional_score === undefined) continue;
-      if (c.promoted_topic_id && items.some((x) => x.topicId === c.promoted_topic_id)) continue;
+    if (cands.data.evidenceProblem) problems.push(`근거 수: ${cands.data.evidenceProblem} — 근거가 없는 후보가 섞여 보일 수 있어요`);
+    summary = `수집한 질문 ${cands.data.total}개 중 자동으로 초안까지 만들 수 있는 것만 보여요. 비슷한 질문은 하나로 묶었어요.${stopped ? ` 자료가 부족해 멈춘 소재 ${stopped}개는 뺐어요.` : ""}`;
+    for (const { candidate: c, merged } of cands.data.rows) {
       const d = pickDefaults(c.key_question);
       items.push({ key: `c:${c.id}`, topicId: c.promoted_topic_id, candidateId: c.promoted_topic_id ? null : c.id, title: d.title, question: d.question,
         kind: d.categories.map((x) => CATEGORY_LABEL[x]).join(" · ") || "주제 미정",
-        origin: [pathLabel(c.discovery_path), c.interest?.items ? `글 ${c.interest.items}개에서 나온 질문` : null]
+        origin: [pathLabel(c.discovery_path), c.interest?.items ? `글 ${c.interest.items}개에서 나온 질문` : null, merged ? `비슷한 질문 ${merged}개 합침` : null]
           .filter(Boolean).join(" · ") || "수집된 질문",
         angle: c.reader_value ?? c.first_scene ?? null, inProgress: false,
         payload: { candidate_id: c.id, title: d.title, question: d.question, categories: d.categories, ...(c.reader_value ? { reader_value: c.reader_value } : {}) } });
@@ -90,7 +127,9 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   return (
     <main className="container container--dw">
       <StudioClient items={items} problems={problems} status={status} statusProblem={statusProblem} files={files} resultProblem={resultProblem}
-        selectedTopicId={topicId} />
+        selectedTopicId={topicId} summary={summary}
+        header={<><StudioTabNav tab={null} /><WeeklyBudgetCard budget={wb.state === "ok" ? wb.data : null} error={wb.state === "error" ? wb.message : undefined} /></>}
+        footer={<ManualEntry />} />
     </main>
   );
 }

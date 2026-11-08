@@ -26,8 +26,8 @@ test("넘기지 않는 것: 작업함 목록, uuid 아닌 id, legacy 플래그",
 });
 
 test("소재 발견 → 소재 고르기 후보 탭, legacy 플래그면 그대로", () => {
-  assert.equal(legacyDiscoverRedirect("/drinks/discover", ""), "/drinks/topics?tab=candidates");
-  assert.equal(legacyDrinksRedirect("/drinks/discover", "?page=2"), "/drinks/topics?tab=candidates");
+  assert.equal(legacyDiscoverRedirect("/drinks/discover", ""), "/drinks/studio");
+  assert.equal(legacyDrinksRedirect("/drinks/discover", "?page=2"), "/drinks/studio");
   assert.equal(legacyDiscoverRedirect("/drinks/discover", "?legacy=1"), null);
   assert.equal(legacyDiscoverRedirect("/drinks/discovery", ""), null);
 });
@@ -42,4 +42,11 @@ test("제작 페이지 → 제작 칸(제작안 형식으로 레인을 정한다
 test("workPath 는 빈 값을 안 싣는다", () => {
   assert.equal(workPath("t1"), "/drinks/work/t1");
   assert.equal(workPath("meme", { lane: "meme", meme: "d1" }), "/drinks/work/meme?lane=meme&meme=d1");
+});
+
+test("옛 소재 고르기 주소는 스튜디오로 넘어간다", () => {
+  assert.equal(legacyDrinksRedirect("/drinks/topics", ""), "/drinks/studio");
+  assert.equal(legacyDrinksRedirect("/drinks/topics", "?tab=candidates&page=2"), "/drinks/studio");
+  assert.equal(legacyDrinksRedirect("/drinks/topics", "?tab=mine"), "/drinks/studio?tab=mine");
+  assert.equal(legacyDrinksRedirect("/drinks/topics", "?tab=held&page=2"), "/drinks/studio?tab=held&page=2");
 });

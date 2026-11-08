@@ -6,7 +6,7 @@
 // ★ 준비·생성 중에만 몇 초마다 새로 읽는다(router.refresh). 편집 중에는 새로 읽지 않아 입력이 사라지지 않는다.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   cardCost, cardPlan, draftFromPlan, draftProblem, isPhotoPlan, orderTotal, progressText, sameDraft, studioPhase, versionOptions,
@@ -16,6 +16,8 @@ import {
 export interface StudioCollectItem {
   key: string; topicId: string | null; candidateId: string | null; title: string; question: string; kind: string; origin: string;
   angle: string | null; inProgress: boolean; payload: Record<string, unknown>;
+  /** 설명형(영상) 초안만 있는 소재 — 이어 만들기는 작업공간이다. */
+  videoDraft?: boolean;
 }
 export interface StudioResultFile {
   role: string; position: number; mime: string; url: string | null; urlError: string | null; width: number | null; height: number | null;
@@ -41,9 +43,11 @@ const LOGICAL: Record<StudioScreen, "collect" | "draft" | "versions"> = {
 };
 const POLL_MS = 5000;
 
-export default function StudioClient({ items, problems, status, statusProblem, files, resultProblem, selectedTopicId }: {
+export default function StudioClient({ items, problems, status, statusProblem, files, resultProblem, selectedTopicId, summary, header, footer }: {
   items: StudioCollectItem[]; problems: string[]; status: StudioStatus | null; statusProblem: string | null;
   files: StudioResultFile[]; resultProblem: string | null; selectedTopicId: string | null;
+  /** 목록 머리 설명 · ① 화면 위·아래에 붙는 서버 칸(탭·한도, 손으로 넣기) */
+  summary?: string; header?: ReactNode; footer?: ReactNode;
 }) {
   const router = useRouter();
   const phase = studioPhase(status);
@@ -110,11 +114,13 @@ export default function StudioClient({ items, problems, status, statusProblem, f
       {statusProblem && <p className="sj-error" role="alert">소재 상태를 읽지 못했어요: {statusProblem}</p>}
       {msg && <p className={msg.bad ? "sj-error" : "sj-message"} role={msg.bad ? "alert" : "status"}>{msg.text}</p>}
 
+      {screen === "collect" && <div className="sj-slot">{header}</div>}
       {screen === "collect" && (
-        <Collect items={items} problems={problems} selKey={selKey} onSelect={setSelKey} sel={sel} busy={busy}
+        <Collect summary={summary} items={items} problems={problems} selKey={selKey} onSelect={setSelKey} sel={sel} busy={busy}
           current={status && sel?.topicId === status.topic.id ? phase : null} hasPlan={Boolean(plan) && sel?.topicId === status?.topic.id}
           onPrepare={prepare} onOpen={(id) => (id === selectedTopicId ? setOverride(null) : go(id))} />
       )}
+      {screen === "collect" && <div className="sj-slot">{footer}</div>}
       {screen === "preparing" && status && <Preparing status={status} onCancel={async () => {
         if (!status.active) return;
         setBusy(true);
@@ -145,8 +151,8 @@ export default function StudioClient({ items, problems, status, statusProblem, f
 }
 
 // ── ① 소재 고르기 ────────────────────────────────────────────────────────────
-function Collect({ items, problems, selKey, onSelect, sel, busy, current, hasPlan, onPrepare, onOpen }: {
-  items: StudioCollectItem[]; problems: string[]; selKey: string | null; onSelect: (k: string) => void; sel: StudioCollectItem | null; busy: boolean;
+function Collect({ summary, items, problems, selKey, onSelect, sel, busy, current, hasPlan, onPrepare, onOpen }: {
+  summary?: string; items: StudioCollectItem[]; problems: string[]; selKey: string | null; onSelect: (k: string) => void; sel: StudioCollectItem | null; busy: boolean;
   current: ReturnType<typeof studioPhase> | null; hasPlan: boolean; onPrepare: (i: StudioCollectItem) => void; onOpen: (topicId: string) => void;
 }) {
   return (
@@ -154,10 +160,11 @@ function Collect({ items, problems, selKey, onSelect, sel, busy, current, hasPla
       <div className="sj-intro">
         <div><p className="sj-kicker">COLLECT / SELECT</p><h1 id="sj-collect-h">어떤 이야기를 만들까요?</h1>
           <p>수집된 질문에서 소재를 고르면, 초안까지 준비해 드려요.</p></div>
-        <span className="sj-note">수집함 · {items.length}개</span>
+        <span className="sj-note">고를 수 있는 소재 · {items.length}개</span>
       </div>
+      {summary && <p className="sj-note">{summary}</p>}
       {problems.map((p) => <p key={p} className="sj-error" role="alert">읽지 못한 칸이 있어요 — {p}</p>)}
-      {items.length === 0 ? <p className="sj-empty">아직 수집된 소재가 없어요. 수집이 돌면 여기에 나타나요.</p> : (
+      {items.length === 0 ? <p className="sj-empty">지금 자동으로 초안까지 만들 수 있는 소재가 없어요. 수집이 돌면 여기에 나타나요.</p> : (
         <div className="sj-layout">
           <ul className="sj-stack" aria-label="수집된 소재">
             {items.map((t) => (
@@ -183,7 +190,9 @@ function Collect({ items, problems, selKey, onSelect, sel, busy, current, hasPla
                 <p>{sel.angle ?? "질문에 답하는 카드뉴스 초안부터 준비해요. 버전은 초안을 본 뒤에 골라요."}</p></div>
               {current?.reason && <p className="sj-note">{current.reason}</p>}
               <p className="sj-note">자료 확인과 구성은 자동으로 진행돼요.<br />완성된 초안을 읽고 다듬어 주세요.</p>
-              {hasPlan && sel.topicId ? (
+              {sel.videoDraft && sel.topicId ? (
+                <Link className="sj-btn sj-main" href={`/drinks/work/${sel.topicId}`}>설명형 초안 이어보기 <span aria-hidden="true">→</span></Link>
+              ) : hasPlan && sel.topicId ? (
                 <button type="button" className="sj-btn sj-main" onClick={() => onOpen(sel.topicId!)}>초안 이어보기 <span aria-hidden="true">→</span></button>
               ) : (
                 <button type="button" className="sj-btn sj-main" disabled={busy} onClick={() => onPrepare(sel)}>
@@ -249,7 +258,7 @@ function Choice({ phase, status, busy, onBack, onRetry }: { phase: ReturnType<ty
       <div className="sj-row">
         {retry && <button type="button" className="sj-btn sj-main" disabled={busy} onClick={onRetry}>멈춘 곳부터 다시 준비하기</button>}
         {legacy && <Link className="sj-btn sj-main" href={`/drinks/work/${status.topic.id}`}>기존 작업공간에서 열기</Link>}
-        {phase.code?.startsWith("budget") && <Link className="sj-btn" href="/drinks/topics">이번 주 한도 보기</Link>}
+        {phase.code?.startsWith("budget") && <Link className="sj-btn" href="/drinks/studio">이번 주 한도 보기</Link>}
         <button type="button" className="sj-btn" onClick={onBack}>다른 소재 고르기</button>
       </div>
       <details className="sj-details"><summary>상세 이력</summary>

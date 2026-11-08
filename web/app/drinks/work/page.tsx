@@ -46,7 +46,7 @@ export default async function DrinksWorkListPage(props: { searchParams: Promise<
       {state !== "ok" ? (
         <LoadProblem state={state} error={error} />
       ) : items.length === 0 ? (
-        <p className="muted">해당하는 작업이 없습니다(정상 0건). <Link href="/drinks/topics">소재 고르기</Link>에서 형식을 고르면 여기 생깁니다.</p>
+        <p className="muted">해당하는 작업이 없습니다(정상 0건). <Link href="/drinks/studio">소재 고르기</Link>에서 형식을 고르면 여기 생깁니다.</p>
       ) : (
         groupByTopic(items).map((g) => (
           <section key={g.key} className="card dk-work-group">
