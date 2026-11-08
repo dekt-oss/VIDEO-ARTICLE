@@ -287,7 +287,7 @@ function FlowAside({ lane, sections, primarySection, decision, editorialWeek, on
         </div>
       </div>
       <div className="dw-aside-note">승인, 금액 결재, 제작 시작, 게시 승인, 예약은 각각 따로 확인합니다.</div>
-      <Link href="/drinks/topics?tab=mine" className="dk-text-link">내 소재로 돌아가기 →</Link>
+      <Link href="/drinks/studio?tab=mine" className="dk-text-link">내 소재로 돌아가기 →</Link>
     </aside>
   );
 }

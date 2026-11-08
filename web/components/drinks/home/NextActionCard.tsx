@@ -29,7 +29,7 @@ export default function NextActionCard({ items, decisions }: { items: WorkItem[]
           <p className="muted" style={{ margin: "4px 0 0" }}>
             {snoozed.size > 0 ? "미룬 것은 24시간 뒤 다시 올라옵니다. 실행 차단은 풀리지 않았습니다." : "다음 소재를 고르면 여기에 첫 결정이 올라옵니다."}
           </p>
-          <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/topics">다음 소재 고르기 →</Link></div>
+          <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/studio">다음 소재 고르기 →</Link></div>
         </div>
         <div className="next-action-art" aria-hidden>✓<small>오늘 결정 끝</small></div>
       </section>

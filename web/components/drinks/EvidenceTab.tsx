@@ -119,8 +119,47 @@ export default function EvidenceTab({
   return (
     <div>
       <AutoRefresh active={Boolean(lockReason)} />
-      {factcheck && <FactcheckSummary fc={factcheck.fc} sameReview={factcheck.sameReview} />}
       {lockReason && <p className="banner-info" role="status">{lockReason}</p>}
+      {/* 기본 화면: 읽고, 이상한 것만 뺀다(2026-11-08 운영자 "아주 매우 단순화"). 출처 추가·칸별 수정은 아래 접힌 칸에 그대로 있다. */}
+      <section className="section">
+        <h3>이 내용으로 만들어요</h3>
+        <p className="muted">AI가 원문과 대조한 내용입니다. 이상한 것만 빼세요. 손댈 것이 없으면 그대로 두면 됩니다.</p>
+        {review?.revoked_at && <p className="banner-block">이 근거는 쓸 수 없게 됐습니다: {review.revoked_reason}</p>}
+        {review && review.readiness?.blockers?.length > 0 && (
+          <div className="banner-block"><ul>{review.readiness.blockers.map((b) => <li key={b}>{blockerLabel(b)}</li>)}</ul></div>
+        )}
+        {claims.length === 0 && <p className="muted">아직 확인된 내용이 없습니다.</p>}
+        <ul style={{ listStyle: "none", padding: 0, margin: "10px 0" }}>
+          {claims.map((c, i) => {
+            const ok = c.support_review === "supported";
+            return (
+              <li key={c.claim_id || i} className="dk-sub" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <span aria-label={ok ? "원문 확인됨" : "확인 필요"} title={ok ? "원문 확인됨" : "확인 필요"}>{ok ? "✓" : "⚠"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div>{c.text}</div>
+                  {c.source_refs.length > 0 && (
+                    <details><summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>원문 보기</summary>
+                      {c.source_refs.map((r, j) => {
+                        const sn = snapById.get(r.snapshot_id);
+                        return <p key={j} className="muted" style={{ fontSize: 13, margin: "4px 0" }}>{r.original_quote} {sn?.canonical_url
+                          ? <a href={sn.canonical_url} target="_blank" rel="noreferrer">— {sn.publisher ?? sn.title ?? "출처"}</a> : <>— {sn?.publisher ?? sn?.title ?? "출처"}</>}</p>;
+                      })}
+                    </details>
+                  )}
+                </div>
+                {target.editable && <button className="btn" disabled={busy} onClick={() => setClaims(claims.filter((_, j) => j !== i))}>빼기</button>}
+              </li>
+            );
+          })}
+        </ul>
+        {target.editable && claims.length !== (review?.evidence_pack?.claims ?? []).length && (
+          <div className="actions"><button className="btn pick" disabled={busy} onClick={saveClaims}>{target.saveLabel}</button></div>
+        )}
+      </section>
+
+      <details className="section">
+        <summary className="muted" style={{ cursor: "pointer" }}><b>직접 고치기</b> — 출처 추가·문장 수정·검토 기록(보통 필요 없습니다)</summary>
+      {factcheck && <FactcheckSummary fc={factcheck.fc} sameReview={factcheck.sameReview} />}
       <section className="section">
         <h3>
           사실 근거 {evidence.length}개 · 원출처 {sum.confirmedGroups}곳{sum.unconfirmed > 0 ? ` · 원출처 미정 ${sum.unconfirmed}개` : ""}
@@ -209,6 +248,7 @@ export default function EvidenceTab({
           </div>
         )}
       </section>
+      </details>
     </div>
   );
 }

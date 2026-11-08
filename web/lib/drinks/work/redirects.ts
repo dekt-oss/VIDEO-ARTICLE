@@ -49,15 +49,25 @@ export function productionRedirect(topicId: string, planFormat: string, planId: 
   return workPath(topicId, { lane: laneOfPlanFormat(planFormat), panel: "produce", plan: planId });
 }
 
-/** `/drinks/discover` → 소재 고르기의 후보 탭(기획 v2 §5). `?legacy=1` 이면 옛 발견함 그대로. */
+/** `/drinks/discover` → 콘텐츠 스튜디오(기획 v2 §5, 2026-11-08 통합). `?legacy=1` 이면 옛 발견함 그대로. */
 export function legacyDiscoverRedirect(pathname: string, search: string): string | null {
   if (pathname !== "/drinks/discover" && pathname !== "/drinks/discover/") return null;
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   if (params.get(LEGACY_BYPASS_PARAM)) return null;
-  return "/drinks/topics?tab=candidates";
+  return "/drinks/studio";
+}
+
+/** `/drinks/topics` → 콘텐츠 스튜디오(2026-11-08 통합). 내 소재·밈 카드·보류 탭은 스튜디오 같은 탭으로. */
+export function legacyTopicsRedirect(pathname: string, search: string): string | null {
+  if (pathname !== "/drinks/topics" && pathname !== "/drinks/topics/") return null;
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const tab = params.get("tab");
+  if (tab !== "mine" && tab !== "memes" && tab !== "held") return "/drinks/studio";
+  const page = params.get("page");
+  return `/drinks/studio?tab=${tab}${page ? `&page=${encodeURIComponent(page)}` : ""}`;
 }
 
 /** 옛 주소 전체를 한 자리에서 — middleware 가 부른다. 정적으로 정해지는 것만(제작 페이지는 DB 조회라 페이지가 한다). */
 export function legacyDrinksRedirect(pathname: string, search: string): string | null {
-  return legacyReviewRedirect(pathname, search) ?? legacyDiscoverRedirect(pathname, search);
+  return legacyReviewRedirect(pathname, search) ?? legacyDiscoverRedirect(pathname, search) ?? legacyTopicsRedirect(pathname, search);
 }

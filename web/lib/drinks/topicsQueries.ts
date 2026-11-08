@@ -1,4 +1,4 @@
-// 소재 고르기(/drinks/topics) 읽기 — 서버 컴포넌트 전용(service key). 실패를 빈 목록으로 바꾸지 않는다.
+// 소재 고르기(스튜디오 ①·보류 탭) 읽기 — 서버 컴포넌트 전용(service key). 실패를 빈 목록으로 바꾸지 않는다.
 //   후보는 서버 쪽 페이지(range) + 서버 조건(형식 적합성)으로 읽는다 — 소재 발견함(discoveryQueries)의 "점수 높은 300건" 과 달리
 //   전체 건수(count exact)와 이번 쪽만 받는다. 근거 수는 보이는 쪽만 센다(0064 RPC, 상한 EVIDENCE_MAX_CANDIDATES).
 //   조회 실패 / 부분 조회(근거 수·결재를 못 읽음) / 수집 미실행 / 정상 0건을 화면이 가르도록 각각 다른 칸에 담는다.
@@ -9,6 +9,9 @@ import { EVIDENCE_MAX_CANDIDATES } from "@/lib/drinks/formatRecommend";
 import { FORMAT_FIT_MIN, type Loaded } from "@/lib/drinks/model";
 import { withOfficialHits } from "@/lib/drinks/officialSources";
 import { fetchAllIn } from "@/lib/drinks/paging";
+import { pickDefaults, pickability } from "@/lib/drinks/pickModal";
+import { groupSimilar, isAnswerable, type GroupRow } from "@/lib/drinks/studioList";
+import { selectAll } from "@/lib/supabase/chunked";
 import type { TopicRow } from "@/lib/drinks/types";
 
 export const TOPICS_PAGE_SIZE = 20;
@@ -96,6 +99,44 @@ export async function loadTopicCandidates(f: CandidateFilter): Promise<Loaded<To
   }
 
   return { state: "ok", data: { candidates: cands, total: c.count, page, pageSize: TOPICS_PAGE_SIZE, evidence, budgets, topics, collection, partial } };
+}
+
+export interface StudioCandidates {
+  /** 만들 수 있는 후보만, 비슷한 질문은 하나로. 점수 높은 순. */
+  rows: { candidate: CandidateRow; merged: number }[];
+  /** 수집된 후보 전체 수 */
+  total: number;
+  /** 근거 수를 못 읽어 근거 조건을 적용하지 못했으면 그 이유 */
+  evidenceProblem: string | null;
+}
+
+/** 스튜디오 ① 목록: 자동으로 초안까지 갈 수 없는 후보(점수·주종 없음, 취향 묻기, 기존 소재와 중복, 근거 0건)는 올리지 않는다. */
+export async function loadStudioCandidates(existing: readonly GroupRow[]): Promise<Loaded<StudioCandidates>> {
+  const db = createAdminClient();
+  if (!db) return { state: "unconfigured" };
+  // selectAll 은 실패해도 읽은 데까지 돌려준다 — 건수와 대조해 실패를 빈 목록으로 보이지 않게 한다.
+  const count = await db.from("drink_discovery_candidates").select("id", { count: "exact", head: true }).eq("status", "suggested");
+  if (count.error || typeof count.count !== "number") return { state: "failed", error: `후보 건수: ${count.error?.message ?? "응답 없음"}` };
+  const all = await selectAll<CandidateRow>((a, b) => db.from("drink_discovery_candidates").select("*").eq("status", "suggested")
+    .order("provisional_score", { ascending: false, nullsFirst: false }).order("id").range(a, b), "스튜디오 후보");
+  if (all.length < count.count) return { state: "failed", error: `후보를 ${count.count}건 중 ${all.length}건만 읽었습니다` };
+  const usable = all.flatMap((c) => {
+    const categories = pickDefaults(c.key_question).categories;
+    return pickability(c, true).ok && categories.length > 0 && isAnswerable(c.key_question) ? [{ id: c.id, text: c.key_question, categories, c }] : [];
+  });
+  const top = groupSimilar(usable, existing).groups.slice(0, EVIDENCE_MAX_CANDIDATES);
+  const ev = await db.rpc("drinks_candidate_evidence_counts", { p: { candidate_ids: top.map((g) => g.lead.id) } });
+  const known = !ev.error && ev.data && typeof ev.data === "object" ? (ev.data as Record<string, { count: number; chars: number }>) : null;
+  const hasEvidence = (c: CandidateRow) => {
+    const raw = known?.[c.id];
+    const merged = withOfficialHits(raw ? { count: Number(raw.count), chars: Number(raw.chars) } : undefined, c.key_question);
+    return (merged?.count ?? 0) > 0;
+  };
+  return { state: "ok", data: {
+    rows: top.filter((g) => !known || hasEvidence(g.lead.c)).map((g) => ({ candidate: g.lead.c, merged: g.merged })),
+    total: all.length,
+    evidenceProblem: known ? null : (ev.error?.message ?? "응답 없음"),
+  } };
 }
 
 /** 홈 막힘 목록용: 열린 개발 결재. 못 읽으면 null(없는 것이 아니다). */

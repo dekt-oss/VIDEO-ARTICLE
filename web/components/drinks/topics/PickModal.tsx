@@ -121,7 +121,7 @@ export default function PickModal({ c, recommended, weeks, budget, estimate }: P
                   <p>
                     AI 초안 한도: {budget
                       ? <b>남은 ${Number(budget.remaining_usd).toFixed(2)} · {budget.expires_at.slice(0, 10)}까지</b>
-                      : <><b className="dk-bad">이번 주 AI 초안 한도를 다 썼습니다</b> — <Link href="/drinks/topics?tab=candidates">소재 고르기 위 칸에서 [한도 +$1]</Link></>}
+                      : <><b className="dk-bad">이번 주 AI 초안 한도를 다 썼습니다</b> — <Link href="/drinks/studio?tab=candidates">소재 고르기 위 칸에서 [한도 +$1]</Link></>}
                   </p>
                   <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>영상 구매는 따로 승인합니다 · 모르는 비용은 0원으로 쓰지 않습니다.</p>
                 </div>

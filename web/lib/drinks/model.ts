@@ -180,6 +180,7 @@ export function fitOk(scores: Scores | null | undefined, f: Format): boolean {
 
 const BLOCKER_TEXT: Record<string, string> = {
   scores_incomplete: "5축 점수가 다 채워지지 않았습니다",
+  scores_not_evaluated: "사람 점수 평가 없이 진행했습니다(막지 않습니다)",
   brief_question_missing: "공통 기획에 독자 질문이 없습니다",
   brief_takeaway_missing: "공통 기획에 핵심 결론이 없습니다",
   no_core_claims: "핵심 주장을 하나 이상 고르세요",
