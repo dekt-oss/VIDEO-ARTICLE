@@ -117,6 +117,17 @@ def _spoken(text: str) -> str:
     return s   # 그 밖의 -다 끝맺음은 그대로 둔다(활용을 못 맞추면 '바꾼다요' 가 된다). 차단 규칙은 -ㅂ니다 체만 본다
 
 
+def _photo_ready(plan: dict[str, Any]) -> dict[str, Any]:
+    """사진형 배치(config.DRINKS_CARD_LAYOUT=photo, 2026-11-08 기본)일 때 진짜 모델이 지켜야 하는 형식만 맞춘다 — 쪽마다 영어 사진 지시문, 본문 2줄."""
+    if not cp.photo_layout():
+        return plan
+    for pg in plan["pages"]:
+        if pg["role"] != "source":
+            pg["image_prompt"] = "A sake bottle and a small glass on a dark wooden counter, warm light"
+            pg["body"] = "\n".join(str(pg.get("body") or "").split("\n")[: cp.DRINKS_PHOTO_BODY_LINES])
+    return plan
+
+
 def fake_card_plan(question: str, claims: list[dict[str, Any]], brief: dict[str, Any], feedback: Optional[list[str]] = None) -> dict[str, Any]:
     usable = [c for c in claims if not script_check._is_derived(c)]
     req = cp.required_claims(brief)
@@ -140,9 +151,9 @@ def fake_card_plan(question: str, claims: list[dict[str, Any]], brief: dict[str,
         pages.append({"role": "explain", "heading": "정리하면 이래요", "body": _lines(_spoken(str(first.get("text") or ""))), "claim_ids": [str(first.get("claim_id"))]})
     pages.append({"role": "source", "heading": "출처", "body": "", "claim_ids": []})
     first_id = str(body_claims[0].get("claim_id")) if body_claims else None
-    return {"pages": pages,
+    return _photo_ready({"pages": pages,
             "reel": {"hook_title": hook, "share_line": "궁금해하던 친구에게 저장해서 보내 주세요"[: config.DRINKS_CARD_SHARE_MAX_CHARS]},
-            "viewer_conclusion": {"text": _spoken(str(body_claims[0].get("text") or "")) if body_claims else "", "claim_ids": [first_id] if first_id else []}}
+            "viewer_conclusion": {"text": _spoken(str(body_claims[0].get("text") or "")) if body_claims else "", "claim_ids": [first_id] if first_id else []}})
 
 
 class MemRpc:
@@ -200,14 +211,14 @@ def _hook_safe(q: str) -> str:
 def qm_good(question: str) -> dict[str, Any]:
     q = _hook_safe(question.strip().rstrip("?"))
     hook = (q if "왜" in q else f"{q}, 왜 그럴까")[: config.DRINKS_CARD_HOOK_MAX_CHARS - 1] + "?"
-    return {"pages": [
+    return _photo_ready({"pages": [
         {"role": "cover", "heading": hook[: config.DRINKS_CARD_HEADING_MAX_CHARS], "body": "", "claim_ids": []},
         {"role": "explain", "heading": "술이 세서 그래요", "body": "도수가 높으면\n미생물이 못 자라요", "claim_ids": ["k1"]},
         {"role": "explain", "heading": "그래서 안 상해요", "body": "와인처럼\n상하지 않아요", "claim_ids": ["k1"]},
         {"role": "explain", "heading": "라벨에 날짜가 없다면요?", "body": "유통기한 대신\n제조 번호가\n있을 수 있어요", "claim_ids": ["k2"]},
         {"role": "source", "heading": "출처", "body": "", "claim_ids": []},
     ], "reel": {"hook_title": hook, "share_line": "궁금해하던 친구에게 저장해서 보내 주세요"},
-        "viewer_conclusion": {"text": "도수가 높아 잘 안 상해요", "claim_ids": ["k1"]}}
+        "viewer_conclusion": {"text": "도수가 높아 잘 안 상해요", "claim_ids": ["k1"]}})
 
 
 def qm_variants(question: str) -> dict[str, dict[str, Any]]:
