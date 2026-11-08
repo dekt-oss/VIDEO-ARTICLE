@@ -7,7 +7,6 @@ import type { ReactNode } from "react";
 import NextActionCard from "@/components/drinks/home/NextActionCard";
 import type { loadRunHealth } from "@/lib/drinks/collectQueries";
 import type { Blocker, HomeCounts, HomeState, WeeklyRow } from "@/lib/drinks/home";
-import { TOPICS_PAGE_SIZE } from "@/lib/drinks/topicsQueries";
 import { FORMAT_LABEL, type Decision, type WorkItem } from "@/lib/drinks/work/types";
 import { mondayOf, todayInSeoul } from "@/lib/date";
 
@@ -35,8 +34,8 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
         <section className="next-action done">
           <div className="next-action-body">
             <div className="next-action-kicker">시작</div>
-            <div className="next-action-headline">고른 소재가 없습니다 — 후보 {candTotal ?? "?"}건이 기다립니다.</div>
-            <p className="muted" style={{ margin: "4px 0 0" }}>[소재 고르기]에서 [이걸로 →]를 누르면 첫 결정이 여기에 올라옵니다.</p>
+            <div className="next-action-headline">고른 소재가 없습니다 — 수집한 질문 {candTotal ?? "?"}개가 있습니다.</div>
+            <p className="muted" style={{ margin: "4px 0 0" }}>콘텐츠 스튜디오에서 [이 소재로 초안 만들기]를 누르면 첫 결정이 여기에 올라옵니다.</p>
             <div className="next-action-cta dk-hero-cta"><Link className="btn pick" href="/drinks/studio">소재 고르기 →</Link></div>
           </div>
           <div className="next-action-art" aria-hidden>01<small>첫 소재 고르기</small></div>
@@ -46,9 +45,9 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
 
       <div className="summary-strip">
         <Link className={`summary-tile${candTotal ? " has-work" : ""}`} href="/drinks/studio">
-          <div className="k">고를 후보</div>
+          <div className="k">수집한 질문</div>
           <div className="n">{candTotal ?? "모름"}</div>
-          <div className="s">{candTotal !== null ? `표시 ${Math.min(candTotal, TOPICS_PAGE_SIZE)} / 전체 ${candTotal}` : "조회 실패"}</div>
+          <div className="s">{candTotal !== null ? "이 중 만들 수 있는 것만 스튜디오에 보여요" : "조회 실패"}</div>
         </Link>
         <Link className={`summary-tile${counts.approve ? " has-work" : ""}`} href="/drinks/work?filter=approve">
           <div className="k">판단 기다리는 작업</div>

@@ -10,7 +10,7 @@ import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
 import WeeklyBudgetCard from "@/components/drinks/topics/WeeklyBudgetCard";
 import { pickDefaults } from "@/lib/drinks/pickModal";
 import { loadPlanProduction } from "@/lib/drinks/productionQueries";
-import { RECOVERABLE, cardPlan, type StudioStatus } from "@/lib/drinks/studio";
+import { INSUFFICIENT, cardPlan, type StudioStatus } from "@/lib/drinks/studio";
 import { isStopped } from "@/lib/drinks/studioList";
 import { loadStudioCandidates } from "@/lib/drinks/topicsQueries";
 import { loadWeeklyBudget } from "@/lib/drinks/weeklyBudget";
@@ -75,7 +75,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   let stopped = 0;
   for (const t of mineRows) {
     // 자료 부족 등으로 멈춘 소재는 다시 눌러도 같은 실패다 — 고를 목록에서 뺀다(내 소재 탭에는 남는다).
-    if (isStopped(lastByTopic.get(t.id), RECOVERABLE) && !plans.some((p) => p.topic_id === t.id)) { stopped += 1; continue; }
+    if (isStopped(lastByTopic.get(t.id), INSUFFICIENT) && !plans.some((p) => p.topic_id === t.id)) { stopped += 1; continue; }
     const mine = plans.filter((p) => p.topic_id === t.id);
     items.push({ key: `t:${t.id}`, videoDraft: mine.length > 0 && !mine.some((p) => p.format === "carousel"), topicId: t.id, candidateId: null, title: t.title, question: t.question,
       kind: (t.categories ?? []).map((c) => CATEGORY_LABEL[c as keyof typeof CATEGORY_LABEL] ?? c).join(" · ") || "주제 미정",

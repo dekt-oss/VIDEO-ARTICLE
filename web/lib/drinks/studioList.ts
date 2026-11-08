@@ -71,9 +71,8 @@ export function isAnswerable(question: string): boolean {
   return !OPINION.test(question);
 }
 
-/** 자동 복구 대상이 아닌 이유로 멈춘 소재인가 — 다시 눌러도 같은 실패라 목록에 두지 않는다. */
-export function isStopped(last: { status: string; error_code: string | null } | null | undefined, recoverable: readonly string[]): boolean {
-  if (!last) return false;
-  if (last.status === "blocked") return true;
-  return last.status === "failed" && !recoverable.includes(last.error_code ?? "");
+/** 자료가 모자라 멈춘 소재인가(studioPhase 의 blocked 화면과 같은 판정) — 다시 눌러도 같은 실패라 목록에 두지 않는다. 한도 초과 등은 이어 갈 수 있으니 남긴다. */
+export function isStopped(last: { status: string; error_code: string | null } | null | undefined, insufficient: ReadonlySet<string>): boolean {
+  if (!last || last.status === "canceled") return false;
+  return last.status === "blocked" || insufficient.has(last.error_code ?? "");
 }
