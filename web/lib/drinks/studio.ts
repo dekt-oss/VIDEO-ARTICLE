@@ -2,7 +2,7 @@
 // ★ 진행 표시는 실제 상태에서만 계산한다. 완료율·남은 시간을 지어내지 않는다(목업의 타이머 진행률은 옮기지 않았다).
 // ★ 값 import 없음(node --test 가 `@/` 별칭을 못 푼다).
 
-export type StudioScreen = "collect" | "preparing" | "draft" | "versions" | "generating" | "result" | "blocked" | "choice";
+export type StudioScreen = "collect" | "preparing" | "draft" | "versions" | "generating" | "result" | "blocked" | "choice" | "video";
 
 export interface StudioRequest {
   request_id: string; kind: "evidence" | "plan"; status: string; step: string | null; format_intent: string | null;
@@ -59,7 +59,9 @@ export function studioPhase(s: StudioStatus | null): Phase {
   }
   if (plan && plan.plan_status === "draft") return { screen: "draft" };
   const last = s.last;
-  if (!last) return { screen: "collect" };
+  // 설명형 초안은 이 화면이 다루지 못한다(다듬기·제작은 작업공간). 끝난 뒤 빈 목록으로 돌아가지 않고 그쪽으로 잇는다.
+  const idle: StudioScreen = s.plans.some((p) => p.format === "video" && p.current && !p.blocked) ? "video" : "collect";
+  if (!last) return { screen: idle };
   if (last.status === "canceled") return { screen: "collect", reason: "준비를 취소했어요." };
   if (last.status === "blocked" || INSUFFICIENT.has(last.error_code ?? "")) return { screen: "blocked", code: last.error_code ?? undefined };
   if (last.status === "failed") {
@@ -70,7 +72,7 @@ export function studioPhase(s: StudioStatus | null): Phase {
     }
     return { screen: "choice", code: last.error_code ?? "failed", reason: failureText(last.error_code) };
   }
-  return { screen: "collect" };
+  return { screen: idle };
 }
 
 export function failureText(code: string | null | undefined): string {

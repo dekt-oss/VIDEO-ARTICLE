@@ -12,12 +12,15 @@ import {
   cardCost, cardPlan, draftFromPlan, draftProblem, isPhotoPlan, orderTotal, progressText, sameDraft, studioPhase, versionOptions,
   type DraftEdit, type StudioScreen, type StudioStatus, type VersionId,
 } from "@/lib/drinks/studio";
+import { PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL, type PickFormat } from "@/lib/drinks/pickModal";
 
 export interface StudioCollectItem {
   key: string; topicId: string | null; candidateId: string | null; title: string; question: string; kind: string; origin: string;
   angle: string | null; inProgress: boolean; payload: Record<string, unknown>;
   /** 설명형(영상) 초안만 있는 소재 — 이어 만들기는 작업공간이다. */
   videoDraft?: boolean;
+  /** 이미 카드뉴스로 시작한 소재 — 서버가 이미 고른 형식을 따르므로(drinks_studio_prepare) 형식을 다시 묻지 않는다. */
+  cardPicked?: boolean;
 }
 export interface StudioResultFile {
   role: string; position: number; mime: string; url: string | null; urlError: string | null; width: number | null; height: number | null;
@@ -39,7 +42,7 @@ const STEPS: { id: "collect" | "draft" | "versions"; label: string }[] = [
   { id: "collect", label: "소재 고르기" }, { id: "draft", label: "초안 다듬기" }, { id: "versions", label: "버전·생성" },
 ];
 const LOGICAL: Record<StudioScreen, "collect" | "draft" | "versions"> = {
-  collect: "collect", preparing: "collect", blocked: "collect", choice: "collect", draft: "draft", versions: "versions", generating: "versions", result: "versions",
+  collect: "collect", preparing: "collect", blocked: "collect", choice: "collect", video: "draft", draft: "draft", versions: "versions", generating: "versions", result: "versions",
 };
 const POLL_MS = 5000;
 
@@ -58,6 +61,7 @@ export default function StudioClient({ items, problems, status, statusProblem, f
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<VersionId[]>(["card"]);
+  const [format, setFormat] = useState<PickFormat>("card");
   // 초안 화면이 마지막으로 저장한 버전·숫자 검사(자동 저장은 화면을 새로 읽지 않으므로 여기로 올린다).
   // 뒤로 갔다 와도 방금 저장한 글이 보이도록 저장본을 여기 둔다(서버 props 는 다음 새로 읽기 전까지 옛 값이다).
   const [saved, setSaved] = useState<{ planId: string; version: number; nums: string[]; edit: DraftEdit } | null>(null);
@@ -81,7 +85,8 @@ export default function StudioClient({ items, problems, status, statusProblem, f
 
   const prepare = async (item: StudioCollectItem) => {
     setBusy(true); setMsg(null);
-    const r = await post("studio_prepare", item.topicId ? { topic_id: item.topicId, format_intent: "card" } : { ...item.payload, format_intent: "card" });
+    const format_intent = format === "explainer" ? "explainer" : "card";   // 밈은 이 요청을 타지 않는다(밈 보드로 간다)
+    const r = await post("studio_prepare", item.topicId ? { topic_id: item.topicId, format_intent } : { ...item.payload, format_intent });
     setBusy(false);
     if (!r.ok) { setMsg({ text: r.error ?? "초안 준비를 시작하지 못했어요.", bad: true }); return; }
     const tid = String(r.result?.topic_id ?? item.topicId ?? "");
@@ -118,7 +123,7 @@ export default function StudioClient({ items, problems, status, statusProblem, f
       {screen === "collect" && (
         <Collect summary={summary} items={items} problems={problems} selKey={selKey} onSelect={setSelKey} sel={sel} busy={busy}
           current={status && sel?.topicId === status.topic.id ? phase : null} hasPlan={Boolean(plan) && sel?.topicId === status?.topic.id}
-          onPrepare={prepare} onOpen={(id) => (id === selectedTopicId ? setOverride(null) : go(id))} />
+          format={format} onFormat={setFormat} onPrepare={prepare} onOpen={(id) => (id === selectedTopicId ? setOverride(null) : go(id))} />
       )}
       {screen === "collect" && <div className="sj-slot">{footer}</div>}
       {screen === "preparing" && status && <Preparing status={status} onCancel={async () => {
@@ -129,6 +134,18 @@ export default function StudioClient({ items, problems, status, statusProblem, f
         setMsg(r.ok ? { text: "취소를 요청했어요. 새 작업과 재시도는 멈추고, 이미 쓴 비용 기록은 남아요." } : { text: r.error ?? "취소하지 못했어요.", bad: true });
         router.refresh();
       }} busy={busy} />}
+      {screen === "video" && status && (
+        <section aria-labelledby="sj-video-h" className="sj-progress-wrap">
+          <p className="sj-kicker">VIDEO DRAFT READY</p>
+          <h1 id="sj-video-h">설명형 릴스 초안이 준비됐어요.</h1>
+          <p className="sj-status">{status.topic.title}</p>
+          <p className="sj-note">대본 확인과 장면 지시서, 영상 제작은 작업공간에서 이어져요.<br />돈이 드는 단계는 금액을 보고 따로 승인해요.</p>
+          <div className="sj-row">
+            <Link className="sj-btn sj-main" href={`/drinks/work/${status.topic.id}?lane=explainer`}>초안 보러 가기 <span aria-hidden="true">→</span></Link>
+            <button type="button" className="sj-btn" onClick={() => setOverride("collect")}>다른 소재 고르기</button>
+          </div>
+        </section>
+      )}
       {screen === "blocked" && <Blocked code={phase.code} status={status} onBack={() => setOverride("collect")} />}
       {screen === "choice" && status && <Choice phase={phase} status={status} busy={busy} onBack={() => setOverride("collect")}
         onRetry={() => { const it = items.find((i) => i.topicId === status.topic.id); if (it) prepare(it); }} />}
@@ -151,10 +168,12 @@ export default function StudioClient({ items, problems, status, statusProblem, f
 }
 
 // ── ① 소재 고르기 ────────────────────────────────────────────────────────────
-function Collect({ summary, items, problems, selKey, onSelect, sel, busy, current, hasPlan, onPrepare, onOpen }: {
+function Collect({ summary, items, problems, selKey, onSelect, sel, busy, current, hasPlan, format, onFormat, onPrepare, onOpen }: {
   summary?: string; items: StudioCollectItem[]; problems: string[]; selKey: string | null; onSelect: (k: string) => void; sel: StudioCollectItem | null; busy: boolean;
-  current: ReturnType<typeof studioPhase> | null; hasPlan: boolean; onPrepare: (i: StudioCollectItem) => void; onOpen: (topicId: string) => void;
+  current: ReturnType<typeof studioPhase> | null; hasPlan: boolean; format: PickFormat; onFormat: (f: PickFormat) => void;
+  onPrepare: (i: StudioCollectItem) => void; onOpen: (topicId: string) => void;
 }) {
+  const askFormat = Boolean(sel) && !sel?.videoDraft && !hasPlan && !sel?.cardPicked;
   return (
     <section aria-labelledby="sj-collect-h">
       <div className="sj-intro">
@@ -187,19 +206,33 @@ function Collect({ summary, items, problems, selKey, onSelect, sel, busy, curren
               <p className="sj-question">“{sel.question}”</p>
               <hr />
               <div><span className="sj-label">이런 초안으로 준비해요</span>
-                <p>{sel.angle ?? "질문에 답하는 카드뉴스 초안부터 준비해요. 버전은 초안을 본 뒤에 골라요."}</p></div>
+                <p>{sel.angle ?? "소재의 질문에 답하는 초안을 준비해요."}</p></div>
               {current?.reason && <p className="sj-note">{current.reason}</p>}
-              <p className="sj-note">자료 확인과 구성은 자동으로 진행돼요.<br />완성된 초안을 읽고 다듬어 주세요.</p>
+              {askFormat ? (
+                <fieldset className="sj-format-list"><legend className="sj-label">어떤 형식으로 만들까요?</legend>
+                  {PICK_FORMATS.map((f) => (
+                    <label key={f} className="sj-format">
+                      <input type="radio" name="sj-collect-format" checked={format === f} disabled={busy} onChange={() => onFormat(f)} />
+                      <span className="sj-format-copy"><strong>{PICK_FORMAT_LABEL[f]}</strong><p>{PICK_FORMAT_HINT[f]}</p></span>
+                    </label>
+                  ))}
+                </fieldset>
+              ) : sel.cardPicked && !hasPlan && !sel.videoDraft && <p className="sj-note">카드뉴스로 시작한 소재예요. 릴스는 카드뉴스 초안의 ③ 버전 화면에서 이어 만들 수 있어요.</p>}
+              {askFormat && format === "meme"
+                ? <p className="sj-note">밈은 틀이 되는 원본 릴스를 먼저 골라야 해서 밈 보드에서 시작해요.</p>
+                : <p className="sj-note">자료 확인과 구성은 자동으로 진행돼요.<br />완성된 초안을 읽고 다듬어 주세요.</p>}
               {sel.videoDraft && sel.topicId ? (
                 <Link className="sj-btn sj-main" href={`/drinks/work/${sel.topicId}`}>설명형 초안 이어보기 <span aria-hidden="true">→</span></Link>
               ) : hasPlan && sel.topicId ? (
                 <button type="button" className="sj-btn sj-main" onClick={() => onOpen(sel.topicId!)}>초안 이어보기 <span aria-hidden="true">→</span></button>
+              ) : askFormat && format === "meme" ? (
+                <Link className="sj-btn sj-main" href="/drinks/memes">밈 보드에서 틀 고르기 <span aria-hidden="true">→</span></Link>
               ) : (
                 <button type="button" className="sj-btn sj-main" disabled={busy} onClick={() => onPrepare(sel)}>
                   {busy ? "시작하는 중…" : "이 소재로 초안 만들기"} <span aria-hidden="true">→</span>
                 </button>
               )}
-              <span className="sj-note">이번 주 AI 초안 한도 안에서 만들어요. 초안 확인 후 생성할 버전을 골라요.</span>
+              <span className="sj-note">이번 주 AI 초안 한도 안에서 만들어요. 사진·영상 구매는 초안을 본 뒤 금액을 보고 따로 승인해요.</span>
             </aside>
           )}
         </div>

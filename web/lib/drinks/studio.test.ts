@@ -32,6 +32,16 @@ test("화면 단계는 서버 상태에서만 정한다", () => {
   assert.equal(studioPhase(base({ last: req({ status: "failed", error_code: "budget_exceeded" }) })).code, "budget_exceeded");
 });
 
+test("설명형 초안이 끝나면 빈 목록이 아니라 작업공간으로 잇는 화면 — 실패·진행 중 표시를 가리지 않는다", () => {
+  const video = { ...plan("draft"), format: "video" as const };
+  assert.equal(studioPhase(base({ plans: [video], last: req({ status: "succeeded", kind: "plan" }) })).screen, "video");
+  assert.equal(studioPhase(base({ plans: [video] })).screen, "video");
+  assert.equal(studioPhase(base({ plans: [video], active: req() })).screen, "preparing");
+  assert.equal(studioPhase(base({ plans: [video], last: req({ status: "failed", error_code: "worker_error" }) })).screen, "choice");
+  assert.equal(studioPhase(base({ plans: [{ ...video, blocked: true }], last: req({ status: "succeeded" }) })).screen, "collect");
+  assert.equal(studioPhase(base({ plans: [video, plan("draft")] })).screen, "draft", "카드 초안이 있으면 카드 화면이 먼저");
+});
+
 test("진행 문구는 워커가 남긴 단계 이름에서만 — 지어낸 완료율 없음", () => {
   assert.equal(progressText(req({ step: "extract:国税庁" })), "자료를 확인하고 있어요.");
   assert.equal(progressText(req({ step: "factcheck" })), "사용할 내용을 정리하고 있어요.");

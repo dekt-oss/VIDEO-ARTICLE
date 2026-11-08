@@ -17,6 +17,7 @@ import { loadWeeklyBudget } from "@/lib/drinks/weeklyBudget";
 import { PLATFORM_LABEL } from "@/lib/drinks/discovery";
 import { CATEGORY_LABEL } from "@/lib/drinks/model";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { selectIn } from "@/lib/supabase/chunked";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,15 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   if (status && !items.some((x) => x.topicId === status!.topic.id)) {
     items.unshift({ key: `t:${status.topic.id}`, topicId: status.topic.id, candidateId: null, title: status.topic.title, question: status.topic.question,
       kind: "", origin: "", angle: null, inProgress: true, payload: {} });
+  }
+
+  // 이미 형식을 고른 소재는 서버가 그 형식을 따른다(drinks_studio_prepare) — 화면이 다른 형식을 고르게 해서 어긋나지 않게 표시해 둔다.
+  const picks = await selectIn<{ topic_id: string; format_intent: string }>(items.flatMap((i) => (i.topicId ? [i.topicId] : [])),
+    (ids) => db.from("drink_topic_format_picks").select("topic_id, format_intent").in("topic_id", ids), "drink_topic_format_picks.topic_id");
+  for (const it of items) {
+    const mine = picks.filter((p) => p.topic_id === it.topicId).map((p) => p.format_intent);
+    it.cardPicked = mine.includes("card");
+    if (mine.includes("explainer") && !it.cardPicked) it.videoDraft = true;   // 설명형으로 시작한 소재는 작업공간에서 잇는다
   }
 
   // 결과: 확정된 카드뉴스 초안의 제작 묶음(서명 URL 1시간). 파일·검사 결과가 있는 것만 '완료'다.

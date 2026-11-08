@@ -3,7 +3,7 @@
     python -m scripts.card_plan_run                   # 운영 Supabase 를 **읽기만** 해 승인된 근거가 있는 소재 1건 → 가짜 응답으로 끝까지(0원, DB 쓰기 0)
     python -m scripts.card_plan_run --topic <id>      # 특정 소재
     python -m scripts.card_plan_run --offline         # Supabase 없이 시험 입력(scripts/sample_card_reel 의 위스키 근거)
-    python -m scripts.card_plan_run --yes --approve "결재 문장"   # 실제 모델 호출 1회. 상한 $0.10(config.DRINKS_CARD_PLAN_RUN_CAP_USD). 결재 문장 없으면 부르지 않는다
+    python -m scripts.card_plan_run --yes --approve "결재 문장"   # 실제 모델 호출 1회. 상한 $0.15(config.DRINKS_CARD_PLAN_RUN_CAP_USD). 결재 문장 없으면 부르지 않는다
                                                       # ★ 실제 호출도 DB 에 제작안을 쓰지 않는다 — 산출물 파일만. 운영 저장은 워커(drinks-develop)가 한다.
                                                       #   단, LLM 호출의 비용 원장(generation_attempts)은 평소처럼 기록된다 — 보고서 db_writes 가 둘을 나눠 적는다.
 
@@ -303,7 +303,7 @@ def run_job(job: dict[str, Any], *, live: bool) -> tuple[dict[str, Any], MemRpc,
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="카드 대본 생성 준비 — 가짜 응답으로 끝까지(0원) / --yes 로 실제 1회(상한 $0.10)")
+    ap = argparse.ArgumentParser(description="카드 대본 생성 준비 — 가짜 응답으로 끝까지(0원) / --yes 로 실제 1회(상한 $0.15)")
     ap.add_argument("--topic", default=None, help="소재 id(없으면 승인된 근거가 있는 최근 소재)")
     ap.add_argument("--offline", action="store_true", help="Supabase 없이 시험 입력으로")
     ap.add_argument("--yes", action="store_true", help="실제 모델 호출 1회(돈이 든다)")
