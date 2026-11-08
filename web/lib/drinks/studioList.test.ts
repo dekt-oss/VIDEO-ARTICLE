@@ -31,11 +31,14 @@ test("취향을 묻는 글은 근거로 답할 수 없다", () => {
   assert.equal(isAnswerable("막걸리는 왜 흔들어 마실까"), true);
 });
 
-test("자료 부족으로 멈춘 소재는 빼고, 자동 복구되는 실패는 남긴다", () => {
-  const rec = ["worker_error"];
-  assert.equal(isStopped({ status: "blocked", error_code: "evidence_insufficient" }, rec), true);
-  assert.equal(isStopped({ status: "failed", error_code: "worker_error" }, rec), false);
-  assert.equal(isStopped({ status: "failed", error_code: "budget_exceeded" }, rec), true);
-  assert.equal(isStopped({ status: "succeeded", error_code: null }, rec), false);
-  assert.equal(isStopped(null, rec), false);
+test("자료 부족으로 멈춘 소재만 빼고, 이어 갈 수 있는 실패는 남긴다", () => {
+  const short = new Set(["evidence_insufficient", "script_check_failed"]);
+  assert.equal(isStopped({ status: "blocked", error_code: "evidence_insufficient" }, short), true);
+  assert.equal(isStopped({ status: "failed", error_code: "script_check_failed" }, short), true);
+  assert.equal(isStopped({ status: "failed", error_code: "worker_error" }, short), false);
+  assert.equal(isStopped({ status: "failed", error_code: "budget_exceeded" }, short), false);
+  assert.equal(isStopped({ status: "failed", error_code: "draft_has_edits" }, short), false);
+  assert.equal(isStopped({ status: "canceled", error_code: "evidence_insufficient" }, short), false);
+  assert.equal(isStopped({ status: "succeeded", error_code: null }, short), false);
+  assert.equal(isStopped(null, short), false);
 });
