@@ -1242,7 +1242,7 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
         beat("start")
         if job["kind"] == "evidence":
             run = run_evidence
-        elif job.get("draft_evidence") and job.get("format_intent") == "card":
+        elif job.get("format_intent") == "card":   # 0077: 확정된 소재의 새 카드 초안(스튜디오 다시 쓰기)도 카드 대본이다 — 형식이 명시된 요청만
             from .drinks_card_plan import run_card_plan   # 카드뉴스 제작안(0065). 승인 전 근거 경로에서만 — 표시 없는 요청은 그대로 영상 대본이다
 
             run = run_card_plan

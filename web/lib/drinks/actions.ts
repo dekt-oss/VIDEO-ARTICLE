@@ -217,7 +217,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   // 내용 승인 한 번(0064)
   evidence_not_usable: 422, review_not_draft: 422, plan_stale: 409,
   // 스튜디오(0076)
-  draft_has_edits: 409, draft_changed: 409, numbers_unverified: 422, format_not_supported: 422,
+  draft_has_edits: 409, draft_changed: 409, numbers_unverified: 422, format_not_supported: 422, spend_confirm_required: 409,
   // 음원 계약(0065)
   audio_required: 422, audio_not_for_carousel: 422, audio_not_found: 422, audio_connection_unsupported: 422, licensed_mix_not_rendered: 422,
   // 밈 제작(0066)

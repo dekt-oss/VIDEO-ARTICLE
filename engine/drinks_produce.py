@@ -8,6 +8,7 @@
   · 끝내기(drinks_finish_render)는 임대 토큰이 있어야 한다. 늦게 끝난 옛 워커의 결과는 저장되지 않는다.
   · 로컬 작업(renderer=local)은 유료 호출 0: 무료 TTS(edge)·로컬 장면 카드·ffmpeg 만. 비용 원장에는 0 원 기록을 남긴다.
   · 유료 작업(renderer=paid, 0054)은 장면 그림만 결재 안에서 산다(engine/drinks_paid.py — 그림마다 DB 가 상한을 잰다).
+    사진형 카드뉴스(plan.layout=photo)는 같은 통로로 쪽마다 4:5 배경 사진을 산다(buy_card_images).
     음성·조립은 그대로 무료. 장면에 영어 그림 지시문이 없으면 아무것도 사기 전에 실패한다.
     ★ GitHub Actions 의 drinks-produce.yml 에는 그림 생성 키가 없다 — 거기서 집은 유료 작업은 가잡기 전에 api_key_missing 으로 멈춘다.
   · 설명형(renderer=explainer_*, 0067)은 engine/drinks_explainer_queue.py 로 간다. 공급자 실호출은 스위치 + 결재가 둘 다 있어야 하고,
@@ -103,7 +104,7 @@ def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str)
     """유료 작업: 장면마다 그림을 결재 안에서 산다(이미 산 것은 다시 쓴다). 정리 카드 장면은 사지 않는다.
 
     장면에 영어 그림 지시문(visual_prompt)이 없으면 **아무것도 사기 전에** 멈춘다 — 반쯤 산 채로 실패하지 않게."""
-    from .drinks_paid import PaidError, build_image_items, buy
+    from .drinks_paid import PaidError, build_image_items
 
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     scenes = (job.get("plan") or {}).get("scenes") or []
@@ -117,6 +118,28 @@ def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str)
         items = build_image_items(scenes)   # 지시문이 빠진 장면이 있으면 여기서(아무것도 사기 전에) 멈춘다
     except PaidError as exc:
         raise RenderError(exc.code, exc.message) from exc
+    return _buy_items(job, items, rpc, storage, work, unit="장면")
+
+
+def buy_card_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str) -> tuple[dict[int, str], list[dict[str, Any]]]:
+    """유료 카드뉴스(사진형): image_prompt 가 있는 쪽마다 4:5 배경 사진을 결재 안에서 산다(이미 산 것은 다시 쓴다).
+
+    영상과 같은 결재·가잡기·재사용·비용 기록 통로(_buy_items)를 탄다. 지시문이 하나도 없으면 아무것도 사기 전에 멈춘다."""
+    from .drinks_paid import PaidError, build_card_image_items
+
+    try:
+        items = build_card_image_items((job.get("plan") or {}).get("pages") or [])
+    except PaidError as exc:
+        raise RenderError(exc.code, exc.message) from exc
+    return _buy_items(job, items, rpc, storage, work, unit="쪽")
+
+
+def _buy_items(job: dict[str, Any], items: list[Any], rpc: Rpc, storage: Storage, work: str, *, unit: str
+               ) -> tuple[dict[int, str], list[dict[str, Any]]]:
+    """주문 항목을 차례로 산다 — 항목마다 임대 심장박동 → buy(결재 가잡기·재사용·확정) → 비용 줄. 영상·카드 공용."""
+    from .drinks_paid import PaidError, buy
+
+    lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     images: dict[int, str] = {}
     paths: dict[str, str] = {}
     costs: list[dict[str, Any]] = []
@@ -131,8 +154,21 @@ def buy_scene_images(job: dict[str, Any], rpc: Rpc, storage: Storage, work: str)
         paths[it.item_key] = b.path
         costs.append({"kind": "image", "provider": "gemini", "model": it.model, "units": 1, "cost_usd": b.cost_usd,
                       "estimated": not b.reused,
-                      "note": f"{it.position}번 장면 " + ("— 이미 산 그림 재사용(0원)" if b.reused else "— 정가표 금액(청구서 대조 전)")})
+                      "note": f"{it.position}번 {unit} " + ("— 이미 산 그림 재사용(0원)" if b.reused else "— 정가표 금액(청구서 대조 전)")})
     return images, costs
+
+
+def add_caption_draft(job: dict[str, Any], qa: dict[str, Any]) -> None:
+    """사진형 카드의 캡션 초안을 렌더 qa["caption_draft"] 에 싣는다(스키마 변경 없이 qa_summary jsonb 로 화면에 간다).
+    발행 화면이 비어 있는 캡션 칸을 이 글로 채워 주고, 운영자가 고쳐 올린다 — 자동 게시는 없다.
+    조립이 실패해도(예: 글자 수 초과) 렌더 결과는 그대로 둔다."""
+    from .drinks_caption import build_caption
+
+    try:
+        qa["caption_draft"] = build_caption(job.get("plan") or {}, job.get("topic") or {}, handle=config.DRINKS_IG_HANDLE,
+                                            ai_images=bool(qa.get("ai_images")))
+    except ValueError as exc:
+        log.warning("drinks: 캡션 초안을 만들지 못했습니다(%s) — 발행 화면에서 직접 적습니다", exc)
 
 
 def fetch_card_pages(job: dict[str, Any], storage: Storage, work: str) -> dict[int, str]:
@@ -192,14 +228,24 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
             attach_script_check(rendered.qa, check_report)   # 유료 경로는 막혔다면 위에서 이미 멈췄다 — 여기선 알림만 실린다
         else:
             from .drinks_cards import render_carousel   # 카드뉴스 렌더(정적 이미지)
+            from .drinks_cards_photo import is_photo_plan
 
             # 리뷰 R7: 승인 뒤 사람이 고친 글까지 — 렌더에 넘길 **바로 그 글**을 검사한다. 막히면 파일을 하나도 만들지 않는다(캐러셀·카드 릴스 공통).
             card_rep = script_check.check_card_texts(job.get("plan") or {}, job.get("claims") or [], sources=job.get("sources"))
             if card_rep.blocks:
                 raise RenderError("card_text_unsupported", "; ".join(f.message for f in card_rep.blocks)[:1500])
-            rendered = render_carousel(job, os.path.join(work, "pages"))
+            if job.get("renderer") == "paid" and is_photo_plan(job.get("plan")):
+                # 사진형 카드: 쪽마다 4:5 배경 사진을 결재 안에서 산다. 글자 카드(card-v1)는 유료로 살 것이 없다.
+                images, paid_costs = buy_card_images(job, rpc, storage, work)
+                rendered = render_carousel(job, os.path.join(work, "pages"), images=images)
+                rendered.costs = paid_costs + rendered.costs
+            else:
+                rendered = render_carousel(job, os.path.join(work, "pages"))
+            if is_photo_plan(job.get("plan")):
+                add_caption_draft(job, rendered.qa)
         rpc("drinks_heartbeat_render", lease)
         assets = []
+        generated = rendered.qa.get("generated_scenes") or rendered.qa.get("generated_pages")   # 영상 장면·카드 쪽의 산 그림
         for f in rendered.files:
             ext = MIME_EXT[f["mime"]]
             name = f"{f['role']}_{f['position']:02d}{ext}"
@@ -211,7 +257,7 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
                 "storage_key": stored, "sha256": sha256_file(f["path"]), "mime": f["mime"], "bytes": os.path.getsize(f["path"]),
                 "width": f.get("width"), "height": f.get("height"), "duration_ms": f.get("duration_ms"),
                 # rights 는 DB 허용 목록(generated_local/paid/licensed/own) 안에서만 — 카드뉴스 페이지도 우리가 로컬로 만든 것이다.
-                "rights": "generated_paid" if rendered.qa.get("generated_scenes") else "generated_local",
+                "rights": "generated_paid" if generated else "generated_local",
                 "provenance": {"renderer": job.get("renderer_version"), "images": _image_provenance(rendered.qa),
                                "spend_approval_id": job.get("spend_approval_id"),
                                "tts": tts if job["format"] == "video" else None, "brand": rendered.qa.get("brand")}}})
@@ -243,7 +289,7 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
 
 def _image_provenance(qa: dict[str, Any]) -> str:
     """영상 장면 그림의 출처 표기. 산 그림이 있으면 그것이 우선(generated_paid), 카드 페이지만 썼으면 card_pages."""
-    if qa.get("generated_scenes"):
+    if qa.get("generated_scenes") or qa.get("generated_pages"):   # 영상 장면·사진형 카드 쪽의 산 그림
         return "generated_paid"
     if qa.get("card_page_scenes"):
         return "card_pages"

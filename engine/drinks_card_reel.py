@@ -232,6 +232,32 @@ def draw_frame(page: dict[str, Any], pos: int, total: int, reel: dict[str, Any],
     return {"position": pos, "truncated": cut, "safe_area_violations": fr.safe_area_violations()}
 
 
+# 사진형 카드(card-photo-v1) 릴스: 이미 그린 4:5 카드 페이지를 그대로 세로 화면에 얹는다 — 글자 카드 틀(draw_frame)로 다시 그리면
+# 승인된 사진형 디자인이 릴스에서만 옛 모양으로 돌아간다(2026-11-08 사케 사태). 위 띠에 첫 장은 훅, 마지막 장은 저장/보내기 한 줄.
+PHOTO_PAGE_W = RIGHT_LIMIT - LEFT                      # 오른쪽 안전 영역(인스타 버튼)을 피한 폭
+PHOTO_PAGE_TOP = 430                                   # 위 띠(브랜드 줄·훅) 아래
+
+
+def draw_photo_frame(page_png: str, pos: int, total: int, reel: dict[str, Any], out_path: str) -> dict[str, Any]:
+    from PIL import Image
+
+    fr = Frame()
+    _top_row(fr, pos, total)
+    with Image.open(page_png) as im:
+        h = round(im.height * PHOTO_PAGE_W / im.width)
+        fr.img.paste(im.convert("RGB").resize((PHOTO_PAGE_W, h), Image.LANCZOS), (LEFT, PHOTO_PAGE_TOP))
+    fr.boxes.append([LEFT, PHOTO_PAGE_TOP, LEFT + PHOTO_PAGE_W, PHOTO_PAGE_TOP + h])
+    band = str(reel.get("hook_title") or "").strip() if pos == 1 else (str(reel.get("share_line") or "").strip() if pos == total else "")
+    cut = False
+    if band:
+        b = Block(band, "head", 54, BRAND["accent"] if pos == total else BRAND["text"], 2, line_gap=1.22)
+        fr.layout([b])
+        fr.draw_blocks([b], TOP_ROW_Y + 70)
+        cut = b.cut
+    fr.img.save(out_path, "PNG")
+    return {"position": pos, "truncated": cut, "safe_area_violations": fr.safe_area_violations()}
+
+
 def assemble(frames: list[str], timings: list[float], out_path: str) -> None:
     """정지 그림을 밀어 넘기며 잇는다. 합계 길이 = 페이지 시간의 합(겹치는 만큼 입력을 늘려 둔다). 소리는 무음 AAC — 음원은 게시 때 붙는다."""
     t = config.DRINKS_CARD_REEL_TRANSITION_SEC
@@ -259,8 +285,9 @@ def assemble(frames: list[str], timings: list[float], out_path: str) -> None:
         raise RenderError("card_reel_ffmpeg", f"릴스 조립 실패: {(p.stderr or '')[-400:]}")
 
 
-def render_card_reel(job: dict[str, Any], work_dir: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """(파일 목록[최종 영상·표지], qa). 제작안에 reel 이 있을 때만 부른다. 카드뉴스 페이지는 render_carousel 이 따로 만든다."""
+def render_card_reel(job: dict[str, Any], work_dir: str, page_pngs: dict[int, str] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """(파일 목록[최종 영상·표지], qa). 제작안에 reel 이 있을 때만 부른다. 카드뉴스 페이지는 render_carousel 이 따로 만든다.
+    page_pngs(사진형 카드) 가 있으면 그 페이지 그림을 프레임으로 쓴다."""
     from PIL import Image
 
     plan = job.get("plan") or {}
@@ -277,7 +304,8 @@ def render_card_reel(job: dict[str, Any], work_dir: str) -> tuple[list[dict[str,
     frame_qa: list[dict[str, Any]] = []
     for i, pg in enumerate(pages, 1):
         path = os.path.join(work_dir, f"frame_{i:02d}.png")
-        frame_qa.append(draw_frame(pg, i, len(pages), reel, job.get("sources") or [], path))
+        png = (page_pngs or {}).get(int(pg["position"]))
+        frame_qa.append(draw_photo_frame(png, i, len(pages), reel, path) if png else draw_frame(pg, i, len(pages), reel, job.get("sources") or [], path))
         frames.append(path)
     outside = {q["position"]: q["safe_area_violations"] for q in frame_qa if q["safe_area_violations"]}
     if outside:

@@ -43,6 +43,10 @@ def _build_image_prompt(cut: dict[str, Any], header: dict[str, Any],
     ★ comic 의 출력 문자열은 **바이트 단위로 이전과 같다**. A/B 비교에서 화면 설계 말고 다른
       변수가 끼면 판정이 무의미해진다.
     """
+    # ★ 완성된 프롬프트를 그대로 쓰는 컷(주류 카드뉴스 배경 사진 — 승인 시제품의 문장 그대로, 2026-10-27).
+    #   9:16 규격·화풍 접미사·부정어를 붙이지 않는다(4:5 와 부딪친다). 이 키가 없는 컷은 아래 예전 경로 그대로다.
+    if cut.get("raw_prompt"):
+        return str(cut["raw_prompt"]).strip()
     gs = str((header or {}).get("global_style") or "").strip()
     vp = str(cut.get("visual_prompt") or "").strip()
     # ★ 참조 이미지를 함께 보낼 때는 **무엇을 유지하고 무엇만 바꾸는지**를 앞에 못박는다.

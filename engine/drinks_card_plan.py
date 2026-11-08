@@ -33,6 +33,22 @@ _SAVE_WORDS = re.compile(r"(저장|보내|공유)")
 _DRINK_PUSH = re.compile(r"(한\s*잔\s*(하|해|합)|마셔\s*(봐|보|요)|마시자|마셔야|취하|원샷|건배|안주\s*삼아)")
 
 
+# 사진형 카드(card-photo-v1, 운영자 승인 2026-10-27 · 2026-11-08 복구). 배치는 engine/drinks_cards_photo.py — 제목 3줄·본문 2줄이 화면 한도다.
+DRINKS_PHOTO_BODY_LINES = 2
+PHOTO_RULES = (
+    "사진형 카드(배경 사진 위에 글):\n"
+    "- heading 안에서 가장 중요한 낱말 하나를 [대괄호]로 감싼다(화면에서 금색으로 강조). 대괄호는 한 쌍만.\n"
+    f"- body 는 {DRINKS_PHOTO_BODY_LINES}줄 안(줄바꿈 포함). 길면 페이지를 나눈다.\n"
+    "- source 를 뺀 모든 페이지에 image_prompt 를 영어로 쓴다: 그 페이지 내용을 보여 주는 실제 장면 한 컷"
+    "(사케 병·잔·양조장·라벨을 보는 손처럼 알아볼 사물과 행동). 글자·숫자·상표·사람 얼굴은 넣지 않는다. 120단어 안.\n"
+)
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def photo_layout() -> bool:
+    return config.DRINKS_CARD_LAYOUT == "photo"
+
+
 def system_prompt() -> str:
     lo, hi = config.DRINKS_CARD_PAGES
     return (
@@ -52,11 +68,13 @@ def system_prompt() -> str:
         "- 사실을 말하는 페이지(explain·compare·checklist)는 claim_ids 에 근거의 claim_id 를 반드시 단다. '필수 주장'은 빠짐없이 어느 페이지엔가 단다.\n"
         f"- heading 은 {config.DRINKS_CARD_HEADING_MAX_CHARS}자 안, body 는 {config.DRINKS_CARD_BODY_MAX_CHARS}자 안. checklist 의 body 는 줄마다 한 항목.\n"
         "- source 페이지의 heading 은 '출처' 로 하고 body 는 비운다(코드가 출처 목록을 넣는다).\n"
+        + (PHOTO_RULES if photo_layout() else "") +
         "릴스용 두 줄(reel):\n"
         f"- hook_title: 릴스 첫 화면의 큰 제목. {config.DRINKS_CARD_HOOK_MAX_CHARS}자 안의 질문(물음표로 끝남). 가능하면 '왜'를 넣는다.\n"
         f"- share_line: 마지막 화면의 한 줄. {config.DRINKS_CARD_SHARE_MAX_CHARS}자 안에서 '저장' 또는 '보내'를 넣어, 누구에게 왜 보낼 만한지 말한다. 숫자·효능을 넣지 않는다.\n"
         "- viewer_conclusion: {\"text\": \"다 읽은 사람이 내릴 결론 한 줄\", \"claim_ids\": [근거 id…]} — 결론도 인용 안에서만.\n"
-        "출력 형식: {\"pages\": [{\"role\": \"cover\", \"heading\": \"…\", \"body\": \"…\", \"claim_ids\": []}, …], "
+        "출력 형식: {\"pages\": [{\"role\": \"cover\", \"heading\": \"…\", \"body\": \"…\", \"claim_ids\": []"
+        + (", \"image_prompt\": \"…\"" if photo_layout() else "") + "}, …], "
         "\"reel\": {\"hook_title\": \"…\", \"share_line\": \"…\"}, \"viewer_conclusion\": {…}}"
     )
 
@@ -146,8 +164,22 @@ def check_card_plan(plan: dict[str, Any], review: dict[str, Any], topic: dict[st
         if any(script_check._FORMAL.search(s) for s in lines):
             block("formal_style", i, "문어체 끝맺음(-습니다·-입니다) — 말하듯이 ~해요로 씁니다")
 
+    photo = photo_layout()
     for i, pg in enumerate(pages, 1):
         role = str(pg.get("role") or "")
+        if photo and role != "source":
+            heading_raw = str(pg.get("heading") or "")
+            if heading_raw.count("[") != heading_raw.count("]") or heading_raw.count("[") > 1:
+                block("photo_highlight", i, "제목의 [대괄호] 강조는 한 쌍만 씁니다")
+            elif "[" not in heading_raw:
+                warn("photo_highlight_missing", i, "제목에 [핵심어] 강조가 없습니다")
+            if len([x for x in str(pg.get("body") or "").strip().split("\n") if x.strip()]) > DRINKS_PHOTO_BODY_LINES:
+                block("photo_body_lines", i, f"본문이 {DRINKS_PHOTO_BODY_LINES}줄을 넘습니다 — 사진형 카드는 화면에서 잘립니다")
+            ip = str(pg.get("image_prompt") or "").strip()
+            if not ip:
+                block("photo_prompt_missing", i, "배경 사진 지시문(image_prompt, 영어)이 없습니다")
+            elif _HANGUL.search(ip):
+                block("photo_prompt_not_english", i, "배경 사진 지시문은 영어로 씁니다")
         if role not in ALL_ROLES:
             block("page_role", i, f"페이지 역할 '{role}' 은 쓸 수 없습니다")
         heading, body = str(pg.get("heading") or "").strip(), str(pg.get("body") or "").strip()
@@ -260,10 +292,14 @@ def clean_plan(plan: dict[str, Any]) -> dict[str, Any]:
     concl = plan.get("viewer_conclusion") if isinstance(plan.get("viewer_conclusion"), dict) else {}
     ids = "·".join(str(c) for c in concl.get("claim_ids") or [])
     notes = f"시청자 결론({ids}): {concl.get('text')}" if concl.get("text") else None
+    photo = photo_layout()
     pages = [{"position": i, "role": p.get("role"), "heading": str(p.get("heading") or "").strip(), "body": str(p.get("body") or "").strip() or None,
-              "claim_ids": [str(x) for x in p.get("claim_ids") or []]} for i, p in enumerate(plan.get("pages") or [], 1)]
+              "claim_ids": [str(x) for x in p.get("claim_ids") or []],
+              **({"image_prompt": str(p.get("image_prompt") or "").strip()[:1500]} if photo and p.get("role") != "source" and p.get("image_prompt") else {})}
+             for i, p in enumerate(plan.get("pages") or [], 1)]
     reel = plan.get("reel") or {}
-    return {"pages": pages, "notes": notes, "template_version": "card-reel-v1",
+    return {"pages": pages, "notes": notes, "template_version": config.DRINKS_CARD_PHOTO_TEMPLATE if photo else "card-reel-v1",
+            **({"layout": "photo"} if photo else {}),
             "reel": {"hook_title": str(reel.get("hook_title") or "").strip(), "share_line": str(reel.get("share_line") or "").strip()}}
 
 

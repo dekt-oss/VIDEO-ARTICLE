@@ -31,6 +31,7 @@ BRAND = {
     "version": "drinks-brand-v1",
     "bg": (24, 20, 16), "panel": (40, 33, 26), "accent": (232, 168, 64), "text": (246, 240, 230), "muted": (178, 166, 150),
     "warn": (240, 120, 90),
+    "key": (245, 184, 64),   # 사진형 카드의 핵심어 강조색(#F5B840) — 승인 시제품(2026-10-27)
 }
 FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts")
 FONTS = {"head": "Pretendard-ExtraBold.otf", "body": "Pretendard-Bold.otf", "small": "Pretendard-Medium.otf"}
