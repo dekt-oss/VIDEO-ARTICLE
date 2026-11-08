@@ -331,3 +331,79 @@ test("5축 점수가 65점 아래인 소재도 [생성]이 막히지 않는다 �
   assert.equal(out.approved, true);
   assert.match((await row("select score_exception_reason from drink_topics where id = $1", [topic])).score_exception_reason, /스튜디오/);
 });
+
+// ── 0077 사진형 카드 복구(2026-11-08) ──────────────────────────────────────────
+const PHOTO_PAGES = PAGES.map((p) => p.role === "source" ? p : { ...p, heading: `[${p.heading}]`, image_prompt: `A sake bottle on a counter ${p.role}` });
+const PHOTO_PLAN = { ...CARD_PLAN, pages: PHOTO_PAGES, layout: "photo", template_version: "card-photo-v1" };
+
+test("0077 사진형: 화면에 보인 금액으로만 생성 — 금액 없이 누르면 아무것도 확정·구매하지 않고, 금액이 맞으면 그 초안 전용 결재로 유료 제작", async () => {
+  const prep = await ok("studio_prepare", { candidate_id: await candidate(), format_intent: "card", categories: ["sake"] });
+  const topic = prep.topic_id as string;
+  await workerEvidence(await rpc("drinks_start_develop", { worker_id: "t" }));
+  const { planId } = await workerCard(PHOTO_PLAN);
+  let st = await status(topic);
+  const plan = st.plans.find((p: Any) => p.plan_revision_id === planId);
+  assert.equal(plan.plan_json.layout, "photo", "검증기가 사진형 칸을 버리지 않는다");
+  assert.ok(plan.plan_json.pages.slice(0, 4).every((p: Any) => p.image_prompt), "쪽마다 사진 지시문 보존");
+  assert.equal(plan.estimate.photo, true);
+  assert.equal(plan.estimate.images, 4, "출처 장은 사진을 사지 않는다");
+  const total = Number(plan.estimate.total_usd);
+  assert.ok(total > 0);
+  // 사람이 글을 고쳐도 사진 지시문은 남는다
+  const pages = plan.plan_json.pages.map((p: Any) => ({ heading: p.heading, body: p.body }));
+  pages[1] = { heading: "[물을] 조금 넣어요", body: "애호가들은 물을 넣어요" };
+  const saved = await ok("studio_save_draft", { plan_revision_id: planId, expected_version: plan.version, pages });
+  assert.equal((await row("select plan_json->'pages'->1->>'image_prompt' ip from drink_plan_revisions where id = $1", [planId])).ip, PHOTO_PAGES[1].image_prompt);
+  st = await status(topic);
+  const gen = (extra: Record<string, unknown>) => ({ topic_id: topic, format_intent: "card", plan_revision_id: planId, expected_topic_version: st.topic.version,
+    expected_review_version: st.review.version, expected_plan_version: saved.version, ...extra });
+  await fails("studio_generate", gen({}), "spend_confirm_required");
+  await fails("studio_generate", gen({ approve_usd: total - 0.01 }), "spend_confirm_required");
+  assert.equal((await row("select plan_status from drink_plan_revisions where id = $1", [planId])).plan_status, "draft", "금액 확인 전에는 확정도 하지 않는다(한 트랜잭션)");
+  assert.equal((await rows("select id from drink_spend_approvals where plan_revision_id = $1", [planId])).length, 0);
+  const out = await ok("studio_generate", gen({ approve_usd: total }));
+  assert.equal(out.approved, true);
+  const job = await row("select renderer, spend_approval_id from drink_production_jobs where id = $1", [out.render.job_id]);
+  assert.equal(job.renderer, "paid");
+  const ap = await row("select cap_usd, allowed_kinds, plan_revision_id, approver_words, expires_at from drink_spend_approvals where id = $1", [job.spend_approval_id]);
+  assert.equal(Number(ap.cap_usd), total, "결재 상한 = 화면에 보인 금액");
+  assert.deepEqual(ap.allowed_kinds, ["image"]);
+  assert.equal(ap.plan_revision_id, planId);
+  assert.match(ap.approver_words, /스튜디오/);
+  assert.equal((await ok("studio_generate", gen({ approve_usd: total }))).render.job_id, out.render.job_id, "다시 눌러도 같은 작업");
+  assert.equal((await rows("select id from drink_spend_approvals where plan_revision_id = $1", [planId])).length, 1, "결재도 하나");
+});
+
+test("0077 확정된 글자 카드 → [사진형으로 다시 만들기]: 같은 확정 근거로 새 초안, 옛 결과는 그대로, 새 초안 생성은 제출·승인을 거친다", async () => {
+  const prep = await ok("studio_prepare", { candidate_id: await candidate(), format_intent: "card", categories: ["sake"] });
+  const topic = prep.topic_id as string;
+  await workerEvidence(await rpc("drinks_start_develop", { worker_id: "t" }));
+  const { planId } = await workerCard();
+  let st = await status(topic);
+  const p0 = st.plans.find((p: Any) => p.plan_revision_id === planId);
+  assert.equal(p0.estimate.photo, false);
+  assert.equal(Number(p0.estimate.total_usd), 0, "글자 카드는 0원");
+  const first = await ok("studio_generate", { topic_id: topic, format_intent: "card", plan_revision_id: planId, expected_topic_version: st.topic.version,
+    expected_review_version: st.review.version, expected_plan_version: p0.version });
+  assert.equal((await row("select renderer from drink_production_jobs where id = $1", [first.render.job_id])).renderer, "local");
+  st = await status(topic);
+  const approved = st.plans.find((p: Any) => p.plan_revision_id === planId);
+  const rw = await ok("studio_rewrite", { plan_revision_id: planId, expected_version: approved.version, instruction: "사진형 카드로 다시 써 주세요" });
+  assert.equal(rw.existing, false);
+  const req = await row("select draft_evidence, format_intent, supersedes_plan_id from drink_develop_requests where id = $1", [rw.request_id]);
+  assert.deepEqual([req.draft_evidence, req.format_intent, req.supersedes_plan_id], [false, "card", null]);
+  const re = await workerCard(PHOTO_PLAN);
+  assert.equal(re.ctx.instruction, "사진형 카드로 다시 써 주세요");
+  assert.equal((await row("select plan_status from drink_plan_revisions where id = $1", [planId])).plan_status, "approved", "옛 확정은 그대로");
+  st = await status(topic);
+  const np = st.plans.find((p: Any) => p.plan_revision_id === re.planId);
+  assert.ok(np.current && np.plan_status === "draft" && np.estimate.photo);
+  await fails("studio_rewrite", { plan_revision_id: planId, expected_version: approved.version, instruction: "또" }, "invalid_input");
+  await fails("studio_rewrite", { plan_revision_id: planId, expected_version: approved.version, instruction: "한 번 더" }, "draft_exists");
+  const out = await ok("studio_generate", { topic_id: topic, format_intent: "card", plan_revision_id: re.planId, expected_plan_version: np.version,
+    approve_usd: Number(np.estimate.total_usd) });
+  assert.equal((await row("select plan_status from drink_plan_revisions where id = $1", [re.planId])).plan_status, "approved");
+  assert.equal((await row("select renderer from drink_production_jobs where id = $1", [out.render.job_id])).renderer, "paid");
+  const ev = await rows("select action from drink_workflow_events where entity_id = $1 and action in ('plan_submit','plan_approve') order by id", [re.planId]);
+  assert.deepEqual(ev.map((e: Any) => e.action), ["plan_submit", "plan_approve"], "제출·승인 검사를 건너뛰지 않는다");
+});

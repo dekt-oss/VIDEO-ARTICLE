@@ -21,6 +21,12 @@ from engine.drinks_collect import DbError
 from engine.drinks_render import RenderError
 from engine.providers import instagram as ig
 
+
+@pytest.fixture(autouse=True)
+def _text_layout(monkeypatch):
+    """이 파일은 글자 카드(card-reel-v1) 계약을 본다. 사진형 초안 규칙은 test_drinks_photo_cards.py 가 본다."""
+    monkeypatch.setattr(config, "DRINKS_CARD_LAYOUT", "text")
+
 ROOT = Path(__file__).resolve().parents[1]
 SQL = (ROOT / "supabase" / "migrations" / "0065_drinks_card_reels.sql").read_text(encoding="utf-8")
 ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="ffmpeg 없음")
@@ -570,3 +576,53 @@ def test_rewrite_instruction_reaches_the_writer_and_saves_through_the_supersedin
     assert res["status"] == "succeeded", r.finish
     assert "더 짧고 친근하게" in seen[0] and "옛 표지" in seen[0]
     assert "drinks_develop_save_rewrite" in r.calls and "drinks_develop_save_plan" not in r.calls
+
+
+# ── 사진형 카드 초안(2026-11-08 복구 — PR 126 사진형이 브랜치 삭제로 자동 닫혀 빠졌던 것) ──
+
+def _photo(plan):
+    for i, pg in enumerate(plan["pages"]):
+        if pg["role"] != "source":
+            pg["image_prompt"] = f"A sake bottle on a wooden counter, scene {i}"
+            pg["heading"] = pg["heading"].replace("왜", "[왜]", 1) if "왜" in pg["heading"] else f"[{pg['heading']}]"
+    return plan
+
+
+def test_photo_layout_requires_english_photo_prompt_one_highlight_and_two_body_lines(monkeypatch):
+    monkeypatch.setattr(config, "DRINKS_CARD_LAYOUT", "photo")
+    assert codes(_photo(good_plan()))[0] == []
+    no_prompt = _photo(good_plan()); no_prompt["pages"][1].pop("image_prompt")
+    korean = _photo(good_plan()); korean["pages"][1]["image_prompt"] = "사케 병"
+    lines = _photo(good_plan()); lines["pages"][1]["body"] = "한 줄\n두 줄\n세 줄"
+    two = _photo(good_plan()); two["pages"][1]["heading"] = "[술이] [세서]"
+    assert "photo_prompt_missing" in codes(no_prompt)[0]
+    assert "photo_prompt_not_english" in codes(korean)[0]
+    assert "photo_body_lines" in codes(lines)[0]
+    assert "photo_highlight" in codes(two)[0]
+
+
+def test_photo_layout_clean_plan_keeps_layout_and_prompts_but_not_on_the_source_page(monkeypatch):
+    monkeypatch.setattr(config, "DRINKS_CARD_LAYOUT", "photo")
+    out = cp.clean_plan({**_photo(good_plan()), "viewer_conclusion": {"text": "x", "claim_ids": ["c1"]}})
+    assert out["layout"] == "photo" and out["template_version"] == config.DRINKS_CARD_PHOTO_TEMPLATE
+    assert all(p.get("image_prompt") for p in out["pages"] if p["role"] != "source")
+    assert "image_prompt" not in out["pages"][-1]
+    assert "image_prompt" in cp.system_prompt() and "[대괄호]" in cp.system_prompt()
+
+
+def test_photo_card_reel_uses_the_rendered_photo_pages_as_frames(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DRINKS_CARD_LAYOUT", "photo")
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg 없음")
+    plan = cp.clean_plan({**_photo(good_plan()), "viewer_conclusion": {"text": "x", "claim_ids": ["c1"]}})
+    plan["reel"] = {"hook_title": "위스키는 왜 안 상할까?", "share_line": "친구에게 보내 보세요"}
+    seen = []
+    real = cr.draw_photo_frame
+    monkeypatch.setattr(cr, "draw_frame", lambda *a, **k: pytest.fail("사진형은 글자 카드 틀로 다시 그리지 않는다"))
+    monkeypatch.setattr(cr, "draw_photo_frame", lambda png, *a, **k: (seen.append(png), real(png, *a, **k))[1])
+    job = {"job_id": "j" * 8, "plan": plan, "topic": TOPIC, "claims": [], "sources": REVIEW["sources"]}
+    r = dc.render_carousel(job, str(tmp_path))
+    pages = [f["path"] for f in r.files if f["role"] == "page"]
+    assert seen == pages and any(f["role"] == "final_video" for f in r.files)
+    with Image.open([f["path"] for f in r.files if f["role"] == "cover"][0]) as im:
+        assert im.size == (1080, 1920)

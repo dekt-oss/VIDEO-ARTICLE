@@ -243,6 +243,7 @@ _HASHTAG = re.compile(r"#[^\s#]+")
 # 한도 계산용 — 낱말 한가운데의 #·@(a#b, 메일 주소)는 태그·멘션이 아니다.
 _HASHTAG_TOKEN = re.compile(r"(?<!\w)#\w+")
 _MENTION_TOKEN = re.compile(r"(?<![\w.])@[\w.]+")
+_LIST_MARK = re.compile(r"^[ \t]*\d{1,2}[.)][ \t]+", re.M)   # 줄머리 번호("1. ") — 숫자 근거 검사에서 뺀다(캡션 요점 목록)
 
 
 def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Optional[list[dict[str, Any]]] = None) -> Report:
@@ -260,7 +261,7 @@ def check_caption(caption: str, claims: list[dict[str, Any]], *, sources: Option
         rep.blocks.append(Finding("hashtags_over_limit", None, f"해시태그가 {n_tags}개입니다(한도 {lim['max_hashtags']}개)"))
     if n_mentions > lim["max_mentions"]:
         rep.blocks.append(Finding("mentions_over_limit", None, f"@멘션이 {n_mentions}개입니다(한도 {lim['max_mentions']}개)"))
-    text = _HASHTAG.sub(" ", caption or "")
+    text = _LIST_MARK.sub("", _HASHTAG.sub(" ", caption or ""))
     usable = [c for c in claims or [] if isinstance(c, dict) and not _is_derived(c)]
     quotes = " ".join(q for c in usable for q in _quotes(c))
     meta = " ".join(" ".join(str(v) for v in (s or {}).values()) for s in (sources or []))

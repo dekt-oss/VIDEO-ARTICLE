@@ -64,3 +64,15 @@ test("자동 복구 목록은 SQL(0076 drinks_studio_recoverable)과 같다", ()
   const codes = [...m![1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort();
   assert.deepEqual(codes, [...RECOVERABLE].sort());
 });
+
+test("0077 사진형 카드는 배경 사진 금액을 보여 주고 합계에 넣는다 — 금액을 못 읽으면 고를 수 없다(0원으로 지어내지 않는다)", () => {
+  const photo = { ...plan("draft"), plan_json: { pages: [{}, {}, {}, {}, {}], layout: "photo" }, estimate: { photo: true, images: 4, bought: 1, total_usd: 0.117 } };
+  const card = versionOptions("t", photo as never).find((o) => o.id === "card")!;
+  assert.equal(card.costUsd, 0.117);
+  assert.match(card.costText, /\$0\.12 · 배경 사진 4장/);
+  assert.match(card.costText, /1장은 이미 산 사진 재사용/);
+  assert.equal(orderTotal(versionOptions("t", photo as never), ["card"]), 0.117);
+  const unknown = versionOptions("t", { ...photo, estimate: undefined } as never).find((o) => o.id === "card")!;
+  assert.equal(unknown.enabled, false);
+  assert.equal(unknown.costUsd, null);
+});

@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  cardPlan, draftFromPlan, draftProblem, orderTotal, progressText, sameDraft, studioPhase, versionOptions,
+  cardCost, cardPlan, draftFromPlan, draftProblem, isPhotoPlan, orderTotal, progressText, sameDraft, studioPhase, versionOptions,
   type DraftEdit, type StudioScreen, type StudioStatus, type VersionId,
 } from "@/lib/drinks/studio";
 
@@ -426,10 +426,16 @@ function Versions({ status, plan, picked, setPicked, onBack, onDone }: {
   const why = usable.length === 0 ? "만들 버전을 하나 이상 골라 주세요." : nums.length > 0 ? `초안에 근거 없는 숫자(${nums.join(", ")})가 있어요 — 초안에서 고쳐 주세요.` : null;
   const generate = async () => {
     setBusy(true); setMsg(null);
+    // 사진형이면 화면에 보인 금액을 그대로 보낸다 — 서버가 지금 예상과 대조해, 같거나 크면 그 금액으로 결재를 열고 사진을 산다(0077).
     const r = await post("studio_generate", { topic_id: status.topic.id, format_intent: "card", plan_revision_id: plan.plan_revision_id,
-      expected_topic_version: status.topic.version, expected_review_version: status.review?.version, expected_plan_version: plan.version });
+      expected_topic_version: status.topic.version, expected_review_version: status.review?.version, expected_plan_version: plan.version,
+      ...(isPhotoPlan(plan) && total !== null ? { approve_usd: total } : {}) });
     setBusy(false);
-    if (!r.ok) { setMsg({ text: r.code === "version_conflict" ? "초안이 다른 곳에서 바뀌었어요. 새로 불러온 뒤 다시 확인해 주세요." : r.error ?? "생성을 시작하지 못했어요.", bad: true }); return; }
+    if (!r.ok) {
+      setMsg({ text: r.code === "version_conflict" ? "초안이 다른 곳에서 바뀌었어요. 새로 불러온 뒤 다시 확인해 주세요."
+        : r.code === "spend_confirm_required" ? `금액이 바뀌었어요 — ${r.error ?? ""} 새로 불러온 뒤 다시 확인해 주세요.` : r.error ?? "생성을 시작하지 못했어요.", bad: true });
+      return;
+    }
     onDone();
   };
   return (
@@ -457,7 +463,9 @@ function Versions({ status, plan, picked, setPicked, onBack, onDone }: {
           {usable.length ? usable.map((id) => { const o = opts.find((x) => x.id === id)!; return <div key={id} className="sj-order-line"><span>{o.label}</span><span>{o.costText.split(" · ")[0]}</span></div>; })
             : <p className="sj-empty">만들 버전을 골라 주세요.</p>}
           <div className="sj-order-total"><span>예상 총비용</span><span>{total === null ? "알 수 없음" : `$${total.toFixed(2)}`}</span></div>
-          <p className="sj-note">적용 상한: 유료 생성 호출 없음(카드뉴스는 서버에서 조립해요).<br />누르면 이 초안을 확정하고 제작을 요청해요. 게시는 하지 않아요.</p>
+          <p className="sj-note">{isPhotoPlan(plan)
+            ? <>적용 상한: 위 금액까지만 배경 사진을 사요(이 초안 전용, 하루 유효). 글자 배치·릴스 조립은 서버에서 무료로 해요.<br />누르면 이 금액을 승인하고 초안을 확정해 제작을 요청해요. 게시는 하지 않아요.</>
+            : <>적용 상한: 유료 생성 호출 없음(카드뉴스는 서버에서 조립해요).<br />누르면 이 초안을 확정하고 제작을 요청해요. 게시는 하지 않아요.</>}</p>
         </aside>
       </div>
       {msg && <p className={msg.bad ? "sj-error" : "sj-message"} role={msg.bad ? "alert" : "status"}>{msg.text}</p>}
@@ -465,7 +473,7 @@ function Versions({ status, plan, picked, setPicked, onBack, onDone }: {
       <div className="sj-actions">
         <button type="button" className="sj-btn sj-quiet" onClick={onBack}>← 초안 다시 보기</button>
         <button type="button" className="sj-btn sj-main" disabled={Boolean(why) || busy} onClick={generate}>
-          {busy ? "생성 요청 중…" : `이 초안으로 콘텐츠 생성 · ${usable.length}개`} <span aria-hidden="true">→</span></button>
+          {busy ? "생성 요청 중…" : `이 초안으로 콘텐츠 생성 · ${usable.length}개${total ? ` · $${total.toFixed(2)}` : ""}`} <span aria-hidden="true">→</span></button>
       </div>
     </section>
   );
@@ -484,11 +492,23 @@ function Results({ status, plan, files, problem, generating, onEdit, onAdd, onNe
   const retry = async () => {
     if (!job) return;
     setBusy(true);
-    const r = await post("studio_generate", { topic_id: status.topic.id, format_intent: "card", plan_revision_id: plan.plan_revision_id, retry_of: job.job_id });
+    const cost = cardCost(plan);
+    const r = await post("studio_generate", { topic_id: status.topic.id, format_intent: "card", plan_revision_id: plan.plan_revision_id, retry_of: job.job_id,
+      ...(isPhotoPlan(plan) && cost.usd !== null ? { approve_usd: cost.usd } : {}) });
     setBusy(false);
-    setMsg(r.ok ? "이 버전만 다시 만들고 있어요. 완료된 다른 버전은 다시 만들지 않아요." : r.error ?? "다시 만들지 못했어요.");
+    setMsg(r.ok ? "이 버전만 다시 만들고 있어요. 이미 산 사진은 다시 사지 않아요." : r.error ?? "다시 만들지 못했어요.");
     onRefresh();
   };
+  // 확정된 글자 카드 → 같은 확정 근거로 사진형 새 초안(0077). 옛 결과는 새 초안을 확정할 때까지 그대로 남는다.
+  const photoRedo = async () => {
+    setBusy(true);
+    const r = await post("studio_rewrite", { plan_revision_id: plan.plan_revision_id, expected_version: plan.version,
+      instruction: "사진형 카드(배경 사진 위 제목·본문 2줄)로 다시 써 주세요. 원문이 직접 말하지 않는 표현은 빼 주세요." });
+    setBusy(false);
+    setMsg(r.ok ? "사진형으로 새 초안을 쓰고 있어요. 다 되면 초안 다듬기 화면이 열려요." : r.error ?? "새 초안을 요청하지 못했어요.");
+    onRefresh();
+  };
+  const retryCost = failed ? cardCost(plan) : null;
   const images = files.filter((f) => f.mime.startsWith("image/")).sort((a, b) => a.position - b.position);
   const videos = files.filter((f) => f.mime.startsWith("video/"));
   return (
@@ -512,7 +532,9 @@ function Results({ status, plan, files, problem, generating, onEdit, onAdd, onNe
         <div className="sj-result-footer">
           <div><strong>카드뉴스</strong>
             <p className="sj-note">{failed ? `제작 실패(${job?.error_code ?? "원인 미상"})` : done ? `✓ 생성 완료 · 검수 ${files[0]?.reviewStatus === "approved" ? "승인됨" : "대기(게시 전 발행 화면에서)"}` : generating ? "만드는 중" : "확인 중"}</p></div>
-          {failed && <button type="button" className="sj-btn" disabled={busy} onClick={retry}>{busy ? "다시 만드는 중…" : "이 버전만 다시 만들기"}</button>}
+          {failed && <button type="button" className="sj-btn" disabled={busy || retryCost?.usd === null} onClick={retry}>
+            {busy ? "다시 만드는 중…" : `이 버전만 다시 만들기${retryCost?.usd ? ` · $${retryCost.usd.toFixed(2)}` : ""}`}</button>}
+          {!generating && !isPhotoPlan(plan) && <button type="button" className="sj-btn" disabled={busy} onClick={photoRedo}>사진형으로 다시 만들기</button>}
           {done && images[0]?.url && <a className="sj-btn" href={images[0].url} download>표지 내려받기</a>}
         </div>
         {msg && <p className="sj-message" role="status">{msg}</p>}

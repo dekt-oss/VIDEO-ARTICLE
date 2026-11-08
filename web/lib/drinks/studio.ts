@@ -9,10 +9,13 @@ export interface StudioRequest {
   error_code: string | null; error_message: string | null; recovery_of: string | null; instruction: string | null;
   cancel_requested?: boolean; created_at: string; finished_at: string | null;
 }
-export interface StudioPage { position: number; role: string; heading: string; body: string | null; claim_ids: string[] }
+export interface StudioPage { position: number; role: string; heading: string; body: string | null; claim_ids: string[]; image_prompt?: string }
+/** 사진형 카드 배경 사진 예상(0077 drinks_studio_card_estimate). 글자 카드는 photo=false·0원. */
+export interface StudioEstimate { photo: boolean; images: number; bought: number; total_usd: number }
 export interface StudioPlan {
   plan_revision_id: string; format: "video" | "carousel"; version: number; plan_status: string; blocked: boolean; blocked_reason: string | null;
-  current: boolean; plan_json: { pages?: StudioPage[]; reel?: { hook_title?: string; share_line?: string }; notes?: string | null };
+  current: boolean; plan_json: { pages?: StudioPage[]; reel?: { hook_title?: string; share_line?: string }; notes?: string | null; layout?: string; template_version?: string };
+  estimate?: StudioEstimate;
   unverified_numbers: string[]; topic_review_id: string;
   jobs: { job_id: string; status: string; error_code: string | null; attempt_no: number; created_at: string; finished_at: string | null }[];
 }
@@ -100,11 +103,27 @@ export type VersionId = "card" | "explainer" | "meme";
 export interface VersionOption { id: VersionId; label: string; desc: string; enabled: boolean; why?: string; costText: string; costUsd: number | null; href?: string }
 
 /** 고를 수 있는 버전. 끝까지 만들 수 없는 것은 고를 수 없게 보여 주고 이유를 단다(나중에 실패시키지 않는다). */
+/** 사진형 카드인가(0077). 배경 사진은 쪽마다 사서(유료) 금액을 화면에 보이고, 그 클릭이 그 금액의 결재다. */
+export function isPhotoPlan(plan: StudioPlan | null): boolean {
+  return Boolean(plan && (plan.estimate?.photo || plan.plan_json.layout === "photo" || plan.plan_json.template_version === "card-photo-v1"));
+}
+
+export function cardCost(plan: StudioPlan | null): { usd: number | null; text: string } {
+  if (!plan || !isPhotoPlan(plan)) return { usd: 0, text: "$0.00 · 유료 호출 없음(서버에서 조립)" };
+  const e = plan.estimate;
+  if (!e) return { usd: null, text: "배경 사진 금액을 불러오지 못했어요" };
+  const reused = e.bought > 0 ? ` · ${e.bought}장은 이미 산 사진 재사용` : "";
+  return { usd: e.total_usd, text: `$${e.total_usd.toFixed(2)} · 배경 사진 ${e.images}장(AI 생성, 유료)${reused}` };
+}
+
 export function versionOptions(topicId: string, plan: StudioPlan | null): VersionOption[] {
   const pages = plan?.plan_json.pages?.length ?? null;
+  const cost = cardCost(plan);
+  const kind = isPhotoPlan(plan) ? "사진형 카드" : "넘겨 읽는 카드";
   return [
-    { id: "card", label: "카드뉴스", desc: pages ? `넘겨 읽는 카드 ${pages}장 + 세로 릴스` : "넘겨 읽는 카드 + 세로 릴스",
-      enabled: Boolean(plan), why: plan ? undefined : "카드뉴스 초안이 아직 없어요.", costText: "$0.00 · 유료 호출 없음(서버에서 조립)", costUsd: 0 },
+    { id: "card", label: "카드뉴스", desc: pages ? `${kind} ${pages}장 + 세로 릴스` : `${kind} + 세로 릴스`,
+      enabled: Boolean(plan) && cost.usd !== null, why: plan ? (cost.usd === null ? cost.text : undefined) : "카드뉴스 초안이 아직 없어요.",
+      costText: cost.text, costUsd: cost.usd },
     { id: "explainer", label: "설명형 영상", desc: "장면과 내레이션으로 설명하는 세로 영상", enabled: false,
       why: "그림·영상 구매와 장면 판정이 따로 있어 이 화면에서는 아직 한 번에 만들 수 없어요.", costText: "금액은 장면 수가 정해져야 알 수 있어요",
       costUsd: null, href: `/drinks/work/${topicId}?lane=explainer` },
