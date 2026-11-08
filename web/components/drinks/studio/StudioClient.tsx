@@ -1,18 +1,24 @@
 "use client";
 
-// 콘텐츠 스튜디오 — 운영자 확정 목업(sooljjerigo-simple-studio, 2026-11-07)의 3단계: ① 소재 고르기 ② 초안 다듬기 ③ 버전·생성.
-// ★ 화면은 서버 상태(drinks_studio_status)만 보여 준다. 진행률·비용·완료 표시를 지어내지 않는다.
-// ★ 편집은 서버에 저장한다(studio_save_draft). 저장 전/저장 중/저장됨/실패를 나눠 보이고, 실패를 저장됨으로 표시하지 않는다.
-// ★ 준비·생성 중에만 몇 초마다 새로 읽는다(router.refresh). 편집 중에는 새로 읽지 않아 입력이 사라지지 않는다.
+// 콘텐츠 스튜디오 — 운영자가 정한 한 줄 흐름(2026-11-08, docs/deviation-drinks-studio-flow.md):
+//   ① 소재 ② 초안(글로 된 구성표 + 코멘트 재생성) ③ 작업 명세서 승인 ④ 제작·검수 ⑤ 인스타 등록. 근거는 뒤에서 자동 검사하고 여기 보이지 않는다.
+// ★ 화면은 서버 상태만 보여 준다. 진행률·비용·완료 표시를 지어내지 않는다. 막는 것은 전부 DB 다.
+// ★ 준비·생성 중에만 몇 초마다 새로 읽는다(router.refresh). 코멘트를 쓰는 화면은 새로 읽지 않아 입력이 사라지지 않는다.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import {
-  cardCost, cardPlan, draftFromPlan, draftProblem, isPhotoPlan, orderTotal, progressText, sameDraft, studioPhase, versionOptions,
-  type DraftEdit, type StudioScreen, type StudioStatus, type VersionId,
-} from "@/lib/drinks/studio";
+import ExplainerProduction from "@/components/drinks/ExplainerProduction";
+import { CHECKS, REEL_CHECKS } from "@/components/drinks/ProductionControls";
+import { RequestActions } from "@/components/drinks/PublishControls";
+import { PROCESS_CHECKS, QUALITY_CHECKS, canJudge, kstMinute, nextStep, type ExplainerStatus } from "@/lib/drinks/explainerQueue";
+import { blockerLabel } from "@/lib/drinks/model";
 import { PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL, type PickFormat } from "@/lib/drinks/pickModal";
+import { PUBLISH_WINDOW, publishWindowProblem } from "@/lib/drinks/publishWindow";
+import {
+  activePlan, cardCost, defaultPublishAt, draftRows, isPhotoPlan, progressText, studioPhase,
+  type StudioLane, type StudioPlan, type StudioScreen, type StudioStatus,
+} from "@/lib/drinks/studio";
 
 export interface StudioCollectItem {
   key: string; topicId: string | null; candidateId: string | null; title: string; question: string; kind: string; origin: string;
@@ -26,6 +32,17 @@ export interface StudioResultFile {
   role: string; position: number; mime: string; url: string | null; urlError: string | null; width: number | null; height: number | null;
   jobId: string; reviewStatus: string | null; qa: boolean | null;
 }
+/** 지금 초안의 제작 상태 */
+export interface StudioProduction {
+  explainer: ExplainerStatus | null;
+  activeJob: { renderer: string; status: string } | null;
+  outputReview: { id: string; version: number; status: string; hasReel: boolean } | null;
+}
+export interface StudioPublish {
+  accounts: { id: string; label: string; postTypes: string[] }[];
+  aiLabel: string | null;
+  request: { id: string; version: number; status: string; approval_digest: string | null; caption: string | null; publish_at: string | null; external_url: string | null } | null;
+}
 
 type Post = { ok: boolean; status: number; result?: Record<string, unknown>; error?: string; code?: string; detail?: unknown; dispatch?: { triggered: boolean } };
 async function post(action: string, payload: Record<string, unknown>): Promise<Post> {
@@ -38,47 +55,40 @@ async function post(action: string, payload: Record<string, unknown>): Promise<P
   }
 }
 
-const STEPS: { id: "collect" | "draft" | "versions"; label: string }[] = [
-  { id: "collect", label: "소재 고르기" }, { id: "draft", label: "초안 다듬기" }, { id: "versions", label: "버전·생성" },
-];
-const LOGICAL: Record<StudioScreen, "collect" | "draft" | "versions"> = {
-  collect: "collect", preparing: "collect", blocked: "collect", choice: "collect", video: "draft", draft: "draft", versions: "versions", generating: "versions", result: "versions",
+const STEPS = [
+  { id: "collect", label: "소재" }, { id: "draft", label: "초안" }, { id: "spec", label: "작업 명세서" }, { id: "make", label: "제작·검수" }, { id: "publish", label: "인스타 등록" },
+] as const;
+const LOGICAL: Record<StudioScreen, (typeof STEPS)[number]["id"]> = {
+  collect: "collect", preparing: "draft", blocked: "collect", choice: "collect", draft: "draft", spec: "spec", generating: "make", result: "make", publish: "publish",
 };
 const POLL_MS = 5000;
 
-export default function StudioClient({ items, problems, status, statusProblem, files, resultProblem, selectedTopicId, summary, header, footer }: {
+export default function StudioClient({ items, problems, status, statusProblem, files, resultProblem, selectedTopicId, lane, production, publish, summary, header, footer }: {
   items: StudioCollectItem[]; problems: string[]; status: StudioStatus | null; statusProblem: string | null;
   files: StudioResultFile[]; resultProblem: string | null; selectedTopicId: string | null;
+  lane: StudioLane | null; production: StudioProduction | null; publish: StudioPublish | null;
   /** 목록 머리 설명 · ① 화면 위·아래에 붙는 서버 칸(탭·한도, 손으로 넣기) */
   summary?: string; header?: ReactNode; footer?: ReactNode;
 }) {
   const router = useRouter();
-  const phase = studioPhase(status);
-  const plan = cardPlan(status);
-  // 사람이 고른 화면(뒤로 가기·버전 고르기). 서버 단계가 바뀌면 서버 단계를 따른다.
+  const phase = studioPhase(status, { lane, episodeState: production?.explainer?.episode?.state ?? null, outputStatus: production?.outputReview?.status ?? null });
+  const plan = activePlan(status, lane);
+  // 사람이 고른 화면(뒤로 가기). 서버 단계가 바뀌면 서버 단계를 따른다.
   const [override, setOverride] = useState<StudioScreen | null>(null);
   const [selKey, setSelKey] = useState<string | null>(() => (selectedTopicId ? items.find((i) => i.topicId === selectedTopicId)?.key : null) ?? items[0]?.key ?? null);
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [picked, setPicked] = useState<VersionId[]>(["card"]);
   const [format, setFormat] = useState<PickFormat>("card");
-  // 초안 화면이 마지막으로 저장한 버전·숫자 검사(자동 저장은 화면을 새로 읽지 않으므로 여기로 올린다).
-  // 뒤로 갔다 와도 방금 저장한 글이 보이도록 저장본을 여기 둔다(서버 props 는 다음 새로 읽기 전까지 옛 값이다).
-  const [saved, setSaved] = useState<{ planId: string; version: number; nums: string[]; edit: DraftEdit } | null>(null);
-  const livePlan = plan && saved && saved.planId === plan.plan_revision_id && saved.version > plan.version
-    ? { ...plan, version: saved.version, unverified_numbers: saved.nums,
-        plan_json: { ...plan.plan_json, pages: (plan.plan_json.pages ?? []).map((pg, i) => ({ ...pg, heading: saved.edit.pages[i]?.heading ?? pg.heading,
-          body: saved.edit.pages[i]?.body || null })), reel: { hook_title: saved.edit.hook_title, share_line: saved.edit.share_line } } }
-    : plan;
   useEffect(() => setOverride(null), [phase.screen, status?.topic.id]);
   const screen: StudioScreen = override ?? (selectedTopicId ? phase.screen : "collect");
 
   // 준비·생성 중에만 새로 읽는다(서버 상태가 정본 — 창을 닫았다 열어도 같은 상태).
   useEffect(() => {
-    if (screen !== "preparing" && screen !== "generating") return;
+    const waitingSpec = screen === "spec" && plan?.format === "video" && !production?.explainer?.episode?.directive;
+    if (screen !== "preparing" && screen !== "generating" && !waitingSpec) return;
     const t = window.setInterval(() => router.refresh(), POLL_MS);
     return () => window.clearInterval(t);
-  }, [screen, router]);
+  }, [screen, router, plan?.format, production?.explainer?.episode?.directive]);
 
   const go = (topicId: string | null) => router.push(topicId ? `/drinks/studio?topic=${topicId}` : "/drinks/studio");
   const sel = items.find((i) => i.key === selKey) ?? null;
@@ -104,12 +114,12 @@ export default function StudioClient({ items, problems, status, statusProblem, f
       <nav className="sj-steps" aria-label="콘텐츠 제작 단계">
         {STEPS.map((s, i) => {
           const cur = LOGICAL[screen] === s.id;
-          const reachable = s.id === "collect" || (s.id === "draft" && Boolean(plan)) || (s.id === "versions" && Boolean(plan));
+          // 앞 단계로만 돌아갈 수 있다. 다음 단계는 그 단계의 승인 버튼으로 간다.
+          const target: StudioScreen | null = s.id === "collect" ? "collect" : s.id === "draft" && plan ? "draft" : null;
           return (
             <span key={s.id} className="sj-step-wrap">
               {i > 0 && <span className="sj-chevron" aria-hidden="true">→</span>}
-              <button type="button" className="sj-step" aria-current={cur ? "step" : undefined} disabled={!reachable || busy}
-                onClick={() => setOverride(s.id === "versions" && plan?.plan_status === "approved" ? phase.screen : s.id)}>
+              <button type="button" className="sj-step" aria-current={cur ? "step" : undefined} disabled={!target || busy} onClick={() => setOverride(target)}>
                 <b>{i + 1}</b>{s.label}
               </button>
             </span>
@@ -134,35 +144,19 @@ export default function StudioClient({ items, problems, status, statusProblem, f
         setMsg(r.ok ? { text: "취소를 요청했어요. 새 작업과 재시도는 멈추고, 이미 쓴 비용 기록은 남아요." } : { text: r.error ?? "취소하지 못했어요.", bad: true });
         router.refresh();
       }} busy={busy} />}
-      {screen === "video" && status && (
-        <section aria-labelledby="sj-video-h" className="sj-progress-wrap">
-          <p className="sj-kicker">VIDEO DRAFT READY</p>
-          <h1 id="sj-video-h">설명형 릴스 초안이 준비됐어요.</h1>
-          <p className="sj-status">{status.topic.title}</p>
-          <p className="sj-note">대본 확인과 장면 지시서, 영상 제작은 작업공간에서 이어져요.<br />돈이 드는 단계는 금액을 보고 따로 승인해요.</p>
-          <div className="sj-row">
-            <Link className="sj-btn sj-main" href={`/drinks/work/${status.topic.id}?lane=explainer`}>초안 보러 가기 <span aria-hidden="true">→</span></Link>
-            <button type="button" className="sj-btn" onClick={() => setOverride("collect")}>다른 소재 고르기</button>
-          </div>
-        </section>
-      )}
       {screen === "blocked" && <Blocked code={phase.code} status={status} onBack={() => setOverride("collect")} />}
       {screen === "choice" && status && <Choice phase={phase} status={status} busy={busy} onBack={() => setOverride("collect")}
         onRetry={() => { const it = items.find((i) => i.topicId === status.topic.id); if (it) prepare(it); }} />}
-      {screen === "draft" && status && plan && (
-        <Draft key={plan.plan_revision_id} status={status} plan={livePlan!} onBack={() => setOverride("collect")}
-          onSaved={(version, nums, edit) => setSaved({ planId: plan.plan_revision_id, version, nums, edit })}
-          onNext={() => setOverride(plan.plan_status === "approved" ? phase.screen : "versions")} onRefresh={() => router.refresh()} />
+      {screen === "draft" && plan && <Draft key={`${plan.plan_revision_id}-${plan.version}`} plan={plan} onBack={() => setOverride("collect")} onRefresh={() => router.refresh()} />}
+      {screen === "spec" && status && plan && <Spec status={status} plan={plan} production={production} onBack={() => setOverride("draft")} onRefresh={() => router.refresh()} />}
+      {screen === "generating" && plan?.format === "video" && production?.explainer && <VideoMaking plan={plan} production={production} onRefresh={() => router.refresh()} />}
+      {(screen === "result" || (screen === "generating" && plan?.format !== "video")) && status && plan && (
+        <Results status={status} plan={plan} files={files} problem={resultProblem} generating={screen === "generating"} production={production}
+          onEdit={() => setOverride("draft")} onRefresh={() => router.refresh()} />
       )}
-      {screen === "versions" && status && plan && (
-        <Versions status={status} plan={livePlan!} picked={picked} setPicked={setPicked} onBack={() => setOverride("draft")} onDone={() => { setOverride(null); router.refresh(); }} />
-      )}
-      {(screen === "generating" || screen === "result") && status && plan && (
-        <Results status={status} plan={plan} files={files} problem={resultProblem} generating={screen === "generating"}
-          onEdit={() => setOverride("draft")} onAdd={() => setOverride("versions")} onNext={() => go(null)} onRefresh={() => router.refresh()} />
-      )}
+      {screen === "publish" && status && plan && <Publish status={status} plan={plan} files={files} publish={publish} production={production} onDone={() => go(null)} onRefresh={() => router.refresh()} />}
 
-      <footer className="sj-footer"><span>술째리고 · 콘텐츠 스튜디오</span><span>콘텐츠 생성은 공개 게시가 아니에요. 게시 승인·예약은 <Link href="/drinks/publish">발행</Link>에서 따로 해요.</span></footer>
+      <footer className="sj-footer"><span>술째리고 · 콘텐츠 스튜디오</span>{status && <span><Link href={`/drinks/work/${status.topic.id}?detail=1${plan ? `&lane=${plan.format === "video" ? "explainer" : "card"}` : ""}`}>자세히 보기(근거·이력)</Link></span>}</footer>
     </div>
   );
 }
@@ -217,13 +211,11 @@ function Collect({ summary, items, problems, selKey, onSelect, sel, busy, curren
                     </label>
                   ))}
                 </fieldset>
-              ) : sel.cardPicked && !hasPlan && !sel.videoDraft && <p className="sj-note">카드뉴스로 시작한 소재예요. 릴스는 카드뉴스 초안의 ③ 버전 화면에서 이어 만들 수 있어요.</p>}
+              ) : sel.cardPicked && !hasPlan && !sel.videoDraft && <p className="sj-note">카드뉴스로 시작한 소재예요.</p>}
               {askFormat && format === "meme"
                 ? <p className="sj-note">밈은 틀이 되는 원본 릴스를 먼저 골라야 해서 밈 보드에서 시작해요.</p>
                 : <p className="sj-note">자료 확인과 구성은 자동으로 진행돼요.<br />완성된 초안을 읽고 다듬어 주세요.</p>}
-              {sel.videoDraft && sel.topicId ? (
-                <Link className="sj-btn sj-main" href={`/drinks/work/${sel.topicId}`}>설명형 초안 이어보기 <span aria-hidden="true">→</span></Link>
-              ) : hasPlan && sel.topicId ? (
+              {(sel.videoDraft || hasPlan) && sel.topicId ? (
                 <button type="button" className="sj-btn sj-main" onClick={() => onOpen(sel.topicId!)}>초안 이어보기 <span aria-hidden="true">→</span></button>
               ) : askFormat && format === "meme" ? (
                 <Link className="sj-btn sj-main" href="/drinks/memes">밈 보드에서 틀 고르기 <span aria-hidden="true">→</span></Link>
@@ -302,290 +294,335 @@ function Choice({ phase, status, busy, onBack, onRetry }: { phase: ReturnType<ty
   );
 }
 
-// ── ② 초안 다듬기 ────────────────────────────────────────────────────────────
-type SaveState = "saved" | "dirty" | "saving" | "failed";
-
-function Draft({ status, plan, onBack, onNext, onRefresh, onSaved }: {
-  status: StudioStatus; plan: NonNullable<ReturnType<typeof cardPlan>>; onBack: () => void; onNext: () => void; onRefresh: () => void;
-  onSaved: (version: number, nums: string[], edit: DraftEdit) => void;
-}) {
-  const locked = plan.plan_status !== "draft";
-  const roles = (plan.plan_json.pages ?? []).map((p) => p.role);
-  const server = useMemo(() => draftFromPlan(plan), [plan]);
-  const [edit, setEdit] = useState<DraftEdit>(server);
-  const [version, setVersion] = useState(plan.version);
-  const [save, setSave] = useState<SaveState>("saved");
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const [nums, setNums] = useState<string[]>(plan.unverified_numbers ?? []);
-  const [instr, setInstr] = useState("");
-  const [rewriteMsg, setRewriteMsg] = useState<string | null>(null);
-  const lastSaved = useRef<DraftEdit>(server);
-  const current = useRef<DraftEdit>(server);   // 타이머가 부를 때의 최신 글(오래된 클로저로 비교하지 않게)
-  const versionRef = useRef(plan.version);
-  const timer = useRef<number | null>(null);
-
-  const doSave = useCallback(async (d: DraftEdit): Promise<boolean> => {
-    if (locked || sameDraft(d, lastSaved.current)) { setSave("saved"); return true; }
-    const problem = draftProblem(d, roles);
-    if (problem) { setSave("failed"); setSaveMsg(problem); return false; }
-    setSave("saving");
-    const r = await post("studio_save_draft", { plan_revision_id: plan.plan_revision_id, expected_version: versionRef.current, pages: d.pages,
-      reel: { hook_title: d.hook_title, share_line: d.share_line } });
-    if (!r.ok) {
-      setSave("failed");
-      setSaveMsg(r.code === "version_conflict" ? "다른 곳에서 먼저 저장됐어요. 내 수정은 화면에 남아 있어요 — 새로 불러오기 전에 복사해 두세요." : r.error ?? "저장하지 못했어요.");
-      return false;
-    }
-    lastSaved.current = d;
-    const v = Number(r.result?.version ?? versionRef.current);
-    versionRef.current = v;
-    const n = (r.result?.unverified_numbers as string[] | undefined) ?? [];
-    setVersion(v);
-    setNums(n);
-    onSaved(v, n, d);
-    setSaveMsg(null);
-    setSave(sameDraft(d, current.current) ? "saved" : "dirty");
-    return true;
-  }, [locked, plan.plan_revision_id, roles, onSaved]);
-
-  const change = (d: DraftEdit) => {
-    current.current = d;
-    setEdit(d); setSave("dirty"); setSaveMsg(null);
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => { void doSave(d); }, 1500);
-  };
-  // 위쪽 단계 버튼 등으로 이 화면이 닫히면 남은 글을 저장한다(결과는 부모의 저장본으로 올라간다).
-  const saveRef = useRef(doSave);
-  saveRef.current = doSave;
-  useEffect(() => () => {
-    if (timer.current) window.clearTimeout(timer.current);
-    if (!sameDraft(current.current, lastSaved.current)) void saveRef.current(current.current);
-  }, []);
-  // 저장 안 된 글이 있으면 창을 닫기 전에 묻는다.
-  useEffect(() => {
-    if (save !== "dirty" && save !== "failed") return;
-    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [save]);
-
-  const setPage = (i: number, k: "heading" | "body", v: string) => change({ ...edit, pages: edit.pages.map((p, j) => (j === i ? { ...p, [k]: v } : p)) });
-  // 화면을 떠나기 전에 저장한다(앱 안 이동은 beforeunload 가 잡지 못한다). 저장이 실패하면 머문다.
-  const leave = async (then: () => void) => {
-    if (timer.current) window.clearTimeout(timer.current);
-    if (await doSave(current.current)) then();
-  };
-  const next = () => leave(onNext);
-  const rewrite = async () => {
-    if (instr.trim().length < 2) { setRewriteMsg("원하는 수정 방향을 적어 주세요."); return; }
-    if (!(await doSave(current.current))) { setRewriteMsg("먼저 지금 수정한 내용을 저장해야 해요."); return; }
-    const r = await post("studio_rewrite", { plan_revision_id: plan.plan_revision_id, expected_version: versionRef.current, instruction: instr.trim() });
-    if (!r.ok) { setRewriteMsg(r.error ?? "수정을 시작하지 못했어요. 지금 초안은 그대로예요."); return; }
-    setRewriteMsg("수정 방향을 반영하고 있어요. 새 초안이 저장될 때까지 지금 초안은 그대로 남아요.");
+// ── 공통: 코멘트로 다시 만들기 ────────────────────────────────────────────────
+function CommentBox({ plan, label, note, onRefresh }: { plan: StudioPlan; label: string; note: string; onRefresh: () => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const send = async () => {
+    setBusy(true);
+    const r = await post("studio_rewrite", { plan_revision_id: plan.plan_revision_id, expected_version: plan.version, instruction: text.trim() });
+    setBusy(false);
+    if (!r.ok) { setMsg(r.error ?? "다시 만들기를 시작하지 못했어요. 지금 초안은 그대로예요."); return; }
+    setMsg("코멘트를 반영해 다시 만들고 있어요.");
     onRefresh();
   };
-  const SAVE_TEXT: Record<SaveState, string> = { saved: "✓ 서버에 저장됨", dirty: "저장 전 — 잠시 뒤 자동 저장", saving: "저장 중…", failed: "저장 실패" };
-  const supported = (status.review?.claims ?? []).filter((c) => (status.review?.core_claim_ids ?? []).includes(c.claim_id));
+  return (
+    <div className="sj-comment">
+      <label className="sj-field">{label}<textarea value={text} maxLength={500} rows={3} placeholder="예: 2번 장면은 술잔 대신 쌀을 깎는 모습으로, 말투를 더 짧게" onChange={(e) => setText(e.target.value)} /></label>
+      <div className="sj-comment-foot">
+        <span className="sj-note">{note}</span>
+        <button type="button" className="sj-btn" disabled={busy || text.trim().length < 2} onClick={send}>{busy ? "요청 중…" : "코멘트대로 다시 만들기"}</button>
+      </div>
+      {msg && <p className="sj-note" role="status">{msg}</p>}
+    </div>
+  );
+}
 
+// ── ② 초안: 어떤 화면에 무엇이 나오는지 글로 ─────────────────────────────────────
+function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => void; onRefresh: () => void }) {
+  const video = plan.format === "video";
+  const draft = plan.plan_status === "draft";
+  const rows = draftRows(plan);
+  const totalSec = (plan.plan_json.scenes ?? []).reduce((n, s) => n + (typeof s.timing_sec === "number" ? s.timing_sec : 0), 0);
+  const nums = plan.unverified_numbers ?? [];
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const approve = async () => {
+    setBusy(true); setProblem(null);
+    const r = await post("studio_approve_draft", { plan_revision_id: plan.plan_revision_id, expected_plan_version: plan.version });
+    if (!r.ok) {
+      setBusy(false);
+      const detail = Array.isArray(r.detail) ? ` (${(r.detail as string[]).map(blockerLabel).join(", ")})` : "";
+      setProblem(r.code === "version_conflict" ? "초안이 다른 곳에서 바뀌었어요. 새로고침한 뒤 다시 확인해 주세요." : `${r.error ?? "승인하지 못했어요."}${detail}`);
+      return;
+    }
+    // 릴스는 승인과 함께 작업 명세서를 만든다(0원). 실패해도 승인은 끝났고 명세서 화면에서 다시 요청한다.
+    if (video) await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id });
+    setBusy(false);
+    onRefresh();
+  };
   return (
     <section aria-labelledby="sj-draft-h">
       <div className="sj-intro">
-        <div><p className="sj-kicker">DRAFT / EDIT</p><h1 id="sj-draft-h">이 이야기는 어때요?</h1>
-          <p>{locked ? "이 초안으로 콘텐츠를 만들었어요. 결과와 묶여 있어 여기서는 읽기만 해요." : "제목과 내용을 다듬고, 마음에 들면 다음으로 넘어가세요."}</p></div>
-        <span className="sj-versiontag">카드뉴스 초안 · 버전 {version}</span>
+        <div><p className="sj-kicker">DRAFT</p><h1 id="sj-draft-h">이 구성으로 만들까요?</h1>
+          <p>{draft ? "화면마다 무엇이 나오는지 읽어 보세요. 고칠 곳은 코멘트로 적으면 다시 만들어요." : "승인한 초안이에요."}</p></div>
+        <span className="sj-versiontag">{video ? `릴스 ${rows.length}장면${totalSec ? ` · ${totalSec}초` : ""}` : `카드뉴스 ${plan.plan_json.pages?.length ?? 0}장`}</span>
       </div>
-      <div className="sj-editor-layout">
-        <div className="sj-editor">
-          <label className="sj-field">제목<input value={edit.pages[0]?.heading ?? ""} readOnly={locked} maxLength={120}
-            onChange={(e) => setPage(0, "heading", e.target.value)} /></label>
-          {edit.pages.slice(1).map((p, k) => {
-            const i = k + 1;
-            if (roles[i] === "source") return <p key={i} className="sj-note">{i + 1}장 · 출처 — 사용한 출처 목록이 자동으로 들어가요.</p>;
-            return (
-              <fieldset key={i} className="sj-page">
-                <legend>{i + 1}장</legend>
-                <label className="sj-field">소제목<input value={p.heading} readOnly={locked} maxLength={120} onChange={(e) => setPage(i, "heading", e.target.value)} /></label>
-                <label className="sj-field">내용<textarea value={p.body} readOnly={locked} maxLength={1200} rows={4} onChange={(e) => setPage(i, "body", e.target.value)} /></label>
-              </fieldset>
-            );
-          })}
-          <details className="sj-details"><summary>릴스 첫 화면·마지막 한 줄</summary>
-            <label className="sj-field">첫 화면 질문<input value={edit.hook_title} readOnly={locked} maxLength={60} onChange={(e) => change({ ...edit, hook_title: e.target.value })} /></label>
-            <label className="sj-field">마지막 한 줄<input value={edit.share_line} readOnly={locked} maxLength={60} onChange={(e) => change({ ...edit, share_line: e.target.value })} /></label>
-          </details>
-          {!locked && <p className={`sj-checkline${save === "failed" ? " sj-bad" : ""}`} role="status" aria-live="polite">{SAVE_TEXT[save]}{saveMsg ? ` — ${saveMsg}` : ""}</p>}
-          {nums.length > 0 && <p className="sj-warnline" role="alert">근거 자료에 없는 숫자가 있어요: {nums.join(", ")} — 고치거나 지워야 생성할 수 있어요.</p>}
-          {!locked && (
-            <details className="sj-details"><summary>다른 방향으로 다듬기</summary>
-              <div className="sj-direction">
-                <label className="sj-field">수정 방향<textarea value={instr} maxLength={500} placeholder="예: 더 짧고 친근하게, 첫 문장은 질문으로" onChange={(e) => setInstr(e.target.value)} /></label>
-                <button type="button" className="sj-btn" onClick={rewrite}>이 방향으로 수정</button>
-              </div>
-              {rewriteMsg && <p className="sj-note" role="status">{rewriteMsg}</p>}
-            </details>
-          )}
-          <details className="sj-details"><summary>출처·확인 내역 보기</summary>
-            <p>사용한 출처</p>
-            <ul>{status.sources.filter((s) => s.role === "evidence").map((s) => (
-              <li key={s.snapshot_id}>{s.url ? <a href={s.url} target="_blank" rel="noreferrer">{s.title ?? s.url}</a> : s.title}{s.publisher ? ` · ${s.publisher}` : ""}</li>
-            ))}</ul>
-            <p>초안에 쓴 확인된 내용(AI 사실 확인 — 원문 인용 대조 통과, 사람 확인 아님)</p>
-            <ul>{supported.map((c) => <li key={c.claim_id}>{c.text}{c.source_refs?.[0] ? <q className="sj-quote">{c.source_refs[0].original_quote}</q> : null}</li>)}</ul>
-            {status.last?.excluded && status.last.excluded.length > 0 && (<>
-              <p>제외한 내용</p>
-              <ul>{status.last.excluded.map((x) => <li key={x.claim_id}>{x.text} — <span className="sj-muted">{x.why}</span></li>)}</ul>
-            </>)}
-            <p className="sj-muted">직접 고친 문장은 숫자만 근거와 다시 대조해요. 뜻이 근거를 넘는지는 자동으로 보지 못하니 읽으며 확인해 주세요.</p>
-          </details>
-        </div>
-        <aside aria-label="미리보기">
-          <div className="sj-preview-head"><span>표지 미리보기</span><span>{edit.pages.length}장</span></div>
-          <div className="sj-preview"><span className="sj-cover-mark">술째리고<br /><small>알고 마시는 한 잔</small></span>
-            <span className="sj-cover-title">{edit.pages[0]?.heading}</span>
-            <span className="sj-cover-meta">{edit.share_line}</span></div>
-          <ol className="sj-strip" aria-label="장 구성">{edit.pages.map((p, i) => <li key={i}>{i + 1}. {roles[i] === "source" ? "출처" : p.heading}</li>)}</ol>
-        </aside>
-      </div>
+      <ol className="sj-scenes">
+        {rows.map((row) => (
+          <li key={row.title} className="sj-scene">
+            <h2>{row.title}</h2>
+            <dl>{row.lines.map((l) => <div key={l.label}><dt>{l.label}</dt><dd>{l.text}</dd></div>)}</dl>
+          </li>
+        ))}
+      </ol>
+      {nums.length > 0 && <p className="sj-warnline" role="alert">자동 검사: 근거 자료에 없는 숫자가 있어요({nums.join(", ")}). 코멘트로 고쳐 다시 만들어 주세요.</p>}
+      {draft && <CommentBox plan={plan} label="수정 코멘트" note="다시 만들면 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
+      {problem && <p className="sj-error" role="alert">{problem}</p>}
       <div className="sj-actions">
-        <button type="button" className="sj-btn sj-quiet" onClick={() => leave(onBack)}>← 다른 소재 보기</button>
-        <div><span className="sj-note">{locked ? "확정된 초안" : "수정은 서버에 저장돼요"}</span>
-          <button type="button" className="sj-btn sj-main" disabled={save === "saving"} onClick={next}>{locked ? "결과 보기" : "버전 고르기"} <span aria-hidden="true">→</span></button></div>
+        <button type="button" className="sj-btn sj-quiet" onClick={onBack}>← 다른 소재 보기</button>
+        {draft && (
+          <div><span className="sj-note">승인해도 돈은 나가지 않아요. 근거는 자동으로 검사해요.</span>
+            <button type="button" className="sj-btn sj-main" disabled={busy || nums.length > 0} onClick={approve}>{busy ? "승인 중…" : "이 초안 승인"} <span aria-hidden="true">→</span></button></div>
+        )}
       </div>
     </section>
   );
 }
 
-// ── ③ 버전·생성 ──────────────────────────────────────────────────────────────
-function Versions({ status, plan, picked, setPicked, onBack, onDone }: {
-  status: StudioStatus; plan: NonNullable<ReturnType<typeof cardPlan>>; picked: VersionId[]; setPicked: (v: VersionId[]) => void; onBack: () => void; onDone: () => void;
-}) {
-  const opts = versionOptions(status.topic.id, plan);
-  const usable = picked.filter((id) => opts.find((o) => o.id === id)?.enabled);
-  const total = orderTotal(opts, usable);
-  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+// ── ③ 작업 명세서: 실제 제작에 쓰는 세부 지시 ───────────────────────────────────
+function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioStatus; plan: StudioPlan; production: StudioProduction | null; onBack: () => void; onRefresh: () => void }) {
   const [busy, setBusy] = useState(false);
-  const nums = plan.unverified_numbers ?? [];
-  const why = usable.length === 0 ? "만들 버전을 하나 이상 골라 주세요." : nums.length > 0 ? `초안에 근거 없는 숫자(${nums.join(", ")})가 있어요 — 초안에서 고쳐 주세요.` : null;
-  const generate = async () => {
-    setBusy(true); setMsg(null);
-    // 사진형이면 화면에 보인 금액을 그대로 보낸다 — 서버가 지금 예상과 대조해, 같거나 크면 그 금액으로 결재를 열고 사진을 산다(0077).
+  const [problem, setProblem] = useState<string | null>(null);
+  const fail = (r: Post, fallback: string) => { setBusy(false); setProblem(r.error ?? fallback); };
+  const generateCard = async () => {
+    const c = cardCost(plan);
+    setBusy(true); setProblem(null);
     const r = await post("studio_generate", { topic_id: status.topic.id, format_intent: "card", plan_revision_id: plan.plan_revision_id,
       expected_topic_version: status.topic.version, expected_review_version: status.review?.version, expected_plan_version: plan.version,
-      ...(isPhotoPlan(plan) && total !== null ? { approve_usd: total } : {}) });
-    setBusy(false);
-    if (!r.ok) {
-      setMsg({ text: r.code === "version_conflict" ? "초안이 다른 곳에서 바뀌었어요. 새로 불러온 뒤 다시 확인해 주세요."
-        : r.code === "spend_confirm_required" ? `금액이 바뀌었어요 — ${r.error ?? ""} 새로 불러온 뒤 다시 확인해 주세요.` : r.error ?? "생성을 시작하지 못했어요.", bad: true });
-      return;
-    }
-    onDone();
+      ...(isPhotoPlan(plan) && c.usd !== null ? { approve_usd: c.usd } : {}) });
+    if (!r.ok) { fail(r, "제작을 시작하지 못했어요."); return; }
+    setBusy(false); onRefresh();
   };
+  const ex = production?.explainer ?? null;
+  const d = ex?.episode?.directive ?? null;
+  const cap = d ? Math.min(10, d.estimate.suggested_cap_usd) : 0;
+  const open = ex?.approvals.find((a) => a.status === "open" && !a.expired && a.allowed_kinds.includes("image") && a.allowed_kinds.includes("video")) ?? null;
+  const buyVideo = async () => {
+    if (!d) return;
+    setBusy(true); setProblem(null);
+    let approvalId = open?.approval_id ?? null;
+    if (!approvalId) {
+      const a = await post("open_spend_approval", { plan_revision_id: plan.plan_revision_id, stage: "스튜디오 명세서 승인", purpose: "설명형 릴스 그림·클립", cap_usd: cap,
+        allowed_kinds: ["image", "video"], approver_words: `스튜디오 [승인하고 제작] — 명세서와 상한 $${cap.toFixed(2)} 확인 후 승인`, ...(ex?.episode?.order_hash ? { order_hash: ex.episode.order_hash } : {}) });
+      if (!a.ok) { fail(a, "결재를 열지 못했어요. 돈은 나가지 않았어요."); return; }
+      approvalId = String(a.result?.approval_id ?? a.result?.id ?? "");
+    }
+    const r = await post("explainer_request_buy", { plan_revision_id: plan.plan_revision_id, spend_approval_id: approvalId });
+    if (!r.ok) { fail(r, "제작을 요청하지 못했어요."); return; }
+    setBusy(false); onRefresh();
+  };
+  const requestPlan = async () => {
+    setBusy(true); setProblem(null);
+    const r = await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id });
+    if (!r.ok) { fail(r, "명세서를 요청하지 못했어요."); return; }
+    setBusy(false); onRefresh();
+  };
+  const cost = cardCost(plan);
+  const card = plan.format === "carousel";
+  const waiting = !card && !d;
   return (
-    <section aria-labelledby="sj-ver-h">
+    <section aria-labelledby="sj-spec-h">
       <div className="sj-intro">
-        <div><p className="sj-kicker">VERSION / CREATE</p><h1 id="sj-ver-h">어떤 콘텐츠로 만들까요?</h1><p>같은 초안으로 필요한 버전을 골라 한 번에 만드세요.</p></div>
-        <span className="sj-versiontag">여러 개 선택 가능</span>
+        <div><p className="sj-kicker">WORK SPEC</p><h1 id="sj-spec-h">{waiting ? "작업 명세서를 만들고 있어요." : "이 명세서대로 제작할까요?"}</h1>
+          <p>{waiting ? "내레이션 길이를 재서 장면별 지시와 금액을 계산해요. 돈은 나가지 않아요." : "실제 제작에 그대로 들어가는 지시예요. 승인하면 제작을 시작해요."}</p></div>
+        <span className="sj-versiontag">{card ? "카드뉴스" : "릴스"} 명세서</span>
       </div>
-      <div className="sj-layout">
-        <fieldset className="sj-format-list"><legend className="sj-sr">만들 버전</legend>
-          {opts.map((o) => (
-            <label key={o.id} className="sj-format" data-disabled={!o.enabled}>
-              <input type="checkbox" checked={o.enabled && picked.includes(o.id)} disabled={!o.enabled}
-                onChange={(e) => setPicked(e.target.checked ? [...picked, o.id] : picked.filter((x) => x !== o.id))} aria-describedby={`sj-why-${o.id}`} />
-              <span className="sj-format-copy"><strong>{o.label}</strong> {o.id === "card" && <span className="sj-label">추천</span>}
-                <p>{o.desc}</p>
-                {!o.enabled && <p id={`sj-why-${o.id}`} className="sj-muted">{o.why}{o.href && <> <Link href={o.href}>기존 화면에서 만들기 →</Link></>}</p>}</span>
-              <span className="sj-cost">{o.enabled ? o.costText : "선택 불가"}</span>
-            </label>
-          ))}
-        </fieldset>
-        <aside className="sj-order" aria-label="이번에 만들 콘텐츠">
-          <span className="sj-label">이번에 만들 콘텐츠</span>
-          <h3>{plan.plan_json.pages?.[0]?.heading}</h3>
-          {usable.length ? usable.map((id) => { const o = opts.find((x) => x.id === id)!; return <div key={id} className="sj-order-line"><span>{o.label}</span><span>{o.costText.split(" · ")[0]}</span></div>; })
-            : <p className="sj-empty">만들 버전을 골라 주세요.</p>}
-          <div className="sj-order-total"><span>예상 총비용</span><span>{total === null ? "알 수 없음" : `$${total.toFixed(2)}`}</span></div>
-          <p className="sj-note">{isPhotoPlan(plan)
-            ? <>적용 상한: 위 금액까지만 배경 사진을 사요(이 초안 전용, 하루 유효). 글자 배치·릴스 조립은 서버에서 무료로 해요.<br />누르면 이 금액을 승인하고 초안을 확정해 제작을 요청해요. 게시는 하지 않아요.</>
-            : <>적용 상한: 유료 생성 호출 없음(카드뉴스는 서버에서 조립해요).<br />누르면 이 초안을 확정하고 제작을 요청해요. 게시는 하지 않아요.</>}</p>
-        </aside>
-      </div>
-      {msg && <p className={msg.bad ? "sj-error" : "sj-message"} role={msg.bad ? "alert" : "status"}>{msg.text}</p>}
-      {why && <p className="sj-message" role="status">{why}</p>}
+      {card && (
+        <div className="sj-spec"><table>
+          <thead><tr><th>장</th><th>화면 글자</th><th>이미지 생성 지시</th></tr></thead>
+          <tbody>{(plan.plan_json.pages ?? []).map((pg, i) => (
+            <tr key={i}><td>{i + 1}</td><td><b>{pg.heading.replace(/\[|\]/g, "")}</b>{pg.body && <p>{pg.body}</p>}</td>
+              <td>{pg.role === "source" ? "이미지 없음 · 출처 목록 자동" : pg.image_prompt ?? "이미지 없음 · 글자 카드"}</td></tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {d && (
+        <div className="sj-spec"><table>
+          <thead><tr><th>#</th><th>유형·길이</th><th>내레이션</th><th>시작 그림 지시</th><th>움직임 지시</th><th>금액</th></tr></thead>
+          <tbody>{d.slots.map((s) => (
+            <tr key={s.n}><td>{s.n}</td><td>{s.role === "mechanism" ? "3D 도해" : "실사"}<br />{s.clip_sec}초{s.candidates_planned > 1 ? ` × 후보 ${s.candidates_planned}` : ""}</td>
+              <td>{s.narration}</td><td>{s.visual_prompt}</td><td>{s.motion_prompt}</td><td>${(s.image_est_usd + s.clip_est_usd * s.candidates_planned).toFixed(3)}</td></tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {d && <p className="sj-note">완성 길이 {(d.final_ms / 1000).toFixed(1)}초 · 예상 ${d.estimate.estimate_usd.toFixed(2)}(그림 ${d.estimate.images_usd.toFixed(2)} + 영상 ${d.estimate.clips_usd.toFixed(2)}) · 실패 재시도 예비 ${d.estimate.reserve_usd.toFixed(2)}{d.unverified.length > 0 ? ` · 미검증: ${d.unverified.join(", ")}` : ""}</p>}
+      {waiting && !production?.activeJob && <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={requestPlan}>{busy ? "요청 중…" : "명세서 만들기 (0원)"}</button></div>}
+      {ex?.episode?.last_message && <p className="sj-warnline" role="alert">{ex.episode.last_message}</p>}
+      {!waiting && <CommentBox plan={plan} label="초안부터 고치려면" note="코멘트대로 초안을 새로 만들어요. 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
+      {problem && <p className="sj-error" role="alert">{problem}</p>}
       <div className="sj-actions">
         <button type="button" className="sj-btn sj-quiet" onClick={onBack}>← 초안 다시 보기</button>
-        <button type="button" className="sj-btn sj-main" disabled={Boolean(why) || busy} onClick={generate}>
-          {busy ? "생성 요청 중…" : `이 초안으로 콘텐츠 생성 · ${usable.length}개${total ? ` · $${total.toFixed(2)}` : ""}`} <span aria-hidden="true">→</span></button>
+        {card && <div><span className="sj-note">{cost.text}. 게시는 하지 않아요.</span>
+          <button type="button" className="sj-btn sj-main" disabled={busy || cost.usd === null} onClick={generateCard}>{busy ? "요청 중…" : `승인하고 제작${cost.usd ? ` · $${cost.usd.toFixed(2)}` : ""}`} <span aria-hidden="true">→</span></button></div>}
+        {d && <div><span className="sj-note">누르면 이 금액을 상한으로 결재해요. 이 안에서만 사고, 게시는 하지 않아요.</span>
+          <button type="button" className="sj-btn sj-main" disabled={busy} onClick={buyVideo}>{busy ? "요청 중…" : `승인하고 제작 · 상한 $${cap.toFixed(2)}`} <span aria-hidden="true">→</span></button></div>}
       </div>
     </section>
   );
 }
 
-// ── 생성 중·결과 ─────────────────────────────────────────────────────────────
-function Results({ status, plan, files, problem, generating, onEdit, onAdd, onNext, onRefresh }: {
-  status: StudioStatus; plan: NonNullable<ReturnType<typeof cardPlan>>; files: StudioResultFile[]; problem: string | null; generating: boolean;
-  onEdit: () => void; onAdd: () => void; onNext: () => void; onRefresh: () => void;
+// ── ④ 제작 중(릴스): 영상을 사고 클립을 잇는 동안 ────────────────────────────────
+function VideoMaking({ plan, production, onRefresh }: { plan: StudioPlan; production: StudioProduction; onRefresh: () => void }) {
+  const ex = production.explainer!;
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const passable = ex.slots.filter((s) => !s.selection && s.status !== "no_pass" && s.candidates.some((c) => c.status === "stored" && c.auto_verdict === "pass"));
+  // 클립마다 사람이 판정·이유를 적던 것을 한 번에: 자동 검사를 통과한 클립을 쓰고, 사람은 완성 영상을 검수한다(0078).
+  const useAll = async () => {
+    setBusy(true); setProblem(null);
+    for (const slot of passable) {
+      for (const c of slot.candidates) {
+        if (!canJudge(slot, c)) continue;
+        const v = await post("explainer_verdict", { candidate_id: c.candidate_id, human_verdict: "pass" });
+        if (!v.ok) { setBusy(false); setProblem(v.error ?? `${slot.n}번 클립을 확정하지 못했어요.`); onRefresh(); return; }
+      }
+      const pick = slot.candidates.find((c) => c.status === "stored" && c.auto_verdict === "pass");
+      const r = await post("explainer_select", { slot_id: slot.slot_id, candidate_id: pick!.candidate_id, reason: "자동 검사 통과 — 완성 영상 검수에서 확인" });
+      if (!r.ok) { setBusy(false); setProblem(r.error ?? `${slot.n}번 클립을 고르지 못했어요.`); onRefresh(); return; }
+    }
+    setBusy(false); onRefresh();
+  };
+  const waitingWorker = production.activeJob?.renderer === "explainer_buy" && production.activeJob.status === "queued";
+  return (
+    <section aria-labelledby="sj-make-h">
+      <div className="sj-intro">
+        <div><p className="sj-kicker">MAKING</p><h1 id="sj-make-h">{plan.plan_json.scenes?.length ?? 0}개 장면을 제작하고 있어요.</h1>
+          <p role="status" aria-live="polite">{production.activeJob ? "작업이 돌고 있어요. 창을 닫아도 이어져요." : "다음 단계를 눌러 이어 가세요."}</p></div>
+      </div>
+      {waitingWorker && <p className="sj-warnline" role="status">영상 구매 작업이 대기 중이에요. 구매 작업기는 아직 자동으로 깨어나지 않아서, Claude 에게 &ldquo;구매 작업 돌려 줘&rdquo;라고 말해 주세요.</p>}
+      {passable.length > 0 && nextStep(ex) === "review_candidates" && (
+        <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={useAll}>{busy ? "확정하는 중…" : `자동 검사 통과한 클립 ${passable.length}개 쓰기`}</button></div>
+      )}
+      {problem && <p className="sj-error" role="alert">{problem}</p>}
+      <ExplainerProduction planId={plan.plan_revision_id} status={ex} activeJob={production.activeJob} />
+    </section>
+  );
+}
+
+// ── ④ 검수: 만들어진 것을 보고 OK ───────────────────────────────────────────────
+function Results({ status, plan, files, problem, generating, production, onEdit, onRefresh }: {
+  status: StudioStatus; plan: StudioPlan; files: StudioResultFile[]; problem: string | null; generating: boolean; production: StudioProduction | null;
+  onEdit: () => void; onRefresh: () => void;
 }) {
+  const card = plan.format === "carousel";
   const job = plan.jobs[0] ?? null;
-  const failed = job && (job.status === "failed" || job.status === "canceled");
-  const done = job?.status === "succeeded" && files.length > 0;
+  const failed = card && job && (job.status === "failed" || job.status === "canceled");
+  const review = production?.outputReview ?? null;
+  const done = !generating && files.length > 0 && (!card || job?.status === "succeeded");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const retry = async () => {
     if (!job) return;
     setBusy(true);
-    const cost = cardCost(plan);
+    const c = cardCost(plan);
     const r = await post("studio_generate", { topic_id: status.topic.id, format_intent: "card", plan_revision_id: plan.plan_revision_id, retry_of: job.job_id,
-      ...(isPhotoPlan(plan) && cost.usd !== null ? { approve_usd: cost.usd } : {}) });
+      ...(isPhotoPlan(plan) && c.usd !== null ? { approve_usd: c.usd } : {}) });
     setBusy(false);
-    setMsg(r.ok ? "이 버전만 다시 만들고 있어요. 이미 산 사진은 다시 사지 않아요." : r.error ?? "다시 만들지 못했어요.");
+    setMsg(r.ok ? "다시 만들고 있어요. 이미 산 사진은 다시 사지 않아요." : r.error ?? "다시 만들지 못했어요.");
     onRefresh();
   };
-  // 확정된 글자 카드 → 같은 확정 근거로 사진형 새 초안(0077). 옛 결과는 새 초안을 확정할 때까지 그대로 남는다.
-  const photoRedo = async () => {
-    setBusy(true);
-    const r = await post("studio_rewrite", { plan_revision_id: plan.plan_revision_id, expected_version: plan.version,
-      instruction: "사진형 카드(배경 사진 위 제목·본문 2줄)로 다시 써 주세요. 원문이 직접 말하지 않는 표현은 빼 주세요." });
+  // 검수 항목별 체크를 없애고 [OK] 하나로: 운영자가 완성물을 보고 누른 것이 전 항목 확인이다(0078). 서버 검사는 그대로 돈다.
+  const checksOf = (items: readonly (readonly [string, string])[]) => Object.fromEntries(items.map(([k]) => [k, true]));
+  const ok = async () => {
+    if (!review) return;
+    setBusy(true); setMsg(null);
+    const state = production?.explainer?.episode?.state;
+    const stages: [string, [string, string][]][] = state === "auto_qa_pass" ? [["process", PROCESS_CHECKS], ["quality", QUALITY_CHECKS]] : state === "process_review_pass" ? [["quality", QUALITY_CHECKS]] : [];
+    for (const [stage, items] of stages) {
+      const r = await post("explainer_review", { plan_revision_id: plan.plan_revision_id, stage, outcome: "pass", checks: checksOf(items) });
+      if (!r.ok) { setBusy(false); setMsg(r.error ?? "검수를 기록하지 못했어요."); onRefresh(); return; }
+    }
+    const items = card ? [...CHECKS.carousel, ...(review.hasReel ? REEL_CHECKS : [])] : CHECKS.video;
+    const r = await post("output_review_action", { review_id: review.id, expected_version: review.version, action: "approve", checklist: checksOf(items) });
     setBusy(false);
-    setMsg(r.ok ? "사진형으로 새 초안을 쓰고 있어요. 다 되면 초안 다듬기 화면이 열려요." : r.error ?? "새 초안을 요청하지 못했어요.");
+    if (!r.ok) setMsg(r.error ?? "검수를 기록하지 못했어요.");
     onRefresh();
   };
-  const retryCost = failed ? cardCost(plan) : null;
   const images = files.filter((f) => f.mime.startsWith("image/")).sort((a, b) => a.position - b.position);
   const videos = files.filter((f) => f.mime.startsWith("video/"));
   return (
     <section aria-labelledby="sj-res-h">
       <div className="sj-intro">
-        <div><p className="sj-kicker">{generating ? "CREATING YOUR CONTENT" : "YOUR CONTENT"}</p>
-          <h1 id="sj-res-h">{generating ? "고른 버전으로 콘텐츠를 만들고 있어요." : failed ? "완료한 콘텐츠부터 확인하세요." : done ? "콘텐츠가 준비됐어요." : "결과 파일을 확인하고 있어요."}</h1>
-          <p role="status" aria-live="polite">{generating ? (job?.status === "queued" ? "제작 순서를 기다리고 있어요. 검사와 조립은 자동으로 이어져요." : "카드를 조립하고 자동 검사를 하고 있어요.")
-            : failed ? "이 버전은 제작을 마치지 못했어요." : done ? "실제 파일과 자동 검사 결과가 확보된 버전이에요." : "제작은 끝났지만 파일을 아직 읽지 못했어요."}</p></div>
-        <span className="sj-versiontag">카드뉴스 · {job ? `${job.attempt_no}번째 제작` : "제작 전"}</span>
+        <div><p className="sj-kicker">{generating ? "MAKING" : "REVIEW"}</p>
+          <h1 id="sj-res-h">{generating ? "콘텐츠를 만들고 있어요." : failed ? "제작을 마치지 못했어요." : done ? "완성본을 확인해 주세요." : "결과 파일을 확인하고 있어요."}</h1>
+          <p role="status" aria-live="polite">{generating ? (job?.status === "queued" ? "제작 순서를 기다리고 있어요." : "조립하고 자동 검사를 하고 있어요.")
+            : failed ? `실패 이유: ${job?.error_code ?? "원인 미상"}` : done ? "괜찮으면 OK, 고칠 곳이 있으면 코멘트를 적어 주세요." : "제작은 끝났지만 파일을 아직 읽지 못했어요."}</p></div>
       </div>
       {problem && <p className="sj-error" role="alert">결과를 읽지 못했어요: {problem}</p>}
       <article className="sj-result">
-        {images.length > 0 ? (
-          <div className="sj-gallery">{images.map((f) => f.url ? <a key={f.position} href={f.url} target="_blank" rel="noreferrer" download>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={f.url} alt={`카드 ${f.position}장`} loading="lazy" /></a> : <span key={f.position} className="sj-muted">{f.position}장: {f.urlError ?? "미리보기 불가(로컬 저장)"}</span>)}</div>
-        ) : <div className="sj-preview sj-preview--wide"><span className="sj-cover-mark">술째리고</span><span className="sj-cover-title">{plan.plan_json.pages?.[0]?.heading}</span>
-          <span className="sj-cover-meta">{generating ? "만드는 중" : "결과 파일 없음"}</span></div>}
-        {videos.map((v) => v.url && <video key={v.position} src={v.url} controls preload="metadata" className="sj-video" aria-label="세로 릴스" />)}
-        <div className="sj-result-footer">
-          <div><strong>카드뉴스</strong>
-            <p className="sj-note">{failed ? `제작 실패(${job?.error_code ?? "원인 미상"})` : done ? `✓ 생성 완료 · 검수 ${files[0]?.reviewStatus === "approved" ? "승인됨" : "대기(게시 전 발행 화면에서)"}` : generating ? "만드는 중" : "확인 중"}</p></div>
-          {failed && <button type="button" className="sj-btn" disabled={busy || retryCost?.usd === null} onClick={retry}>
-            {busy ? "다시 만드는 중…" : `이 버전만 다시 만들기${retryCost?.usd ? ` · $${retryCost.usd.toFixed(2)}` : ""}`}</button>}
-          {!generating && !isPhotoPlan(plan) && <button type="button" className="sj-btn" disabled={busy} onClick={photoRedo}>사진형으로 다시 만들기</button>}
-          {done && images[0]?.url && <a className="sj-btn" href={images[0].url} download>표지 내려받기</a>}
-        </div>
+        {images.length > 0 && <div className="sj-gallery">{images.map((f) => f.url
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <a key={f.position} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} alt={`${f.role} ${f.position}`} loading="lazy" /></a>
+          : <span key={f.position} className="sj-muted">{f.position}: {f.urlError ?? "미리보기 불가(로컬 저장)"}</span>)}</div>}
+        {videos.map((v) => v.url && <video key={v.position} src={v.url} controls preload="metadata" className="sj-video" aria-label="세로 영상" />)}
+        {failed && <div className="sj-result-footer"><button type="button" className="sj-btn" disabled={busy} onClick={retry}>{busy ? "요청 중…" : "다시 만들기"}</button></div>}
         {msg && <p className="sj-message" role="status">{msg}</p>}
       </article>
+      {done && <CommentBox plan={plan} label="수정 코멘트" note="코멘트대로 초안부터 새로 만들어요. 제작비가 다시 들 수 있어요." onRefresh={onRefresh} />}
       <div className="sj-actions">
         <button type="button" className="sj-btn sj-quiet" onClick={onEdit}>← 초안 보기</button>
-        <div><span className="sj-note">공개 게시 없이 결과만 확인해요</span>
-          <button type="button" className="sj-btn" onClick={onAdd}>다른 버전 추가</button>
-          <button type="button" className="sj-btn sj-main" onClick={onNext}>다음 소재 고르기 <span aria-hidden="true">→</span></button></div>
+        {done && <div><span className="sj-note">OK 를 눌러도 아직 게시되지 않아요.</span>
+          <button type="button" className="sj-btn sj-main" disabled={busy || !review} onClick={ok}>{busy ? "기록 중…" : "OK — 인스타 등록으로"} <span aria-hidden="true">→</span></button></div>}
+      </div>
+    </section>
+  );
+}
+
+// ── ⑤ 인스타 등록: 캡션·시각을 보고 한 번에 ─────────────────────────────────────
+function Publish({ status, plan, files, publish, production, onDone, onRefresh }: {
+  status: StudioStatus; plan: StudioPlan; files: StudioResultFile[]; publish: StudioPublish | null; production: StudioProduction | null; onDone: () => void; onRefresh: () => void;
+}) {
+  const reel = plan.format === "video";
+  const postType = reel ? "reel" : "carousel";
+  const usable = (publish?.accounts ?? []).filter((a) => a.postTypes.includes(postType));
+  const req = publish?.request ?? null;
+  const first = plan.plan_json.pages?.[0]?.heading?.replace(/\[|\]/g, "") ?? plan.plan_json.scenes?.[0]?.narration ?? status.topic.question;
+  const [caption, setCaption] = useState(req?.caption ?? (reel ? `${first}\n\n${publish?.aiLabel ?? "AI 생성 영상"}` : first));
+  const [acc, setAcc] = useState(usable[0]?.id ?? "");
+  const [when, setWhen] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { setWhen((w) => w || defaultPublishAt(Date.now(), PUBLISH_WINDOW)); }, []);
+  const stop = (r: Post, fallback: string) => { setBusy(false); setProblem(r.error ?? fallback); onRefresh(); };
+  const register = async () => {
+    const accLabel = usable.find((a) => a.id === acc)?.label ?? "";
+    if (!window.confirm(`인스타에 공개 게시합니다.\n\n계정: ${accLabel}\n시각: ${when.replace("T", " ")} (한국)\n캡션: ${caption}\n\n진행할까요?`)) return;
+    setBusy(true); setProblem(null);
+    let id = req?.id ?? "", version = req?.version ?? 0, st = req?.status ?? "", digest = req?.approval_digest ?? null;
+    if (!req) {
+      const c = await post("create_publication", { output_review_id: production?.outputReview?.id, account_id: acc, caption, post_type: postType, publish_at: new Date(`${when}:00+09:00`).toISOString() });
+      if (!c.ok) { stop(c, "발행안을 만들지 못했어요."); return; }
+      id = String(c.result?.request_id); version = Number(c.result?.version); st = String(c.result?.status);
+    }
+    const NEEDS = { submit: "draft", approve: "awaiting_approval", schedule: "approved" } as const;
+    for (const action of ["submit", "approve", "schedule"] as const) {
+      if (st !== NEEDS[action]) continue;
+      const r = await post("publication_action", { request_id: id, expected_version: version, action, ...(action === "approve" ? { expected_digest: digest } : {}) });
+      if (!r.ok) { stop(r, "등록을 마치지 못했어요."); return; }
+      version = Number(r.result?.version); st = String(r.result?.status); digest = (r.result?.approval_digest as string | null) ?? digest;
+    }
+    setBusy(false); onRefresh();
+  };
+  const windowProblem = publishWindowProblem(when);
+  const canRegister = !req || ["draft", "awaiting_approval", "approved"].includes(req.status);
+  return (
+    <section aria-labelledby="sj-pub-h">
+      <div className="sj-intro">
+        <div><p className="sj-kicker">PUBLISH</p><h1 id="sj-pub-h">{req?.status === "published" ? "인스타에 게시됐어요." : req?.status === "scheduled" ? "등록했어요. 예약 시각에 게시돼요." : "인스타에 등록할까요?"}</h1>
+          <p>{req?.status === "scheduled" ? `예약 ${kstMinute(req.publish_at)} (한국). 게시 작업기가 도는 때에 맞춰 늦어질 수 있어요.` : "캡션과 시각만 확인하면 돼요."}</p></div>
+      </div>
+      {!publish && <p className="sj-error" role="alert">게시 정보를 읽지 못했어요. 새로고침해 주세요.</p>}
+      {files.filter((f) => f.mime.startsWith("video/")).map((v) => v.url && <video key={v.position} src={v.url} controls preload="metadata" className="sj-video" aria-label="세로 영상" />)}
+      {req?.external_url && <p><a className="sj-btn" href={req.external_url} target="_blank" rel="noreferrer">게시물 보기</a></p>}
+      {canRegister && publish && (
+        <div className="sj-editor">
+          {usable.length === 0 ? <p className="sj-warnline" role="alert">{reel ? "릴스" : "카드뉴스"}를 올릴 수 있는 계정이 없어요. <Link href="/drinks/publish">발행 화면</Link>에서 계정을 확인해 주세요.</p> : usable.length > 1 && (
+            <label className="sj-field">계정<select value={acc} onChange={(e) => setAcc(e.target.value)}>{usable.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label>
+          )}
+          <label className="sj-field">캡션<textarea value={caption} rows={5} readOnly={Boolean(req)} onChange={(e) => setCaption(e.target.value)} /></label>
+          <label className="sj-field">게시 시각(한국)<input type="datetime-local" value={when} readOnly={Boolean(req)} onChange={(e) => setWhen(e.target.value)} /></label>
+          {windowProblem && <p className="sj-warnline" role="alert">{windowProblem}</p>}
+        </div>
+      )}
+      {req && !canRegister && req.status !== "published" && <RequestActions id={req.id} version={req.version} status={req.status} digest={req.approval_digest} summary={req.caption ?? ""} />}
+      {problem && <p className="sj-error" role="alert">{problem}</p>}
+      <div className="sj-actions">
+        <button type="button" className="sj-btn sj-quiet" onClick={onDone}>다음 소재 고르기</button>
+        {canRegister && publish && usable.length > 0 && (
+          <button type="button" className="sj-btn sj-main" disabled={busy || !when || !caption.trim() || Boolean(windowProblem)} onClick={register}>{busy ? "등록 중…" : "인스타에 등록"} <span aria-hidden="true">→</span></button>
+        )}
       </div>
     </section>
   );

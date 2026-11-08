@@ -42,6 +42,8 @@ class DryRpc:
         self.names.append(fn)
         if fn == "drinks_heartbeat_develop":
             return {"cancel_requested": False}
+        if fn == "drinks_develop_context":
+            return {}
         if fn == "drinks_develop_hold":
             if self.committed + p["est_usd"] > self.cap:
                 from engine.drinks_collect import DbError

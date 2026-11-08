@@ -5,6 +5,7 @@
 // ★ ?lane= 이 정본이다. 없으면 이 소재의 첫 형식. `/drinks/work/meme?meme=<draftId>` 는 카드 소유 밈(소재 없음).
 // ★ 승인·결재·제작·게시의 규칙은 전부 서버(DB)다. 이 화면은 보여 주고 요청할 뿐이다.
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import DrinksWorkspace, { type FormatCardView } from "@/components/drinks/work/DrinksWorkspace";
 import { HistoryPanel, buildMemeLane, buildTopicLane, PLAN_FORMAT_OF } from "@/components/drinks/work/laneSections";
@@ -50,11 +51,15 @@ function safeDecide(item: WorkItem | null, explainer: unknown): { decision: Deci
 
 export default async function DrinksWorkspacePage(props: {
   params: Promise<{ topicId: string }>;
-  searchParams: Promise<{ lane?: string; panel?: string; plan?: string; meme?: string }>;
+  searchParams: Promise<{ lane?: string; panel?: string; plan?: string; meme?: string; detail?: string }>;
 }) {
   const { topicId } = await props.params;
   const sp = await props.searchParams;
   if (topicId === "meme") return <CardMemeWorkspace memeDraftId={sp.meme ?? null} panel={sp.panel ?? null} />;
+  // 릴스·카드뉴스의 기본 화면은 스튜디오의 한 줄 흐름이다(0078). 이 긴 화면은 근거·이력을 볼 때만 ?detail=1 로 연다.
+  if (sp.lane !== "meme" && sp.detail !== "1" && !sp.panel && !sp.plan) {
+    redirect(`/drinks/studio?topic=${encodeURIComponent(topicId)}${sp.lane === "card" || sp.lane === "explainer" ? `&lane=${sp.lane}` : ""}`);
+  }
 
   // 이번 주 AI 초안 한도(0073)를 먼저 만든다 — 소재 고르기 화면을 거치지 않고 바로 들어와도 아래 개발 상태가 이번 주 한도를 본다.
   // 실패해도 화면은 세운다(한도 칸이 '없음'으로 보이고, 버튼이 그 이유를 말한다). 소재 고르기 화면(topics/page.tsx)과 같은 순서다.

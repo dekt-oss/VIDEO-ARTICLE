@@ -1,8 +1,9 @@
-// 콘텐츠 스튜디오(2026-11-07, 0076) — 서버 상태(drinks_studio_status)에서 화면 단계와 문구를 정하는 순수 함수.
-// ★ 진행 표시는 실제 상태에서만 계산한다. 완료율·남은 시간을 지어내지 않는다(목업의 타이머 진행률은 옮기지 않았다).
+// 콘텐츠 스튜디오(0076·0078) — 서버 상태에서 화면 단계와 문구를 정하는 순수 함수.
+// 흐름: 소재 → 초안(글로 된 구성표 + 코멘트 재생성) → 작업 명세서 승인 → 제작 → 검수 → 등록. 근거는 뒤에서 자동 검사한다(docs/deviation-drinks-studio-flow.md).
+// ★ 진행 표시는 실제 상태에서만 계산한다. 완료율·남은 시간을 지어내지 않는다.
 // ★ 값 import 없음(node --test 가 `@/` 별칭을 못 푼다).
 
-export type StudioScreen = "collect" | "preparing" | "draft" | "versions" | "generating" | "result" | "blocked" | "choice" | "video";
+export type StudioScreen = "collect" | "preparing" | "draft" | "spec" | "generating" | "result" | "publish" | "blocked" | "choice";
 
 export interface StudioRequest {
   request_id: string; kind: "evidence" | "plan"; status: string; step: string | null; format_intent: string | null;
@@ -10,11 +11,15 @@ export interface StudioRequest {
   cancel_requested?: boolean; created_at: string; finished_at: string | null;
 }
 export interface StudioPage { position: number; role: string; heading: string; body: string | null; claim_ids: string[]; image_prompt?: string }
+export interface StudioScene {
+  position?: number; timing_sec?: number | null; visual_role?: string | null; narration?: string | null; staging_ko?: string | null; answers_ko?: string | null;
+  explanation?: string | null; overlays?: unknown;
+}
 /** 사진형 카드 배경 사진 예상(0077 drinks_studio_card_estimate). 글자 카드는 photo=false·0원. */
 export interface StudioEstimate { photo: boolean; images: number; bought: number; total_usd: number }
 export interface StudioPlan {
   plan_revision_id: string; format: "video" | "carousel"; version: number; plan_status: string; blocked: boolean; blocked_reason: string | null;
-  current: boolean; plan_json: { pages?: StudioPage[]; reel?: { hook_title?: string; share_line?: string }; notes?: string | null; layout?: string; template_version?: string };
+  current: boolean; plan_json: { pages?: StudioPage[]; scenes?: StudioScene[]; reel?: { hook_title?: string; share_line?: string }; notes?: string | null; layout?: string; template_version?: string };
   estimate?: StudioEstimate;
   unverified_numbers: string[]; topic_review_id: string;
   jobs: { job_id: string; status: string; error_code: string | null; attempt_no: number; created_at: string; finished_at: string | null }[];
@@ -41,27 +46,47 @@ export const RECOVERABLE = ["draft_exists", "version_conflict", "lease_expired",
   "factcheck_unavailable", "review_changed", "db_error"] as const;
 export const INSUFFICIENT: ReadonlySet<string> = new Set(["evidence_insufficient", "script_check_failed", "no_core_claims", "evidence_not_usable"]);
 
-/** 이 화면이 다루는 카드뉴스 초안(현재 버전). */
-export function cardPlan(s: StudioStatus | null): StudioPlan | null {
+export type StudioLane = "card" | "explainer";
+
+/** 이 화면이 다루는 초안(현재 버전). 형식을 지정하지 않으면 카드뉴스 → 릴스 순으로 있는 것. */
+export function activePlan(s: StudioStatus | null, lane?: StudioLane | null): StudioPlan | null {
   if (!s) return null;
-  return s.plans.find((p) => p.format === "carousel" && p.current && !p.blocked) ?? s.plans.find((p) => p.format === "carousel" && p.plan_status === "approved") ?? null;
+  const of = (f: StudioPlan["format"]) => s.plans.find((p) => p.format === f && p.current && !p.blocked) ?? s.plans.find((p) => p.format === f && p.plan_status === "approved") ?? null;
+  if (lane) return of(lane === "card" ? "carousel" : "video");
+  return of("carousel") ?? of("video");
 }
 
 export interface Phase { screen: StudioScreen; reason?: string; code?: string }
 
-export function studioPhase(s: StudioStatus | null): Phase {
+/** 화면 단계를 정하는 데 필요한 제작 쪽 상태. */
+export interface PhaseContext {
+  lane?: StudioLane | null;
+  /** 설명형 편의 상태(drink_explainer_episodes.state). 시작 전이면 null */
+  episodeState?: string | null;
+  /** 최신 파일 묶음의 검수 상태 */
+  outputStatus?: string | null;
+}
+
+const EPISODE_SPEC = new Set(["plan_draft", "directive_ready", "blocked_budget"]);
+const EPISODE_REVIEW = new Set(["auto_qa_pass", "process_review_pass", "quality_review_pass", "ready_to_publish"]);
+
+export function studioPhase(s: StudioStatus | null, ctx: PhaseContext = {}): Phase {
   if (!s) return { screen: "collect" };
   if (s.active) return { screen: "preparing" };
-  const plan = cardPlan(s);
-  if (plan && plan.plan_status === "approved") {
-    const live = plan.jobs.some((j) => j.status === "queued" || j.status === "running");
-    return { screen: live ? "generating" : "result" };
+  const plan = activePlan(s, ctx.lane);
+  if (plan?.plan_status === "draft") return { screen: "draft" };
+  if (plan?.plan_status === "approved") {
+    if (ctx.outputStatus === "approved") return { screen: "publish" };
+    if (plan.format === "carousel") {
+      if (plan.jobs.length === 0) return { screen: "spec" };
+      return { screen: plan.jobs.some((j) => j.status === "queued" || j.status === "running") ? "generating" : "result" };
+    }
+    const st = ctx.episodeState ?? null;
+    if (!st || EPISODE_SPEC.has(st)) return { screen: "spec" };
+    return { screen: EPISODE_REVIEW.has(st) ? "result" : "generating" };
   }
-  if (plan && plan.plan_status === "draft") return { screen: "draft" };
   const last = s.last;
-  // 설명형 초안은 이 화면이 다루지 못한다(다듬기·제작은 작업공간). 끝난 뒤 빈 목록으로 돌아가지 않고 그쪽으로 잇는다.
-  const idle: StudioScreen = s.plans.some((p) => p.format === "video" && p.current && !p.blocked) ? "video" : "collect";
-  if (!last) return { screen: idle };
+  if (!last) return { screen: "collect" };
   if (last.status === "canceled") return { screen: "collect", reason: "준비를 취소했어요." };
   if (last.status === "blocked" || INSUFFICIENT.has(last.error_code ?? "")) return { screen: "blocked", code: last.error_code ?? undefined };
   if (last.status === "failed") {
@@ -72,7 +97,7 @@ export function studioPhase(s: StudioStatus | null): Phase {
     }
     return { screen: "choice", code: last.error_code ?? "failed", reason: failureText(last.error_code) };
   }
-  return { screen: idle };
+  return { screen: "collect" };
 }
 
 export function failureText(code: string | null | undefined): string {
@@ -96,15 +121,11 @@ export function progressText(r: StudioRequest | null): string {
   if (step === "reuse") return "이전에 확인한 자료를 다시 쓰고 있어요.";
   if (step.startsWith("sources") || step.startsWith("extract") || step === "link") return "자료를 확인하고 있어요.";
   if (step === "factcheck") return "사용할 내용을 정리하고 있어요.";
-  if (step.startsWith("write") || step.startsWith("check")) return r.instruction ? "말씀하신 방향으로 다시 쓰고 있어요." : "초안을 다듬고 있어요.";
+  if (step.startsWith("write") || step.startsWith("check")) return r.instruction ? "말씀하신 방향으로 다시 쓰고 있어요." : "초안을 쓰고 있어요. 보통 1~3분 걸려요.";
   if (step === "save" || step.endsWith("_saved")) return "초안을 저장하고 있어요.";
   return "준비하고 있어요.";
 }
 
-export type VersionId = "card" | "explainer" | "meme";
-export interface VersionOption { id: VersionId; label: string; desc: string; enabled: boolean; why?: string; costText: string; costUsd: number | null; href?: string }
-
-/** 고를 수 있는 버전. 끝까지 만들 수 없는 것은 고를 수 없게 보여 주고 이유를 단다(나중에 실패시키지 않는다). */
 /** 사진형 카드인가(0077). 배경 사진은 쪽마다 사서(유료) 금액을 화면에 보이고, 그 클릭이 그 금액의 결재다. */
 export function isPhotoPlan(plan: StudioPlan | null): boolean {
   return Boolean(plan && (plan.estimate?.photo || plan.plan_json.layout === "photo" || plan.plan_json.template_version === "card-photo-v1"));
@@ -118,52 +139,55 @@ export function cardCost(plan: StudioPlan | null): { usd: number | null; text: s
   return { usd: e.total_usd, text: `$${e.total_usd.toFixed(2)} · 배경 사진 ${e.images}장(AI 생성, 유료)${reused}` };
 }
 
-export function versionOptions(topicId: string, plan: StudioPlan | null): VersionOption[] {
-  const pages = plan?.plan_json.pages?.length ?? null;
-  const cost = cardCost(plan);
-  const kind = isPhotoPlan(plan) ? "사진형 카드" : "넘겨 읽는 카드";
-  return [
-    { id: "card", label: "카드뉴스", desc: pages ? `${kind} ${pages}장 + 세로 릴스` : `${kind} + 세로 릴스`,
-      enabled: Boolean(plan) && cost.usd !== null, why: plan ? (cost.usd === null ? cost.text : undefined) : "카드뉴스 초안이 아직 없어요.",
-      costText: cost.text, costUsd: cost.usd },
-    { id: "explainer", label: "설명형 영상", desc: "장면과 내레이션으로 설명하는 세로 영상", enabled: false,
-      why: "그림·영상 구매와 장면 판정이 따로 있어 이 화면에서는 아직 한 번에 만들 수 없어요.", costText: "금액은 장면 수가 정해져야 알 수 있어요",
-      costUsd: null, href: `/drinks/work/${topicId}?lane=explainer` },
-    { id: "meme", label: "밈", desc: "핵심 한 줄을 공감 가는 짧은 영상으로", enabled: false,
-      why: "밈은 밈 보드의 틀(원본 릴스)을 먼저 골라야 해서 이 화면에서는 아직 만들 수 없어요.", costText: "—", costUsd: null, href: "/drinks/memes" },
-  ];
+/** 초안 구성표 한 줄: 어떤 화면에 무엇을 보여 주고 무엇을 말하는가. */
+export interface DraftRow { title: string; lines: { label: string; text: string }[] }
+
+const PAGE_ROLE: Record<string, string> = { cover: "표지", explain: "설명", compare: "비교", checklist: "체크리스트", source: "출처" };
+const SCENE_ROLE: Record<string, string> = { reality: "실사", mechanism: "3D 도해" };
+
+/** 영상 화면 글자는 문자열·JSON 문자열·배열로 저장돼 있다. 화면에는 글자만 보인다. */
+export function overlayTexts(v: unknown): string[] {
+  let x = v;
+  if (typeof v === "string") {
+    try { x = JSON.parse(v); } catch { return v.trim() ? [v.trim()] : []; }
+  }
+  if (!Array.isArray(x)) return [];
+  return x.flatMap((o) => (typeof o === "string" ? [o] : typeof (o as { text?: unknown })?.text === "string" ? [(o as { text: string }).text] : [])).filter((t) => t.trim());
 }
 
-/** 선택한 버전의 합계. 모르는 금액이 하나라도 있으면 null(0 으로 쓰지 않는다). */
-export function orderTotal(options: VersionOption[], picked: VersionId[]): number | null {
-  let sum = 0;
-  for (const id of picked) {
-    const o = options.find((x) => x.id === id);
-    if (!o || !o.enabled || o.costUsd === null) return null;
-    sum += o.costUsd;
-  }
-  return sum;
+/** "위스키 [통]이" → 글자와 금색 강조 낱말을 가른다. */
+function splitAccent(heading: string): { text: string; accent: string | null } {
+  return { text: heading.replace(/\[|\]/g, ""), accent: /\[([^\]]+)\]/.exec(heading)?.[1] ?? null };
 }
 
-/** 편집 칸 — 페이지 수·순서는 그대로, 글만. 표지 제목은 첫 페이지 제목이다. */
-export interface DraftEdit { pages: { heading: string; body: string }[]; hook_title: string; share_line: string }
-export function draftFromPlan(plan: StudioPlan): DraftEdit {
-  return {
-    pages: (plan.plan_json.pages ?? []).map((p) => ({ heading: p.heading ?? "", body: p.body ?? "" })),
-    hook_title: plan.plan_json.reel?.hook_title ?? "",
-    share_line: plan.plan_json.reel?.share_line ?? "",
-  };
-}
-export function sameDraft(a: DraftEdit, b: DraftEdit): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-/** 빈 제목·빈 내용 검사(출처 페이지는 서버가 채우므로 제목만). 문제 없으면 null. */
-export function draftProblem(d: DraftEdit, roles: string[]): string | null {
-  if (!d.pages[0]?.heading.trim()) return "제목을 비워 둘 수 없어요.";
-  for (let i = 0; i < d.pages.length; i++) {
-    if (roles[i] === "source") continue;
-    if (!d.pages[i].heading.trim()) return `${i + 1}장 제목이 비었어요.`;
-    if (roles[i] !== "cover" && !d.pages[i].body.trim()) return `${i + 1}장 내용이 비었어요.`;
+export function draftRows(plan: StudioPlan): DraftRow[] {
+  const photo = isPhotoPlan(plan);
+  const line = (label: string, text: string | null | undefined) => (text?.trim() ? [{ label, text: text.trim() }] : []);
+  if (plan.format === "video") {
+    return (plan.plan_json.scenes ?? []).map((sc, i) => ({
+      title: `${i + 1}번 장면${typeof sc.timing_sec === "number" ? ` · ${sc.timing_sec}초` : ""}${sc.visual_role ? ` · ${SCENE_ROLE[sc.visual_role] ?? sc.visual_role}` : ""}`,
+      lines: [...line("화면", sc.staging_ko ?? sc.explanation), ...line("내레이션·자막", sc.narration), ...line("화면 글자", overlayTexts(sc.overlays).join(" / "))],
+    }));
   }
-  return null;
+  const reel = plan.plan_json.reel;
+  const rows: DraftRow[] = (plan.plan_json.pages ?? []).map((pg, i) => {
+    if (pg.role === "source") return { title: `${i + 1}장 · 출처`, lines: [{ label: "화면 글자", text: "사용한 출처 목록이 자동으로 들어가요." }] };
+    const h = splitAccent(pg.heading ?? "");
+    return {
+      title: `${i + 1}장 · ${PAGE_ROLE[pg.role] ?? pg.role}`,
+      lines: [...line("제목", h.text), ...line("본문", pg.body), ...line("이미지", pg.image_prompt),
+        ...line("배치", photo ? `배경 사진 위에 제목·본문${h.accent ? ` · '${h.accent}'을 금색으로 강조` : ""}` : "글자 카드")],
+    };
+  });
+  if (reel?.hook_title || reel?.share_line) rows.push({ title: "함께 나오는 세로 릴스", lines: [...line("첫 화면", reel.hook_title), ...line("마지막 화면", reel.share_line)] });
+  return rows;
+}
+
+/** 게시 시각 기본값(datetime-local, 한국 시각): 지금부터 15분 뒤. 게시 가능 시간 밖이면 다음 시작 시각. 사람이 바꿀 수 있다. */
+export function defaultPublishAt(nowMs: number, window: { start: string; end: string }): string {
+  const kst = new Date(nowMs + 15 * 60_000 + 9 * 3_600_000).toISOString().slice(0, 16);
+  const time = kst.slice(11);
+  if (time >= window.start && time <= window.end) return kst;
+  const base = time > window.end ? new Date(Date.parse(`${kst.slice(0, 10)}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : kst.slice(0, 10);
+  return `${base}T${window.start}`;
 }

@@ -3,14 +3,15 @@
 // ★ 실패를 빈 목록으로 바꾸지 않는다 — 읽기 실패는 그 칸에 이유를 적는다.
 import "./studio.css";
 
-import StudioClient, { type StudioCollectItem, type StudioResultFile } from "@/components/drinks/studio/StudioClient";
+import StudioClient, { type StudioCollectItem, type StudioProduction, type StudioPublish, type StudioResultFile } from "@/components/drinks/studio/StudioClient";
 import { HeldTab, MineSection, STUDIO_TABS, StudioTabNav, type StudioTab } from "@/components/drinks/studio/StudioTabs";
 import ManualEntry from "@/components/drinks/topics/ManualEntry";
 import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
 import WeeklyBudgetCard from "@/components/drinks/topics/WeeklyBudgetCard";
 import { pickDefaults } from "@/lib/drinks/pickModal";
 import { loadPlanProduction } from "@/lib/drinks/productionQueries";
-import { INSUFFICIENT, cardPlan, type StudioStatus } from "@/lib/drinks/studio";
+import { loadPublishBoard } from "@/lib/drinks/publishQueries";
+import { INSUFFICIENT, activePlan, type StudioLane, type StudioStatus } from "@/lib/drinks/studio";
 import { isStopped } from "@/lib/drinks/studioList";
 import { loadStudioCandidates } from "@/lib/drinks/topicsQueries";
 import { loadWeeklyBudget } from "@/lib/drinks/weeklyBudget";
@@ -32,11 +33,12 @@ function pathLabel(path: string | null): string | null {
 
 const isTest = (title: string) => title.startsWith("[테스트]");
 
-export default async function StudioPage(props: { searchParams: Promise<{ topic?: string; tab?: string; page?: string }> }) {
+export default async function StudioPage(props: { searchParams: Promise<{ topic?: string; tab?: string; page?: string; lane?: string }> }) {
   const sp = await props.searchParams;
   const db = createAdminClient();
   if (!db) return <main className="container"><p className="banner-warn">서버에 SUPABASE_SERVICE_KEY 가 없어 읽을 수 없습니다.</p></main>;
   const topicId = sp.topic && ID.test(sp.topic) ? sp.topic : null;
+  const lane: StudioLane | null = sp.lane === "card" || sp.lane === "explainer" ? sp.lane : null;
   const tab: StudioTab | null = !topicId && sp.tab && sp.tab in STUDIO_TABS ? (sp.tab as StudioTab) : null;
   if (tab) {
     return (
@@ -119,25 +121,44 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
     if (mine.includes("explainer") && !it.cardPicked) it.videoDraft = true;   // 설명형으로 시작한 소재는 작업공간에서 잇는다
   }
 
-  // 결과: 확정된 카드뉴스 초안의 제작 묶음(서명 URL 1시간). 파일·검사 결과가 있는 것만 '완료'다.
+  // 제작·검수·등록 상태: 승인된 초안의 최신 파일 묶음(서명 URL 1시간). 파일·검사 결과가 있는 것만 '완료'다.
   let files: StudioResultFile[] = [];
   let resultProblem: string | null = null;
-  const plan = cardPlan(status);
+  let production: StudioProduction | null = null;
+  let publish: StudioPublish | null = null;
+  const plan = activePlan(status, lane);
   if (plan && plan.plan_status === "approved") {
     const prod = await loadPlanProduction(plan.plan_revision_id);
     if (prod.state !== "ok") resultProblem = prod.state === "failed" ? prod.error : "제작 결과를 읽지 못했습니다";
     else {
       const latest = prod.data.manifests[0] ?? null;
+      const active = prod.data.jobs.find((j) => j.status === "queued" || j.status === "running");
       files = latest ? latest.files.map((f) => ({ role: f.role, position: f.position, mime: f.mime, url: f.url, urlError: f.urlError,
         width: f.width, height: f.height, jobId: latest.manifest.job_id, reviewStatus: latest.review?.status ?? null,
         qa: (latest.review?.qa_summary as { ok?: boolean } | undefined)?.ok ?? null })) : [];
+      production = {
+        explainer: prod.data.explainer.is_explainer ? prod.data.explainer : null,
+        activeJob: active ? { renderer: active.renderer, status: active.status } : null,
+        outputReview: latest?.review ? { id: latest.review.id, version: latest.review.version, status: latest.review.status, hasReel: latest.files.some((f) => f.role === "final_video") } : null,
+      };
+      if (production.outputReview?.status === "approved") {
+        const board = await loadPublishBoard();
+        if (board.state === "ok") {
+          const req = board.data.requests.filter((r) => r.plan_revision_id === plan.plan_revision_id && !["canceled"].includes(r.status))[0] ?? null;
+          publish = {
+            accounts: board.data.accounts.filter((a) => a.status !== "disabled" && a.publish_enabled).map((a) => ({ id: a.id, label: `${a.display_name} · ${a.external_account_id}`, postTypes: a.capabilities?.post_types ?? [] })),
+            aiLabel: board.data.ai_label_text ?? null,
+            request: req ? { id: req.id, version: req.version, status: req.status, approval_digest: req.approval_digest ?? null, caption: req.caption ?? null, publish_at: req.publish_at ?? null, external_url: req.external_url ?? null } : null,
+          };
+        }
+      }
     }
   }
 
   return (
     <main className="container container--dw">
       <StudioClient items={items} problems={problems} status={status} statusProblem={statusProblem} files={files} resultProblem={resultProblem}
-        selectedTopicId={topicId} summary={summary}
+        selectedTopicId={topicId} lane={lane} production={production} publish={publish} summary={summary}
         header={<><StudioTabNav tab={null} /><WeeklyBudgetCard budget={wb.state === "ok" ? wb.data : null} error={wb.state === "error" ? wb.message : undefined} /></>}
         footer={<ManualEntry />} />
     </main>
