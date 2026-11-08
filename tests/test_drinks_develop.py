@@ -374,6 +374,29 @@ def plan_job(review=None, **kw):
     return job("plan", review=review or review_from_gold(), **kw)
 
 
+def test_explainer_comment_reaches_the_model_and_saves_as_a_rewrite():
+    """0078: 릴스 초안에 단 코멘트가 모델 입력에 들어가고, 옛 초안을 대체하는 경로로 저장된다."""
+    saved = {}
+
+    class Rpc(FakeRpc):
+        context = {"instruction": "2번 장면은 쌀로", "supersedes_plan_id": "old", "current_plan": {"scenes": [{"narration": "옛 대사"}]}}
+
+        def drinks_develop_save_rewrite(self, p):
+            saved.update(p)
+            return {"revision_id": "pl2", "coverage": {}}
+
+    seen = {}
+
+    def write(question, claims, brief, feedback=None):
+        seen["prompt"] = dd.plan_user_prompt(question, claims, brief, feedback)
+        return gold_plan()
+
+    res = dd.process_job(plan_job(), Rpc(), deps(write_plan=write))
+    assert res["status"] == "succeeded"
+    assert "2번 장면은 쌀로" in seen["prompt"] and "옛 대사" in seen["prompt"]
+    assert saved["plan_json"]
+
+
 def test_plan_phase_passes_the_hand_made_gold_plan_and_saves_a_draft_with_a_source_table():
     rpc = FakeRpc()
     seen = {}

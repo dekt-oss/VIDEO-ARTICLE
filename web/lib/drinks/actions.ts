@@ -98,6 +98,7 @@ export const DRINKS_ACTIONS = {
   studio_status: "drinks_studio_status",
   studio_save_draft: "drinks_studio_save_draft",
   studio_rewrite: "drinks_studio_rewrite",
+  studio_approve_draft: "drinks_studio_approve_draft",
   studio_generate: "drinks_studio_generate",
 } as const;
 

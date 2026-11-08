@@ -359,6 +359,12 @@ def plan_user_prompt(question: str, claims: list[dict[str, Any]], brief: dict[st
     if ex:
         parts.append(("통과한 사례의 모양(내용을 베끼지 말고 형식만 참고. 옛 길이의 사례라 장면 수·길이·시각 주장표는 위 규칙을 따른다):\n"
                       if config.DRINKS_DEVELOP_EXPLAINER_CONTRACT else "통과한 사례의 모양(내용을 베끼지 말고 형식만 참고):\n") + ex)
+    rewrite = brief.get("_rewrite") or {}
+    if rewrite.get("instruction"):
+        # 운영자 코멘트(0078 스튜디오). 근거 밖으로 나가라는 뜻이 아니다 — 근거 규칙이 먼저다.
+        parts.append("운영자 수정 코멘트(근거 규칙을 지키는 범위에서 따른다): " + str(rewrite["instruction"])[:500])
+        if rewrite.get("current_scenes"):
+            parts.append("지금 초안(이것을 바탕으로 고쳐 쓴다):\n" + json.dumps(rewrite["current_scenes"], ensure_ascii=False)[:8000])
     if feedback:
         parts.append("직전 초안이 아래 검사에 막혔다. 같은 문제를 고쳐서 처음부터 다시 쓴다:\n" + "\n".join(f"- {m}" for m in feedback))
     return "\n\n".join(parts)
@@ -1177,6 +1183,9 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
     if not claims:
         raise DevelopError("no_core_claims", "승인된 근거 버전에 핵심 주장이 없습니다")
     brief = review.get("brief") or {}
+    ctx = develop_context(rpc, lease)
+    if ctx.get("instruction"):
+        brief = {**brief, "_rewrite": {"instruction": ctx["instruction"], "current_scenes": (ctx.get("current_plan") or {}).get("scenes")}}
     question = topic["question"]
     feedback: Optional[list[str]] = None
     plan: dict[str, Any] = {}
@@ -1206,7 +1215,9 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
                            {"checks": rep.as_dict(), "rewrites": rewrites, "jev_flags": flags, "rejected_plan": plan})
     beat("save")
     try:
-        saved = rpc("drinks_develop_save_plan", {**lease, "plan_json": clean_plan(plan), **core_takeaway_draft(job, plan)})
+        # 코멘트로 다시 쓴 초안이면 옛 초안을 막고 새 초안을 한 트랜잭션에서 넣는다(0076 drinks_develop_save_rewrite).
+        saved = rpc("drinks_develop_save_rewrite" if ctx.get("supersedes_plan_id") else "drinks_develop_save_plan",
+                    {**lease, "plan_json": clean_plan(plan), **core_takeaway_draft(job, plan)})
     except DbError as exc:
         if exc.code == "lease_lost":
             raise

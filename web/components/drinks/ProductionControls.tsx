@@ -88,7 +88,7 @@ export function CancelRender({ jobId }: { jobId: string }) {
   return <button className="btn" disabled={busy} onClick={() => run("cancel_render", { job_id: jobId }, "취소를 요청했습니다", "취소")}>취소</button>;
 }
 
-const CHECKS = {
+export const CHECKS = {
   video: [
     ["scene_types_labeled", "장면마다 유형(연출 장면·설명용 도해)이 보인다"],
     ["no_real_product_implied", "실제 제품·시설 촬영이나 정확한 제조 과정으로 오해될 장면이 없다"],
@@ -105,7 +105,7 @@ const CHECKS = {
 } as const;
 
 /** 0065: 카드 묶음에 릴스 영상이 들었을 때 더 보는 항목(DB drinks_output_review_action 과 같다). */
-const REEL_CHECKS = [
+export const REEL_CHECKS = [
   ["reel_motion_ok", "릴스 페이지 전환이 끊기지 않고 글자가 다 읽힌다"],
   ["reel_hook_share_ok", "첫 화면 훅 제목과 마지막 화면 저장/보내기 한 줄이 맞다"],
 ] as const;
