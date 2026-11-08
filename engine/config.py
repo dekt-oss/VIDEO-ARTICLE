@@ -4895,7 +4895,7 @@ DRINKS_EXPLAINER_APPROVAL_CAP_USD: float = 8.90
 # ── 카드뉴스 형식 엔진 (총괄계획 §4-2, 기획 v2 §2-2·§2-3·§4·§7, 마이그레이션 0065). docs/deviation-drinks-card-reels.md ──
 # 카드 제작안 초안. 글자 수 상한은 렌더(1080×1920)에서 잘리지 않는 값으로 잡았다 — 샘플 렌더로 정한 첫 값이다.
 DRINKS_CARD_PLAN_MODEL: str = os.getenv("DRINKS_CARD_PLAN_MODEL", DRINKS_DEVELOP_PLAN_MODEL)
-DRINKS_CARD_PLAN_MAX_TOKENS: int = 8_000
+DRINKS_CARD_PLAN_MAX_TOKENS: int = 12_000         # 사진형은 쪽마다 영어 image_prompt 가 붙고 deepseek 속생각 토큰도 여기서 나간다 — 8천에서 잘렸다(2026-11-08 사케). 시험 스크립트 상한 $0.10(다시 쓰기 포함) 안에 드는 값
 DRINKS_CARD_PAGES: tuple[int, int] = (5, 8)          # 표지 1 + 설명 + 출처 1. 페이지당 2.5~4초면 15~30초에 든다
 DRINKS_CARD_HEADING_MAX_CHARS: int = 26              # 페이지 제목(공백 포함)
 DRINKS_CARD_BODY_MAX_CHARS: int = 110                # 페이지 본문(공백·줄바꿈 제외)
