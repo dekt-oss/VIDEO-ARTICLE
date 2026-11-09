@@ -16,7 +16,7 @@ import { blockerLabel } from "@/lib/drinks/model";
 import { PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL } from "@/lib/drinks/pickModal";
 import { PUBLISH_WINDOW, publishWindowProblem } from "@/lib/drinks/publishWindow";
 import {
-  activePlan, cardCost, defaultFormat, defaultPublishAt, draftRows, formatAction, isPhotoPlan, progressText, studioPhase,
+  BATCH_MAX, activePlan, batchTargets, cardCost, defaultFormat, defaultPublishAt, draftRows, formatAction, isPhotoPlan, progressText, studioPhase,
   type FormatChoice, type StudioLane, type StudioPlan, type StudioScreen, type StudioStatus,
 } from "@/lib/drinks/studio";
 
@@ -79,6 +79,7 @@ export default function StudioClient({ items, problems, status, statusProblem, f
   const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [format, setFormat] = useState<FormatChoice>(() => lane ?? defaultFormat(items.find((i) => i.key === selKey) ?? null));
+  const [checked, setChecked] = useState<string[]>([]);   // 한 번에 만들 소재들
   useEffect(() => setOverride(null), [phase.screen, status?.topic.id]);
   const screen: StudioScreen = override ?? (selectedTopicId ? phase.screen : "collect");
 
@@ -93,10 +94,12 @@ export default function StudioClient({ items, problems, status, statusProblem, f
   const go = (topicId: string | null, f?: StudioLane) => router.push(topicId ? `/drinks/studio?topic=${topicId}${f ? `&lane=${f}` : ""}` : "/drinks/studio");
   const sel = items.find((i) => i.key === selKey) ?? null;
   // 유형을 더하면 그 유형의 초안을 만든다. 근거는 소재마다 하나를 함께 쓴다.
+  const sendAdd = (item: StudioCollectItem, f: StudioLane) => post("pick_topic", { topic_id: item.topicId, formats: [f], format: f, editorial_week: pickContext.week, recommended_format: f,
+    ...(pickContext.budgetId ? { budget_id: pickContext.budgetId } : {}) });
+  const sendPrepare = (item: StudioCollectItem, f: StudioLane) => post("studio_prepare", item.topicId ? { topic_id: item.topicId, format_intent: f } : { ...item.payload, format_intent: f });
   const addFormat = async (item: StudioCollectItem, f: StudioLane) => {
     setBusy(true); setMsg(null);
-    const r = await post("pick_topic", { topic_id: item.topicId, formats: [f], format: f, editorial_week: pickContext.week, recommended_format: f,
-      ...(pickContext.budgetId ? { budget_id: pickContext.budgetId } : {}) });
+    const r = await sendAdd(item, f);
     setBusy(false);
     if (!r.ok) { setMsg({ text: r.error ?? "유형을 더하지 못했어요.", bad: true }); return; }
     go(item.topicId, f);
@@ -106,7 +109,7 @@ export default function StudioClient({ items, problems, status, statusProblem, f
   const prepare = async (item: StudioCollectItem) => {
     setBusy(true); setMsg(null);
     const format_intent = format === "explainer" ? "explainer" : "card";   // 밈은 이 요청을 타지 않는다(밈 보드로 간다)
-    const r = await post("studio_prepare", item.topicId ? { topic_id: item.topicId, format_intent } : { ...item.payload, format_intent });
+    const r = await sendPrepare(item, format_intent);
     setBusy(false);
     if (!r.ok) { setMsg({ text: r.error ?? "초안 준비를 시작하지 못했어요.", bad: true }); return; }
     const tid = String(r.result?.topic_id ?? item.topicId ?? "");
@@ -117,6 +120,26 @@ export default function StudioClient({ items, problems, status, statusProblem, f
     }
     if (r.dispatch && !r.dispatch.triggered && r.result?.queued) setMsg({ text: "작업 순서에 넣었어요. 작업기가 깨어나는 대로(최대 몇 시간) 준비를 시작해요." });
     if (tid === selectedTopicId && lane === format_intent) router.refresh(); else go(tid, format_intent);
+  };
+
+  // 여러 소재를 차례로 맡기고 이 화면에 머문다. 한 건이 실패해도 나머지는 계속하고, 실패한 소재만 체크를 남긴다.
+  const startMany = async (list: StudioCollectItem[], f: StudioLane) => {
+    setBusy(true); setMsg(null);
+    const failed: { key: string; why: string }[] = [];
+    let waitsForCron = false;
+    for (const it of list) {
+      const r = await (formatAction(it, f) === "add" ? sendAdd(it, f) : sendPrepare(it, f));
+      const act = r.result?.action;
+      if (!r.ok) failed.push({ key: it.key, why: `${it.title}: ${r.error ?? "시작하지 못했어요"}` });
+      else if (act === "stopped" || act === "needs_choice" || act === "none") failed.push({ key: it.key, why: `${it.title}: 자동으로 다시 할 수 없는 상태예요. 소재를 눌러 이유를 확인해 주세요.` });
+      else if (r.dispatch && !r.dispatch.triggered && r.result?.queued) waitsForCron = true;
+    }
+    setBusy(false);
+    setChecked(failed.map((x) => x.key));
+    const ok = list.length - failed.length;
+    const head = ok > 0 ? `${ok}개 소재의 초안을 만들기 시작했어요. 편당 몇 분 걸려요. 새로고침하면 다 된 소재에 '초안 있음'이 붙어요.${waitsForCron ? " 작업기가 깨어나는 대로(최대 몇 시간) 시작해요." : ""}` : "";
+    setMsg({ text: [head, ...failed.map((x) => x.why)].filter(Boolean).join(" "), bad: failed.length > 0 });
+    router.refresh();
   };
 
   return (
@@ -143,6 +166,8 @@ export default function StudioClient({ items, problems, status, statusProblem, f
       {screen === "collect" && (
         <Collect summary={summary} items={items} problems={problems} selKey={selKey} sel={sel} busy={busy}
           onSelect={(k) => { setSelKey(k); setFormat(defaultFormat(items.find((i) => i.key === k) ?? null)); }}
+          checked={checked} onCheck={(k) => setChecked((c) => (c.includes(k) ? c.filter((x) => x !== k) : c.length < BATCH_MAX ? [...c, k] : c))}
+          onClearChecked={() => setChecked([])} onStartMany={startMany}
           current={status && sel?.topicId === status.topic.id ? phase : null}
           format={format} onFormat={setFormat} onPrepare={prepare} onAdd={addFormat}
           onOpen={(id, f) => { if (id === selectedTopicId && lane === f) setOverride(null); else go(id, f); }} />
@@ -174,17 +199,32 @@ export default function StudioClient({ items, problems, status, statusProblem, f
 }
 
 // ── ① 소재 고르기 ────────────────────────────────────────────────────────────
-function Collect({ summary, items, problems, selKey, onSelect, sel, busy, current, format, onFormat, onPrepare, onAdd, onOpen }: {
+function Collect({ summary, items, problems, selKey, onSelect, checked, onCheck, onClearChecked, onStartMany, sel, busy, current, format, onFormat, onPrepare, onAdd, onOpen }: {
+  checked: string[]; onCheck: (k: string) => void; onClearChecked: () => void; onStartMany: (list: StudioCollectItem[], f: StudioLane) => void;
   summary?: string; items: StudioCollectItem[]; problems: string[]; selKey: string | null; onSelect: (k: string) => void; sel: StudioCollectItem | null; busy: boolean;
   current: ReturnType<typeof studioPhase> | null; format: FormatChoice; onFormat: (f: FormatChoice) => void;
   onPrepare: (i: StudioCollectItem) => void; onAdd: (i: StudioCollectItem, f: StudioLane) => void; onOpen: (topicId: string, f: StudioLane) => void;
 }) {
   const action = sel ? formatAction(sel, format) : null;
+  const many = items.filter((i) => checked.includes(i.key));
+  const manyTargets = batchTargets(many, format);
+  const formats = (badges: StudioCollectItem | null) => (
+    <fieldset className="sj-format-list"><legend className="sj-label">어떤 유형으로 만들까요?</legend>
+      {PICK_FORMATS.map((f) => (
+        <label key={f} className="sj-format">
+          <input type="radio" name="sj-collect-format" checked={format === f} disabled={busy} onChange={() => onFormat(f)} />
+          <span className="sj-format-copy"><strong>{PICK_FORMAT_LABEL[f]}</strong>
+            {badges?.drafts.includes(f) ? <span className="sj-label"> · 초안 있음</span> : badges?.started.includes(f) ? <span className="sj-label"> · 시작함</span> : null}
+            <p>{PICK_FORMAT_HINT[f]}</p></span>
+        </label>
+      ))}
+    </fieldset>
+  );
   return (
     <section aria-labelledby="sj-collect-h">
       <div className="sj-intro">
         <div><p className="sj-kicker">COLLECT / SELECT</p><h1 id="sj-collect-h">어떤 이야기를 만들까요?</h1>
-          <p>수집된 질문에서 소재를 고르면, 초안까지 준비해 드려요.</p></div>
+          <p>수집된 질문에서 소재를 고르면, 초안까지 준비해 드려요. 왼쪽 네모를 체크하면 여러 소재를 한 번에 만들 수 있어요(최대 {BATCH_MAX}개).</p></div>
         <span className="sj-note">고를 수 있는 소재 · {items.length}개</span>
       </div>
       {summary && <p className="sj-note">{summary}</p>}
@@ -193,20 +233,43 @@ function Collect({ summary, items, problems, selKey, onSelect, sel, busy, curren
         <div className="sj-layout">
           <ul className="sj-stack" aria-label="수집된 소재">
             {items.map((t) => (
-              <li key={t.key}>
-                <button type="button" className="sj-topic" aria-pressed={t.key === selKey} onClick={() => onSelect(t.key)}>
+              <li key={t.key} className="sj-topic-row">
+                <label className="sj-topic-check">
+                  <input type="checkbox" aria-label={`${t.title} 함께 만들기`} checked={checked.includes(t.key)} disabled={busy || (!checked.includes(t.key) && checked.length >= BATCH_MAX)} onChange={() => onCheck(t.key)} />
+                </label>
+                {/* 여러 개를 고르는 중에는 줄을 눌러도 체크가 바뀐다(오른쪽 칸이 묶음 칸이라 한 소재 보기가 없다) */}
+                <button type="button" className="sj-topic" aria-pressed={many.length > 0 ? checked.includes(t.key) : t.key === selKey} disabled={busy} onClick={() => (many.length > 0 ? onCheck(t.key) : onSelect(t.key))}>
                   <span className="sj-thumb" aria-hidden="true"><strong>{t.kind.split(" · ")[0] || "소재"}</strong><span>술째리고</span></span>
                   <span className="sj-topic-copy">
-                    <span className="sj-label">{t.kind || "주제 미정"}{t.inProgress ? " · 이어 만들 소재" : ""}</span>
+                    <span className="sj-label">{t.kind || "주제 미정"}{t.drafts.length > 0 ? " · 초안 있음" : t.inProgress ? " · 이어 만들 소재" : ""}</span>
                     <strong className="sj-topic-name">{t.title}</strong>
                     <small>{t.origin}</small>
                   </span>
-                  <span aria-hidden="true">{t.key === selKey ? "✓" : "→"}</span>
+                  <span aria-hidden="true">{(many.length > 0 ? checked.includes(t.key) : t.key === selKey) ? "✓" : "→"}</span>
                 </button>
               </li>
             ))}
+            {many.length > 0 && <li className="sj-many-jump"><button type="button" className="sj-btn sj-main" onClick={() => document.getElementById("sj-many")?.scrollIntoView({ behavior: "smooth" })}>선택한 {many.length}개 만들러 가기 <span aria-hidden="true">↑</span></button></li>}
           </ul>
-          {sel && (
+          {many.length > 0 ? (
+            <aside id="sj-many" className="sj-picked" aria-label="선택한 소재들">
+              <div><span className="sj-label">선택한 소재 {many.length}개{many.length >= BATCH_MAX ? " · 한 번에 최대" : ""}</span>
+                <ul className="sj-picked-list">{many.map((i) => <li key={i.key}>{i.title}</li>)}</ul></div>
+              <hr />
+              {formats(null)}
+              {format === "meme" ? <>
+                <p className="sj-note">밈은 소재마다 원본 릴스를 골라야 해서 한 번에 만들 수 없어요. 밈 보드에서 하나씩 시작해요.</p>
+                <Link className="sj-btn sj-main" href="/drinks/memes">밈 보드에서 틀 고르기 <span aria-hidden="true">→</span></Link>
+              </> : <>
+                {manyTargets.length < many.length && <p className="sj-note">이미 {PICK_FORMAT_LABEL[format]} 초안이 있는 {many.length - manyTargets.length}개는 빼고 만들어요.</p>}
+                <button type="button" className="sj-btn sj-main" disabled={busy || manyTargets.length === 0} onClick={() => onStartMany(manyTargets, format)}>
+                  {busy ? "시작하는 중…" : `${PICK_FORMAT_LABEL[format]} 초안 ${manyTargets.length}개 만들기`} <span aria-hidden="true">→</span>
+                </button>
+                <span className="sj-note">이번 주 AI 초안 한도 안에서 만들어요. 한도가 먼저 차면 그 소재부터 멈추고 이유가 남아요. 사진·영상 구매는 초안을 본 뒤 금액을 보고 따로 승인해요.</span>
+              </>}
+              <button type="button" className="sj-btn" disabled={busy} onClick={onClearChecked}>선택 해제</button>
+            </aside>
+          ) : sel && (
             <aside className="sj-picked" aria-label="선택한 소재">
               <div><span className="sj-label">선택한 소재</span><h2>{sel.title}</h2></div>
               <p className="sj-question">“{sel.question}”</p>
@@ -214,16 +277,7 @@ function Collect({ summary, items, problems, selKey, onSelect, sel, busy, curren
               <div><span className="sj-label">이런 초안으로 준비해요</span>
                 <p>{sel.angle ?? "소재의 질문에 답하는 초안을 준비해요."}</p></div>
               {current?.reason && <p className="sj-note">{current.reason}</p>}
-              <fieldset className="sj-format-list"><legend className="sj-label">어떤 유형으로 만들까요?</legend>
-                {PICK_FORMATS.map((f) => (
-                  <label key={f} className="sj-format">
-                    <input type="radio" name="sj-collect-format" checked={format === f} disabled={busy} onChange={() => onFormat(f)} />
-                    <span className="sj-format-copy"><strong>{PICK_FORMAT_LABEL[f]}</strong>
-                      {sel.drafts.includes(f) ? <span className="sj-label"> · 초안 있음</span> : sel.started.includes(f) ? <span className="sj-label"> · 시작함</span> : null}
-                      <p>{PICK_FORMAT_HINT[f]}</p></span>
-                  </label>
-                ))}
-              </fieldset>
+              {formats(sel)}
               {action === "meme"
                 ? <p className="sj-note">밈은 틀이 되는 원본 릴스를 먼저 골라야 해서 밈 보드에서 시작해요.</p>
                 : action !== "open" && <p className="sj-note">자료 확인과 구성은 자동으로 진행돼요.<br />완성된 초안을 읽고 코멘트를 달아 주세요.</p>}

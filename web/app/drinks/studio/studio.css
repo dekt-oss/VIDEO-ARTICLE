@@ -2,7 +2,7 @@
    모든 규칙은 .sj 아래에만 건다(다른 화면에 영향 없음). 색은 주류 테마(drinks-theme.css) 토큰을 쓴다. */
 .sj { --sj-paper: var(--card, #fffefa); --sj-ink: var(--text, #203c31); --sj-sub: var(--muted, #637368); --sj-line: var(--border, #dde3d9);
   --sj-green: var(--accent, #245b44); --sj-on: #ffffff; --sj-soft: var(--accent-soft, #e8eee4); --sj-warm: #f0e5ce; --sj-pad: 28px;
-  font-size: 14px; line-height: 1.65; color: var(--sj-ink); background: var(--bg, #f5f5f0); border: 1px solid var(--sj-line); border-radius: 16px; overflow: hidden; }
+  font-size: 14px; line-height: 1.65; color: var(--sj-ink); background: var(--bg, #f5f5f0); border: 1px solid var(--sj-line); border-radius: 16px; overflow: clip; }
 .sj *, .sj *::before, .sj *::after { box-sizing: border-box; }
 .sj button, .sj input, .sj textarea { font: inherit; }
 .sj button { cursor: pointer; }
@@ -29,6 +29,10 @@
 .sj-kicker { color: var(--sj-green) !important; font-size: 11px; font-weight: 700; letter-spacing: 1.4px; margin-bottom: 8px !important; margin-top: 0 !important; }
 .sj-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 24px; }
 .sj-stack { display: grid; gap: 12px; list-style: none; }
+.sj-topic-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; }
+.sj-topic-check { display: flex; align-items: center; justify-content: center; min-height: 44px; align-self: stretch; cursor: pointer; }
+.sj-topic-check input { accent-color: var(--sj-green); height: 20px; width: 20px; margin: 0; }
+.sj-picked-list { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .sj-topic { display: grid; grid-template-columns: 64px minmax(0, 1fr) 18px; gap: 14px; align-items: center; width: 100%; text-align: left; background: var(--sj-paper);
   border: 1px solid var(--sj-line); border-radius: 10px; padding: 17px; color: var(--sj-ink); }
 .sj-topic:hover { border-color: var(--sj-green); }
@@ -41,6 +45,9 @@
 .sj-topic small { color: var(--sj-sub); display: block; line-height: 1.6; font-size: 12px; }
 .sj-label { display: inline-block; font-size: 11px; color: var(--sj-green); font-weight: 700; }
 .sj-picked { background: var(--sj-paper); border-radius: 10px; border: 1px solid var(--sj-line); padding: 23px; display: flex; flex-direction: column; gap: 16px; align-self: start; min-width: 0; }
+/* 긴 목록을 내려도 고른 소재와 [만들기] 버튼이 보이게 */
+.sj-layout > .sj-picked { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.sj-many-jump { display: none; }
 .sj-picked hr { border: 0; border-top: 1px solid var(--sj-line); width: 100%; margin: 0; }
 .sj-picked p { overflow-wrap: anywhere; }
 .sj-question { padding-left: 13px; border-left: 2px solid var(--sj-green); color: var(--sj-sub); }
@@ -130,7 +137,9 @@ section .sj-message, section .sj-error { margin: 12px 0 0 !important; }
   .sj h1 { font-size: 23px; }
   .sj-layout, .sj-editor-layout { grid-template-columns: minmax(0, 1fr); }
   .sj-editor-layout > aside { position: static; }
-  .sj-picked { order: -1; }   /* 고른 소재와 [초안 만들기]를 긴 목록 위에 */
+  .sj-layout > .sj-picked { order: -1; position: static; max-height: none; }   /* 고른 소재와 [초안 만들기]를 긴 목록 위에 */
+  .sj-many-jump { display: block; position: sticky; bottom: 12px; }
+  .sj-many-jump .sj-btn { width: 100%; }
   .sj-intro { align-items: start; flex-direction: column; gap: 10px; }
   .sj-preview { aspect-ratio: 4 / 3; }
   .sj-format { grid-template-columns: 20px minmax(0, 1fr); gap: 10px; padding: 15px; }
