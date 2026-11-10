@@ -126,6 +126,20 @@
 .sj-spec th { text-align: left; font-size: 12px; color: var(--sj-sub); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--sj-line); white-space: nowrap; }
 .sj-spec td { padding: 10px 12px; vertical-align: top; border-top: 1px solid var(--sj-line); min-width: 44px; overflow-wrap: anywhere; }
 .sj-spec td p { margin: 0; }
+/* 사진클레이 진행 단계 — 그림 그리기 → 영상 조립 → 검수 */
+.sj-progress { list-style: none; padding: 0; margin: 4px 0 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sj-progress li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--sj-paper); border: 1px solid var(--sj-line);
+  border-radius: 9px; padding: 12px 14px; color: var(--sj-sub); font-size: 13px; }
+.sj-progress b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--sj-line); font-size: 12px; font-weight: 600; }
+.sj-progress small { flex-basis: 100%; font-size: 12px; color: var(--sj-sub); margin-left: 32px; }
+.sj-progress .is-done { color: var(--sj-ink); }
+.sj-progress .is-done b { background: var(--sj-soft); color: var(--sj-green); border-color: var(--sj-soft); }
+.sj-progress .is-now { border: 2px solid var(--sj-green); padding: 11px 13px; color: var(--sj-ink); font-weight: 600; }
+.sj-progress .is-now b { background: var(--sj-green); color: var(--sj-on); border-color: var(--sj-green); }
+.sj-progress .is-stop { border: 2px solid #b4532a; padding: 11px 13px; color: var(--sj-ink); font-weight: 600; }
+@media (max-width: 520px) { .sj-progress { grid-template-columns: 1fr; } }
+.sj-more { margin-top: 18px; border-top: 1px solid var(--sj-line); padding-top: 12px; }
+.sj-more summary { cursor: pointer; color: var(--sj-sub); font-size: 13px; min-height: 32px; }
 /* 릴스 만드는 방식(사진클레이 / 영상 클립) — 0079 */
 .sj-make { border: 0; padding: 0; margin: 4px 0 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .sj-make legend { font-size: 12px; font-weight: 700; color: var(--sj-sub); margin-bottom: 8px; padding: 0; }

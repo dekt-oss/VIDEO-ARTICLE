@@ -6,7 +6,7 @@ export type EpisodeState =
   | "blocked_assets" | "blocked_no_pass" | "blocked_budget" | "unknown_billed" | "auto_qa_fail" | "review_fail";
 
 export const EPISODE_LABEL: Record<EpisodeState, string> = {
-  plan_draft: "지시서 전", directive_ready: "지시서 나옴 · 결재 대기", approved: "결재됨 · 구매 대기", buying: "구매·검수 중", assets_complete: "클립 전부 선택됨",
+  plan_draft: "지시서 전", directive_ready: "지시서 나옴 · 결재 대기", approved: "결재됨 · 구매 대기", buying: "구매·검수 중", assets_complete: "재료 준비 끝",
   rehearsal: "조립 중", rendered: "조립됨", auto_qa_pass: "자동 검사 통과(품질 합격 아님)", process_review_pass: "과정 검수 통과", quality_review_pass: "품질 검수 통과",
   ready_to_publish: "게시 대기", blocked_assets: "멈춤: 클립 문제", blocked_no_pass: "멈춤: 후보 전부 불합격", blocked_budget: "멈춤: 결재 금액 부족",
   unknown_billed: "멈춤: 결과 모르는 시도", auto_qa_fail: "멈춤: 자동 검사 불합격", review_fail: "멈춤: 사람 검수 불합격",
@@ -43,6 +43,27 @@ export interface Directive {
 export const CLAY_PROVIDER = "clay";
 export type MakeMethod = "clay" | "omni";
 export const MAKE_METHOD_LABEL: Record<MakeMethod, string> = { clay: "사진클레이", omni: "영상 클립" };
+
+/** 사진클레이 진행 단계(스튜디오 제작 화면). 운영자 "진행이 어떻게 되는 거냐 알 수가 없네"(2026-11-10). */
+export interface ClayStage { step: 1 | 2 | 3; title: string; note: string; canAssemble: boolean; stopped: boolean }
+export function clayStage(state: string | null | undefined, job: { renderer: string; status: string } | null, lastMessage?: string | null): ClayStage {
+  const queued = job?.status === "queued";
+  if (job?.renderer === "explainer_render" || state === "rehearsal" || state === "rendered") {
+    return { step: 2, title: "영상으로 조립하고 있어요.", canAssemble: false, stopped: false,
+      note: queued ? "작업기가 깨어나는 중이에요(1~2분)." : "그림에 목소리·자막·째리를 붙이는 중이에요. 보통 2~4분 걸려요." };
+  }
+  if (job?.renderer === "explainer_buy" || state === "approved" || state === "buying") {
+    return { step: 1, title: "장면 그림을 그리고 있어요.", canAssemble: false, stopped: false,
+      note: queued ? "그림 작업기가 깨어나는 중이에요(1~2분)." : "장면마다 그림 1장을 그려요. 장당 10초쯤 걸려요." };
+  }
+  if (state === "auto_qa_fail" || state === "blocked_assets") {
+    return { step: 2, title: "조립하다 멈췄어요.", canAssemble: true, stopped: true, note: lastMessage || "다시 조립해 보세요. 돈은 들지 않아요." };
+  }
+  if (state === "assets_complete" || state === "review_fail") {
+    return { step: 2, title: "그림이 다 준비됐어요.", canAssemble: true, stopped: false, note: "영상 조립을 누르면 목소리·자막을 붙여 영상으로 만들어요. 돈은 들지 않아요." };
+  }
+  return { step: 3, title: "완성본을 확인해 주세요.", canAssemble: false, stopped: false, note: "" };
+}
 
 /** 이 편을 사는 데 결재가 허용해야 할 종류. DB(0079 drinks_explainer_request_buy)와 같은 규칙. */
 export function neededKinds(provider: string | null | undefined): string[] {

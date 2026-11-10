@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { canJudge, canSelect, kstMinute, neededKinds, nextStep, slotCosts, usableApproval, type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus } from "./explainerQueue.ts";
+import { canJudge, canSelect, clayStage, kstMinute, neededKinds, nextStep, slotCosts, usableApproval, type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus } from "./explainerQueue.ts";
 
 const cand = (over: Partial<ExplainerCandidate> = {}): ExplainerCandidate => ({
   candidate_id: "P:A1#c1", k: 1, status: "stored", cost_usd: 0.81, auto_verdict: "pass", human_verdict: null, auto_report: null, asset: null, attempts: [], ...over,
@@ -68,6 +68,19 @@ test("사진클레이(0079): 그림만 허용한 결재로 산다 — 클립 편
   const ep = (provider: string) => ({ state: "directive_ready", provider }) as ExplainerStatus["episode"];
   assert.equal(nextStep(st(null, { episode: ep("clay"), approvals: [imageOnly] })), "request_buy");
   assert.equal(nextStep(st(null, { episode: ep("omni"), approvals: [imageOnly] })), "open_approval");
+});
+
+test("사진클레이 진행 단계: 그림 → 조립 → 검수, 대기/진행/멈춤을 말로", () => {
+  assert.equal(clayStage("approved", { renderer: "explainer_buy", status: "queued" }).step, 1);
+  assert.match(clayStage("approved", { renderer: "explainer_buy", status: "queued" }).note, /깨어나는 중/);
+  assert.equal(clayStage("buying", { renderer: "explainer_buy", status: "running" }).title, "장면 그림을 그리고 있어요.");
+  const ready = clayStage("assets_complete", null);
+  assert.deepEqual([ready.step, ready.canAssemble], [2, true]);
+  const asm = clayStage("assets_complete", { renderer: "explainer_render", status: "queued" });
+  assert.deepEqual([asm.step, asm.canAssemble, asm.title], [2, false, "영상으로 조립하고 있어요."]);
+  const stop = clayStage("auto_qa_fail", null, "자동 검사 불합격: duration_out_of_range");
+  assert.deepEqual([stop.stopped, stop.canAssemble, stop.note], [true, true, "자동 검사 불합격: duration_out_of_range"]);
+  assert.equal(clayStage("auto_qa_pass", null).step, 3);
 });
 
 test("시각 표기는 지역 설정과 무관하다(hydration)", () => {
