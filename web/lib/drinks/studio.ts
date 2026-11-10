@@ -107,6 +107,8 @@ export function failureText(code: string | null | undefined): string {
     case "draft_has_edits":
       return "예전 화면에서 직접 고친 근거가 있어 자동으로 덮어쓰지 않았어요. 기존 작업공간에서 이어 가세요.";
     case "canceled": return "준비를 취소했어요.";
+    case "provider_payment_required":
+      return "초안 AI 계정 잔액이 없어 멈췄어요(DeepSeek·Gemini 모두). 충전한 뒤 다시 준비하면 이어서 만들어요.";
     default: return "자동으로 다시 할 수 없는 문제로 멈췄어요.";
   }
 }

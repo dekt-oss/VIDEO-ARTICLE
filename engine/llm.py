@@ -412,7 +412,7 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise JSONParseError(str(exc)) from exc
 
 
-# 결제 실패(402)한 Gemini 모델 — 프로세스가 살아 있는 동안 기억한다(워커 한 번 실행 = 한 프로세스).
+# 결제 실패(402)한 모델(Gemini·deepseek) — 프로세스가 살아 있는 동안 기억한다(워커 한 번 실행 = 한 프로세스).
 _PAYMENT_FAILED: set[str] = set()
 
 
@@ -469,8 +469,20 @@ def call_json(
                     log.warning("gemini 402(결제 필요: %s) → %s 로 대체", model, payment_fallback)
                     raw = _deepseek_create(model=payment_fallback, system=system, user=user,
                                            max_tokens=_payment_fallback_tokens(mt))
+            elif backend == "deepseek" and model in _PAYMENT_FAILED and config.LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL:
+                raw = _gemini_text(model=config.LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL, system=system, user=user, max_tokens=mt, state=state)
             elif backend == "deepseek":
-                raw = _deepseek_create(model=model, system=system, user=user, max_tokens=mt)
+                try:
+                    raw = _deepseek_create(model=model, system=system, user=user, max_tokens=mt)
+                except httpx.HTTPStatusError as exc:
+                    # ★ 반대 방향도 402 만 갈아탄다(2026-11-10 운영자 "딥시크 멈췄으면 제미나이로"). 대체 모델은 _gemini_text 를
+                    #   바로 부른다 — 위 gemini 분기를 다시 타면 402 끼리 서로 넘기는 고리가 생긴다.
+                    fb = config.LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL
+                    if exc.response is None or exc.response.status_code != 402 or not fb:
+                        raise
+                    _PAYMENT_FAILED.add(model)
+                    log.warning("deepseek 402(결제 필요: %s) → %s 로 대체", model, fb)
+                    raw = _gemini_text(model=fb, system=system, user=user, max_tokens=mt, state=state)
             else:
                 raw = _create(client, model=model, system=system, user=user, max_tokens=mt)
         except OutputTruncatedError as exc:
