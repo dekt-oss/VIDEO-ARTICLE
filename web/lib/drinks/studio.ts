@@ -44,7 +44,7 @@ export interface StudioStatus {
 /** 자동으로 다시 하는 실패(DB drinks_studio_recoverable 과 같은 목록 — studio.test.ts 가 SQL 파일과 대조). */
 export const RECOVERABLE = ["draft_exists", "version_conflict", "lease_expired", "lease_lost", "worker_error", "transient_error",
   "factcheck_unavailable", "review_changed", "db_error"] as const;
-export const INSUFFICIENT: ReadonlySet<string> = new Set(["evidence_insufficient", "script_check_failed", "no_core_claims", "evidence_not_usable"]);
+export const INSUFFICIENT: ReadonlySet<string> = new Set(["evidence_insufficient", "evidence_off_topic", "script_check_failed", "no_core_claims", "evidence_not_usable"]);
 
 export type StudioLane = "card" | "explainer";
 

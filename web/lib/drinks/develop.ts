@@ -131,6 +131,7 @@ export function developButtons(i: DevelopInput): Record<DevelopKind, ButtonState
 
 const ERROR_TEXT: Record<string, string> = {
   evidence_insufficient: "공식 근거가 3개 미만이라 멈췄습니다 — 출처를 더 붙이거나 소재를 보류하세요",
+  evidence_off_topic: "모은 근거가 소재 질문에 답하지 못해 멈췄습니다 — 질문을 직접 설명하는 출처를 붙이세요",
   budget_missing: "개발 결재가 없어 멈췄습니다 — 결재를 등록한 뒤 다시 요청하세요",
   budget_exceeded: "결재 금액을 넘게 돼 멈췄습니다 — 남은 금액을 확인하거나 결재를 새로 등록하세요",
   script_check_failed: "대본 검사에서 두 번 막혔습니다 — 아래 사유를 보고 직접 고치세요",

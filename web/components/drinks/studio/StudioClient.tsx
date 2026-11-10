@@ -322,11 +322,14 @@ function Preparing({ status, onCancel, busy }: { status: StudioStatus; onCancel:
 
 function Blocked({ code, status, onBack }: { code?: string; status: StudioStatus | null; onBack: () => void }) {
   const script = code === "script_check_failed";
+  const offTopic = code === "evidence_off_topic";
   return (
     <section aria-labelledby="sj-block-h" className="sj-progress-wrap">
       <p className="sj-kicker">NEEDS A DIFFERENT TOPIC</p>
-      <h1 id="sj-block-h">{script ? "이 질문으로는 믿을 만한 초안을\n아직 만들지 못했어요." : "이 질문에 답할 자료가\n아직 충분하지 않아요."}</h1>
-      <p className="sj-status">{script ? "확인된 내용 안에서 다시 써 봤지만 검사를 통과하지 못했어요." : "추가 자료까지 확인했지만, 핵심 내용을 뒷받침하지 못했어요."}</p>
+      <h1 id="sj-block-h">{script ? "이 질문으로는 믿을 만한 초안을\n아직 만들지 못했어요." : offTopic ? "모은 자료가 이 질문에\n답하지 못해요." : "이 질문에 답할 자료가\n아직 충분하지 않아요."}</h1>
+      <p className="sj-status">{script ? "확인된 내용 안에서 다시 써 봤지만 검사를 통과하지 못했어요."
+        : offTopic ? "자료는 있지만 제목이 묻는 핵심과 다른 이야기라, 엉뚱한 영상이 되지 않게 멈췄어요."
+        : "추가 자료까지 확인했지만, 핵심 내용을 뒷받침하지 못했어요."}</p>
       <p className="sj-note">확인되지 않은 내용으로 초안을 만들지 않았어요.<br />자료를 직접 입력하지 않고 다른 소재를 고를 수 있어요.</p>
       <button type="button" className="sj-btn sj-main" onClick={onBack}>다른 소재 고르기 <span aria-hidden="true">→</span></button>
       {status?.last?.excluded && status.last.excluded.length > 0 && (
