@@ -142,6 +142,8 @@ export function cardCost(plan: StudioPlan | null): { usd: number | null; text: s
 /** ① 소재 화면: 소재마다 이미 시작한 유형(started)·초안이 있는 유형(drafts). 어느 소재든 유형을 고를 수 있다. */
 export interface FormatProgress { topicId: string | null; started: string[]; drafts: string[] }
 export type FormatChoice = "card" | "explainer" | "meme";
+/** 한 번에 맡기는 소재 수. 소재 하나가 작업 2건(자료 확인 + 초안)이고 작업기 한 번 실행이 10건까지 처리한다. */
+export const BATCH_MAX = 5;
 
 /** 처음 고른 칸: 초안이 있는 유형 → 시작한 유형 → 카드뉴스. */
 export function defaultFormat(p: FormatProgress | null): FormatChoice {
@@ -159,6 +161,11 @@ export function formatAction(p: FormatProgress, f: FormatChoice): "open" | "prep
   if (p.drafts.includes(f)) return "open";
   const others = p.started.filter((x) => x !== f);
   return p.topicId && others.length > 0 ? "add" : "prepare";
+}
+
+/** 묶음으로 실제 만들 소재: 이 유형의 초안이 이미 있으면 빼고, 밈은 원본 릴스를 소재마다 골라야 해서 묶지 않는다. */
+export function batchTargets<T extends FormatProgress>(list: T[], f: FormatChoice): T[] {
+  return list.filter((i) => formatAction(i, f) === "prepare" || formatAction(i, f) === "add");
 }
 
 /** 초안 구성표 한 줄: 어떤 화면에 무엇을 보여 주고 무엇을 말하는가. */

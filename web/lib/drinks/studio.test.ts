@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { RECOVERABLE, activePlan, cardCost, defaultFormat, defaultPublishAt, draftRows, formatAction, overlayTexts, progressText, studioPhase, type StudioRequest, type StudioStatus } from "./studio.ts";
+import { RECOVERABLE, activePlan, batchTargets, cardCost, defaultFormat, defaultPublishAt, draftRows, formatAction, overlayTexts, progressText, studioPhase, type StudioRequest, type StudioStatus } from "./studio.ts";
 
 const base = (over: Partial<StudioStatus> = {}): StudioStatus => ({
   topic: { id: "t", title: "사케", question: "사케 유통기한?", status: "researching", version: 1 },
@@ -82,6 +82,14 @@ test("어느 소재든 유형을 고르고, 시작한 소재에는 다른 유형
   assert.equal(formatAction(stalled, "card"), "prepare", "멈춘 소재는 복구");
   assert.equal(formatAction(stalled, "explainer"), "add");
   assert.equal(formatAction({ topicId: "t", started: [], drafts: [] }, "explainer"), "prepare");
+});
+
+test("묶음은 이미 초안이 있는 소재와 밈을 뺀다", () => {
+  const fresh = { topicId: null, started: [], drafts: [] };
+  const reel = { topicId: "t", started: ["explainer"], drafts: ["explainer"] };
+  assert.deepEqual(batchTargets([fresh, reel], "explainer"), [fresh]);
+  assert.deepEqual(batchTargets([fresh, reel], "card"), [fresh, reel], "다른 유형이면 더한다");
+  assert.deepEqual(batchTargets([fresh, reel], "meme"), []);
 });
 
 test("초안 구성표는 화면·내레이션·글자·이미지를 글로 보여 준다", () => {

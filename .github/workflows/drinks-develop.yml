@@ -21,7 +21,7 @@ permissions:
 jobs:
   develop:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -39,4 +39,5 @@ jobs:
           cache: pip
       - run: python -m pip install -r engine/requirements.txt
       - name: develop
-        run: python -m engine.drinks_develop
+        # 스튜디오 묶음 발주 최대 5소재 = 10건(자료 확인 + 초안). 대기 실행 하나에 기대지 않고 한 번에 끝낸다.
+        run: python -m engine.drinks_develop --max-jobs 10
