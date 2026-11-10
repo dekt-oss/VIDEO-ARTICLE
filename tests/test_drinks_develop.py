@@ -1012,3 +1012,43 @@ def test_reused_extraction_without_a_verdict_reruns_only_the_factcheck():
     assert res["status"] == "succeeded", rpc.finish
     holds = [p["note"] for n, p in rpc.calls if n == "drinks_develop_hold"]
     assert len(holds) == 1 and holds[0].startswith("AI 사실 확인"), "추출은 다시 사지 않는다"
+
+
+def test_same_document_is_read_once_and_operator_removed_doc_is_not_readded(monkeypatch):
+    """2026-11-10 버번: 소재에 붙은 27 CFR 를 공식 목록이 또 넣어 두 번 읽었다. 발견 역할로 뺀 문서도 공식 목록이 되살리지 않는다."""
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_OFFICIAL_SOURCES", [])
+    body = "본문 " * 200
+    rows = [
+        {"snapshot_id": "s1", "linked": True, "role": "evidence", "source_kind": "media", "title": "WA", "canonical_url": "https://whiskyadvocate.com/a/", "body_text": body},
+        {"snapshot_id": "s2", "linked": True, "role": "evidence", "source_kind": "official", "title": "CFR", "canonical_url": "http://www.ecfr.gov/x#p", "body_text": body},
+        {"snapshot_id": "s3", "linked": True, "role": "discovery", "source_kind": "official", "title": "REG", "canonical_url": "https://reg.example/r", "body_text": body},
+    ]
+    official = [dd.Source("official", "CFR again", body, url="https://ecfr.gov/x"),
+                dd.Source("official", "REG again", body, url="https://reg.example/r/")]
+    monkeypatch.setattr(dd, "find_official", lambda topic, deps: (official, []))
+    rpc = FakeRpc(sources=rows)
+    got, skipped = dd.gather_sources(job(), rpc, {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
+    assert [s.title for s in got] == ["WA", "CFR"]
+    assert sum("다시 읽지 않음" in x["why"] for x in skipped) == 2
+    assert dd.same_doc_key("HTTPS://WWW.A.com/p/#x") == dd.same_doc_key("http://a.com/p") == "a.com/p"
+    assert dd.same_doc_key("") == ""
+
+
+def test_address_only_source_can_still_be_filled_by_the_official_list(monkeypatch):
+    """주소만 등록된(본문 없는) 문서는 공식 목록이 같은 주소의 본문을 가져오면 그것을 읽는다. 깨진 주소는 멈추지 않는다."""
+    body = "본문 " * 200
+    rows = [{"snapshot_id": "s1", "linked": True, "role": "evidence", "source_kind": "official", "title": "CFR", "canonical_url": "https://ecfr.gov/x", "body_text": None},
+            {"snapshot_id": "s2", "linked": True, "role": "evidence", "source_kind": "official", "title": "BAD", "canonical_url": "http://[abc/x", "body_text": body}]
+    monkeypatch.setattr(dd, "find_official", lambda topic, deps: ([dd.Source("official", "CFR full", body, url="https://ecfr.gov/x")], []))
+    got, _ = dd.gather_sources(job(), FakeRpc(sources=rows), {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
+    assert [s.title for s in got] == ["BAD", "CFR full"]
+
+
+def test_operator_attached_sources_come_before_auto_attached_official_ones(monkeypatch):
+    """공식 목록에서 자동으로 붙었던 문서(27 CFR)는 운영자가 붙인 출처 뒤로 간다 — 근거 상한을 먼저 차지하지 않게."""
+    body = "본문 " * 200
+    monkeypatch.setattr(config, "DRINKS_DEVELOP_OFFICIAL_SOURCES", [{"url": "https://www.ecfr.gov/x", "terms_verified": False}])
+    rows = [{"snapshot_id": "s1", "linked": True, "role": "evidence", "source_kind": "official", "title": "CFR", "canonical_url": "https://ecfr.gov/x", "body_text": body},
+            {"snapshot_id": "s2", "linked": True, "role": "evidence", "source_kind": "media", "title": "WA", "canonical_url": "https://wa.com/a", "body_text": body}]
+    got, _ = dd.gather_sources(job(), FakeRpc(sources=rows), {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
+    assert [s.title for s in got] == ["WA", "CFR"]
