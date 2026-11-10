@@ -1,5 +1,9 @@
 # CLAUDE.md — video-article (하루 한 편 논문 선별·초안 시스템)
 
+<!-- harness:begin — claude-config 에서 자동 배달. 이 블록과 .claude/shared/ 는 손으로 고치지 말 것 -->
+공통 규칙(모든 프로젝트): @.claude/shared/HARNESS.md
+<!-- harness:end -->
+
 > 이 파일은 Claude Code가 **이 프로젝트를 가능한 한 자동으로 개발**하도록 돕는 가이드다.
 > 새 세션은 작업 시작 전 이 파일과 `docs/작업계획서.md`를 먼저 읽는다.
 
