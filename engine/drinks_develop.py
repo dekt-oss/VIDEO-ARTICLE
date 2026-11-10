@@ -29,6 +29,7 @@ import json
 import re
 import sys
 import unicodedata
+from urllib.parse import urlsplit
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -639,6 +640,9 @@ def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: D
         usable.append(Source("linked" if r.get("linked") else "collected", str(label or ""), r["body_text"], snapshot_id=r["snapshot_id"],
                              url=r.get("canonical_url"), publisher=r.get("publisher"), source_kind=kind,
                              rights_status=r.get("rights_status") or "unknown", usage_terms=r.get("usage_terms"), role=r.get("role")))
+    # 운영자가 직접 붙인 출처를 먼저 — 공식 목록에서 낱말로 맞춰 자동으로 붙었던 문서는 뒤로(2026-11-10 버번 27 CFR)
+    auto = auto_official_keys()
+    usable.sort(key=lambda s: same_doc_key(s.url) in auto)
     notes: list[str] = []
     off, n = find_official(topic, deps)
     usable += off
@@ -650,7 +654,38 @@ def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: D
         notes += n
     for n in notes:
         skipped.append({"title": "(찾기)", "why": n})
-    return usable[: config.DRINKS_DEVELOP_MAX_SOURCES], skipped
+    # 같은 문서를 두 번 읽지 않는다 — 소재에 이미 붙은 문서(발견 역할로 뺀 것 포함)를 공식 목록이 다시 넣던 일(2026-11-10 버번 27 CFR)
+    #   새로 찾은 출처(스냅숏 없음)만 거른다 — 소재에 붙은 스냅숏끼리는 운영자가 고른 것이라 그대로 둔다.
+    #   비교 대상은 읽을 스냅숏과 근거에서 뺀(발견 역할) 문서뿐 — 주소만 등록된 문서는 공식 목록이 본문을 채워 읽게 둔다.
+    seen = {same_doc_key(s.url) for s in usable if s.snapshot_id}
+    seen |= {same_doc_key(r.get("canonical_url")) for r in rows if r.get("linked") and r.get("role") == "discovery"}
+    seen -= {""}
+    out: list[Source] = []
+    for s in usable:
+        k = same_doc_key(s.url)
+        if not s.snapshot_id and k and k in seen:
+            skipped.append({"title": s.title, "why": "이미 소재에 붙은 문서라 다시 읽지 않음(근거에서 뺀 문서면 되살리지 않음)"})
+            continue
+        seen.add(k)
+        out.append(s)
+    return out[: config.DRINKS_DEVELOP_MAX_SOURCES], skipped
+
+
+def auto_official_keys() -> set[str]:
+    """공식 출처 목록(낱말로 맞춰 자동으로 붙는 문서)의 주소 키."""
+    return {same_doc_key(e.get("url")) for e in config.DRINKS_DEVELOP_OFFICIAL_SOURCES} - {""}
+
+
+def same_doc_key(url: Any) -> str:
+    """주소에서 http/https·www·끝 슬래시·#조각 차이를 지운 비교 키."""
+    try:
+        p = urlsplit(str(url or "").strip())
+        host = p.hostname
+    except ValueError:   # 깨진 주소 하나로 출처 모으기 전체가 멈추지 않게 — 비교하지 않는다
+        return ""
+    if not host:
+        return ""
+    return (host.lower().removeprefix("www.") + p.path.rstrip("/") + (f"?{p.query}" if p.query else ""))
 
 
 def off_topic_message(topic: dict[str, Any], qa: dict[str, Any], report: list[dict[str, Any]], skipped: list[dict[str, Any]]) -> str:
@@ -721,6 +756,13 @@ def interleave_claims(per_source: list[list[dict[str, Any]]], cap: int) -> list[
     return out[:cap]
 
 
+def fill_claims(per_source: list[list[dict[str, Any]]], auto: set[str], cap: int) -> list[dict[str, Any]]:
+    """운영자가 붙인 출처끼리 먼저 번갈아 채우고, 공식 목록에서 자동으로 온 출처(auto)는 남은 자리만 채운다."""
+    is_auto = [bool(k) and same_doc_key(k[0]["src"].url) in auto for k in per_source]
+    first = interleave_claims([k for k, a in zip(per_source, is_auto) if not a], cap)
+    return first + interleave_claims([k for k, a in zip(per_source, is_auto) if a], cap - len(first))
+
+
 def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledger, deps: Deps, beat: Callable[[str], None]) -> dict[str, Any]:
     topic = job["topic"]
     question = topic["question"]
@@ -759,7 +801,8 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
         for k in kept:
             k["src"] = src
         per_source.append(kept)
-    kept_all = interleave_claims(per_source, config.DRINKS_DEVELOP_MAX_CLAIMS)
+    # 운영자가 붙인 출처끼리 먼저 번갈아 채우고, 공식 목록에서 자동으로 온 출처는 남은 자리만 채운다
+    kept_all = fill_claims(per_source, auto_official_keys(), config.DRINKS_DEVELOP_MAX_CLAIMS)
     if len(kept_all) < config.DRINKS_DEVELOP_MIN_CLAIMS:
         raise DevelopError("evidence_insufficient", insufficient_message(len(kept_all), report, skipped), "blocked",
                            {"sources": report, "skipped": skipped, "claims_kept": len(kept_all)})

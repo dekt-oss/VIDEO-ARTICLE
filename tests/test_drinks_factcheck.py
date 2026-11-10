@@ -283,11 +283,11 @@ def test_rehearsal_fixture_is_what_the_worker_sends_today():
 
 
 SQL_75 = (base.ROOT / "supabase" / "migrations" / "0075_drinks_auto_factcheck.sql").read_text(encoding="utf-8")
-SQL_81 = (base.ROOT / "supabase" / "migrations" / "0081_drinks_factcheck_estimate.sql").read_text(encoding="utf-8")   # 가정값의 최신 정의
+SQL_83 = (base.ROOT / "supabase" / "migrations" / "0083_drinks_claim_cap_estimate.sql").read_text(encoding="utf-8")   # 가정값의 최신 정의
 
 
 def test_migration_0075_estimate_counts_the_factcheck_call_with_engine_constants():
-    params = SQL_81.split("create or replace function drinks_develop_estimate_params()")[1].split("$$;")[0]
+    params = SQL_83.split("create or replace function drinks_develop_estimate_params()")[1].split("$$;")[0]
     assert f"'factcheck_max_tokens', {config.DRINKS_DEVELOP_FACTCHECK_MAX_TOKENS}," in params
     assert f"'extract_model', '{config.DRINKS_DEVELOP_FACTCHECK_MODEL}'" in params, "사실 확인은 추출과 같은 모델로 센다"
     for k, v in (("max_sources", config.DRINKS_DEVELOP_MAX_SOURCES), ("source_max_chars", config.DRINKS_DEVELOP_SOURCE_MAX_CHARS),
@@ -353,3 +353,15 @@ def test_claim_cap_takes_turns_across_sources():
     assert len(got) == 12 and "b5" in got and "b6" not in got and "a5" in got
     assert got[:4] == ["a0", "b0", "a1", "b1"]
     assert interleave_claims([], 12) == []
+
+
+def test_auto_official_source_only_fills_leftover_claim_slots():
+    from types import SimpleNamespace
+    from engine.drinks_develop import fill_claims
+    src = lambda u: SimpleNamespace(url=u)
+    chem = [{"t": f"chem{i}", "src": src("https://doi.org/x")} for i in range(5)]
+    wa = [{"t": f"wa{i}", "src": src("https://wa.com/a")} for i in range(8)]
+    cfr = [{"t": f"cfr{i}", "src": src("https://www.ecfr.gov/x")} for i in range(7)]
+    got = [x["t"] for x in fill_claims([chem, wa, cfr], {"ecfr.gov/x"}, 16)]
+    assert len(got) == 16 and "wa7" in got and "chem4" in got
+    assert [x for x in got if x.startswith("cfr")] == ["cfr0", "cfr1", "cfr2"]

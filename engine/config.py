@@ -4644,7 +4644,7 @@ DRINKS_DEVELOP_MAX_HOLDS_PER_REQUEST: int = 20       # 요청 1건의 모델 호
 DRINKS_DEVELOP_MIN_CLAIMS: int = 3                   # 원문 대조를 통과한 주장이 이보다 적으면 evidence_insufficient 로 멈춘다
 # 콘텐츠 스튜디오(0076): AI 사실 확인을 통과한 주장만 핵심 주장이 된다. 그것이 이보다 적으면 '자료 부족'으로 멈춘다(사람에게 주장 판정을 넘기지 않는다).
 DRINKS_DEVELOP_MIN_CORE_CLAIMS: int = 2
-DRINKS_DEVELOP_MAX_CLAIMS: int = 12                  # 근거 초안에 싣는 주장 상한
+DRINKS_DEVELOP_MAX_CLAIMS: int = 16                  # 근거 초안에 싣는 주장 상한(2026-11-10 12→16: 출처 2~3곳이면 12건에 핵심 문장이 잘렸다)
 DRINKS_DEVELOP_REQUIRED_CLAIMS: int = 3              # 브리프의 '영상이 반드시 전한다' 주장 수(앞에서부터). 운영자가 화면에서 고친다
 DRINKS_DEVELOP_MAX_SOURCES: int = 4                  # 근거 추출에 쓰는 출처 수 상한(출처 1개 = 모델 호출 1회)
 DRINKS_DEVELOP_SOURCE_MAX_CHARS: int = 40_000        # 출처 1개에서 모델에 보내는 글자 상한
