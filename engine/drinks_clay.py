@@ -102,19 +102,28 @@ def line_starts(lines: list[str], words: list[tuple[str, float, float]], total_s
 # ─────────────────────────────────────────────────────────────
 
 def image_prompt(visual_prompt: str, n: int, total: int) -> str:
-    ref = ("The reference image shows our mascot. " if n == 1 else
-           "Reference image: the left half shows the main character and the art style, the right half shows our mascot. "
-           "Keep the same character look and clay style, and draw a new scene: ")
-    mascot = f" Somewhere in the scene, {config.DRINKS_CLAY_MASCOT_TEXT} sits small and glares." if mascot_in_scene(n, total) else ""
-    return f"{ref}{visual_prompt.strip()}{mascot} {config.DRINKS_CLAY_STYLE}"
+    """째리가 나오는 장면만 째리를 참조로 준다. 2026-11-10 버번 실측: 모든 장면에 '1번 + 째리' 를 주자 중간 장면에도
+    째리가 그려져 모서리 스티커와 두 번 나왔다 → 째리 없는 장면은 1번 그림만 주고 그리지 말라고 쓴다."""
+    mascot = mascot_in_scene(n, total)
+    if n == 1:
+        ref = "The reference image shows our mascot. "
+    elif mascot:
+        ref = ("Reference image: the left half shows the main character and the art style, the right half shows our mascot. "
+               "Keep the same character look and clay style, and draw a new scene: ")
+    else:
+        ref = ("The reference image shows the main character and the art style. Keep the same character look and clay style, "
+               "and draw a new scene. Do not draw any bottle-cap mascot in this scene: ")
+    tail = f" Somewhere in the scene, {config.DRINKS_CLAY_MASCOT_TEXT} sits small and glares." if mascot else ""
+    return f"{ref}{visual_prompt.strip()}{tail} {config.DRINKS_CLAY_STYLE}"
 
 
-def image_item(n: int, total: int, visual_prompt: str, ref_id: str) -> dpaid.OrderItem:
-    """그림 1장. ref_id = 참조 그림 이름(1번은 째리 그림, 나머지는 1번 그림 sha256) — 해시에 들어가 1번이 바뀌면 다른 그림이다."""
+def image_item(n: int, total: int, visual_prompt: str, ref_id: str, prompt: Optional[str] = None) -> dpaid.OrderItem:
+    """그림 1장. ref_id = 참조 그림 이름(1번은 째리 그림, 나머지는 1번 그림 sha256) — 해시에 들어가 1번이 바뀌면 다른 그림이다.
+    prompt 를 주면 그 문장을 쓴다(지시서에 저장된 문장이 정본 — 코드 문장이 바뀌어도 이미 산 그림을 찾는다)."""
     vp = (visual_prompt or "").strip()
     if not vp:
         raise dpaid.PaidError("visual_prompt_missing", f"{n}번 장면에 영어 그림 지시문(visual_prompt)이 없습니다")
-    prompt = image_prompt(vp, n, total)
+    prompt = prompt or image_prompt(vp, n, total)
     model = config.DRINKS_CLAY_IMAGE_MODEL
     price = float(config.PRICING.get(model, {}).get("image_standard", 0)) or config.DRINKS_CLAY_IMAGE_USD
     return dpaid.OrderItem(item_key=f"clay-{n:02d}", position=n, role="reality", kind="image", model=model, est_usd=price, prompt=prompt,

@@ -397,20 +397,22 @@ def _run_buy_clay(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, deps: 
     if not slots:
         raise _Stop("failed", "directive_missing", "장면별 지시서가 없습니다")
     through, total = ep.get("buy_through_n"), len(slots)
-    out_dir, ref_path, ref_id = os.path.join(work, "images"), clay.mascot_ref(os.path.join(work, "jjeri_ref.png")), clay.MASCOT_REF_ID
+    out_dir, ref_id = os.path.join(work, "images"), clay.MASCOT_REF_ID
+    mascot_path, scene1, sheet = clay.mascot_ref(os.path.join(work, "jjeri_ref.png")), None, None
     for spec in slots:
         n = int(spec["n"])
         if through and n > int(through):
             return {"status_code": "scope_done", "through_n": through}
         _heartbeat(job, rpc)
-        item = clay.image_item(n, total, str(spec["visual_prompt"] or ""), ref_id)
-        if item.prompt != spec["image_prompt"]:
-            raise _Stop("failed", "order_changed", f"{n}번 장면 그림 문장이 지시서와 다릅니다 — 지시서를 다시 만드세요")
+        item = clay.image_item(n, total, str(spec["visual_prompt"] or ""), ref_id, prompt=str(spec.get("image_prompt") or "") or None)
+        # 참조 그림: 1번은 째리, 째리가 나오는 장면은 '1번 + 째리', 나머지는 1번 그림만(그 장면에 째리가 그려지지 않게)
+        ref_path = mascot_path if n == 1 else (sheet if spec.get("mascot_in_scene") else scene1)
         img = dpaid.buy(item, rpc=rpc, storage=storage, approval_id=job["spend_approval_id"], out_dir=out_dir, ref_path=ref_path, lease=_lease(job), generate=adapter.image)
         if not img.reused:
             _cost(job, rpc, "image", "gemini", item.model, img.cost_usd, f"{n}번 장면 클레이 그림 — 정가표")
         if n == 1:
-            ref_path, ref_id = clay.reference_sheet(img.path, os.path.join(work, "ref_sheet.png")), sha256_file(img.path)
+            scene1, ref_id = img.path, sha256_file(img.path)
+            sheet = clay.reference_sheet(img.path, os.path.join(work, "ref_sheet.png"))
     _set_state(job, rpc, "assets_complete")
     return {"status_code": "assets_complete"}
 
@@ -524,7 +526,7 @@ def _fetch_clay_images(directive: dict[str, Any], rpc: Rpc, storage: Any, out_di
     ref_id = clay.MASCOT_REF_ID
     for spec in slots:
         n = int(spec["n"])
-        item = clay.image_item(n, len(slots), str(spec["visual_prompt"] or ""), ref_id)
+        item = clay.image_item(n, len(slots), str(spec["visual_prompt"] or ""), ref_id, prompt=str(spec.get("image_prompt") or "") or None)
         hit = rpc("drinks_find_generated", {"prompt_hashes": [item.prompt_hash]}) or []
         if not hit:
             raise _Stop("failed", "image_missing", f"{n}번 장면 그림을 찾지 못했습니다 — 구매를 이어서 요청하세요", "blocked_assets")
@@ -678,7 +680,9 @@ def process_explainer_job(job: dict[str, Any], rpc: Rpc, storage: Any, *, tts: s
     except Exception as exc:  # noqa: BLE001 — 어떤 예외도 작업을 running 에 남기지 않는다
         log.exception("drinks: 설명형 작업 %s 예외", job["job_id"])
         try:
-            return _finish(job, rpc, "failed", "worker_error", f"워커 예외: {type(exc).__name__}")
+            # 조립 중 예외(저장소 520 등, 2026-11-10 실측)는 편을 'rendered' 에 묶어 [다시 조립] 을 못 받게 했다 → 다시 조립할 수 있는 상태로.
+            return _finish(job, rpc, "failed", "worker_error", f"워커 예외: {type(exc).__name__}",
+                           "auto_qa_fail" if renderer == "explainer_render" else None)
         except DbError:
             return {"status": "lease_lost"}
     finally:

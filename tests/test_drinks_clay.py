@@ -121,6 +121,53 @@ def test_switch_off_buys_nothing(monkeypatch):
         clay.ClayAdapter().check_ready({"status": "closed", "expired": False})
 
 
+def test_render_crash_leaves_episode_reassemblable():
+    """2026-11-10 실측: 저장소 520 으로 조립이 죽자 편이 'rendered' 에 묶여 [다시 조립] 을 못 받았다."""
+    calls = []
+
+    def rpc(fn, p):
+        calls.append((fn, p))
+        if fn == "drinks_explainer_job_context":
+            raise RuntimeError("storage 520")
+        return {}
+
+    q.process_explainer_job({"job_id": "j", "lease_token": "t", "renderer": "explainer_render", "plan_revision_id": PLAN}, rpc, None)
+    fin = [p for fn, p in calls if fn == "drinks_explainer_finish_job"]
+    assert fin and fin[-1]["to_state"] == "auto_qa_fail" and fin[-1]["error_code"] == "worker_error"
+
+
+def test_storage_upload_retries_once_and_accepts_same_content_already_there(monkeypatch):
+    import hashlib
+
+    from engine import db
+    from engine import drinks_produce as dp
+
+    monkeypatch.setattr(dp.time, "sleep", lambda s: None)
+    data = b"video-bytes"
+    state = {"n": 0}
+
+    class Bucket:
+        def upload(self, key, body, opts):
+            state["n"] += 1
+            raise RuntimeError("520 from storage" if state["n"] == 1 else "The resource already exists")
+
+        def download(self, key):
+            return data
+
+    class Client:
+        class storage:
+            @staticmethod
+            def from_(b):
+                return Bucket()
+
+    monkeypatch.setattr(db, "client", lambda: Client())
+    import tempfile
+    p = Path(tempfile.mkdtemp()) / "v.mp4"
+    p.write_bytes(data)
+    assert dp.Storage(mode="supabase").put(str(p), "drinks/j/final_video_01.mp4", "video/mp4") == "drinks/j/final_video_01.mp4"
+    assert state["n"] == 2 and hashlib.sha256(data).hexdigest()
+
+
 # ── ② 가짜 공급자로 구매 → 조립 ───────────────────────────────
 
 class FakeStorage:
@@ -188,7 +235,8 @@ def test_buy_then_render_with_fake_provider(tmp_path):
     deps = q.Deps(adapter=adapter, tts_fn=_tts)
     bought = q.process_explainer_job(job("explainer_buy"), rpc, storage, deps=deps)
     assert rpc.state == "assets_complete" and len(rpc.generated) == len(d["slots"])
-    assert adapter.refs[0] == "jjeri_ref.png" and set(adapter.refs[1:]) == {"ref_sheet.png"}, "1번은 째리, 나머지는 1번+째리 한 장"
+    assert adapter.refs[0] == "jjeri_ref.png" and adapter.refs[-1] == "ref_sheet.png", "1번은 째리, 째리 나오는 끝 장면은 1번+째리"
+    assert set(adapter.refs[1:-1]) == {"clay-01.png"}, "째리 없는 장면은 1번 그림만(2026-11-10 버번: 째리가 두 번 나옴)"
     assert "drinks_explainer_verdict" not in rpc.calls and "drinks_explainer_open_attempt" not in rpc.calls, "클립 후보를 만들지 않는다"
     assert bought is not None
 
