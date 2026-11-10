@@ -417,7 +417,11 @@ def _run_buy_clay(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, deps: 
 
 def _run_buy(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, deps: Deps) -> dict[str, Any]:
     ctx = _context(job, rpc)
-    if (ctx.get("episode") or {}).get("provider") == config.DRINKS_CLAY_PROVIDER:
+    provider = (ctx.get("episode") or {}).get("provider")
+    allowed = config.DRINKS_EXPLAINER_SEND_PROVIDERS
+    if allowed and provider not in allowed:   # ★ 가잡기·호출 전. GitHub 작업기는 사진클레이만 산다
+        raise _Stop("failed", "provider_not_on_this_worker", f"이 작업기는 {', '.join(allowed)} 만 삽니다({provider}) — 운영자 PC 워커에서 구매를 이어서 요청하세요")
+    if provider == config.DRINKS_CLAY_PROVIDER:
         return _run_buy_clay(job, rpc, storage, work, deps, ctx)
     adapter = deps.adapter if deps.adapter is not None else dpaid.LiveAdapter((ctx.get("episode") or {}).get("provider"))
     try:

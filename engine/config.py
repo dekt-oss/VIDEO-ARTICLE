@@ -5002,6 +5002,9 @@ DRINKS_EXPLAINER_STALE_ATTEMPT_SEC: int = 1800     # 이만큼 멈춘 시도는 
 # 편의 공급자 칸(drink_explainer_episodes.provider)이 'clay' 면 클립을 사지 않는다: 장면마다 점토 그림 1장 + 장면 통째 TTS + 전문 자막.
 # ★ 0067 의 운영자 규칙 "사진에 설명 하는건 안돼" 는 클립 경로에 그대로 남는다. 이 버전만 운영자 지시로 예외다.
 DRINKS_CLAY_PROVIDER: str = "clay"
+# 이 작업기가 사도 되는 편 공급자(쉼표). 비면 전부. GitHub 구매 작업기(drinks-explainer-buy.yml)는 "clay" 만 준다 —
+# 2026-11-10 운영자 "웹에서도 승인하면 자동으로 돌아가게". 클립(omni·veo_fast)은 여전히 운영자 PC 워커만 산다.
+DRINKS_EXPLAINER_SEND_PROVIDERS: tuple[str, ...] = tuple(x.strip() for x in os.getenv("DRINKS_EXPLAINER_SEND_PROVIDERS", "").split(",") if x.strip())
 DRINKS_CLAY_RENDERER_VERSION: str = "drinks-explainer-clay-v1"
 DRINKS_CLAY_ASPECT: str = "1:1"                    # 그림은 정사각형 카드로 화면 가운데에 앉는다(9:16 화면은 코드가 그린다)
 DRINKS_CLAY_IMAGE_MODEL: str = os.getenv("DRINKS_CLAY_IMAGE_MODEL", "gemini-2.5-flash-image")   # 샘플(2026-11-10) 실측 모델. 장당 정가는 PRICING

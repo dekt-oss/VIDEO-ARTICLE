@@ -515,9 +515,29 @@ def test_screen_cannot_reach_worker_functions_or_set_auto_verdict():
         assert fn not in actions, fn
     assert "delete p.auto_verdict" in actions and 'p.selected_by = "operator"' in actions and 'p.closed_by = "operator"' in actions
     route = (ROOT / "web" / "app" / "api" / "drinks" / "route.ts").read_text(encoding="utf-8")
-    assert '"explainer_request_buy"' not in route.split("//")[0], "구매는 워크플로를 깨우지 않는다"
     code = "\n".join(l for l in route.splitlines() if not l.strip().startswith("//"))
-    assert "explainer_request_buy" not in code
+    # 2026-11-10 운영자 "웹에서도 승인하면 자동으로": 구매는 사진클레이 전용 작업기만 깨운다(클립은 그 작업기가 거절)
+    buy = code[code.index('renderAction === "explainer_request_buy"'):].split("  if (", 1)[0]
+    assert buy.count("triggerWorkflow(") == 1 and 'triggerWorkflow("drinks-explainer-buy.yml"' in buy
+    assert code.count('"explainer_request_buy"') == 1, "구매가 다른 작업기를 깨우지 않는다"
+    wf = (ROOT / ".github" / "workflows" / "drinks-explainer-buy.yml").read_text(encoding="utf-8")
+    assert "DRINKS_EXPLAINER_SEND_PROVIDERS: clay" in wf and "schedule:" not in wf and "OMNI" not in wf.upper().replace("OMNI·", "")
+
+
+def test_buy_worker_refuses_providers_it_is_not_allowed(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "DRINKS_EXPLAINER_SEND_PROVIDERS", ("clay",))
+    calls = []
+
+    def rpc(fn, p):
+        calls.append(fn)
+        if fn == "drinks_explainer_job_context":
+            return {"episode": {"provider": "omni", "state": "approved", "directive": {"slots": [{"n": 1}]}}, "approval": {"status": "open", "expired": False}}
+        return {}
+
+    out = q.process_explainer_job({"job_id": "j", "lease_token": "t", "renderer": "explainer_buy", "plan_revision_id": PLAN, "spend_approval_id": "ap"}, rpc, Storage())
+    assert "drinks_hold_spend" not in calls and "drinks_explainer_episode_event" not in calls, "가잡기·상태 변경 전에 멈춘다"
+    fin = [c for c in calls if c == "drinks_explainer_finish_job"]
+    assert fin and out == {}
 
 
 def test_sql_matches_config_and_python_states():

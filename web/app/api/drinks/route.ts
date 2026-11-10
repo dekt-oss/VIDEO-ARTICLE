@@ -37,6 +37,11 @@ export async function POST(request: Request) {
       && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
     res.body.dispatch = await triggerWorkflow("drinks-produce.yml", null);
   }
+  // 그림 구매(사진클레이, 2026-11-10 운영자 "웹에서도 승인하면 자동으로"). 클립 편은 그 작업기가 거절하고 운영자 PC 워커가 산다.
+  if (res.status === 200 && renderAction === "explainer_request_buy"
+      && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
+    res.body.dispatch = await triggerWorkflow("drinks-explainer-buy.yml", null);
+  }
   const action = (body as { action?: unknown } | null)?.action;
   if (res.status === 200 && action === "meme_draft_action"
       && (res.body.result as { status?: string } | undefined)?.status === "approved") {

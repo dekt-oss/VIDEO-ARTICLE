@@ -1,0 +1,43 @@
+# 주류 설명형 — 사진클레이 그림 구매 작업기 (2026-11-10). docs/deviation-drinks-explainer-clay.md
+#
+# 운영자 지시: "웹에서도 승인하면 자동으로 돌아가게 만들어줘야지".
+# 스튜디오 [승인하고 제작] 이 결재를 열고 구매 작업을 큐에 넣으면 대시보드가 이 워크플로를 깨운다(GITHUB_DISPATCH_TOKEN).
+# ★ 돈: 그림(Gemini) 만. 지출은 운영자가 화면에서 연 결재 상한 안에서만, 항목마다 drinks_hold_spend 를 지난다.
+# ★ 클립(omni·veo_fast) 구매는 이 작업기가 거절한다(DRINKS_EXPLAINER_SEND_PROVIDERS=clay) — 그것은 여전히 운영자 PC 에서만.
+# ★ 예약 실행(cron)은 없다.
+name: drinks-explainer-buy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: drinks-produce   # 제작 워커와 같은 큐를 집으므로 한 번에 하나만
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  buy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      TIMEZONE: "Asia/Seoul"
+      WORKER_ID: ${{ github.run_id }}
+      DRINKS_STORAGE: supabase
+      DRINKS_TTS: edge
+      DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED: "1"
+      DRINKS_EXPLAINER_SEND_PROVIDERS: clay
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-nanum fonts-noto-cjk
+      - run: python -m pip install -r engine/requirements.txt
+      - name: buy
+        run: python -m engine.drinks_produce
