@@ -503,3 +503,31 @@ test("워커 함수는 승인·제출·편성 함수를 부르지 않는다(0072
   }
   assert.ok(!approve.includes("drinks_open_spend_approval"), "승인이 지출 결재를 열지 않는다");
 });
+
+test("0082: 승인된 근거로 만든 작성 중 초안도 코멘트로 다시 만든다 — 워커가 옛 초안을 막고 새 초안을 넣는다", async () => {
+  const b = await budget();
+  const topic = await researching();
+  const s = await addSource(topic);
+  await ok("pick_topic", { topic_id: topic, formats: ["explainer"], editorial_week: WEEK, budget_id: b.budget_id });
+  const { lease } = await take("evidence");
+  const { reviewId } = await finishEvidence(lease, s.snapshot_id);
+  const { planId } = await draftPlan();
+  await operatorFills(reviewId, topic);
+  await ok("approve_content", await approvePayload(topic, reviewId, planId, "explainer"));
+  await ok("pick_topic", { topic_id: topic, formats: ["card"], editorial_week: WEEK, budget_id: b.budget_id });
+  const { lease: l2 } = await take("plan");
+  const pl = await rpc("drinks_develop_save_plan", { ...l2, plan_json: CARD_PLAN });
+  await rpc("drinks_finish_develop", { ...l2, outcome: "succeeded", result: {} });
+  const draft = await planRow(pl.revision_id);
+  assert.equal(draft.drafted_from_unapproved, false);
+
+  const rw = await ok("studio_rewrite", { plan_revision_id: pl.revision_id, expected_version: draft.version, instruction: "화학 이름 빼고 쉬운 말로" });
+  assert.equal(rw.existing, false);
+  const q = await reqRow(rw.request_id);
+  assert.deepEqual([q.kind, q.format_intent, q.draft_evidence, q.supersedes_plan_id, q.review_id], ["plan", "card", false, pl.revision_id, reviewId]);
+  const { lease: l3 } = await take("plan");
+  const pl2 = await rpc("drinks_develop_save_rewrite", { ...l3, plan_json: CARD_PLAN });
+  assert.equal(pl2.superseded_plan_id, pl.revision_id);
+  assert.ok((await planRow(pl.revision_id)).blocked_at, "옛 초안은 막힌다");
+  assert.equal((await planRow(pl2.revision_id)).plan_status, "draft");
+});

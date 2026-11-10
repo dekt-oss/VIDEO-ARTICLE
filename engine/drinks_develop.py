@@ -306,6 +306,9 @@ def plan_system() -> str:
         "엄격한 규칙:\n"
         "- 근거에 없는 숫자·양(방울·티스푼·ml·잔)·처방('~해 보세요')·결론·인과를 만들지 않는다. 인용에 있는 숫자만 쓴다. 근거의 claim_id 만 쓴다.\n"
         "- 대본은 대중이 한 번에 알아듣는 쉬운 구어체(말하듯 ~해요/~예요). 문어체(-습니다) 금지. 한 장면 나레이션은 한두 문장, 짧게.\n"
+        "- 재미가 먼저다(2026-11-10 운영자): 첫 장면은 흔한 오해를 깨거나 호기심을 찌르는 한마디. 일상 비유 하나를 정해 끝까지 민다"
+        "(장면마다 비유를 바꾸지 않는다). 비유는 사실 주장이 아니라 근거가 필요 없지만, 숫자·사실은 근거 문장 그대로다.\n"
+        "- 마지막 장면은 소재 질문에 대한 답을 한 줄로 닫는다 — 질문과 상관없는 사실로 끝내지 않는다.\n"
         f"- 장면은 {lo}~{hi}개, 장면 timing_sec 합계 {slo:g}~{shi:g}초. 1번 장면은 소재의 질문을 던진다(물음표). 마지막은 근거가 말하는 선에서 마무리. "
         "근거가 모자라면 길이를 채우려고 말을 지어내지 않는다.\n"
         "- 사실을 말하는 장면(content_kind=fact)은 claim_ids 에 근거를 단다. 도입·전환(transition)은 비워도 된다.\n"
@@ -650,6 +653,18 @@ def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: D
     return usable[: config.DRINKS_DEVELOP_MAX_SOURCES], skipped
 
 
+def off_topic_message(topic: dict[str, Any], qa: dict[str, Any], report: list[dict[str, Any]], skipped: list[dict[str, Any]]) -> str:
+    lines = [f"모은 근거로는 소재 질문(\"{topic.get('question') or topic.get('title') or ''}\")에 답할 수 없습니다."]
+    if qa.get("missing_ko"):
+        lines.append(f"빠진 것: {qa['missing_ko']}")
+    if report:
+        lines.append("읽은 출처: " + "; ".join(f"{r['title']}({r['claims_kept']}건)" for r in report))
+    for s in skipped[:4]:
+        lines.append(f"- 건너뜀: {s['title']} — {s['why']}")
+    lines.append("해야 할 일: 질문의 핵심을 직접 설명하는 출처(제조사·전문지·논문)의 원문을 [출처 추가]로 근거 역할로 붙인 뒤 다시 요청하세요.")
+    return "\n".join(lines)[:3900]
+
+
 def insufficient_message(kept: int, report: list[dict[str, Any]], skipped: list[dict[str, Any]]) -> str:
     lines = [f"원문 인용 대조를 통과한 근거가 {kept}건입니다(최소 {config.DRINKS_DEVELOP_MIN_CLAIMS}건)."]
     if report:
@@ -784,6 +799,11 @@ def save_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], beat: Ca
         # 사실 확인을 못 했다(모델 응답 실패·한도) — '자료 부족'이 아니다. 결과를 보관하고 복구 가능한 실패로 닫는다.
         raise DevelopError("factcheck_unavailable", f"AI 사실 확인을 마치지 못했습니다({factcheck.get('status')}: {factcheck.get('note') or ''})",
                            "failed", {"unsaved_evidence": {**unsaved, "factcheck": {}}, "excluded": excluded})
+    qa = factcheck.get("question_answer") or {}
+    if factcheck.get("status") == "ok" and qa.get("answered") is False:
+        # 2026-11-10 버번: 근거가 제목 질문의 핵심에 답하지 못하는데 주장 수만 채워 통과했다 → 대본이 엉뚱한 이야기가 됐다.
+        raise DevelopError("evidence_off_topic", off_topic_message(job["topic"], qa, report, skipped), "blocked",
+                           {"unsaved_evidence": unsaved, "excluded": excluded, "sources": report, "skipped": skipped, "question_answer": qa})
     if len(core) < config.DRINKS_DEVELOP_MIN_CORE_CLAIMS:
         raise DevelopError("evidence_insufficient",
                            f"출처에서 확인된 주장이 {len(core)}건입니다(최소 {config.DRINKS_DEVELOP_MIN_CORE_CLAIMS}건) — 이 질문에 답할 자료가 충분하지 않습니다.",
@@ -829,8 +849,13 @@ FACTCHECK_SYSTEM = (
     "3. TRUE·FALSE 에는 판정의 근거가 된 claim_ids 를 단다(목록에 있는 번호만). reason_ko 는 한두 문장 쉬운 말로, 숫자는 인용에 있는 숫자만 쓴다.\n"
     "4. claim_checks: 근거 주장마다 '주장 문장이 원문 인용이 말하는 범위 안인가'(faithful true/false)와 짧은 이유. "
     "인용보다 더 나가면(일반화·숫자·권고 추가) false.\n"
+    "5. question_answer: 근거 주장의 원문 인용만으로 **소재 질문 그 자체**(제목이 묻는 핵심)에 답할 수 있는가. "
+    "질문이 둘 이상을 비교하면(예: A 와 B 의 차이) 양쪽 모두를 인용으로 설명할 수 있어야 answered true 다. "
+    "주변 사실(정의·규정·역사)만 있고 질문의 핵심에 답하지 못하면 false, 그때 missing_ko 에 무엇이 빠졌는지 한 문장. "
+    "answered true 면 answer_ko 에 인용만으로 쓴 답 한 문장과 그 claim_ids.\n"
     "답은 JSON 만: {{\"assertions\": [{{\"assertion_ko\": \"…\", \"verdict\": \"TRUE\", \"claim_ids\": [\"c1\"], \"reason_ko\": \"…\"}}], "
-    "\"claim_checks\": [{{\"claim_id\": \"c1\", \"faithful\": true, \"reason_ko\": \"…\"}}]}}"
+    "\"claim_checks\": [{{\"claim_id\": \"c1\", \"faithful\": true, \"reason_ko\": \"…\"}}], "
+    "\"question_answer\": {{\"answered\": true, \"answer_ko\": \"…\", \"claim_ids\": [\"c1\"], \"missing_ko\": \"\"}}}}"
 )
 
 
@@ -903,7 +928,21 @@ def judge_verdicts(out: Any, claims: list[dict[str, Any]]) -> Optional[dict[str,
     for ck in out.get("claim_checks") or []:
         if isinstance(ck, dict) and str(ck.get("claim_id") or "") in by_id:
             checks[str(ck["claim_id"])] = {"faithful": ck.get("faithful") is True, "reason_ko": str(ck.get("reason_ko") or "").strip()[:300]}
-    return {"assertions": assertions, "claim_checks": checks}
+    return {"assertions": assertions, "claim_checks": checks, "question_answer": judge_question_answer(out.get("question_answer"), by_id)}
+
+
+def judge_question_answer(qa: Any, by_id: dict[str, Any]) -> dict[str, Any]:
+    """근거가 소재 질문에 답하는가(2026-11-10 버번 사태: 제목은 '버번 vs 셰리 캐스크 맛'인데 근거는 미국 위스키 종류 규정뿐이었다).
+    모델을 믿지 않는다: answered 가 true 여도 근거 번호가 없거나 목록에 없으면 false 로 본다. 응답에 없으면 answered=None(판정 못 함 — 막지 않는다)."""
+    if not isinstance(qa, dict) or not isinstance(qa.get("answered"), bool):
+        return {"answered": None, "answer_ko": "", "claim_ids": [], "missing_ko": "", "code_note": "응답에 판정이 없음"}
+    raw = qa.get("claim_ids") if isinstance(qa.get("claim_ids"), list) else []
+    ids = [x for x in dict.fromkeys(str(i).strip() for i in raw) if x in by_id]
+    answered, note = qa["answered"], None
+    if answered and not ids:
+        answered, note = False, "답했다고 했지만 근거 번호가 없음"
+    return {"answered": answered, "answer_ko": str(qa.get("answer_ko") or "").strip()[:300], "claim_ids": ids,
+            "missing_ko": str(qa.get("missing_ko") or "").strip()[:300], "code_note": note}
 
 
 def _not_supported_why(cid: str, status: str, cited: set[str], ck: Optional[dict[str, Any]], flagged: set[str]) -> Optional[str]:
@@ -942,7 +981,7 @@ def _factcheck_result(status: str, claims: list[dict[str, Any]], judged: Optiona
     counts = {v: sum(1 for a in assertions if a["verdict"] == v) for v in VERDICTS}
     return {"enabled": True, "status": status, "model": config.DRINKS_DEVELOP_FACTCHECK_MODEL, "note": note,
             "assertions": assertions, "counts": counts, "auto_supported": supported, "not_supported": not_supported,
-            "claim_checks": judged["claim_checks"]}
+            "claim_checks": judged["claim_checks"], "question_answer": judged.get("question_answer")}
 
 
 def run_factcheck(topic: dict[str, Any], context: list[dict[str, Any]], claims: list[dict[str, Any]], sources_of: dict[str, Any],

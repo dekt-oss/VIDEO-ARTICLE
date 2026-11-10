@@ -283,10 +283,11 @@ def test_rehearsal_fixture_is_what_the_worker_sends_today():
 
 
 SQL_75 = (base.ROOT / "supabase" / "migrations" / "0075_drinks_auto_factcheck.sql").read_text(encoding="utf-8")
+SQL_81 = (base.ROOT / "supabase" / "migrations" / "0081_drinks_factcheck_estimate.sql").read_text(encoding="utf-8")   # 가정값의 최신 정의
 
 
 def test_migration_0075_estimate_counts_the_factcheck_call_with_engine_constants():
-    params = SQL_75.split("create or replace function drinks_develop_estimate_params()")[1].split("$$;")[0]
+    params = SQL_81.split("create or replace function drinks_develop_estimate_params()")[1].split("$$;")[0]
     assert f"'factcheck_max_tokens', {config.DRINKS_DEVELOP_FACTCHECK_MAX_TOKENS}," in params
     assert f"'extract_model', '{config.DRINKS_DEVELOP_FACTCHECK_MODEL}'" in params, "사실 확인은 추출과 같은 모델로 센다"
     for k, v in (("max_sources", config.DRINKS_DEVELOP_MAX_SOURCES), ("source_max_chars", config.DRINKS_DEVELOP_SOURCE_MAX_CHARS),
@@ -310,3 +311,34 @@ def test_migration_0075_estimate_counts_the_factcheck_call_with_engine_constants
 def test_source_has_no_approval_call(name):
     src = (base.ROOT / "engine" / "drinks_develop.py").read_text(encoding="utf-8")
     assert f'"{name}"' not in src
+
+
+# ── 근거가 소재 질문에 답하는가(2026-11-10 버번: 제목은 '버번 vs 셰리 캐스크 맛', 근거는 미국 위스키 종류 규정뿐) ──
+
+def test_question_answer_is_read_and_checked_by_code():
+    claims = claims_fixture()
+    ok = dd.judge_verdicts({**good(), "question_answer": {"answered": True, "answer_ko": "답", "claim_ids": ["c1", "c9"]}}, claims)
+    assert ok["question_answer"]["answered"] is True and ok["question_answer"]["claim_ids"] == ["c1"], "목록에 없는 번호는 버린다"
+    no_ids = dd.judge_verdicts({**good(), "question_answer": {"answered": True, "claim_ids": []}}, claims)
+    assert no_ids["question_answer"]["answered"] is False, "근거 번호 없이 답했다고 하면 답하지 못한 것으로 본다"
+    missing = dd.judge_verdicts(good(), claims)
+    assert missing["question_answer"]["answered"] is None, "응답에 판정이 없으면 막지 않는다(판정 못 함)"
+
+
+def test_off_topic_evidence_stops_before_saving_and_says_what_is_missing():
+    off = {**good(ids=("c1", "c2", "c3", "c4")), "question_answer": {"answered": False, "claim_ids": [], "missing_ko": "셰리 캐스크가 맛에 주는 영향"}}
+    rpc, res = run(lambda t, ctx, cl: off)
+    assert rpc.saved_evidence is None and rpc.finish["error_code"] == "evidence_off_topic" and res["status"] == "blocked"
+    assert "셰리 캐스크가 맛에 주는 영향" in rpc.finish["error_message"]
+    assert rpc.finish["result"]["unsaved_evidence"]["evidence_pack"]["claims"], "추출 결과는 보관한다(다음 요청이 다시 사지 않게)"
+
+
+def test_on_topic_evidence_saves_as_before():
+    on = {**good(ids=("c1", "c2", "c3", "c4")), "question_answer": {"answered": True, "answer_ko": "답", "claim_ids": ["c1"]}}
+    rpc, _ = run(lambda t, ctx, cl: on)
+    assert rpc.saved_evidence is not None
+
+
+def test_factcheck_prompt_asks_whether_the_title_question_is_answered():
+    p = dd.factcheck_system()
+    assert "question_answer" in p and "양쪽 모두" in p

@@ -212,7 +212,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   // 5단계 게시 연결(0068). meme_sync_blocked 는 아래 0066 묶음에 이미 있다
   ai_label_missing: 422, audio_mismatch: 422,
   // 소재 개발(0060)
-  budget_missing: 422, evidence_insufficient: 422, script_check_failed: 422, develop_in_progress: 409,
+  budget_missing: 422, evidence_insufficient: 422, evidence_off_topic: 422, script_check_failed: 422, develop_in_progress: 409,
   // 밈 보드(0063)
   not_normal_day: 409,
   // 내용 승인 한 번(0064)

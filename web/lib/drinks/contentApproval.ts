@@ -61,6 +61,7 @@ const newest = <T extends { created_at: string }>(rows: readonly T[]): T[] =>
 
 const STOPPED_REQUEST: Record<string, string> = {
   evidence_insufficient: "원문 대조를 통과한 근거가 모자라 멈췄습니다",
+  evidence_off_topic: "근거가 소재 질문에 답하지 못해 멈췄습니다",
   budget_missing: "개발 결재가 없어 모델을 부르지 않고 멈췄습니다",
   budget_exceeded: "개발 결재 금액을 넘게 돼 멈췄습니다",
   script_check_failed: "대본 검사에서 두 번 막혀 저장하지 않았습니다",
