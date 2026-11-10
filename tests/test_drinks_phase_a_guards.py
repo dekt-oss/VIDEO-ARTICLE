@@ -47,9 +47,11 @@ def test_drinks_code_never_reaches_render_or_publish_paths():
     # 2026-11-02: 밈 제작 워커(drinks-meme.yml, 유료 키 없는 로컬 렌더 — tests/test_drinks_meme.py 가 워크플로를 감시)가 더해졌다.
     # 2026-11-02: 밈 틀 정밀화 워커(drinks-apify.yml — [쓰자] 클릭 1회 = Apify 실행 1회, 상한·월 한도는 DB 0070 이 센다.
     #   tests/test_drinks_meme_refine.py 가 워크플로·모듈을 감시)가 더해졌다. 운영자 결정: 총괄 계획 §7 결정 1.
-    assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null', '"drinks-meme.yml", null', '"drinks-apify.yml", null',
-                     '"drinks-develop.yml", null'], \
-        f"주류 라우트가 깨우는 워크플로는 수집·로컬 제작·밈 제작·정밀화·소재 개발 워커뿐: {calls}"
+    # 2026-11-10: 사진클레이 그림 구매 워커(drinks-explainer-buy.yml — 운영자 "웹에서도 승인하면 자동으로". 결재 상한 안에서 그림만,
+    #   클립은 가잡기 전에 거절. tests/test_drinks_explainer_queue.py 가 워크플로를 감시)가 더해졌다.
+    assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null', '"drinks-explainer-buy.yml", null', '"drinks-meme.yml", null',
+                     '"drinks-apify.yml", null', '"drinks-develop.yml", null'], \
+        f"주류 라우트가 깨우는 워크플로는 수집·로컬 제작·그림 구매·밈 제작·정밀화·소재 개발 워커뿐: {calls}"
 
 
 def test_drinks_queries_are_server_only():
