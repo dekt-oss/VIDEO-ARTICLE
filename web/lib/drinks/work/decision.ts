@@ -10,7 +10,7 @@
 //   (submit·schedule 은 expected_version 만 필요 / request_render·explainer_request_plan·assemble 은 0원·멱등).
 //   승인(approve)은 화면이 보여 준 지문(expected_digest)을 그대로 돌려줘야 하므로 action 은 null, panel 'publish'.
 // ★ 값 import 는 같은 폴더·형제 모듈의 상대 경로만(node --test 가 `@/` 별칭을 못 푼다).
-import { canJudge, canSelect, nextStep, type ExplainerStatus } from "../explainerQueue.ts";
+import { canJudge, canSelect, nextStep, usableApproval, type ExplainerStatus } from "../explainerQueue.ts";
 import { PUBLISH_WINDOW, publishWindowProblem } from "../publishWindow.ts";
 import { FORMAT_SHORT, workHref, type Block, type BlockCode, type Decision, type FormatIntent, type Panel, type Primary, type WorkItem } from "./types.ts";
 
@@ -126,7 +126,7 @@ function explainerStep(item: WorkItem, ex: ExplainerStatus | null | undefined): 
       }
       case "request_buy": {
         if (ex.episode?.state === "buying") return busy("S8", "구매 중…", "buy");
-        const open = ex.approvals.find((a) => a.status === "open" && !a.expired && a.allowed_kinds.includes("image") && a.allowed_kinds.includes("video"));
+        const open = usableApproval(ex.approvals, ex.episode?.provider);
         return prim("S6", "구매 요청", "buy", { action: open ? { name: "explainer_request_buy", payload: { plan_revision_id: planId, spend_approval_id: open.approval_id } } : null });
       }
       case "review_candidates": {

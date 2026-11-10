@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { canJudge, canSelect, kstMinute, nextStep, slotCosts, type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus } from "./explainerQueue.ts";
+import { canJudge, canSelect, kstMinute, neededKinds, nextStep, slotCosts, usableApproval, type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus } from "./explainerQueue.ts";
 
 const cand = (over: Partial<ExplainerCandidate> = {}): ExplainerCandidate => ({
   candidate_id: "P:A1#c1", k: 1, status: "stored", cost_usd: 0.81, auto_verdict: "pass", human_verdict: null, auto_report: null, asset: null, attempts: [], ...over,
@@ -56,6 +56,18 @@ test("다음 할 일", () => {
   assert.equal(nextStep(st("quality_review_pass")), "output_review");
   assert.equal(nextStep(st("ready_to_publish")), "none");
   assert.equal(nextStep(st("blocked_no_pass")), "none", "자동으로 다시 사는 길이 없다");
+});
+
+test("사진클레이(0079): 그림만 허용한 결재로 산다 — 클립 편은 여전히 그림+영상", () => {
+  const imageOnly = { ...OPEN, allowed_kinds: ["image"] };
+  assert.deepEqual(neededKinds("clay"), ["image"]);
+  assert.deepEqual(neededKinds("omni"), ["image", "video"]);
+  assert.equal(usableApproval([imageOnly], "clay"), imageOnly);
+  assert.equal(usableApproval([imageOnly], "omni"), null);
+  assert.equal(usableApproval([{ ...imageOnly, expired: true }], "clay"), null);
+  const ep = (provider: string) => ({ state: "directive_ready", provider }) as ExplainerStatus["episode"];
+  assert.equal(nextStep(st(null, { episode: ep("clay"), approvals: [imageOnly] })), "request_buy");
+  assert.equal(nextStep(st(null, { episode: ep("omni"), approvals: [imageOnly] })), "open_approval");
 });
 
 test("시각 표기는 지역 설정과 무관하다(hydration)", () => {

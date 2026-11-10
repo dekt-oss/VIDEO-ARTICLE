@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useDrinksAction } from "./useDrinksAction";
 import { useRegisterPrimary } from "./work/primaryBridge";
 import {
-  EPISODE_LABEL, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, canSelect, kstMinute, nextStep, slotCosts,
+  CLAY_PROVIDER, EPISODE_LABEL, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, canSelect, kstMinute, neededKinds, nextStep, slotCosts, usableApproval,
   type ExplainerCandidate, type ExplainerSlot, type ExplainerStatus,
 } from "@/lib/drinks/explainerQueue";
 
@@ -97,7 +97,7 @@ function ReviewForm({ planId, stage, title, items }: { planId: string; stage: "p
   );
 }
 
-function OpenApproval({ planId, cap, orderHash }: { planId: string; cap: number; orderHash: string | null }) {
+function OpenApproval({ planId, cap, orderHash, provider }: { planId: string; cap: number; orderHash: string | null; provider: string | null | undefined }) {
   const { run, busy } = useDrinksAction();
   const [amount, setAmount] = useState(cap.toFixed(2));
   const [stage, setStage] = useState("");
@@ -108,7 +108,7 @@ function OpenApproval({ planId, cap, orderHash }: { planId: string; cap: number;
       <label className="muted">상한 $<input style={{ width: 80 }} value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
       <input placeholder="결재 문장(승인한 말 그대로)" value={words} onChange={(e) => setWords(e.target.value)} />
       <button className="btn" disabled={busy || !stage || !words || !(Number(amount) > 0)} onClick={() => run("open_spend_approval", {
-        plan_revision_id: planId, stage, purpose: `${stage} — 설명형 시작 그림·클립`, cap_usd: Number(amount), allowed_kinds: ["image", "video"], approver_words: words, ...(orderHash ? { order_hash: orderHash } : {}),
+        plan_revision_id: planId, stage, purpose: `${stage} — ${provider === CLAY_PROVIDER ? "사진클레이 그림" : "설명형 시작 그림·클립"}`, cap_usd: Number(amount), allowed_kinds: neededKinds(provider), approver_words: words, ...(orderHash ? { order_hash: orderHash } : {}),
       }, "결재를 등록했습니다", "결재 등록")}>결재 등록</button>
     </div>
   );
@@ -127,7 +127,7 @@ export default function ExplainerProduction({ planId, status, activeJob, hidePri
   const step = nextStep(status);
   const costs = slotCosts(status.slots);
   const bySlot = new Map(costs.map((c) => [c.n, c]));
-  const open = status.approvals.find((a) => a.status === "open" && !a.expired && a.allowed_kinds.includes("image") && a.allowed_kinds.includes("video"));
+  const open = usableApproval(status.approvals, ep?.provider);
   const total = costs.length ? costs[costs.length - 1].cumulativeUsd : 0;
   const busyJob = Boolean(activeJob);
   const busyTitle = busyJob ? "진행 중인 작업이 있습니다" : "";
@@ -193,7 +193,7 @@ export default function ExplainerProduction({ planId, status, activeJob, hidePri
               {a.stage} · {a.allowed_kinds.join("·")} · 상한 {usd(a.cap_usd, 2)} · 확정 {usd(a.spent_usd)} · 가잡힘 {usd(a.held_usd)} · 남음 <b>{usd(a.remaining_usd)}</b> · 기한 {kstMinute(a.expires_at)}
             </div>
           ))}
-          {!open && <OpenApproval planId={planId} cap={Math.min(10, d.estimate.suggested_cap_usd)} orderHash={ep?.order_hash ?? null} />}
+          {!open && <OpenApproval planId={planId} cap={Math.min(10, d.estimate.suggested_cap_usd)} orderHash={ep?.order_hash ?? null} provider={ep?.provider} />}
           {open && ["directive_ready", "approved", "buying", "blocked_budget"].includes(ep?.state ?? "") && (
             <div className="actions">
               <label className="muted">이 슬롯까지만 <input style={{ width: 60 }} placeholder="전부" value={through} onChange={(e) => setThrough(e.target.value)} /></label>

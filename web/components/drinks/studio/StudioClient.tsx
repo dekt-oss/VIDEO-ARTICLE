@@ -11,7 +11,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import ExplainerProduction from "@/components/drinks/ExplainerProduction";
 import { CHECKS, REEL_CHECKS } from "@/components/drinks/ProductionControls";
 import { RequestActions } from "@/components/drinks/PublishControls";
-import { PROCESS_CHECKS, QUALITY_CHECKS, canJudge, kstMinute, nextStep, type ExplainerStatus } from "@/lib/drinks/explainerQueue";
+import { CLAY_PROVIDER, MAKE_METHOD_LABEL, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, kstMinute, neededKinds, nextStep, usableApproval, type ExplainerStatus, type MakeMethod } from "@/lib/drinks/explainerQueue";
 import { blockerLabel } from "@/lib/drinks/model";
 import { PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL } from "@/lib/drinks/pickModal";
 import { PUBLISH_WINDOW, publishWindowProblem } from "@/lib/drinks/publishWindow";
@@ -385,6 +385,25 @@ function CommentBox({ plan, label, note, onRefresh }: { plan: StudioPlan; label:
   );
 }
 
+// ── 릴스 만드는 방식: 사진클레이(점토 그림 + 자막, 0079) / 영상 클립 ─────────────────
+const MAKE_HINT: Record<MakeMethod, string> = {
+  clay: "장면마다 점토 그림 1장 + 자막 + 목소리. 그림 장당 약 $0.04",
+  omni: "장면마다 AI 영상 클립. 장면당 수백 원부터",
+};
+function MakeChoice({ value, onChange, disabled }: { value: MakeMethod; onChange: (v: MakeMethod) => void; disabled?: boolean }) {
+  return (
+    <fieldset className="sj-make" disabled={disabled}>
+      <legend>만드는 방식</legend>
+      {(["clay", "omni"] as const).map((m) => (
+        <label key={m} className={value === m ? "is-on" : undefined}>
+          <input type="radio" name="sj-make" value={m} checked={value === m} onChange={() => onChange(m)} />
+          <b>{MAKE_METHOD_LABEL[m]}</b><span>{MAKE_HINT[m]}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 // ── ② 초안: 어떤 화면에 무엇이 나오는지 글로 ─────────────────────────────────────
 function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => void; onRefresh: () => void }) {
   const video = plan.format === "video";
@@ -394,6 +413,7 @@ function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => vo
   const nums = plan.unverified_numbers ?? [];
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [make, setMake] = useState<MakeMethod>("clay");
   const approve = async () => {
     setBusy(true); setProblem(null);
     const r = await post("studio_approve_draft", { plan_revision_id: plan.plan_revision_id, expected_plan_version: plan.version });
@@ -404,7 +424,7 @@ function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => vo
       return;
     }
     // 릴스는 승인과 함께 작업 명세서를 만든다(0원). 실패해도 승인은 끝났고 명세서 화면에서 다시 요청한다.
-    if (video) await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id });
+    if (video) await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id, provider: make });
     setBusy(false);
     onRefresh();
   };
@@ -425,6 +445,7 @@ function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => vo
       </ol>
       {nums.length > 0 && <p className="sj-warnline" role="alert">자동 검사: 근거 자료에 없는 숫자가 있어요({nums.join(", ")}). 코멘트로 고쳐 다시 만들어 주세요.</p>}
       {draft && <CommentBox plan={plan} label="수정 코멘트" note="다시 만들면 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
+      {draft && video && <MakeChoice value={make} onChange={setMake} disabled={busy} />}
       {problem && <p className="sj-error" role="alert">{problem}</p>}
       <div className="sj-actions">
         <button type="button" className="sj-btn sj-quiet" onClick={onBack}>← 다른 소재 보기</button>
@@ -454,14 +475,17 @@ function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioS
   const ex = production?.explainer ?? null;
   const d = ex?.episode?.directive ?? null;
   const cap = d ? Math.min(10, d.estimate.suggested_cap_usd) : 0;
-  const open = ex?.approvals.find((a) => a.status === "open" && !a.expired && a.allowed_kinds.includes("image") && a.allowed_kinds.includes("video")) ?? null;
+  const provider = ex?.episode?.provider ?? null;
+  const isClay = provider === CLAY_PROVIDER;
+  const open = ex ? usableApproval(ex.approvals, provider) : null;
+  const [make, setMake] = useState<MakeMethod>("clay");
   const buyVideo = async () => {
     if (!d) return;
     setBusy(true); setProblem(null);
     let approvalId = open?.approval_id ?? null;
     if (!approvalId) {
-      const a = await post("open_spend_approval", { plan_revision_id: plan.plan_revision_id, stage: "스튜디오 명세서 승인", purpose: "설명형 릴스 그림·클립", cap_usd: cap,
-        allowed_kinds: ["image", "video"], approver_words: `스튜디오 [승인하고 제작] — 명세서와 상한 $${cap.toFixed(2)} 확인 후 승인`, ...(ex?.episode?.order_hash ? { order_hash: ex.episode.order_hash } : {}) });
+      const a = await post("open_spend_approval", { plan_revision_id: plan.plan_revision_id, stage: "스튜디오 명세서 승인", purpose: isClay ? "사진클레이 릴스 그림" : "설명형 릴스 그림·클립", cap_usd: cap,
+        allowed_kinds: neededKinds(provider), approver_words: `스튜디오 [승인하고 제작] — 명세서와 상한 $${cap.toFixed(2)} 확인 후 승인`, ...(ex?.episode?.order_hash ? { order_hash: ex.episode.order_hash } : {}) });
       if (!a.ok) { fail(a, "결재를 열지 못했어요. 돈은 나가지 않았어요."); return; }
       approvalId = String(a.result?.approval_id ?? a.result?.id ?? "");
     }
@@ -471,7 +495,7 @@ function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioS
   };
   const requestPlan = async () => {
     setBusy(true); setProblem(null);
-    const r = await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id });
+    const r = await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id, ...(ex?.episode ? {} : { provider: make }) });
     if (!r.ok) { fail(r, "명세서를 요청하지 못했어요."); return; }
     setBusy(false); onRefresh();
   };
@@ -483,7 +507,7 @@ function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioS
       <div className="sj-intro">
         <div><p className="sj-kicker">WORK SPEC</p><h1 id="sj-spec-h">{waiting ? "작업 명세서를 만들고 있어요." : "이 명세서대로 제작할까요?"}</h1>
           <p>{waiting ? "내레이션 길이를 재서 장면별 지시와 금액을 계산해요. 돈은 나가지 않아요." : "실제 제작에 그대로 들어가는 지시예요. 승인하면 제작을 시작해요."}</p></div>
-        <span className="sj-versiontag">{card ? "카드뉴스" : "릴스"} 명세서</span>
+        <span className="sj-versiontag">{card ? "카드뉴스" : isClay ? "릴스 · 사진클레이" : "릴스"} 명세서</span>
       </div>
       {card && (
         <div className="sj-spec"><table>
@@ -494,7 +518,16 @@ function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioS
           ))}</tbody>
         </table></div>
       )}
-      {d && (
+      {d && isClay && (
+        <div className="sj-spec"><table>
+          <thead><tr><th>#</th><th>화면 자막</th><th>그림 지시</th><th>째리</th><th>금액</th></tr></thead>
+          <tbody>{d.slots.map((s) => (
+            <tr key={s.n}><td>{s.n}</td><td>{(s.lines ?? [s.narration]).map((l, i) => <p key={i}>{l}</p>)}</td><td>{s.visual_prompt}</td>
+              <td>{s.mascot_in_scene ? "그림 속" : "모서리"}</td><td>${s.image_est_usd.toFixed(3)}</td></tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {d && !isClay && (
         <div className="sj-spec"><table>
           <thead><tr><th>#</th><th>유형·길이</th><th>내레이션</th><th>시작 그림 지시</th><th>움직임 지시</th><th>금액</th></tr></thead>
           <tbody>{d.slots.map((s) => (
@@ -503,7 +536,8 @@ function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioS
           ))}</tbody>
         </table></div>
       )}
-      {d && <p className="sj-note">완성 길이 {(d.final_ms / 1000).toFixed(1)}초 · 예상 ${d.estimate.estimate_usd.toFixed(2)}(그림 ${d.estimate.images_usd.toFixed(2)} + 영상 ${d.estimate.clips_usd.toFixed(2)}) · 실패 재시도 예비 ${d.estimate.reserve_usd.toFixed(2)}{d.unverified.length > 0 ? ` · 미검증: ${d.unverified.join(", ")}` : ""}</p>}
+      {d && <p className="sj-note">완성 길이 {(d.final_ms / 1000).toFixed(1)}초 · 예상 ${d.estimate.estimate_usd.toFixed(2)}{isClay ? `(그림 ${d.slots.length}장)` : `(그림 $${d.estimate.images_usd.toFixed(2)} + 영상 $${d.estimate.clips_usd.toFixed(2)})`} · 실패 재시도 예비 ${d.estimate.reserve_usd.toFixed(2)}{d.unverified.length > 0 ? ` · 미검증: ${d.unverified.join(", ")}` : ""}</p>}
+      {waiting && !production?.activeJob && !ex?.episode && <MakeChoice value={make} onChange={setMake} disabled={busy} />}
       {waiting && !production?.activeJob && <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={requestPlan}>{busy ? "요청 중…" : "명세서 만들기 (0원)"}</button></div>}
       {ex?.episode?.last_message && <p className="sj-warnline" role="alert">{ex.episode.last_message}</p>}
       {!waiting && <CommentBox plan={plan} label="초안부터 고치려면" note="코멘트대로 초안을 새로 만들어요. 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
@@ -544,10 +578,10 @@ function VideoMaking({ plan, production, onRefresh }: { plan: StudioPlan; produc
   return (
     <section aria-labelledby="sj-make-h">
       <div className="sj-intro">
-        <div><p className="sj-kicker">MAKING</p><h1 id="sj-make-h">{plan.plan_json.scenes?.length ?? 0}개 장면을 제작하고 있어요.</h1>
+        <div><p className="sj-kicker">MAKING</p><h1 id="sj-make-h">{plan.plan_json.scenes?.length ?? 0}개 장면{ex.episode?.provider === CLAY_PROVIDER ? " 그림을 그리고" : "을 제작하고"} 있어요.</h1>
           <p role="status" aria-live="polite">{production.activeJob ? "작업이 돌고 있어요. 창을 닫아도 이어져요." : "다음 단계를 눌러 이어 가세요."}</p></div>
       </div>
-      {waitingWorker && <p className="sj-warnline" role="status">영상 구매 작업이 대기 중이에요. 구매 작업기는 아직 자동으로 깨어나지 않아서, Claude 에게 &ldquo;구매 작업 돌려 줘&rdquo;라고 말해 주세요.</p>}
+      {waitingWorker && <p className="sj-warnline" role="status">{ex.episode?.provider === CLAY_PROVIDER ? "그림" : "영상"} 구매 작업이 대기 중이에요. 구매 작업기는 아직 자동으로 깨어나지 않아서, Claude 에게 &ldquo;구매 작업 돌려 줘&rdquo;라고 말해 주세요.</p>}
       {passable.length > 0 && nextStep(ex) === "review_candidates" && (
         <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={useAll}>{busy ? "확정하는 중…" : `자동 검사 통과한 클립 ${passable.length}개 쓰기`}</button></div>
       )}

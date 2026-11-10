@@ -177,6 +177,29 @@ test("구매 요청: 그 제작안 전용·열림·그림+영상 결재만, 보�
   await fails("explainer_request_buy", { plan_revision_id: noDirective.plan, spend_approval_id: await approval(noDirective.plan) }, "directive_missing");
 });
 
+test("사진클레이(0079): 그림만 허용한 결재로 사고, 고를 후보 없이 조립을 받는다 — 방식은 바꿀 수 없다", async () => {
+  const { plan } = await approvedPlan();
+  await ok("explainer_request_plan", { plan_revision_id: plan, provider: "clay" });
+  const j = await startJob(plan);
+  await rpc("drinks_explainer_save_directive", { ...lease(j), directive: DIRECTIVE, order_hash: ORDER });
+  await rpc("drinks_explainer_finish_job", { ...lease(j), outcome: "succeeded", result: { status_code: "directive_ready" } });
+  assert.equal((await row("select provider from drink_explainer_episodes where plan_revision_id = $1", [plan])).provider, "clay");
+  await assert.rejects(db.query("update drink_explainer_episodes set provider = 'omni' where plan_revision_id = $1", [plan]), /drinks:immutable:/);
+  await fails("explainer_request_assemble", { plan_revision_id: plan }, "invalid_state");   // 그림을 다 사기 전
+  const a = await approval(plan, { allowed_kinds: ["image"], order_hash: ORDER });
+  assert.equal((await ok("explainer_request_buy", { plan_revision_id: plan, spend_approval_id: a })).renderer, "explainer_buy");
+  const b = await startJob(plan);
+  await rpc("drinks_explainer_episode_event", { ...lease(b), to_state: "buying" });
+  await rpc("drinks_explainer_episode_event", { ...lease(b), to_state: "assets_complete" });
+  await rpc("drinks_explainer_finish_job", { ...lease(b), outcome: "succeeded", result: { status_code: "assets_complete" } });
+  assert.equal((await ok("explainer_request_assemble", { plan_revision_id: plan })).renderer, "explainer_render", "선택 행 0개여도 조립");
+  await assert.rejects(db.query("insert into drink_explainer_episodes (plan_revision_id, topic_id, provider) select id, topic_id, 'sora' from drink_plan_revisions limit 1"),
+    /drink_explainer_episodes_provider_check|duplicate key/);
+  // 클립 편은 그대로: 그림만 허용한 결재로는 못 사고, 선택 없이는 조립이 안 된다
+  const clip = await withDirective();
+  await fails("explainer_request_buy", { plan_revision_id: clip.plan, spend_approval_id: await approval(clip.plan, { allowed_kinds: ["image"] }) }, "kind_not_approved");
+});
+
 test("표가 직접 막는다: 구매 작업은 결재 없이 못 넣고, 다른 렌더러는 못 넣는다", async () => {
   const { plan, topic } = await approvedPlan();
   const ins = (renderer: string) => db.query(

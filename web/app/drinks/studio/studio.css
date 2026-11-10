@@ -125,6 +125,15 @@
 .sj-spec table { border-collapse: collapse; width: 100%; font-size: 13px; line-height: 1.6; }
 .sj-spec th { text-align: left; font-size: 12px; color: var(--sj-sub); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--sj-line); white-space: nowrap; }
 .sj-spec td { padding: 10px 12px; vertical-align: top; border-top: 1px solid var(--sj-line); min-width: 44px; overflow-wrap: anywhere; }
+.sj-spec td p { margin: 0; }
+/* 릴스 만드는 방식(사진클레이 / 영상 클립) — 0079 */
+.sj-make { border: 0; padding: 0; margin: 4px 0 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.sj-make legend { font-size: 12px; font-weight: 700; color: var(--sj-sub); margin-bottom: 8px; padding: 0; }
+.sj-make label { display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 10px; align-items: start; background: var(--sj-paper);
+  border: 1px solid var(--sj-line); border-radius: 9px; padding: 13px 14px; cursor: pointer; min-height: 44px; }
+.sj-make label.is-on { border: 2px solid var(--sj-green); padding: 12px 13px; }
+.sj-make input { accent-color: var(--sj-green); width: 18px; height: 18px; margin: 2px 0 0; grid-row: span 2; }
+.sj-make span { color: var(--sj-sub); font-size: 12px; line-height: 1.5; }
 .sj-spec td p { color: var(--sj-sub); white-space: pre-line; margin-top: 4px; }
 .sj-empty { padding: 35px 0; text-align: center; color: var(--sj-sub); }
 .sj-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 13px var(--sj-pad); border-top: 1px solid var(--sj-line); font-size: 11px; color: var(--sj-sub); background: var(--sj-paper); }
