@@ -11,7 +11,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import ExplainerProduction from "@/components/drinks/ExplainerProduction";
 import { CHECKS, REEL_CHECKS } from "@/components/drinks/ProductionControls";
 import { RequestActions } from "@/components/drinks/PublishControls";
-import { CLAY_PROVIDER, MAKE_METHOD_LABEL, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, kstMinute, neededKinds, nextStep, usableApproval, type ExplainerStatus, type MakeMethod } from "@/lib/drinks/explainerQueue";
+import { CLAY_PROVIDER, MAKE_METHOD_LABEL, clayStage, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, kstMinute, neededKinds, nextStep, usableApproval, type ExplainerStatus, type MakeMethod } from "@/lib/drinks/explainerQueue";
 import { blockerLabel } from "@/lib/drinks/model";
 import { PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL } from "@/lib/drinks/pickModal";
 import { PUBLISH_WINDOW, publishWindowProblem } from "@/lib/drinks/publishWindow";
@@ -575,6 +575,9 @@ function VideoMaking({ plan, production, onRefresh }: { plan: StudioPlan; produc
     setBusy(false); onRefresh();
   };
   const waitingWorker = production.activeJob?.renderer === "explainer_buy" && production.activeJob.status === "queued";
+  if (ex.episode?.provider === CLAY_PROVIDER) {
+    return <ClayMaking plan={plan} production={production} onRefresh={onRefresh} />;
+  }
   return (
     <section aria-labelledby="sj-make-h">
       <div className="sj-intro">
@@ -589,6 +592,49 @@ function VideoMaking({ plan, production, onRefresh }: { plan: StudioPlan; produc
       )}
       {problem && <p className="sj-error" role="alert">{problem}</p>}
       <ExplainerProduction planId={plan.plan_revision_id} status={ex} activeJob={production.activeJob} />
+    </section>
+  );
+}
+
+// ── ④ 제작 중(사진클레이): 그림 그리기 → 영상 조립 → 검수, 지금 어디인지 ─────────────────
+const CLAY_STEPS = ["그림 그리기", "영상 조립", "검수"] as const;
+function ClayMaking({ plan, production, onRefresh }: { plan: StudioPlan; production: StudioProduction; onRefresh: () => void }) {
+  const ex = production.explainer!;
+  const job = production.activeJob;
+  const st = clayStage(ex.episode?.state, job, ex.episode?.last_message);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const assemble = async () => {
+    setBusy(true); setProblem(null);
+    const r = await post("explainer_request_assemble", { plan_revision_id: plan.plan_revision_id });
+    setBusy(false);
+    if (!r.ok) setProblem(r.error ?? "조립을 요청하지 못했어요.");
+    onRefresh();
+  };
+  return (
+    <section aria-labelledby="sj-make-h">
+      <div className="sj-intro">
+        <div><p className="sj-kicker">MAKING · 사진클레이</p><h1 id="sj-make-h">{st.title}</h1>
+          <p role="status" aria-live="polite">{st.note}</p></div>
+      </div>
+      <ol className="sj-progress" aria-label="진행 단계">
+        {CLAY_STEPS.map((label, i) => {
+          const n = i + 1;
+          const now = n === st.step;
+          return (
+            <li key={label} className={n < st.step ? "is-done" : now ? (st.stopped ? "is-stop" : "is-now") : undefined} aria-current={now ? "step" : undefined}>
+              <b>{n < st.step ? "✓" : n}</b>{label}{now && job && <small>{job.status === "queued" ? "대기 중" : "진행 중"}</small>}
+            </li>
+          );
+        })}
+      </ol>
+      {st.canAssemble && !job && (
+        <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={assemble}>{busy ? "요청 중…" : "영상 조립하기 (0원)"}</button></div>
+      )}
+      {problem && <p className="sj-error" role="alert">{problem}</p>}
+      <details className="sj-more"><summary>자세히 보기 (장면별 지시서·비용)</summary>
+        <ExplainerProduction planId={plan.plan_revision_id} status={ex} activeJob={job} />
+      </details>
     </section>
   );
 }
