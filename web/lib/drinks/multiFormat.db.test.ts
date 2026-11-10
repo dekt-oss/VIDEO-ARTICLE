@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d|8\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0072_drinks_multi_format.sql"), "0072 가 목록에 있어야 한다");
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
@@ -290,12 +290,22 @@ test("이미 근거가 승인된 소재에 형식을 더한다: 승인된 근거
   assert.deepEqual((await topicRow(topic)).selected_formats, ["video"], "제작안을 만든 것만으로 편성은 바뀌지 않는다");
   // 승인 전 제작안은 제작으로 못 간다(규칙 그대로)
   await fails("request_render", { plan_revision_id: pl.revision_id }, "not_renderable");
-  // 승인된 기획에 카드 필수 주장이 없으면 편성이 막힌다 — 규칙이 줄지 않았다. 기획을 고쳐 다시 승인해야 한다(여기서는 그 분기만 확인)
+  // 0080(2026-11-10 버번 실측): 승인된 기획에 이 형식의 필수 주장이 비어 있어도 공용 규칙(drinks_format_required)대로
+  // 다른 형식의 목록을 쓴다 — 형식을 뒤에 더한 소재가 [승인]에서 막히지 않는다.
   const brief = (await reviewRow(reviewId)).brief;
-  if (!brief.required_claims?.carousel) {
-    await fails("approve_content", await approvePayload(topic, reviewId, pl.revision_id, "card"), "required_claims_missing");
-    assert.equal((await planRow(pl.revision_id)).plan_status, "draft", "하나라도 실패하면 아무것도 바뀌지 않는다");
-  }
+  assert.equal((brief.required_claims?.carousel ?? []).length, 0, "카드 필수 주장이 빈 승인 기획(버번과 같은 상태)");
+  assert.ok((brief.required_claims?.video ?? []).length > 0);
+  await ok("approve_content", await approvePayload(topic, reviewId, pl.revision_id, "card"));
+  assert.equal((await planRow(pl.revision_id)).plan_status, "approved");
+  assert.deepEqual([...(await topicRow(topic)).selected_formats].sort(), ["carousel", "video"], "편성에 카드가 더해진다");
+});
+
+test("0080: 필수 주장이 어느 형식에도, 핵심 주장에도 없으면 편성은 여전히 막힌다", async () => {
+  const code = (await row(`select drinks_format_required('{"required_claims":{"video":[],"carousel":[]},"selected_claim_ids":[]}'::jsonb, 'video') as v`)).v;
+  assert.deepEqual(code, [], "규칙이 빈 목록을 돌려주면 drinks_select 가 required_claims_missing 으로 막는다");
+  const src = readFileSync(join(DIR, "0080_drinks_select_required_fallback.sql"), "utf8");
+  assert.match(src, /if jsonb_array_length\(drinks_format_required\(r\.brief, f\)\) = 0 then/);
+  assert.match(src, /required_claims_missing/);
 });
 
 test("세 형식 중 하나가 실패해도 나머지는 그대로다 — 실패한 형식만 다시 요청하고, 같은 형식의 활성 요청은 둘이 되지 않는다", async () => {

@@ -15,7 +15,7 @@ import { FACTCHECK_NOTE, AUTO_SOURCE_NOTE, isAutoSupported } from "./factcheck.t
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIR = join(HERE, "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d)_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d|8\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0075_drinks_auto_factcheck.sql"), "0075 가 목록에 있어야 한다");
 const FIX = JSON.parse(readFileSync(join(HERE, "../../../tests/fixtures/drinks_factcheck/worker_payloads.json"), "utf8"));
 const db = new PGlite();
