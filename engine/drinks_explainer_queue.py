@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from . import config, drinks_develop as dd
+from . import drinks_clay as clay
 from . import drinks_explainer as dx
 from . import drinks_paid as dpaid
 from . import drinks_script_check as script_check
@@ -133,19 +134,19 @@ def visual_prompt_with_guard(sc: dict[str, Any]) -> str:
     return f"{vp} Must not suggest: {bad}." if vp and bad else vp
 
 
-def build_directive(plan_id: str, job: dict[str, Any], visual_claims: Optional[list[dict[str, Any]]], tts_ms: dict[int, int], *, provider: str) -> dict[str, Any]:
-    """장면별 지시서 — 운영자 결재 화면에 그대로 나가는 표이자 구매의 입력. 어긋나면 ExplainerStop(problems)."""
-    plan, topic = job.get("plan") or {}, job.get("topic") or {}
-    resolution = config.DRINKS_EXPLAINER_RESOLUTION
-    scenes = merge_visual_claims(plan.get("scenes") or [], visual_claims)
-    if not scenes:
-        raise dx.ExplainerStop("plan_not_buildable", "장면이 없습니다")
+def _stop_if(problems: list[dict[str, Any]]) -> None:
+    if problems:
+        raise dx.ExplainerStop("plan_not_buildable", "; ".join(f"{p['scene'] or '-'}번 {p['code']}" for p in problems)[:1500], problems=problems)
+
+
+def plan_problems(job: dict[str, Any], scenes: list[dict[str, Any]], tts_ms: dict[int, int]) -> list[dict[str, Any]]:
+    """대본·시각 주장표 코드 검사(0원) — 무료 경로와 달리 여기서는 막는다(buy_scene_images 와 같은 규칙). 클립·사진클레이 공용."""
+    plan = job.get("plan") or {}
     problems: list[dict[str, Any]] = []
 
     def bad(code: str, message: str, scene: Optional[int] = None) -> None:
         problems.append({"code": code, "scene": scene, "message": message})
 
-    # 1. 대본·시각 주장표 코드 검사(0원) — 무료 경로와 달리 여기서는 막는다(buy_scene_images 와 같은 규칙).
     rep = script_check.check(script_check.plan_spec(plan, job.get("claims") or [], sources=job.get("sources"), brief=job.get("brief")))
     for f in rep.blocks:
         bad(f.code, f.message, f.scene)
@@ -156,8 +157,21 @@ def build_directive(plan_id: str, job: dict[str, Any], visual_claims: Optional[l
             bad("visual_prompt_missing", "영어 그림 지시문이 없습니다", i)
         if not int(tts_ms.get(i) or 0):
             bad("narration_missing", "나레이션 길이를 재지 못했습니다", i)
-    if problems:
-        raise dx.ExplainerStop("plan_not_buildable", "; ".join(f"{p['scene'] or '-'}번 {p['code']}" for p in problems)[:1500], problems=problems)
+    return problems
+
+
+def build_directive(plan_id: str, job: dict[str, Any], visual_claims: Optional[list[dict[str, Any]]], tts_ms: dict[int, int], *, provider: str) -> dict[str, Any]:
+    """장면별 지시서 — 운영자 결재 화면에 그대로 나가는 표이자 구매의 입력. 어긋나면 ExplainerStop(problems)."""
+    topic = job.get("topic") or {}
+    resolution = config.DRINKS_EXPLAINER_RESOLUTION
+    scenes = merge_visual_claims((job.get("plan") or {}).get("scenes") or [], visual_claims)
+    if not scenes:
+        raise dx.ExplainerStop("plan_not_buildable", "장면이 없습니다")
+    problems = plan_problems(job, scenes, tts_ms)
+    _stop_if(problems)
+
+    def bad(code: str, message: str, scene: Optional[int] = None) -> None:
+        problems.append({"code": code, "scene": scene, "message": message})
 
     # 2. 편집표(실측 TTS 기준). 표가 안 맞으면 살 이유가 없다.
     hook_scene = choose_hook_scene(scenes)
@@ -208,8 +222,7 @@ def build_directive(plan_id: str, job: dict[str, Any], visual_claims: Optional[l
                       "motion_prompt": sc["motion_prompt"], "clip_prompt": probe_item.prompt, "clip_model": probe_item.model, "clip_est_usd": probe_item.est_usd,
                       "claim_ids": list(sc.get("claim_ids") or []), "visual_claim_ko": sc.get("visual_claim_ko"), "allowed_simplification": sc.get("allowed_simplification"),
                       "forbidden_misreading": sc.get("forbidden_misreading"), "depiction_label": sc.get("depiction_label"), "overlays": sc.get("overlays") or None})
-    if problems:
-        raise dx.ExplainerStop("plan_not_buildable", "; ".join(f"{p['scene'] or '-'}번 {p['code']}" for p in problems)[:1500], problems=problems)
+    _stop_if(problems)
     reserve = dx.clip_est_usd(provider, longest_clip, resolution) + config.DRINKS_EXPLAINER_PRICES["image"]["mechanism"]["usd"]   # §3-7 재시도 예비
     estimate = images_usd + clips_usd
     cap = math.ceil(round(estimate + reserve, 4) * 10) / 10
@@ -217,6 +230,31 @@ def build_directive(plan_id: str, job: dict[str, Any], visual_claims: Optional[l
             "playback_speed": tl.speed, "raw_ms": tl.raw_ms, "final_ms": tl.final_ms, "edit_cuts": len(tl.cuts), "slots": slots, "warnings": tl.warnings,
             "estimate": {"images_usd": round(images_usd, 4), "clips_usd": round(clips_usd, 4), "estimate_usd": round(estimate, 2), "reserve_usd": round(reserve, 4), "suggested_cap_usd": round(cap, 2)},
             "unverified": ["공급자 응답 모양", "시작 그림 첫 프레임 고정", "길이 지정", "청구 단위"]}
+
+
+def build_clay_directive(plan_id: str, job: dict[str, Any], visual_claims: Optional[list[dict[str, Any]]], scene_sec: dict[int, float]) -> dict[str, Any]:
+    """사진클레이 지시서(docs/deviation-drinks-explainer-clay.md). 대본 검사는 클립 경로와 같고, 클립 칸 대신 장면별 자막 줄·그림 한 장이다."""
+    topic = job.get("topic") or {}
+    scenes = merge_visual_claims((job.get("plan") or {}).get("scenes") or [], visual_claims)
+    if not scenes:
+        raise dx.ExplainerStop("plan_not_buildable", "장면이 없습니다")
+    problems = plan_problems(job, scenes, {i: int(scene_sec.get(i, 0) * 1000) for i in range(1, len(scenes) + 1)})
+    final_sec = sum(scene_sec.values())
+    lo, hi = config.DRINKS_CLAY_FINAL_SEC
+    if not lo <= final_sec <= hi:
+        problems.append({"code": "duration_out_of_range", "scene": None, "message": f"최종 {final_sec:.1f}초 — 사진클레이는 {lo:g}~{hi:g}초입니다"})
+    _stop_if(problems)
+    slots, images_usd = clay.directive_slots(plan_id, scenes, scene_sec)
+    reserve = config.DRINKS_CLAY_IMAGE_USD * 2   # 마음에 안 드는 그림 두 장을 다시 그릴 여유
+    cap = math.ceil(round(images_usd + reserve, 4) * 10) / 10
+    title = str(topic.get("title") or topic.get("question") or "").strip()
+    final_ms = int(round(final_sec * 1000))
+    return {"version": 1, "provider": config.DRINKS_CLAY_PROVIDER, "variant": "clay", "resolution": f"{clay.W}x{clay.H}", "price_as_of": config.DRINKS_EXPLAINER_PRICES["as_of"],
+            "hook_text": title, "hook_scene": 1, "playback_speed": 1.0, "raw_ms": final_ms, "final_ms": final_ms,
+            "edit_cuts": sum(len(s["lines"]) for s in slots), "slots": slots, "warnings": [],
+            "voice": {"name": config.DRINKS_CLAY_TTS_VOICE, "rate": config.DRINKS_CLAY_TTS_RATE},
+            "estimate": {"images_usd": images_usd, "clips_usd": 0.0, "estimate_usd": round(images_usd, 2), "reserve_usd": round(reserve, 4), "suggested_cap_usd": round(cap, 2)},
+            "unverified": ["그림 속 째리 모양", "주인공 얼굴이 장면마다 같은지"]}
 
 
 def directive_hash(directive: dict[str, Any]) -> str:
@@ -290,12 +328,31 @@ def _heartbeat(job: dict[str, Any], rpc: Rpc) -> None:
         raise _Stop("failed", "canceled_before_render", "제작안·근거가 지금은 유효하지 않습니다 — 더 진행하지 않습니다")
 
 
+def _clay_scene_sec(scenes: list[dict[str, Any]], out_dir: str, deps: Deps) -> dict[int, float]:
+    """사진클레이 길이 실측 — 조립과 같은 방식(장면 통째 TTS, 앞뒤 빈 소리 뺌, 장면 사이 숨)."""
+    os.makedirs(out_dir, exist_ok=True)
+    out: dict[int, float] = {}
+    for i, sc in enumerate(scenes, 1):
+        text = str(sc.get("narration") or "").strip()
+        if not text:
+            raise dx.ExplainerStop("narration_missing", f"{i}번 장면에 나레이션이 없습니다")
+        p = os.path.join(out_dir, f"{i:02d}" + (".wav" if deps.tts_fn else ".mp3"))
+        a0, a1 = clay.spoken_window(p, clay.speak(text, p, deps.tts_fn))
+        out[i] = round(a1 - a0 + config.DRINKS_CLAY_SCENE_GAP_SEC, 3)
+    return out
+
+
 def _run_plan(job: dict[str, Any], rpc: Rpc, work: str, *, tts: str, deps: Deps) -> dict[str, Any]:
     ctx = _context(job, rpc)
     scenes = (job.get("plan") or {}).get("scenes") or []
+    provider = (ctx.get("episode") or {}).get("provider") or config.DRINKS_EXPLAINER_DEFAULT_PROVIDER
+    if provider == config.DRINKS_CLAY_PROVIDER:
+        d = build_clay_directive(job["plan_revision_id"], job, ctx.get("visual_claims"), _clay_scene_sec(scenes, os.path.join(work, "narration"), deps))
+        rpc("drinks_explainer_save_directive", {**_lease(job), "directive": d, "order_hash": directive_hash(d)})
+        rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "tts", "provider": "test" if deps.tts_fn else "edge", "cost_usd": 0, "units": len(scenes), "note": "사진클레이 지시서용 길이 실측"}})
+        return {"status_code": "directive_ready", "estimate": d["estimate"]}
     narr = synth_narrations(scenes, os.path.join(work, "narration"), tts, deps)
     tts_ms = {i: dx.media_duration_ms(p) for i, p in narr.items()}
-    provider = (ctx.get("episode") or {}).get("provider") or config.DRINKS_EXPLAINER_DEFAULT_PROVIDER
     d = build_directive(job["plan_revision_id"], job, ctx.get("visual_claims"), tts_ms, provider=provider)
     rpc("drinks_explainer_save_directive", {**_lease(job), "directive": d, "order_hash": directive_hash(d)})
     rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "tts", "provider": "test" if deps.tts_fn else tts, "cost_usd": 0, "units": len(scenes), "note": "지시서용 길이 실측"}})
@@ -324,8 +381,44 @@ def _auto_check_stored(rpc: Rpc, storage: Any, cand: dict[str, Any], slot: dict[
     rpc("drinks_explainer_verdict", {"candidate_id": cand["candidate_id"], "auto_verdict": "pass" if report["pass"] else "fail", "auto_report": report})
 
 
+def _run_buy_clay(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, deps: Deps, ctx: dict[str, Any]) -> dict[str, Any]:
+    """사진클레이 구매: 장면마다 그림 1장, 클립 없음. 1번은 째리 그림을, 나머지는 '1번 + 째리' 한 장을 참조로 그린다(공급자는 참조 1장만 받는다).
+    다 사면 사람 선택 없이 assets_complete — 고를 후보가 없다. 사람은 완성 영상을 검수한다."""
+    adapter = deps.adapter if deps.adapter is not None else clay.ClayAdapter()
+    try:
+        adapter.check_ready(ctx.get("approval"))   # ★ 스위치·결재 게이트. 가잡기보다 먼저다
+    except dpaid.PaidError as exc:
+        raise _Stop("failed", exc.code, exc.message) from exc
+    ep = ctx.get("episode") or {}
+    if ep.get("state") == "approved":
+        _set_state(job, rpc, "buying")
+    directive = ep.get("directive") or {}
+    slots = sorted(directive.get("slots") or [], key=lambda s: int(s["n"]))
+    if not slots:
+        raise _Stop("failed", "directive_missing", "장면별 지시서가 없습니다")
+    through, total = ep.get("buy_through_n"), len(slots)
+    out_dir, ref_path, ref_id = os.path.join(work, "images"), clay.mascot_ref(os.path.join(work, "jjeri_ref.png")), clay.MASCOT_REF_ID
+    for spec in slots:
+        n = int(spec["n"])
+        if through and n > int(through):
+            return {"status_code": "scope_done", "through_n": through}
+        _heartbeat(job, rpc)
+        item = clay.image_item(n, total, str(spec["visual_prompt"] or ""), ref_id)
+        if item.prompt != spec["image_prompt"]:
+            raise _Stop("failed", "order_changed", f"{n}번 장면 그림 문장이 지시서와 다릅니다 — 지시서를 다시 만드세요")
+        img = dpaid.buy(item, rpc=rpc, storage=storage, approval_id=job["spend_approval_id"], out_dir=out_dir, ref_path=ref_path, lease=_lease(job), generate=adapter.image)
+        if not img.reused:
+            _cost(job, rpc, "image", "gemini", item.model, img.cost_usd, f"{n}번 장면 클레이 그림 — 정가표")
+        if n == 1:
+            ref_path, ref_id = clay.reference_sheet(img.path, os.path.join(work, "ref_sheet.png")), sha256_file(img.path)
+    _set_state(job, rpc, "assets_complete")
+    return {"status_code": "assets_complete"}
+
+
 def _run_buy(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, deps: Deps) -> dict[str, Any]:
     ctx = _context(job, rpc)
+    if (ctx.get("episode") or {}).get("provider") == config.DRINKS_CLAY_PROVIDER:
+        return _run_buy_clay(job, rpc, storage, work, deps, ctx)
     adapter = deps.adapter if deps.adapter is not None else dpaid.LiveAdapter((ctx.get("episode") or {}).get("provider"))
     try:
         adapter.check_ready(ctx.get("approval"))   # ★ 스위치·결재 게이트. 가잡기·시도 행보다 먼저다
@@ -419,6 +512,68 @@ def _collect_selected(plan_id: str, directive: dict[str, Any], rpc: Rpc, storage
     return assets
 
 
+def _fetch_clay_images(directive: dict[str, Any], rpc: Rpc, storage: Any, out_dir: str) -> dict[int, str]:
+    """산 그림을 저장소에서 꺼낸다(재구매 없음). 주문 해시는 구매 때와 같은 규칙으로 다시 계산한다 — 2번부터는 1번 그림 내용이 해시에 들어 있다."""
+    os.makedirs(out_dir, exist_ok=True)
+    slots = sorted(directive["slots"], key=lambda s: int(s["n"]))
+    out: dict[int, str] = {}
+    ref_id = clay.MASCOT_REF_ID
+    for spec in slots:
+        n = int(spec["n"])
+        item = clay.image_item(n, len(slots), str(spec["visual_prompt"] or ""), ref_id)
+        hit = rpc("drinks_find_generated", {"prompt_hashes": [item.prompt_hash]}) or []
+        if not hit:
+            raise _Stop("failed", "image_missing", f"{n}번 장면 그림을 찾지 못했습니다 — 구매를 이어서 요청하세요", "blocked_assets")
+        p = os.path.join(out_dir, f"clay-{n:02d}.png")
+        storage.get(hit[0]["storage_key"], p)
+        if sha256_file(p) != hit[0]["sha256"]:
+            raise _Stop("failed", "cache_corrupt", f"{n}번 장면 그림 파일이 기록과 다릅니다", "blocked_assets")
+        out[n] = p
+        if n == 1:
+            ref_id = sha256_file(p)
+    return out
+
+
+def _run_render_clay(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, ctx: dict[str, Any], directive: dict[str, Any], deps: Deps) -> dict[str, Any]:
+    """사진클레이 조립(0원). ★ 사는 길이 없다 — 그림은 _fetch_clay_images 로 꺼내기만 한다."""
+    from .drinks_produce import MIME_EXT
+    from .drinks_render import _probe
+
+    if (ctx.get("episode") or {}).get("state") != "rehearsal":
+        _set_state(job, rpc, "rehearsal")
+    pics = _fetch_clay_images(directive, rpc, storage, os.path.join(work, "images"))
+    scenes = [clay.ClayScene(n=int(s["n"]), narration=str(s["narration"] or ""), lines=list(s["lines"]), picture=pics[int(s["n"])], mascot=bool(s.get("mascot_in_scene")))
+              for s in sorted(directive["slots"], key=lambda s: int(s["n"]))]
+    _heartbeat(job, rpc)
+    out = os.path.join(work, "final.mp4")
+    summary_render = clay.render(directive["hook_text"], scenes, out, os.path.join(work, "render"), deps.tts_fn)
+    qa = clay.auto_qa(out, summary_render)
+    if not qa["ok"]:
+        raise _Stop("failed", "auto_qa_fail", "자동 검사 불합격: " + ", ".join(qa["blocks"])[:1500], "auto_qa_fail")
+    _set_state(job, rpc, "rendered")
+    probe = _probe(out)
+    cover = os.path.join(work, "cover.jpg")
+    draw_cover(job.get("topic") or {}, job.get("plan") or {}, cover)
+    summary = {"format": "explainer", "variant": "clay", "auto_qa": {"state": "pass", "blocks": [], "warns": qa["warns"], "signals": summary_render},
+               "warnings": qa["warns"], "tts": "test" if deps.tts_fn else "edge", "voice": directive.get("voice"),
+               "visual_source": {"stand_in": [], "card_pages": [], "generated": sorted(pics)},
+               "reel_spec": {"moov_first": dx.moov_before_mdat(out), "audio_sample_rate": probe.get("audio_sample_rate"), "video_codec": probe.get("video_codec"), "fps": probe.get("fps"), "cover_mime": "image/jpeg"},
+               "probe": probe, "note": "자동 검사 통과는 '돌아간다'일 뿐이다 — 품질 판정은 사람이 한다"}
+    files = [{"path": out, "role": "final_video", "position": 1, "mime": "video/mp4", "width": probe["width"], "height": probe["height"], "duration_ms": int(probe["duration_sec"] * 1000)},
+             {"path": cover, "role": "cover", "position": 1, "mime": "image/jpeg", "width": 1080, "height": 1920}]
+    registered = []
+    for f in files:
+        name = f"{f['role']}_{f['position']:02d}{MIME_EXT[f['mime']]}"
+        stored = storage.put(f["path"], f"drinks/{job['job_id']}/{name}", f["mime"])
+        reg = rpc("drinks_register_asset", {**_lease(job), "asset": {"storage_key": stored, "sha256": sha256_file(f["path"]), "mime": f["mime"], "bytes": os.path.getsize(f["path"]),
+                                                                     "width": f.get("width"), "height": f.get("height"), "duration_ms": f.get("duration_ms"), "rights": "generated_paid",
+                                                                     "provenance": {"renderer": config.DRINKS_CLAY_RENDERER_VERSION, "images": "generated_paid", "tts": summary["tts"]}}})
+        registered.append({"asset_id": reg["asset_id"], "role": f["role"], "position": f["position"]})
+    rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "render", "provider": "local_ffmpeg", "cost_usd": 0, "note": "사진클레이 조립 — 렌더 중 구매 0회"}})
+    _set_state(job, rpc, "auto_qa_pass")
+    return rpc("drinks_finish_render", {**_lease(job), "outcome": "succeeded", "assets": registered, "qa": summary})
+
+
 def _run_render(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, *, tts: str, deps: Deps) -> dict[str, Any]:
     """조립. ★ 이 함수에는 어댑터가 없다 — 렌더 중에 살 길이 코드에 없다(E3)."""
     from .drinks_produce import MIME_EXT
@@ -428,6 +583,8 @@ def _run_render(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, *, tts: 
     directive = (ctx.get("episode") or {}).get("directive") or {}
     if not directive.get("slots"):
         raise _Stop("failed", "directive_missing", "장면별 지시서가 없습니다")
+    if directive.get("provider") == config.DRINKS_CLAY_PROVIDER:
+        return _run_render_clay(job, rpc, storage, work, ctx, directive, deps)
     if (ctx.get("episode") or {}).get("state") != "rehearsal":
         _set_state(job, rpc, "rehearsal")
     assets = _collect_selected(plan_id, directive, rpc, storage, os.path.join(work, "selected"))

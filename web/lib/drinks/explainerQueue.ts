@@ -30,10 +30,29 @@ export interface DirectiveSlot {
   n: number; slot_id: string; role: "reality" | "mechanism"; narration: string; tts_ms: number; last_src_ms: number; min_src_ms: number; clip_sec: number; candidates_planned: number;
   boundary_in: string; boundary_out: string; continuity_ref: number | null; visual_prompt: string; image_prompt: string; image_model: string; image_est_usd: number; motion_prompt: string; clip_prompt: string; clip_model: string; clip_est_usd: number;
   claim_ids: string[]; visual_claim_ko: string; allowed_simplification: string; forbidden_misreading: string; depiction_label: string; overlays: string | null;
+  /** 사진클레이만: 화면 자막 줄, 그림 속에 째리가 나오나 */
+  lines?: string[]; mascot_in_scene?: boolean;
 }
 export interface Directive {
   provider: string; resolution: string; price_as_of: string; hook_text: string; hook_scene: number; playback_speed: number; raw_ms: number; final_ms: number; edit_cuts: number; slots: DirectiveSlot[]; warnings: string[];
   estimate: { images_usd: number; clips_usd: number; estimate_usd: number; reserve_usd: number; suggested_cap_usd: number }; unverified: string[];
+  variant?: "clay"; voice?: { name: string; rate: string };
+}
+
+/** 설명형 만드는 방식(편의 provider). clay = 사진클레이(0079): 장면마다 점토 그림 1장, 클립 없음. */
+export const CLAY_PROVIDER = "clay";
+export type MakeMethod = "clay" | "omni";
+export const MAKE_METHOD_LABEL: Record<MakeMethod, string> = { clay: "사진클레이", omni: "영상 클립" };
+
+/** 이 편을 사는 데 결재가 허용해야 할 종류. DB(0079 drinks_explainer_request_buy)와 같은 규칙. */
+export function neededKinds(provider: string | null | undefined): string[] {
+  return provider === CLAY_PROVIDER ? ["image"] : ["image", "video"];
+}
+
+/** 지금 이 편에 쓸 수 있는 열린 결재. */
+export function usableApproval<A extends Pick<ExplainerApproval, "status" | "expired" | "allowed_kinds">>(approvals: A[], provider: string | null | undefined): A | null {
+  const need = neededKinds(provider);
+  return approvals.find((a) => a.status === "open" && !a.expired && need.every((k) => a.allowed_kinds.includes(k))) ?? null;
 }
 export interface ExplainerEpisode {
   plan_revision_id: string; state: EpisodeState; provider: string; directive: Directive | null; order_hash: string | null; approval_id: string | null; buy_through_n: number | null;
@@ -92,7 +111,7 @@ export function nextStep(s: ExplainerStatus): NextStep {
   if (!st || st === "plan_draft") return "request_plan";
   if (st === "unknown_billed") return "close_unknown";
   if (st === "directive_ready" || st === "blocked_budget") {
-    return s.approvals.some((a) => a.status === "open" && !a.expired && a.allowed_kinds.includes("image") && a.allowed_kinds.includes("video")) ? "request_buy" : "open_approval";
+    return usableApproval(s.approvals, s.episode?.provider) ? "request_buy" : "open_approval";
   }
   if (st === "approved") return "request_buy";
   if (st === "buying") {

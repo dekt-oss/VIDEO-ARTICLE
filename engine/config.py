@@ -4994,6 +4994,34 @@ DRINKS_EXPLAINER_TAIL_MS: int = 600                # 말 없는 꼬리(배속 �
 DRINKS_EXPLAINER_ASPECT_TOLERANCE: float = 0.02    # 후보 자동 판정의 9:16 허용 오차(폭/높이 비)
 DRINKS_EXPLAINER_SEND_TIMEOUT_SEC: float = _get_float("DRINKS_EXPLAINER_SEND_TIMEOUT_SEC", 300.0)   # 동기 응답(§3-2 ①) 대기. [미검증] 끊기면 unknown_billed 로 멈춘다
 DRINKS_EXPLAINER_STALE_ATTEMPT_SEC: int = 1800     # 이만큼 멈춘 시도는 워커가 죽은 것으로 본다(0053 임대 시간과 같다)
+
+# ── 설명형 사진클레이 버전(2026-11-10, 운영자 "설명형 릴스-사진클레이 이런식으로 추가") ── docs/deviation-drinks-explainer-clay.md
+# 편의 공급자 칸(drink_explainer_episodes.provider)이 'clay' 면 클립을 사지 않는다: 장면마다 점토 그림 1장 + 장면 통째 TTS + 전문 자막.
+# ★ 0067 의 운영자 규칙 "사진에 설명 하는건 안돼" 는 클립 경로에 그대로 남는다. 이 버전만 운영자 지시로 예외다.
+DRINKS_CLAY_PROVIDER: str = "clay"
+DRINKS_CLAY_RENDERER_VERSION: str = "drinks-explainer-clay-v1"
+DRINKS_CLAY_ASPECT: str = "1:1"                    # 그림은 정사각형 카드로 화면 가운데에 앉는다(9:16 화면은 코드가 그린다)
+DRINKS_CLAY_IMAGE_MODEL: str = os.getenv("DRINKS_CLAY_IMAGE_MODEL", "gemini-2.5-flash-image")   # 샘플(2026-11-10) 실측 모델. 장당 정가는 PRICING
+DRINKS_CLAY_IMAGE_USD: float = 0.039               # PRICING 에 없을 때 쓰는 장당 정가(샘플 실측 단가)
+# 샘플에서 운영자가 고른 화풍. 그림 안 글자는 모델이 엉터리 한자를 그려 넣어서(실측 6장 중 5장) 전부 막는다 — 라벨은 비운다.
+DRINKS_CLAY_STYLE: str = (
+    "Handmade claymation stop-motion style: plasticine figures and props with visible fingerprints and soft rounded shapes, "
+    "a cozy handcrafted miniature set, warm soft studio lighting, gentle shallow depth of field, warm palette of burnt orange, "
+    "cream and navy with soft sage accents, funny exaggerated expressions. If a person appears, it is the recurring main character: "
+    "a clay man with short black hair, round black glasses and a burnt-orange knit sweater. Square 1:1 composition, the scene fills "
+    "the whole frame with no border or dark vignette. Absolutely no text, letters, numbers, kanji, calligraphy, signs or logos anywhere; "
+    "bottle labels and wall tiles are blank."
+)
+DRINKS_CLAY_MASCOT_TEXT: str = (
+    "our mascot Jjeri, a cream-colored clay bottle cap with a wavy crown-cork edge and two glaring, half-closed orange half-moon eyes "
+    "with navy pupils, exactly as in the reference image (draw only the bottle cap, not the orange square behind it)"
+)
+DRINKS_CLAY_MASCOT_SCENES: str = "first_last"      # 째리가 그림 속에 나오는 장면. 나머지 장면은 모서리 스티커로 나온다(코드가 그림)
+DRINKS_CLAY_TTS_VOICE: str = "ko-KR-HyunsuMultilingualNeural"   # 2026-11-10 운영자 비교 청취로 확정(InJoon·SunHi·ElevenLabs 탈락)
+DRINKS_CLAY_TTS_RATE: str = "+45%"                 # 1.1 → 1.32 → 1.45배(운영자가 두 번 올림)
+DRINKS_CLAY_SCENE_GAP_SEC: float = 0.10            # 장면 사이 숨
+DRINKS_CLAY_LINE_MAX_CHARS: int = 24               # 자막 한 줄 묶음 최대 글자(띄어쓰기 포함). 화면 폭 900px·50pt 에서 두 줄 안
+DRINKS_CLAY_FINAL_SEC: tuple[float, float] = (30.0, 70.0)   # 클립 길이 제약이 없어 설명형(40~55초)보다 넓다. 샘플 49초
 DRINKS_EXPLAINER_PLACEHOLDER_SYL_PER_SEC: float = 5.9   # tts=placeholder 의 길이 추정(§3-6-2 말 속도). 무음 시험 전용
 
 # ── 5단계 게시 크론·성과 루프(2026-11-02, 총괄계획 §5·§6 5단계). docs/deviation-drinks-stage5-publish-loop.md ──
