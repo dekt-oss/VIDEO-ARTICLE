@@ -581,7 +581,9 @@ function VideoMaking({ plan, production, onRefresh }: { plan: StudioPlan; produc
         <div><p className="sj-kicker">MAKING</p><h1 id="sj-make-h">{plan.plan_json.scenes?.length ?? 0}개 장면{ex.episode?.provider === CLAY_PROVIDER ? " 그림을 그리고" : "을 제작하고"} 있어요.</h1>
           <p role="status" aria-live="polite">{production.activeJob ? "작업이 돌고 있어요. 창을 닫아도 이어져요." : "다음 단계를 눌러 이어 가세요."}</p></div>
       </div>
-      {waitingWorker && <p className="sj-warnline" role="status">{ex.episode?.provider === CLAY_PROVIDER ? "그림" : "영상"} 구매 작업이 대기 중이에요. 구매 작업기는 아직 자동으로 깨어나지 않아서, Claude 에게 &ldquo;구매 작업 돌려 줘&rdquo;라고 말해 주세요.</p>}
+      {waitingWorker && <p className="sj-warnline" role="status">{ex.episode?.provider === CLAY_PROVIDER
+        ? "그림 구매 작업이 순서를 기다리고 있어요. 보통 1~2분 안에 시작해요."
+        : <>영상 구매 작업이 대기 중이에요. 영상 클립 구매 작업기는 자동으로 깨어나지 않아서, Claude 에게 &ldquo;구매 작업 돌려 줘&rdquo;라고 말해 주세요.</>}</p>}
       {passable.length > 0 && nextStep(ex) === "review_candidates" && (
         <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={useAll}>{busy ? "확정하는 중…" : `자동 검사 통과한 클립 ${passable.length}개 쓰기`}</button></div>
       )}
