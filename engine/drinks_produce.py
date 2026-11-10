@@ -20,10 +20,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import sys
 import tempfile
+import time
 from typing import Any, Callable, Optional
 
 from . import config
@@ -61,8 +63,24 @@ class Storage:
             from . import db
 
             with open(path, "rb") as f:
-                # upsert 하지 않는다 — 같은 위치에 이미 있으면 실패한다(불변).
-                db.client().storage.from_(BUCKET).upload(key, f.read(), {"content-type": mime, "upsert": "false"})
+                data = f.read()
+            # upsert 하지 않는다 — 같은 위치에 이미 있으면 실패한다(불변).
+            # 2026-11-10 실측: 저장소가 일시 520 을 내 완성 영상 조립이 통째로 실패했다 → 한 번 더 올린다.
+            #   첫 시도가 실제로는 저장됐을 수 있으니, 두 번째가 '이미 있음'이면 내용이 같을 때만 통과로 본다.
+            for attempt in range(2):
+                try:
+                    db.client().storage.from_(BUCKET).upload(key, data, {"content-type": mime, "upsert": "false"})
+                    return key
+                except Exception as exc:  # noqa: BLE001 — 저장소 클라이언트 예외 종류가 판마다 다르다
+                    if attempt == 0:
+                        log.warning("drinks: 저장 실패(%s) — 3초 뒤 한 번 더: %s", type(exc).__name__, key)
+                        time.sleep(3)
+                        continue
+                    if "exist" in str(exc).lower() or "duplicate" in str(exc).lower():
+                        got = db.client().storage.from_(BUCKET).download(key)
+                        if hashlib.sha256(got).hexdigest() == hashlib.sha256(data).hexdigest():
+                            return key
+                    raise
             return key
         raise RenderError("storage_mode", f"알 수 없는 저장 방식: {self.mode}")
 
