@@ -146,6 +146,9 @@ def estimate_usd(model: str, in_chars: int, max_out_tokens: int) -> float:
     fb = getattr(config, "LLM_PAYMENT_FALLBACK_MODEL", None)
     if fb and model.lower().startswith("gemini") and fb in config.TEXT_PRICING:
         models.append(fb)
+    ds_fb = getattr(config, "LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL", None)
+    if ds_fb and model.lower().startswith("deepseek") and ds_fb in config.TEXT_PRICING:
+        models.append(ds_fb)
     in_tokens = in_chars / max(config.DRINKS_DEVELOP_CHARS_PER_TOKEN, 0.5)
     best = 0.0
     for m in models:
@@ -189,6 +192,13 @@ def capture_usage():
         yield box
     finally:
         llm._record_text_usage = orig
+
+
+def payment_required(exc: BaseException) -> bool:
+    """공급자가 402(결제 필요)로 거절했나 — 잔액 부족. 재시도로 풀리지 않는다."""
+    import httpx
+
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response is not None and exc.response.status_code == 402
 
 
 def _maybe_billed(exc: BaseException) -> bool:
@@ -1282,6 +1292,10 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 — 어떤 예외도 요청을 running 에 남기지 않는다
         log.exception("drinks: 개발 요청 %s 예외", job["request_id"])
         try:
+            if payment_required(exc):   # 대체 모델까지 결제 거절 — "일시적 문제"가 아니다. 충전 전에는 다시 해도 같다
+                return finish("failed", error_code="provider_payment_required",
+                              error_message="초안 AI 계정 잔액이 없습니다(DeepSeek, 대체 Gemini 모두 결제 거절) — 충전 뒤 다시 준비하세요",
+                              result={"cost": {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}})
             return finish("failed", error_code="worker_error", error_message=f"워커 예외: {type(exc).__name__}",
                           result={"cost": {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}})
         except DbError:

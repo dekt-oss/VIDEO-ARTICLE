@@ -213,6 +213,9 @@ MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
 #   Gemini 가 402(결제 필요)로 거절하면 텍스트 호출을 이 모델로 대신한다(2026-10-08 운영자 지시). 비우면 대체 없음.
 #   그림·영상 생성은 대체가 없다(deepseek 는 텍스트 전용) — 그쪽 402 는 그대로 실패한다.
 LLM_PAYMENT_FALLBACK_MODEL: str = os.getenv("LLM_PAYMENT_FALLBACK_MODEL", "deepseek-v4-pro")
+#   반대 방향(2026-11-10 운영자 "딥시크 멈췄으면 제미나이로 이어지도록"): deepseek 가 402 면 이 Gemini 모델로 대신한다.
+#   주류 초안 대본이 DeepSeek 잔액 부족으로 30초 만에 멈춘 실측이 계기. 비우면 대체 없음.
+LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL: str = os.getenv("LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL", MODEL_SCRIPT)
 LLM_PAYMENT_FALLBACK_TOKEN_SCALE: float = _get_float("LLM_PAYMENT_FALLBACK_TOKEN_SCALE", 2.4)
 #   V2 검증관 백엔드(2026-10-07 운영자 "검증을 더 저렴한 모델로 — jev 쓰면 되잖아"). jev = 문장마다 Jev 근거 판정
 #   (Fact Sheet + 논문/리포트 메타와 대조, 한 편 1센트 안팎). llm = MODEL_V2_CRITIC(Gemini 2.5 Pro 한 편 약 $0.1).

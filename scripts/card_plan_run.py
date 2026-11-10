@@ -303,6 +303,14 @@ def run_job(job: dict[str, Any], *, live: bool) -> tuple[dict[str, Any], MemRpc,
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    prev = config.LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL
+    try:
+        return _main(argv)
+    finally:
+        config.LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL = prev   # 이 실행에서만 끈다
+
+
+def _main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="카드 대본 생성 준비 — 가짜 응답으로 끝까지(0원) / --yes 로 실제 1회(상한 $0.15)")
     ap.add_argument("--topic", default=None, help="소재 id(없으면 승인된 근거가 있는 최근 소재)")
     ap.add_argument("--offline", action="store_true", help="Supabase 없이 시험 입력으로")
@@ -310,6 +318,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--approve", default="", help="결재 문장(운영자가 승인한 말 그대로). --yes 에 필수")
     ap.add_argument("--out", default=str(PREVIEW))
     args = ap.parse_args(argv)
+    # 이 시험은 운영자가 승인한 상한($0.15) 안에서 DeepSeek 만 쓴다. DeepSeek 402 → Gemini 대체(2026-11-10)는
+    # 단가가 더 비싸 상한을 넘으므로 이 스크립트에서는 끈다 — 대체가 필요하면 상한부터 다시 승인받는다.
+    config.LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL = ""
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
