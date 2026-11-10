@@ -342,3 +342,14 @@ def test_on_topic_evidence_saves_as_before():
 def test_factcheck_prompt_asks_whether_the_title_question_is_answered():
     p = dd.factcheck_system()
     assert "question_answer" in p and "양쪽 모두" in p
+
+
+def test_claim_cap_takes_turns_across_sources():
+    """앞 출처가 상한을 다 먹어 뒤 출처의 문장이 잘리지 않는다(2026-11-10 버번: 셰리 맛 문장이 잘림)."""
+    from engine.drinks_develop import interleave_claims
+    a = [{"t": f"a{i}"} for i in range(6)]
+    b = [{"t": f"b{i}"} for i in range(7)]
+    got = [x["t"] for x in interleave_claims([a, b], 12)]
+    assert len(got) == 12 and "b5" in got and "b6" not in got and "a5" in got
+    assert got[:4] == ["a0", "b0", "a1", "b1"]
+    assert interleave_claims([], 12) == []

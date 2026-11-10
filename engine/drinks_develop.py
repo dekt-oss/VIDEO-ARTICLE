@@ -713,6 +713,14 @@ def pick_core(claims: list[dict[str, Any]], factcheck: dict[str, Any]) -> tuple[
     return core, excluded
 
 
+def interleave_claims(per_source: list[list[dict[str, Any]]], cap: int) -> list[dict[str, Any]]:
+    """출처마다 한 개씩 돌아가며 담는다 — 앞 출처가 상한을 다 먹어 뒤 출처의 핵심 문장이 잘리지 않게(2026-11-10 버번: 셰리 맛 문장이 잘림)."""
+    out: list[dict[str, Any]] = []
+    for i in range(max((len(x) for x in per_source), default=0)):
+        out += [x[i] for x in per_source if i < len(x)]
+    return out[:cap]
+
+
 def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledger, deps: Deps, beat: Callable[[str], None]) -> dict[str, Any]:
     topic = job["topic"]
     question = topic["question"]
@@ -734,11 +742,9 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
     beat("sources")
     context: list[dict[str, Any]] = []
     sources, skipped = gather_sources(job, rpc, lease, deps, context)
-    kept_all: list[dict[str, Any]] = []   # {text, original_quote, claim_type, src: Source}
+    per_source: list[list[dict[str, Any]]] = []   # 출처별 {text, original_quote, claim_type, src: Source}
     report: list[dict[str, Any]] = []
     for src in sources:
-        if len(kept_all) >= config.DRINKS_DEVELOP_MAX_CLAIMS:
-            break
         if not src.text or len(src.text) < config.DRINKS_MIN_BODY_CHARS:
             skipped.append({"title": src.title, "why": "본문이 너무 짧음"})
             continue
@@ -752,8 +758,8 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
                        "claims_kept": len(kept), "claims_dropped": sum(dropped.values()), "dropped_by": dropped})
         for k in kept:
             k["src"] = src
-        kept_all += kept
-    kept_all = kept_all[: config.DRINKS_DEVELOP_MAX_CLAIMS]
+        per_source.append(kept)
+    kept_all = interleave_claims(per_source, config.DRINKS_DEVELOP_MAX_CLAIMS)
     if len(kept_all) < config.DRINKS_DEVELOP_MIN_CLAIMS:
         raise DevelopError("evidence_insufficient", insufficient_message(len(kept_all), report, skipped), "blocked",
                            {"sources": report, "skipped": skipped, "claims_kept": len(kept_all)})
