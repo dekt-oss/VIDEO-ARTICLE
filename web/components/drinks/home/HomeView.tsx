@@ -11,8 +11,10 @@ import { FORMAT_LABEL, type Decision, type WorkItem } from "@/lib/drinks/work/ty
 import { mondayOf, todayInSeoul } from "@/lib/date";
 
 
-export default function DrinksHomeView({ header, state, items, decisions, candTotal, counts, weekly, blockers, health }: {
+export default function DrinksHomeView({ header, state, items, decisions, candTotal, todayCands, counts, weekly, blockers, health }: {
   header: ReactNode; state: HomeState; items: WorkItem[]; decisions: Decision[]; candTotal: number | null;
+  /** 오늘(KST) 새로 수집한 질문. null = 조회 실패 */
+  todayCands: { count: number; top: { id: string; question: string }[] } | null;
   counts: HomeCounts; weekly: WeeklyRow[]; blockers: Blocker[]; health: Health;
 }) {
   const today = todayInSeoul();
@@ -47,7 +49,7 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
         <Link className={`summary-tile${candTotal ? " has-work" : ""}`} href="/drinks/studio">
           <div className="k">수집한 질문</div>
           <div className="n">{candTotal ?? "모름"}</div>
-          <div className="s">{candTotal !== null ? "이 중 만들 수 있는 것만 스튜디오에 보여요" : "조회 실패"}</div>
+          <div className="s">{candTotal === null ? "조회 실패" : `오늘 새로 ${todayCands?.count ?? "?"}개 · 만들 수 있는 것만 스튜디오에 보여요`}</div>
         </Link>
         <Link className={`summary-tile${counts.approve ? " has-work" : ""}`} href="/drinks/work?filter=approve">
           <div className="k">판단 기다리는 작업</div>
@@ -60,6 +62,16 @@ export default function DrinksHomeView({ header, state, items, decisions, candTo
           <div className="s">작업 단위 기준</div>
         </Link>
       </div>
+
+      <section className="dk-panel" aria-labelledby="dk-today-h">
+        <h2 id="dk-today-h">오늘 수집한 질문 {todayCands ? `${todayCands.count}개` : ""}</h2>
+        {todayCands === null ? <p className="dk-note warn">오늘 수집 내역을 읽지 못했습니다(0개가 아니라 조회 실패).</p>
+          : todayCands.count === 0 ? <p className="muted">오늘(KST 06:30 수집) 새로 들어온 질문이 아직 없습니다.</p> : <>
+            <p className="dk-panel-lead">매일 아침 KST 06:30 에 모아요. 아직 고르지 않은 것 중 점수 높은 순{todayCands.top.length === 0 ? " — 오늘 것은 모두 골랐거나 정리했어요" : ` ${todayCands.top.length}개`}.</p>
+            <ul>{todayCands.top.map((c) => <li key={c.id}>{c.question}</li>)}</ul>
+          </>}
+        <Link className="dk-text-link" href="/drinks/studio">스튜디오에서 날짜별로 보기 →</Link>
+      </section>
 
       <div className="dk-grid2">
         <section className="dk-panel" aria-labelledby="dk-weekly-h">

@@ -12,7 +12,7 @@ import { pickBudget } from "@/lib/drinks/develop";
 import { homeBlockers, homeCounts, homeState, weeklyProgress } from "@/lib/drinks/home";
 import { DRINKS_WEEKLY_TARGETS } from "@/lib/drinks/model";
 import { ACCOUNT_STATUS_LABEL, loadPublishBoard } from "@/lib/drinks/publishQueries";
-import { countOpenCandidates, loadOpenBudgets } from "@/lib/drinks/topicsQueries";
+import { countOpenCandidates, loadOpenBudgets, loadTodayCandidates } from "@/lib/drinks/topicsQueries";
 import { decide, homeTier } from "@/lib/drinks/work/decision";
 import { loadWorkItems } from "@/lib/drinks/work/queries";
 import type { Decision, WorkItem } from "@/lib/drinks/work/types";
@@ -20,10 +20,10 @@ import type { Decision, WorkItem } from "@/lib/drinks/work/types";
 export const dynamic = "force-dynamic";
 
 export default async function DrinksTodayPage() {
-  const [work, health, candTotal, budgets, pub] = await Promise.all([
-    loadWorkItems("all"), loadRunHealth(), countOpenCandidates(), loadOpenBudgets(), loadPublishBoard(),
-  ]);
   const today = todayInSeoul();
+  const [work, health, candTotal, budgets, pub, todayCands] = await Promise.all([
+    loadWorkItems("all"), loadRunHealth(), countOpenCandidates(), loadOpenBudgets(), loadPublishBoard(), loadTodayCandidates(today),
+  ]);
   const [y, m, d] = today.split("-").map(Number);
   const dow = ["일", "월", "화", "수", "목", "금", "토"][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   const header = (
@@ -57,7 +57,7 @@ export default async function DrinksTodayPage() {
   const weekly = weeklyProgress(items, mondayOf(today), DRINKS_WEEKLY_TARGETS);
 
   return (
-    <DrinksHomeView header={header} state={state} items={items} decisions={decisions} candTotal={candTotal}
+    <DrinksHomeView header={header} state={state} items={items} decisions={decisions} candTotal={candTotal} todayCands={todayCands}
       counts={counts} weekly={weekly} blockers={blockers} health={health} />
   );
 }
