@@ -10,6 +10,8 @@ export const EXPLAINER_MIN_EVIDENCE = 2;
 export const CARD_MIN_EVIDENCE = 1;
 export const EXPLAINER_MIN_EVIDENCE_CHARS = 1200;
 export const EVIDENCE_MAX_CANDIDATES = 50;
+/** 스튜디오 목록이 근거를 찾아 넘겨 보는 최대 쪽 수(쪽마다 RPC 1회) — 후보가 쌓여도 페이지가 느려지지 않게. */
+export const EVIDENCE_MAX_PAGES = 4;
 
 export type FormatIntent = "explainer" | "card" | "meme";
 export type Recommended = FormatIntent | "unknown";

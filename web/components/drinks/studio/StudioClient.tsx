@@ -13,6 +13,7 @@ import { CHECKS, REEL_CHECKS } from "@/components/drinks/ProductionControls";
 import { RequestActions } from "@/components/drinks/PublishControls";
 import { CLAY_PROVIDER, MAKE_METHOD_LABEL, clayStage, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, kstMinute, neededKinds, nextStep, usableApproval, type ExplainerStatus, type MakeMethod } from "@/lib/drinks/explainerQueue";
 import { blockerLabel } from "@/lib/drinks/model";
+import { relativeDayLabel } from "@/lib/date";
 import { PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL } from "@/lib/drinks/pickModal";
 import { PUBLISH_WINDOW, publishWindowProblem } from "@/lib/drinks/publishWindow";
 import {
@@ -25,6 +26,8 @@ export interface StudioCollectItem {
   angle: string | null; inProgress: boolean; payload: Record<string, unknown>;
   /** 이미 시작한 유형·초안이 있는 유형(card·explainer) */
   started: string[]; drafts: string[];
+  /** 수집한 날(KST, YYYY-MM-DD). 이미 만들고 있는 소재는 null */
+  collectedOn: string | null;
 }
 export interface StudioResultFile {
   role: string; position: number; mime: string; url: string | null; urlError: string | null; width: number | null; height: number | null;
@@ -61,9 +64,11 @@ const LOGICAL: Record<StudioScreen, (typeof STEPS)[number]["id"]> = {
 };
 const POLL_MS = 5000;
 
-export default function StudioClient({ items, problems, status, statusProblem, files, resultProblem, selectedTopicId, lane, production, publish, pickContext, summary, header, footer }: {
+export default function StudioClient({ items, problems, status, statusProblem, files, resultProblem, selectedTopicId, today, lane, production, publish, pickContext, summary, header, footer }: {
   items: StudioCollectItem[]; problems: string[]; status: StudioStatus | null; statusProblem: string | null;
   files: StudioResultFile[]; resultProblem: string | null; selectedTopicId: string | null;
+  /** 서버가 정한 오늘(KST) — 자정 무렵 서버·브라우저의 "오늘/어제"가 갈리지 않게 */
+  today: string;
   lane: StudioLane | null; production: StudioProduction | null; publish: StudioPublish | null;
   /** 시작한 소재에 유형을 더할 때 쓰는 값(pick_topic): 이번 주 편성·이번 주 한도 */
   pickContext: { week: string; budgetId: string | null };
@@ -164,7 +169,7 @@ export default function StudioClient({ items, problems, status, statusProblem, f
 
       {screen === "collect" && <div className="sj-slot">{header}</div>}
       {screen === "collect" && (
-        <Collect summary={summary} items={items} problems={problems} selKey={selKey} sel={sel} busy={busy}
+        <Collect summary={summary} today={today} items={items} problems={problems} selKey={selKey} sel={sel} busy={busy}
           onSelect={(k) => { setSelKey(k); setFormat(defaultFormat(items.find((i) => i.key === k) ?? null)); }}
           checked={checked} onCheck={(k) => setChecked((c) => (c.includes(k) ? c.filter((x) => x !== k) : c.length < BATCH_MAX ? [...c, k] : c))}
           onClearChecked={() => setChecked([])} onStartMany={startMany}
@@ -199,15 +204,24 @@ export default function StudioClient({ items, problems, status, statusProblem, f
 }
 
 // ── ① 소재 고르기 ────────────────────────────────────────────────────────────
-function Collect({ summary, items, problems, selKey, onSelect, checked, onCheck, onClearChecked, onStartMany, sel, busy, current, format, onFormat, onPrepare, onAdd, onOpen }: {
+function Collect({ summary, today, items, problems, selKey, onSelect, checked, onCheck, onClearChecked, onStartMany, sel, busy, current, format, onFormat, onPrepare, onAdd, onOpen }: {
   checked: string[]; onCheck: (k: string) => void; onClearChecked: () => void; onStartMany: (list: StudioCollectItem[], f: StudioLane) => void;
-  summary?: string; items: StudioCollectItem[]; problems: string[]; selKey: string | null; onSelect: (k: string) => void; sel: StudioCollectItem | null; busy: boolean;
+  summary?: string; today: string; items: StudioCollectItem[]; problems: string[]; selKey: string | null; onSelect: (k: string) => void; sel: StudioCollectItem | null; busy: boolean;
   current: ReturnType<typeof studioPhase> | null; format: FormatChoice; onFormat: (f: FormatChoice) => void;
   onPrepare: (i: StudioCollectItem) => void; onAdd: (i: StudioCollectItem, f: StudioLane) => void; onOpen: (topicId: string, f: StudioLane) => void;
 }) {
   const action = sel ? formatAction(sel, format) : null;
   const many = items.filter((i) => checked.includes(i.key));
   const manyTargets = batchTargets(many, format);
+  // 목록을 수집한 날로 나눈다 — 날이 바뀌는 곳에 머리줄을 단다(items 는 서버가 날짜 최신순으로 준다).
+  const perDay = new Map<string, number>();
+  for (const i of items) if (i.collectedOn) perDay.set(i.collectedOn, (perDay.get(i.collectedOn) ?? 0) + 1);
+  const dayHead = (t: StudioCollectItem, idx: number) => {
+    if (idx > 0 && (items[idx - 1].collectedOn ?? "") === (t.collectedOn ?? "")) return null;
+    if (!t.collectedOn) return <li key="h:mine" className="sj-day"><strong>이어 만들고 있는 소재</strong></li>;
+    const rel = relativeDayLabel(t.collectedOn, new Date(`${today}T12:00:00+09:00`));
+    return <li key={`h:${t.collectedOn}`} className="sj-day"><strong>{rel === "오늘" ? "오늘 새로 수집" : `${rel} 수집`}</strong> <span>{t.collectedOn} · {perDay.get(t.collectedOn)}개</span></li>;
+  };
   const formats = (badges: StudioCollectItem | null) => (
     <fieldset className="sj-format-list"><legend className="sj-label">어떤 유형으로 만들까요?</legend>
       {PICK_FORMATS.map((f) => (
@@ -224,7 +238,8 @@ function Collect({ summary, items, problems, selKey, onSelect, checked, onCheck,
     <section aria-labelledby="sj-collect-h">
       <div className="sj-intro">
         <div><p className="sj-kicker">COLLECT / SELECT</p><h1 id="sj-collect-h">어떤 이야기를 만들까요?</h1>
-          <p>수집된 질문에서 소재를 고르면, 초안까지 준비해 드려요. 왼쪽 네모를 체크하면 여러 소재를 한 번에 만들 수 있어요(최대 {BATCH_MAX}개).</p></div>
+          <p>수집된 질문에서 소재를 고르면, 초안까지 준비해 드려요.</p>
+          <p>여러 개 한 번에: 왼쪽 네모를 체크하면 오른쪽 칸에 모여요(최대 {BATCH_MAX}개). 빼려면 체크를 다시 누르거나 오른쪽 칸의 [빼기]를 눌러요.</p></div>
         <span className="sj-note">고를 수 있는 소재 · {items.length}개</span>
       </div>
       {summary && <p className="sj-note">{summary}</p>}
@@ -232,10 +247,10 @@ function Collect({ summary, items, problems, selKey, onSelect, checked, onCheck,
       {items.length === 0 ? <p className="sj-empty">지금 자동으로 초안까지 만들 수 있는 소재가 없어요. 수집이 돌면 여기에 나타나요.</p> : (
         <div className="sj-layout">
           <ul className="sj-stack" aria-label="수집된 소재">
-            {items.map((t) => (
+            {items.flatMap((t, idx) => [dayHead(t, idx), (
               <li key={t.key} className="sj-topic-row">
                 <label className="sj-topic-check">
-                  <input type="checkbox" aria-label={`${t.title} 함께 만들기`} checked={checked.includes(t.key)} disabled={busy || (!checked.includes(t.key) && checked.length >= BATCH_MAX)} onChange={() => onCheck(t.key)} />
+                  <input type="checkbox" id={`sj-chk-${t.key}`} aria-label={`${t.title} 함께 만들기`} checked={checked.includes(t.key)} disabled={busy || (!checked.includes(t.key) && checked.length >= BATCH_MAX)} onChange={() => onCheck(t.key)} />
                 </label>
                 {/* 여러 개를 고르는 중에는 줄을 눌러도 체크가 바뀐다(오른쪽 칸이 묶음 칸이라 한 소재 보기가 없다) */}
                 <button type="button" className="sj-topic" aria-pressed={many.length > 0 ? checked.includes(t.key) : t.key === selKey} disabled={busy} onClick={() => (many.length > 0 ? onCheck(t.key) : onSelect(t.key))}>
@@ -248,13 +263,17 @@ function Collect({ summary, items, problems, selKey, onSelect, checked, onCheck,
                   <span aria-hidden="true">{(many.length > 0 ? checked.includes(t.key) : t.key === selKey) ? "✓" : "→"}</span>
                 </button>
               </li>
-            ))}
+            )])}
             {many.length > 0 && <li className="sj-many-jump"><button type="button" className="sj-btn sj-main" onClick={() => document.getElementById("sj-many")?.scrollIntoView({ behavior: "smooth" })}>선택한 {many.length}개 만들러 가기 <span aria-hidden="true">↑</span></button></li>}
           </ul>
           {many.length > 0 ? (
             <aside id="sj-many" className="sj-picked" aria-label="선택한 소재들">
               <div><span className="sj-label">선택한 소재 {many.length}개{many.length >= BATCH_MAX ? " · 한 번에 최대" : ""}</span>
-                <ul className="sj-picked-list">{many.map((i) => <li key={i.key}>{i.title}</li>)}</ul></div>
+                <ul className="sj-picked-list">{many.map((i) => (
+                  <li key={i.key}><span>{i.title}</span>
+                    <button type="button" className="sj-unpick" disabled={busy} aria-label={`${i.title} 빼기`} onClick={() => { onCheck(i.key); document.getElementById(`sj-chk-${i.key}`)?.focus(); }}>빼기</button></li>
+                ))}</ul>
+                {many.length < BATCH_MAX && <p className="sj-note">왼쪽 목록에서 {BATCH_MAX - many.length}개 더 체크할 수 있어요.</p>}</div>
               <hr />
               {formats(null)}
               {format === "meme" ? <>

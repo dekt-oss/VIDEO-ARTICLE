@@ -32,7 +32,12 @@
 .sj-topic-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; }
 .sj-topic-check { display: flex; align-items: center; justify-content: center; min-height: 44px; align-self: stretch; cursor: pointer; }
 .sj-topic-check input { accent-color: var(--sj-green); height: 20px; width: 20px; margin: 0; }
-.sj-picked-list { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.sj-picked-list { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.sj-picked-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sj-unpick { flex: none; min-height: 32px; padding: 0 12px; border: 1px solid var(--sj-line); border-radius: 8px; background: transparent; color: var(--sj-ink); font-size: 13px; cursor: pointer; }
+.sj-unpick:hover { border-color: var(--sj-green); }
+.sj-day { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-top: 10px; font-size: 13px; color: var(--sj-ink); }
+.sj-day span { opacity: .7; font-size: 12px; }
 .sj-topic { display: grid; grid-template-columns: 64px minmax(0, 1fr) 18px; gap: 14px; align-items: center; width: 100%; text-align: left; background: var(--sj-paper);
   border: 1px solid var(--sj-line); border-radius: 10px; padding: 17px; color: var(--sj-ink); }
 .sj-topic:hover { border-color: var(--sj-green); }

@@ -3,9 +3,10 @@
 //   전체 건수(count exact)와 이번 쪽만 받는다. 근거 수는 보이는 쪽만 센다(0064 RPC, 상한 EVIDENCE_MAX_CANDIDATES).
 //   조회 실패 / 부분 조회(근거 수·결재를 못 읽음) / 수집 미실행 / 정상 0건을 화면이 가르도록 각각 다른 칸에 담는다.
 import { createAdminClient } from "@/lib/supabase/admin";
+import { seoulDateOf } from "@/lib/date";
 import type { CandidateRow } from "@/lib/drinks/discovery";
 import type { DevelopBudgetRow } from "@/lib/drinks/develop";
-import { EVIDENCE_MAX_CANDIDATES } from "@/lib/drinks/formatRecommend";
+import { EVIDENCE_MAX_CANDIDATES, EVIDENCE_MAX_PAGES } from "@/lib/drinks/formatRecommend";
 import { FORMAT_FIT_MIN, type Loaded } from "@/lib/drinks/model";
 import { withOfficialHits } from "@/lib/drinks/officialSources";
 import { fetchAllIn } from "@/lib/drinks/paging";
@@ -102,12 +103,14 @@ export async function loadTopicCandidates(f: CandidateFilter): Promise<Loaded<To
 }
 
 export interface StudioCandidates {
-  /** 만들 수 있는 후보만, 비슷한 질문은 하나로. 점수 높은 순. */
+  /** 만들 수 있는 후보만, 비슷한 질문은 하나로. 수집일 최신순, 같은 날은 점수순. */
   rows: { candidate: CandidateRow; merged: number }[];
   /** 수집된 후보 전체 수 */
   total: number;
   /** 근거 수를 못 읽어 근거 조건을 적용하지 못했으면 그 이유 */
   evidenceProblem: string | null;
+  /** 근거 확인 쪽 수 상한에 걸려 더 오래된 묶음을 보지 못했으면 확인한 묶음 수(못 본 게 없으면 null) */
+  scanCapped: number | null;
 }
 
 /** 스튜디오 ① 목록: 자동으로 초안까지 갈 수 없는 후보(점수·주종 없음, 취향 묻기, 기존 소재와 중복, 근거 0건)는 올리지 않는다. */
@@ -124,18 +127,31 @@ export async function loadStudioCandidates(existing: readonly GroupRow[]): Promi
     const categories = pickDefaults(c.key_question).categories;
     return pickability(c, true).ok && categories.length > 0 && isAnswerable(c.key_question) ? [{ id: c.id, text: c.key_question, categories, c }] : [];
   });
-  const top = groupSimilar(usable, existing).groups.slice(0, EVIDENCE_MAX_CANDIDATES);
-  const ev = await db.rpc("drinks_candidate_evidence_counts", { p: { candidate_ids: top.map((g) => g.lead.id) } });
-  const known = !ev.error && ev.data && typeof ev.data === "object" ? (ev.data as Record<string, { count: number; chars: number }>) : null;
-  const hasEvidence = (c: CandidateRow) => {
-    const raw = known?.[c.id];
-    const merged = withOfficialHits(raw ? { count: Number(raw.count), chars: Number(raw.chars) } : undefined, c.key_question);
-    return (merged?.count ?? 0) > 0;
-  };
+  // 묶기는 점수순(대표 = 근거 검사 대상)으로 하고, 묶음은 대표의 수집일(KST) 최신순으로 줄 세운다(같은 날 안은 점수순, stable sort).
+  // 점수순만 쓰면 옛 고득점 후보가 상한을 채워 오늘 들어온 질문이 안 보인다(2026-11-12 운영자). 먼저 날짜로 정렬하면 대표가 바뀌어 근거 없는 새 질문이 묶음째 지운다.
+  const groups = groupSimilar(usable, existing).groups
+    .sort((a, b) => seoulDateOf(b.lead.c.created_at).localeCompare(seoulDateOf(a.lead.c.created_at)));
+  // 근거 RPC 는 한 번에 50개까지 받는다 — 50개씩 검사해 근거 있는 묶음이 50개 찰 때까지, 최대 EVIDENCE_MAX_PAGES 쪽까지 넘긴다(DB 조회만, 비용 0).
+  // 최신 50묶음에 근거가 없다고 목록이 비면 안 된다. 검사가 실패하면 그 쪽은 거르지 않고 보이며 이유를 남긴다(예전과 같다).
+  const kept: typeof groups = [];
+  let evidenceProblem: string | null = null;
+  for (let i = 0; i < groups.length && i < EVIDENCE_MAX_PAGES * EVIDENCE_MAX_CANDIDATES && kept.length < EVIDENCE_MAX_CANDIDATES && !evidenceProblem; i += EVIDENCE_MAX_CANDIDATES) {
+    const page = groups.slice(i, i + EVIDENCE_MAX_CANDIDATES);
+    const ev = await db.rpc("drinks_candidate_evidence_counts", { p: { candidate_ids: page.map((g) => g.lead.id) } });
+    const known = !ev.error && ev.data && typeof ev.data === "object" ? (ev.data as Record<string, { count: number; chars: number }>) : null;
+    if (!known) evidenceProblem = ev.error?.message ?? "응답 없음";
+    const hasEvidence = (c: CandidateRow) => {
+      const raw = known?.[c.id];
+      const merged = withOfficialHits(raw ? { count: Number(raw.count), chars: Number(raw.chars) } : undefined, c.key_question);
+      return (merged?.count ?? 0) > 0;
+    };
+    kept.push(...page.filter((g) => !known || hasEvidence(g.lead.c)));
+  }
   return { state: "ok", data: {
-    rows: top.filter((g) => !known || hasEvidence(g.lead.c)).map((g) => ({ candidate: g.lead.c, merged: g.merged })),
+    rows: kept.slice(0, EVIDENCE_MAX_CANDIDATES).map((g) => ({ candidate: g.lead.c, merged: g.merged })),
     total: all.length,
-    evidenceProblem: known ? null : (ev.error?.message ?? "응답 없음"),
+    evidenceProblem,
+    scanCapped: kept.length < EVIDENCE_MAX_CANDIDATES && groups.length > EVIDENCE_MAX_PAGES * EVIDENCE_MAX_CANDIDATES ? EVIDENCE_MAX_PAGES * EVIDENCE_MAX_CANDIDATES : null,
   } };
 }
 
