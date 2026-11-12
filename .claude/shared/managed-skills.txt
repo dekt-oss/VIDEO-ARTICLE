@@ -12,3 +12,4 @@ render-required-verification-audit
 value-duplication-drift-audit
 work-completion-report
 skill-router
+orchestrate
