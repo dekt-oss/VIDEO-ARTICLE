@@ -239,7 +239,7 @@ function Collect({ summary, today, items, problems, selKey, onSelect, checked, o
       <div className="sj-intro">
         <div><p className="sj-kicker">COLLECT / SELECT</p><h1 id="sj-collect-h">어떤 이야기를 만들까요?</h1>
           <p>수집된 질문에서 소재를 고르면, 초안까지 준비해 드려요.</p>
-          <p>여러 개 한 번에: 왼쪽 네모를 체크하면 오른쪽 칸에 모여요(최대 {BATCH_MAX}개). 빼려면 체크를 다시 누르거나 오른쪽 칸의 [빼기]를 눌러요.</p></div>
+          <p>여러 개 한 번에: 소재 앞 네모를 체크하면 ‘선택한 소재’ 칸에 모여요(최대 {BATCH_MAX}개). 빼려면 체크를 다시 누르거나 그 칸의 [빼기]를 눌러요.</p></div>
         <span className="sj-note">고를 수 있는 소재 · {items.length}개</span>
       </div>
       {summary && <p className="sj-note">{summary}</p>}
@@ -273,7 +273,7 @@ function Collect({ summary, today, items, problems, selKey, onSelect, checked, o
                   <li key={i.key}><span>{i.title}</span>
                     <button type="button" className="sj-unpick" disabled={busy} aria-label={`${i.title} 빼기`} onClick={() => { onCheck(i.key); document.getElementById(`sj-chk-${i.key}`)?.focus(); }}>빼기</button></li>
                 ))}</ul>
-                {many.length < BATCH_MAX && <p className="sj-note">왼쪽 목록에서 {BATCH_MAX - many.length}개 더 체크할 수 있어요.</p>}</div>
+                {many.length < BATCH_MAX && <p className="sj-note">목록에서 {BATCH_MAX - many.length}개 더 체크할 수 있어요.</p>}</div>
               <hr />
               {formats(null)}
               {format === "meme" ? <>
