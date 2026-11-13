@@ -163,7 +163,7 @@ def _old_short_shape(monkeypatch):
 
 
 def deps(**kw):
-    base = {"extract_claims": boom, "write_plan": boom, "jev_check": lambda n, s: None, "fetcher_factory": lambda hosts: boom(),
+    base = {"extract_claims": boom, "write_plan": boom, "jev_check": lambda n, s: None, "fetcher_factory": lambda hosts: boom(), "reframe": boom,
             "factcheck": all_verified}
     base.update(kw)
     return dd.Deps(**base)

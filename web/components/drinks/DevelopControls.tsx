@@ -33,6 +33,15 @@ export function CancelDevelop({ requestId }: { requestId: string }) {
   return <button className="btn" disabled={busy} onClick={() => run("cancel_develop", { request_id: requestId }, "취소를 요청했습니다", "취소")}>취소</button>;
 }
 
+/** 근거 막힘 해결안 적용(0084) — 소재 질문을 해결안으로 바꾸고 근거를 이어 만든다(이미 산 추출 결과를 다시 쓴다). */
+export function ApplyRescue({ requestId, question }: { requestId: string; question: string }) {
+  const { run, busy } = useDrinksAction();
+  return (
+    <button className="btn pick" disabled={busy}
+      onClick={() => run("apply_rescue", { request_id: requestId }, `질문을 바꾸고 근거를 이어 만듭니다: ${question}`, "해결안 적용")}>해결안 적용</button>
+  );
+}
+
 /** 개발 결재 등록 — 결재권자가 승인한 말을 그대로 남긴다. 상한·기간은 DB 가 다시 잰다. */
 export function OpenDevelopBudget() {
   const { run, busy } = useDrinksAction();

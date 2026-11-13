@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import {
-  AutoRefresh, CancelDevelop, CloseDevelopBudget, DevelopRequest, OpenDevelopBudget,
+  ApplyRescue, AutoRefresh, CancelDevelop, CloseDevelopBudget, DevelopRequest, OpenDevelopBudget,
 } from "@/components/drinks/DevelopControls";
 import { fmtTime } from "@/components/drinks/RunPill";
 import {
@@ -89,6 +89,20 @@ function Body({ topicId, topicStatus, approvedEvidence, plans, develop }: {
   );
 }
 
+/** 근거 막힘 해결안(0084) — 워커가 AI 사실 확인으로 미리 통과시킨 질문. 운영자는 적용 여부만 고른다. 가장 최근 막힌 요청에만 버튼을 단다(DB 도 검사). */
+function RescueBox({ r }: { r: DevelopRequestRow }) {
+  const rescue = r.status === "blocked" ? (r.result?.rescue as { question?: string; why_ko?: string; answer_ko?: string } | undefined) : undefined;
+  if (!rescue?.question) return null;
+  return (
+    <span className="banner-info" style={{ display: "block", marginTop: 6 }}>
+      <b>해결안</b> — 질문을 <b>“{rescue.question}”</b>(으)로 바꾸면 지금 근거로 답할 수 있습니다(AI 사실 확인 미리 통과).
+      {rescue.why_ko && <span className="muted" style={{ display: "block" }}>이유: {rescue.why_ko}</span>}
+      {rescue.answer_ko && <span className="muted" style={{ display: "block" }}>근거로 쓴 답: {rescue.answer_ko}</span>}
+      <span style={{ display: "block", marginTop: 4 }}><ApplyRescue requestId={r.request_id} question={rescue.question} /></span>
+    </span>
+  );
+}
+
 function RequestRow({ r, topicId, plans }: { r: DevelopRequestRow; topicId: string; plans: { id: string; format: string }[] }) {
   const err = developErrorView(r.error_code, r.error_message);
   const links = resultLinks(topicId, r, plans);
@@ -105,6 +119,7 @@ function RequestRow({ r, topicId, plans }: { r: DevelopRequestRow; topicId: stri
             {err.detail && <span className="muted" style={{ display: "block" }}>사유: {err.detail}</span>}
           </span>
         )}
+        <RescueBox r={r} />
         {links.map((l) => <span key={l.href}> · <Link href={l.href}>{l.label} →</Link></span>)}
       </span>
       {isActive(r) && <CancelDevelop requestId={r.request_id} />}

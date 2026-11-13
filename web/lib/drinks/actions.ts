@@ -56,6 +56,8 @@ export const DRINKS_ACTIONS = {
   // 여기 없다 — 화면은 요청을 큐에 넣을 뿐이다. 아래 PHASE_A_EXCLUDED 의 research_llm·generate_plan·generate_script 와는 다른 이름이다.
   request_develop: "drinks_request_develop",
   cancel_develop: "drinks_cancel_develop",
+  // 근거 막힘 해결안 적용(0084): 워커가 미리 판정한 질문으로 소재 질문을 바꾸고 근거 요청을 다시 넣는다. 승인은 하지 않는다.
+  apply_rescue: "drinks_apply_rescue",
   open_develop_budget: "drinks_open_develop_budget",
   close_develop_budget: "drinks_close_develop_budget",
   // 주간 AI 초안 한도(0073): [한도 +$1]. 한 번에 $1, 주간 상한 $10 은 DB 가 잰다. 입력값은 받지 않는다.
@@ -377,6 +379,7 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
       return { status: 400, body: { error: "결재 문장(승인한 말 그대로)을 적으세요", code: "invalid_input" } };
     }
   }
+  if (action === "apply_rescue") p.actor = "operator"; // 누른 사람은 운영자 키를 통과한 사람으로 적는다(입력값을 믿지 않는다)
   if (action === "request_develop") {
     if (p.kind !== "evidence" && p.kind !== "plan") {
       return { status: 400, body: { error: "만들 초안 종류(evidence·plan)를 고르세요", code: "invalid_input" } };
