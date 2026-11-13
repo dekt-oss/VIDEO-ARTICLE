@@ -238,7 +238,7 @@ test("③ 밈 S1·S2·S4·S8·S15·S20~S23 (카드 소유·소재 소유 둘 다
   assert.equal(code(item({ format_intent: "meme", meme_draft_id: "m2", meme_status: "draft" })), "S4");
 });
 
-test("③ 게시 요청 S16~S20·S23 은 세 형식이 같다; submit·schedule 만 미리 채우고 approve 는 비운다", () => {
+test("③ 게시 요청 S16~S20·S23 은 세 형식이 같다; 작성·승인 대기·승인은 [게시] 한 번(0086)", () => {
   const owners: WorkItem[] = [
     approvedPlan("explainer", { explainer_state: "ready_to_publish" }),
     approvedPlan("card", { job_id: "j", job_status: "succeeded", output_review_id: "o", output_review_status: "approved", output_usable: true }),
@@ -248,14 +248,16 @@ test("③ 게시 요청 S16~S20·S23 은 세 형식이 같다; submit·schedule 
     const pub = (pub_status: string) => d({ ...o, pub_request_id: "q1", pub_status, pub_version: 4 });
     const s16 = pub("draft");
     assert.equal(s16.primary.code, "S16", o.format_intent);
-    assert.deepEqual(s16.primary.action, { name: "publication_action", payload: { request_id: "q1", expected_version: 4, action: "submit" } });
+    const go = { name: "publication_go", payload: { request_id: "q1", expected_version: 4 } };
+    assert.deepEqual(s16.primary.action, go);
+    assert.equal(s16.primary.label, "게시");
     const s17 = pub("awaiting_approval");
     assert.equal(s17.primary.code, "S17");
-    assert.equal(s17.primary.action, null, "승인은 화면이 보여 준 지문을 돌려줘야 한다");
+    assert.deepEqual(s17.primary.action, go, "2026-11-13 청주·탁주: 게시를 눌렀는데 시각·승인·예약이 따로 남아 있던 일");
     assert.equal(s17.primary.panel, "publish");
     const s18 = pub("approved");
     assert.equal(s18.primary.code, "S18");
-    assert.deepEqual(s18.primary.action, { name: "publication_action", payload: { request_id: "q1", expected_version: 4, action: "schedule" } });
+    assert.deepEqual(s18.primary.action, go);
     for (const st of ["scheduled", "publishing"]) {
       assert.equal(pub(st).primary.code, "S19", st);
       assert.equal(pub(st).primary.busy, true, st);

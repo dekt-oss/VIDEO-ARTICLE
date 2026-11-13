@@ -47,6 +47,8 @@ export const DRINKS_ACTIONS = {
   create_publication: "drinks_create_publication",
   update_publication: "drinks_update_publication",
   publication_action: "drinks_publication_action",
+  // 0086: [게시] 한 번 — 시각(없으면 지금)·승인 요청·승인·예약을 한 트랜잭션으로. 화면에 보인 버전만 받는다.
+  publication_go: "drinks_publication_go",
   // 음원 고르기·바꾸기(0065). 승인 뒤 바꾸면 승인이 풀린다. 게시 직전 재조회·컨테이너 음원 설정(워커 전용)은 여기 없다.
   set_publication_audio: "drinks_set_publication_audio",
   // 밈 발행안(0068): 게시 대기(publish_waiting)·박자 무관 제작안만. 박자 맞춤은 DB 가 거부한다. 같은 승인·예약 경로(publication_action)를 탄다.
@@ -381,6 +383,7 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
       return { status: 400, body: { error: "결재 문장(승인한 말 그대로)을 적으세요", code: "invalid_input" } };
     }
   }
+  if (action === "publication_go") p.actor = "operator"; // 승인자 이름은 입력값을 믿지 않는다
   if (action === "apply_rescue") p.actor = "operator"; // 누른 사람은 운영자 키를 통과한 사람으로 적는다(입력값을 믿지 않는다)
   if (action === "request_develop") {
     if (p.kind !== "evidence" && p.kind !== "plan") {

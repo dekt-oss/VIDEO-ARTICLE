@@ -49,7 +49,10 @@ def test_drinks_code_never_reaches_render_or_publish_paths():
     #   tests/test_drinks_meme_refine.py 가 워크플로·모듈을 감시)가 더해졌다. 운영자 결정: 총괄 계획 §7 결정 1.
     # 2026-11-10: 사진클레이 그림 구매 워커(drinks-explainer-buy.yml — 운영자 "웹에서도 승인하면 자동으로". 결재 상한 안에서 그림만,
     #   클립은 가잡기 전에 거절. tests/test_drinks_explainer_queue.py 가 워크플로를 감시)가 더해졌다.
-    assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null', '"drinks-explainer-buy.yml", null', '"drinks-meme.yml", null',
+    # 2026-11-13: 발행 워커(drinks-publish.yml) — 운영자 "게시 눌렀는데 왜 또 시각을 묻나". [지금 게시](0086 drinks_publication_go)가
+    #   승인·예약까지 끝낸 요청만 바로 올리게 깨운다. 워커는 계정 연결·발행 스위치·승인·시각을 DB(drinks_pub_block)로 다시 잰다.
+    assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null', '"drinks-explainer-buy.yml", null', '"drinks-publish.yml", null',
+                     '"drinks-meme.yml", null',
                      '"drinks-apify.yml", null', '"drinks-develop.yml", null'], \
         f"주류 라우트가 깨우는 워크플로는 수집·로컬 제작·그림 구매·밈 제작·정밀화·소재 개발 워커뿐: {calls}"
 
