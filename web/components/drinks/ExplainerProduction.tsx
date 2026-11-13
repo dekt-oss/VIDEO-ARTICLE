@@ -230,9 +230,15 @@ export default function ExplainerProduction({ planId, status, activeJob, hidePri
           <span className="muted">선택된 클립만 잘라 잇습니다. 자동 검사를 통과해야 파일이 생깁니다.</span>
         </div>
       )}
-      {step === "process_review" && <ReviewForm planId={planId} stage="process" title="과정 검수" items={PROCESS_CHECKS} />}
-      {step === "quality_review" && <ReviewForm planId={planId} stage="quality" title="품질 검수 6항목" items={QUALITY_CHECKS} />}
-      {step === "output_review" && <p className="banner-info">품질 검수를 통과했습니다 — 아래 파일 묶음을 승인하면 게시 대기로 갑니다.</p>}
+      {(step === "process_review" || step === "quality_review" || step === "output_review") && (
+        hidePrimary
+          ? <p className="banner-info">조립·자동 검사가 끝났습니다 — 아래 영상 밑의 [검수하고 승인] 한 번이면 게시 대기로 갑니다.</p>
+          : <>
+            {step === "process_review" && <ReviewForm planId={planId} stage="process" title="과정 검수" items={PROCESS_CHECKS} />}
+            {step === "quality_review" && <ReviewForm planId={planId} stage="quality" title="품질 검수 6항목" items={QUALITY_CHECKS} />}
+            {step === "output_review" && <p className="banner-info">품질 검수를 통과했습니다 — 아래 파일 묶음을 승인하면 게시 대기로 갑니다.</p>}
+          </>
+      )}
       {step === "none" && ep?.state === "ready_to_publish" && <p className="banner-info">게시 대기입니다. 게시 화면에서 발행안을 만드세요. 캡션에 “AI 생성 영상” 한 줄을 넣으세요(§3-4, 코드가 넣지 않습니다).</p>}
     </section>
   );

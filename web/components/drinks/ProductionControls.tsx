@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { useDrinksAction, type DrinksResult } from "./useDrinksAction";
 import { useRegisterPrimary } from "./work/primaryBridge";
+import { PROCESS_CHECKS, QUALITY_CHECKS } from "@/lib/drinks/explainerQueue";
 
 function note(r: DrinksResult): string | null {
   if (!r.ok) return null;
@@ -109,6 +110,40 @@ export const REEL_CHECKS = [
   ["reel_motion_ok", "릴스 페이지 전환이 끊기지 않고 글자가 다 읽힌다"],
   ["reel_hook_share_ok", "첫 화면 훅 제목과 마지막 화면 저장/보내기 한 줄이 맞다"],
 ] as const;
+
+/**
+ * 설명형 검수 한 번에(0085) — 영상 바로 아래. 과정·품질·최종 파일 검수 항목을 '볼 것'으로 보여 주고 한 번 눌러 승인한다.
+ * 세 단계의 기록·규칙은 DB(drinks_explainer_approve_all)가 각 함수를 그대로 불러 남긴다. 불합격은 지금 단계로 되돌린다.
+ */
+export function ExplainerApproveAll({ planId, state, review, usableNow, hidePrimary = false }: {
+  planId: string; state: string; review: { id: string; version: number }; usableNow: boolean; hidePrimary?: boolean;
+}) {
+  const { run, busy } = useDrinksAction();
+  const [reason, setReason] = useState("");
+  const items: readonly (readonly [string, string])[] = [...CHECKS.video, ...QUALITY_CHECKS, ...PROCESS_CHECKS];
+  const approve = () => run("explainer_approve_all", { plan_revision_id: planId, checks: Object.fromEntries(items.map(([k]) => [k, true])) },
+    "검수 승인했습니다 — 게시 대기로 넘어갑니다", "검수 승인");
+  const title = usableNow ? "" : "제작안·근거가 지금 유효하지 않습니다";
+  const claimed = useRegisterPrimary("explainer_approve_all", { submit: approve, disabled: busy || !usableNow, title }, hidePrimary);
+  const reject = () => state === "quality_review_pass"
+    ? run("output_review_action", { review_id: review.id, expected_version: review.version, action: "request_changes", reason, checklist: {} }, "고칠 점을 남겼습니다", "고칠 점")
+    : run("explainer_review", { plan_revision_id: planId, stage: state === "auto_qa_pass" ? "process" : "quality", outcome: "fail", checks: {}, reason },
+      "불합격으로 기록했습니다 — 다시 조립할 수 있습니다", "불합격");
+  return (
+    <div className="dk-sub">
+      <b>검수하고 승인</b> <span className="muted">영상을 보고 이상 없으면 한 번에 승인합니다(과정·품질·최종 파일 검수 기록이 함께 남습니다).</span>
+      <details>
+        <summary className="muted" style={{ cursor: "pointer" }}>볼 것 {items.length}가지</summary>
+        <ul className="muted" style={{ margin: "4px 0" }}>{items.map(([k, l]) => <li key={k}>{l}</li>)}</ul>
+      </details>
+      <div className="actions">
+        {!claimed && <button className="btn pick" disabled={busy || !usableNow} title={title} onClick={approve}>검수하고 승인</button>}
+        <input placeholder="고칠 점(불합격 이유)" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <button className="btn" disabled={busy || !reason} onClick={reject}>불합격</button>
+      </div>
+    </div>
+  );
+}
 
 export function OutputReview({ review, format, usableNow, hasReel = false, hidePrimary = false }: {
   review: { id: string; version: number; status: string }; format: "video" | "carousel"; usableNow: boolean; hasReel?: boolean;

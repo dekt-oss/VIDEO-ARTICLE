@@ -139,9 +139,10 @@ function explainerStep(item: WorkItem, ex: ExplainerStatus | null | undefined): 
       }
       case "close_unknown": return prim("B2", BLOCK_PRIMARY.spend_unknown.label, "spend"); // ② 가 놓친 경우의 안전망
       case "request_assemble": return prim("S11", "조립 요청 (0원)", "produce", { action: { name: "explainer_request_assemble", payload: { plan_revision_id: planId } } });
-      case "process_review": return prim("S12", "과정 검수", "review");
-      case "quality_review": return prim("S13", "품질 검수", "review");
-      case "output_review": return prim("S14", "산출물 승인", "review");
+      // 0085: 사람 검수 셋을 영상 아래 한 번의 [검수하고 승인]으로 — 코드는 남겨 순서(S12→S14)를 기록에서 구별한다.
+      case "process_review": return prim("S12", "검수하고 승인", "review", { action: approveAll(planId) });
+      case "quality_review": return prim("S13", "검수하고 승인", "review", { action: approveAll(planId) });
+      case "output_review": return prim("S14", "검수하고 승인", "review", { action: approveAll(planId) });
       case "none": break;
     }
   }
@@ -154,13 +155,16 @@ function explainerStep(item: WorkItem, ex: ExplainerStatus | null | undefined): 
     case "assets_complete": case "rehearsal": case "blocked_assets": case "auto_qa_fail": case "review_fail":
       return prim("S11", "조립 요청 (0원)", "produce", { action: { name: "explainer_request_assemble", payload: { plan_revision_id: planId } } });
     case "rendered": return busy("S8", "조립됨 · 자동 검사 중…", "produce");
-    case "auto_qa_pass": return prim("S12", "과정 검수", "review");
-    case "process_review_pass": return prim("S13", "품질 검수", "review");
-    case "quality_review_pass": return prim("S14", "산출물 승인", "review");
+    case "auto_qa_pass": return prim("S12", "검수하고 승인", "review", { action: approveAll(planId) });
+    case "process_review_pass": return prim("S13", "검수하고 승인", "review", { action: approveAll(planId) });
+    case "quality_review_pass": return prim("S14", "검수하고 승인", "review", { action: approveAll(planId) });
     case "ready_to_publish": return prim("S15", "발행안 만들기", "publish");
     default: return needsReview(item, `설명형 상태 ${item.explainer_state}`);
   }
 }
+
+/** 설명형 검수 한 번에(0085). 결정 바는 검수 칸의 버튼(브리지)을 누른다 — 바가 직접 보내지 않는다(검수 칸이 영상과 볼 것을 보여 준다). */
+const approveAll = (planId: string | null) => ({ name: "explainer_approve_all", payload: { plan_revision_id: planId } });
 
 function cardStep(item: WorkItem): Primary {
   const dev = developStep(item);

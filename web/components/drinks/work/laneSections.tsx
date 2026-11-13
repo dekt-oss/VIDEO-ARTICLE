@@ -14,7 +14,7 @@ import ExplainerProduction from "@/components/drinks/ExplainerProduction";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { MemeDraftActions, MemeDraftForm } from "@/components/drinks/MemeDraftControls";
 import PlanTab from "@/components/drinks/PlanTab";
-import { CancelRender, OutputReview, RenderRequest } from "@/components/drinks/ProductionControls";
+import { CancelRender, ExplainerApproveAll, OutputReview, RenderRequest } from "@/components/drinks/ProductionControls";
 import { AudioControl, CreateMemePublication, CreatePublication, RequestActions } from "@/components/drinks/PublishControls";
 import { fmtTime } from "@/components/drinks/RunPill";
 import QaPanel from "@/app/drinks/production/[planId]/QaPanel";
@@ -35,6 +35,7 @@ import type { SectionView } from "./DrinksWorkspace";
 
 const JOB_LABEL: Record<string, string> = { queued: "대기", running: "렌더 중", succeeded: "파일 생성됨", failed: "실패", canceled: "취소" };
 const JOB_DONE_LABEL: Record<string, string> = { explainer_plan: "지시서 완료", explainer_buy: "구매 단계 끝" };
+const EXPLAINER_REVIEW_STATES = ["auto_qa_pass", "process_review_pass", "quality_review_pass"];
 const REVIEW_LABEL: Record<string, string> = { pending: "검수 대기", approved: "파일 승인", changes_requested: "고칠 점 있음", blocked: "차단" };
 const BLOCK_TEXT: Record<string, string> = {
   plan_not_approved: "제작안이 승인 상태가 아님", plan_blocked: "제작안 차단(근거 철회·권리 변경)", evidence_invalid: "근거를 지금 쓸 수 없음",
@@ -246,6 +247,8 @@ export function buildTopicLane(input: TopicLaneInput): SectionView[] {
       </>
     );
     const f = plan.format as Format;
+    // 설명형 검수 한 번에(0085): DB 와 같은 묶음(가장 최근 대기 중 검수)에만 버튼을 단다.
+    const pendingReviewId = manifests.find((x) => x.review && ["pending", "changes_requested"].includes(x.review.status))?.review?.id;
     nodes.output = (
       <>
         <p className="muted">다시 렌더해 파일이 달라지면 새 묶음이 생기고 옛 묶음·판정은 그대로 남습니다. 고칠 점이 있으면 제작안을 새 버전으로 고친 뒤 렌더하세요.</p>
@@ -281,7 +284,10 @@ export function buildTopicLane(input: TopicLaneInput): SectionView[] {
                 </div>
               ))}
             </div>
-            {m.review && (!isExplainer || ["quality_review_pass", "ready_to_publish"].includes(explainer.episode?.state ?? "")) && (
+            {m.review && isExplainer && m.review.id === pendingReviewId && EXPLAINER_REVIEW_STATES.includes(explainer.episode?.state ?? "") && (
+              <ExplainerApproveAll planId={plan.id} state={explainer.episode?.state ?? ""} review={m.review} usableNow={!m.currentBlock} hidePrimary />
+            )}
+            {m.review && (!isExplainer || explainer.episode?.state === "ready_to_publish") && (
               <OutputReview review={m.review} format={f} usableNow={!m.currentBlock} hasReel={f === "carousel" && m.files.some((x) => x.role === "final_video")} hidePrimary />
             )}
           </article>
