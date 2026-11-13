@@ -16,6 +16,7 @@ import { MemeDraftActions, MemeDraftForm } from "@/components/drinks/MemeDraftCo
 import PlanTab from "@/components/drinks/PlanTab";
 import { CancelRender, ExplainerApproveAll, OutputReview, RenderRequest } from "@/components/drinks/ProductionControls";
 import { AudioControl, CreateMemePublication, CreatePublication, RequestActions } from "@/components/drinks/PublishControls";
+import { autoCaption } from "@/lib/drinks/caption";
 import { fmtTime } from "@/components/drinks/RunPill";
 import QaPanel from "@/app/drinks/production/[planId]/QaPanel";
 import { seoulDateTimeLabel } from "@/lib/date";
@@ -314,19 +315,23 @@ export function buildTopicLane(input: TopicLaneInput): SectionView[] {
       const types = o.post_types ?? [o.format === "carousel" ? "carousel" : "reel"];
       const primaryType = lane === "card" ? (types.includes("carousel") ? "carousel" : types[0]) : "reel";
       const rest = types.filter((t) => t !== primaryType);
+      // 캡션 자동 채움: 이 묶음의 제작안이 쓴 근거 버전의 핵심 결론(승인된 글)
+      const usedReview = reviews.find((r) => r.id === lanePlans.find((p) => p.id === o.plan_revision_id)?.topic_review_id);
+      const caption = autoCaption({ title: topic.title, takeaway: usedReview?.brief?.core_takeaway, categories: topic.categories,
+        aiLabel: lane === "explainer" || o.format === "video" ? aiLabel : null });
       return (
         <div key={o.output_review_id} className="dk-sub">
           <div className="dk-row"><b>{primaryType === "carousel" ? `카드뉴스 ${o.pages}장` : lane === "explainer" ? "설명형 릴스" : "카드뉴스 릴스"}</b><span className="muted">검수 {kst(o.reviewed_at)}</span></div>
           {lane === "explainer" && <p className="muted">설명형은 캡션에 &apos;{aiLabel}&apos; 한 줄이 있어야 발행안을 만들 수 있습니다(기획 v2 §3-4).</p>}
           {types.includes(primaryType) && (
             <CreatePublication outputReviewId={o.output_review_id} accounts={accounts} postType={primaryType} slotHint={slotHint}
-              audioOptions={board.audio_options} audioRequired={primaryType === "reel" && o.format === "carousel"} hidePrimary />
+              audioOptions={board.audio_options} audioRequired={primaryType === "reel" && o.format === "carousel"} hidePrimary defaultCaption={caption} />
           )}
           {rest.map((t) => (
             <details key={t} className="dk-sub">
               <summary className="muted">{t === "reel" ? "릴스로도 올리기 — 음원 필수" : "카드뉴스로 올리기"}</summary>
               <CreatePublication outputReviewId={o.output_review_id} accounts={accounts} postType={t} slotHint={slotHint}
-                audioOptions={board.audio_options} audioRequired={t === "reel" && o.format === "carousel"} />
+                audioOptions={board.audio_options} audioRequired={t === "reel" && o.format === "carousel"} defaultCaption={caption} />
             </details>
           ))}
         </div>

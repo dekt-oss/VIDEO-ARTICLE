@@ -117,17 +117,19 @@ export function AccountActions({ id, version, status, publishEnabled }: { id: st
 }
 
 /** 발행안 작성: 계정을 고르고(기본 계정 없음) 캡션·게시 시각(한국 시각)을 적는다. */
-export function CreatePublication({ outputReviewId, accounts, postType, slotHint, audioOptions, audioRequired = false, hidePrimary = false }: {
+export function CreatePublication({ outputReviewId, accounts, postType, slotHint, audioOptions, audioRequired = false, hidePrimary = false, defaultCaption = "" }: {
   outputReviewId: string; accounts: { id: string; label: string; postTypes: string[] }[]; postType: "carousel" | "reel"; slotHint: string | null;
   /** 0065: 카드 묶음을 릴스로 올리면 음원이 필수다 */
   audioOptions?: AudioOption[]; audioRequired?: boolean;
   /** 작업공간 결정 바가 [발행안 만들기]를 대신 누른다(계정·캡션·시각·음원은 여기서 채운다). 옛 발행 화면은 false */
   hidePrimary?: boolean;
+  /** 캡션 자동 채움(lib/drinks/caption.autoCaption) — 승인된 글만. 운영자가 고쳐 쓸 수 있다 */
+  defaultCaption?: string;
 }) {
   const { run, busy } = useDrinksAction();
   const usable = accounts.filter((a) => a.postTypes.includes(postType));
-  const [acc, setAcc] = useState("");
-  const [caption, setCaption] = useState("");
+  const [acc, setAcc] = useState(usable.length === 1 ? usable[0].id : ""); // 올릴 계정이 하나뿐이면 미리 고른다
+  const [caption, setCaption] = useState(defaultCaption);
   const [when, setWhen] = useState("");
   const [choice, setChoice] = useState<AudioChoice>(defaultChoice());
   const windowProblem = publishWindowProblem(when);
