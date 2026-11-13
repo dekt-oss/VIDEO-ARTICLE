@@ -198,6 +198,7 @@ test("③ 카드 S1~S8·S14·S15·S23", () => {
   assert.deepEqual(retry.primary.action, { name: "request_render", payload: { plan_revision_id: "p1", retry_of: "j" } });
   const done = approvedPlan("card", { job_id: "j", job_status: "succeeded" });
   assert.equal(code({ ...done, output_review_id: "o", output_review_status: "pending", output_usable: null }), "S14");
+  assert.equal(code({ ...done, output_review_id: "o", output_review_status: "pending", output_usable: false }), "S14"); // 실제 뷰 값(2026-11-13 청주·탁주 오경보)
   assert.equal(code(done), "S14"); // 검수 행이 아직 없어도 다음은 산출물 승인
   assert.equal(code({ ...done, output_review_id: "o", output_review_status: "approved", output_usable: true }), "S15");
   assert.equal(code({ ...done, output_review_id: "o", output_review_status: "changes_requested", output_usable: true }), "S7");
