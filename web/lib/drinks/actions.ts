@@ -90,6 +90,8 @@ export const DRINKS_ACTIONS = {
   explainer_select: "drinks_explainer_select",
   explainer_close_unknown: "drinks_explainer_close_unknown",
   explainer_review: "drinks_explainer_review",
+  // 0085: 과정 검수 + 품질 검수 + 최종 파일 승인을 한 번에(한 트랜잭션). 각 단계 규칙은 DB 가 그대로 잰다.
+  explainer_approve_all: "drinks_explainer_approve_all",
   // 한 소재 · 여러 형식(0072, docs/deviation-drinks-multi-format.md §3-5): 읽기 전용 rpc 셋. 작업 목록·소재의 형식별 행·개발 비용 견적.
   // 쓰기는 위의 pick_topic(formats 배열)·approve_content(format_intent)·request_develop(format_intent) 가 그대로 받는다 — 새 쓰기 경로 없음.
   develop_estimate: "drinks_develop_estimate",

@@ -119,5 +119,6 @@ export function primaryKey(action: { name: string; payload?: Record<string, unkn
 export function requiresInPanelConfirm(action: { name: string; payload?: Record<string, unknown> } | null | undefined): boolean {
   if (!action) return false;
   if (action.name === "publication_action" && action.payload?.action === "approve") return true;
+  if (action.name === "explainer_approve_all") return true; // 검수 칸이 안 그려졌으면 바는 그 칸을 펼치기만 한다(영상을 보고 누르게)
   return Object.prototype.hasOwnProperty.call(action.payload ?? {}, "expected_digest");
 }

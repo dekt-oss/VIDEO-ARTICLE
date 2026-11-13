@@ -163,6 +163,12 @@ test("③ 설명형 S5~S14 는 explainerQueue.nextStep 에 위임한다", () => 
     assert.equal(d(p, exStatus(st)).primary.code, expected, st);
   }
   assert.deepEqual(d(p, exStatus("assets_complete")).primary.action, { name: "explainer_request_assemble", payload: { plan_revision_id: "p1" } });
+  // 0085: 사람 검수 셋은 같은 버튼 하나(검수 칸, 영상 아래) — 2026-11-13 청주·탁주에서 '검수' 칸에 버튼이 없던 일
+  for (const st of ["auto_qa_pass", "process_review_pass", "quality_review_pass"] as const) {
+    const pr = d(p, exStatus(st)).primary;
+    assert.equal(pr.label, "검수하고 승인", st);
+    assert.deepEqual(pr.action, { name: "explainer_approve_all", payload: { plan_revision_id: "p1" } }, st);
+  }
   // nextStep 이 none 인 상태는 행의 explainer_state 로 판정한다.
   assert.equal(d(approvedPlan("explainer", { explainer_state: "ready_to_publish" }), exStatus("ready_to_publish")).primary.code, "S15");
   assert.equal(d(approvedPlan("explainer", { explainer_state: "rendered" }), exStatus("rendered")).primary.busy, true);
