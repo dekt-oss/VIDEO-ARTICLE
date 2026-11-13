@@ -69,7 +69,8 @@ function findBlocks(item: WorkItem): Block[] {
   if (item.unknown_billed || item.orphan_hold || item.explainer_state === "unknown_billed") add("spend_unknown", "돈이 나갔는지 모르는 시도(또는 고아 가잡기)가 있습니다 — 닫기 전에는 더 사지 않습니다");
   if (item.review_valid === false) add("evidence_invalid", "근거가 철회·만료됐거나 필수 조건을 다시 못 채웁니다");
   else if (item.plan_blocked === true) add("evidence_invalid", "제작안이 근거 철회로 차단됐습니다");
-  else if (item.output_review_id && item.output_usable === false) add("evidence_invalid", "산출물을 지금 쓸 수 없습니다(검수 차단)");
+  // 뷰가 coalesce(currently_usable,false) 라 아직 검수 전(pending)도 false 다 — 그건 차단이 아니라 S14(산출물 승인) 차례.
+  else if (item.output_review_id && item.output_usable === false && item.output_review_status !== "pending") add("evidence_invalid", "산출물을 지금 쓸 수 없습니다(검수 차단)");
   const digest = !!item.pub_pause_code && DIGEST_PAUSE.has(item.pub_pause_code);
   if (digest) add("digest_mismatch", "승인 지문이 바뀌었습니다 — 새로 불러와 다시 승인해야 합니다");
   if ((item.pub_status === "paused" || item.pub_status === "failed") && !digest) add("publish_blocked", `게시 요청이 ${item.pub_status === "paused" ? "멈춤" : "실패"}(${item.pub_pause_code ?? "사유 없음"}) 상태입니다`);
