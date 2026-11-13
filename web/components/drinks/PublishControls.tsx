@@ -213,23 +213,23 @@ export function RequestActions({ id, version, status, digest, summary, hidePrima
   const go = (action: string, msg: string, extra: Record<string, unknown> = {}) =>
     run("publication_action", { request_id: id, expected_version: version, action, ...extra }, msg, "발행");
   const ask = (q: string) => window.prompt(q) ?? "";
-  const submitClaimed = useRegisterPrimary("publication_action:submit", { submit: () => go("submit", "승인 요청했습니다"), disabled: busy }, hidePrimary && status === "draft");
-  const scheduleClaimed = useRegisterPrimary("publication_action:schedule", { submit: () => go("schedule", "예약했습니다 — 예약 시각에 워커가 게시합니다"), disabled: busy },
-    hidePrimary && status === "approved");
+  // 0086: 작성·승인 대기·승인은 [게시] 한 번(drinks_publication_go). 작성 중이면 시각을 고를 수 있다 — 비우면 지금, 넣으면 그 시각에 예약.
+  const [when, setWhen] = useState("");
+  const canGo = ["draft", "awaiting_approval", "approved"].includes(status);
+  const timeProblem = status === "draft" ? publishWindowProblem(when) : null;
+  const publish = () => run("publication_go", {
+    request_id: id, expected_version: version,
+    ...(status === "draft" && when ? { publish_at: new Date(`${when}:00+09:00`).toISOString() } : {}),
+  }, when ? "예약했습니다 — 그 시각에 올라갑니다" : "게시를 시작했습니다 — 몇 분 안에 올라갑니다", "게시");
+  const goClaimed = useRegisterPrimary("publication_go", { submit: publish, disabled: busy || Boolean(timeProblem), title: timeProblem ?? "" }, hidePrimary && canGo);
   return (
     <span className="dk-row" style={{ flexWrap: "wrap" }}>
-      {status === "draft" && !submitClaimed && <button className="btn pick" disabled={busy} onClick={() => go("submit", "승인 요청했습니다")}>승인 요청</button>}
-      {status === "awaiting_approval" && (
-        <>
-          <button className="btn pick" disabled={busy || !digest} onClick={() => {
-            // 승인 모달(§9.3): 계정·파일·캡션·시각을 보여 주고, 공개 게시임을 밝힌다. 보여준 지문을 그대로 서버에 돌려준다.
-            if (window.confirm(`${summary}\n\n승인하면 예약 시각에 인스타에 공개 게시됩니다(예약은 다음 단계에서).\n승인 지문 ${digest?.slice(0, 12)}…\n승인할까요?`))
-              go("approve", "승인했습니다", { expected_digest: digest });
-          }}>승인(공개 게시)</button>
-          <button className="btn" disabled={busy} onClick={() => go("withdraw", "작성 중으로 되돌렸습니다")}>고치러 되돌리기</button>
-        </>
+      {status === "draft" && (
+        <label className="muted">게시 시각(한국, 비우면 지금) <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} /></label>
       )}
-      {status === "approved" && !scheduleClaimed && <button className="btn pick" disabled={busy} onClick={() => go("schedule", "예약했습니다 — 예약 시각에 워커가 게시합니다")}>예약</button>}
+      {timeProblem && <span className="banner-warn">{timeProblem}</span>}
+      {canGo && !goClaimed && <button className="btn pick" disabled={busy || Boolean(timeProblem)} title={timeProblem ?? summary} onClick={publish}>{when ? "예약 게시" : "지금 게시"}</button>}
+      {status === "awaiting_approval" && <button className="btn" disabled={busy} onClick={() => go("withdraw", "작성 중으로 되돌렸습니다")}>고치러 되돌리기</button>}
       {status === "paused" && <button className="btn" disabled={busy} onClick={() => go("resume", "다시 예약했습니다")}>다시 예약</button>}
       {status === "failed" && <button className="btn" disabled={busy} onClick={() => go("retry", "다시 예약했습니다")}>다시 시도</button>}
       {(status === "approved" || status === "scheduled") && (
