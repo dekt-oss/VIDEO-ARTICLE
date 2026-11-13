@@ -418,11 +418,15 @@ class Deps:
     jev_check: Callable[[str, str], Optional[float]] = jev_unsupported_p
     # (topic, context, claims) → 모델 JSON. None 이면 llm_factcheck(실제 모델) — 테스트는 가짜를 넣는다
     factcheck: Optional[Callable[..., Any]] = None
+    # (topic, claims) → {"question","title","why_ko"}. None 이면 llm_reframe(실제 모델) — 근거 막힘 해결안(2026-11-13)
+    reframe: Optional[Callable[..., Any]] = None
     fetcher_factory: Optional[Callable[[list[str]], Any]] = None   # hosts → SafeFetcher 같은 것(get 메서드)
 
     def __post_init__(self) -> None:
         if self.factcheck is None:
             self.factcheck = llm_factcheck
+        if self.reframe is None:
+            self.reframe = llm_reframe
 
     def fetcher(self, hosts: list[str]) -> Any:
         if self.fetcher_factory:
@@ -688,7 +692,8 @@ def same_doc_key(url: Any) -> str:
     return (host.lower().removeprefix("www.") + p.path.rstrip("/") + (f"?{p.query}" if p.query else ""))
 
 
-def off_topic_message(topic: dict[str, Any], qa: dict[str, Any], report: list[dict[str, Any]], skipped: list[dict[str, Any]]) -> str:
+def off_topic_message(topic: dict[str, Any], qa: dict[str, Any], report: list[dict[str, Any]], skipped: list[dict[str, Any]],
+                      rescue: Optional[dict[str, Any]] = None) -> str:
     lines = [f"모은 근거로는 소재 질문(\"{topic.get('question') or topic.get('title') or ''}\")에 답할 수 없습니다."]
     if qa.get("missing_ko"):
         lines.append(f"빠진 것: {qa['missing_ko']}")
@@ -696,6 +701,9 @@ def off_topic_message(topic: dict[str, Any], qa: dict[str, Any], report: list[di
         lines.append("읽은 출처: " + "; ".join(f"{r['title']}({r['claims_kept']}건)" for r in report))
     for s in skipped[:4]:
         lines.append(f"- 건너뜀: {s['title']} — {s['why']}")
+    if rescue:
+        lines.append(f"해결안: 질문을 “{rescue['question']}”(으)로 바꾸면 지금 모은 근거로 답할 수 있습니다(AI 사실 확인 미리 통과). "
+                     "[해결안 적용]을 누르면 근거를 다시 사지 않고 이어 만듭니다. 원래 질문을 지키려면 아래처럼 출처를 붙이세요.")
     lines.append("해야 할 일: 질문의 핵심을 직접 설명하는 출처(제조사·전문지·논문)의 원문을 [출처 추가]로 근거 역할로 붙인 뒤 다시 요청하세요.")
     return "\n".join(lines)[:3900]
 
@@ -774,13 +782,19 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
         claims = reuse["evidence_pack"]["claims"]
         factcheck = reuse.get("factcheck") or {}
         flags = reuse.get("jev_claim_flags") or []
-        if not factcheck.get("status"):
+        qa_old = factcheck.get("question_answer") or {}
+        if not factcheck.get("status") or factcheck.get("question", question) != question or qa_old.get("answered") is False:
+            # 질문이 바뀐 보관 결과(해결안 적용, 0084)는 새 질문으로 다시 판정한다 — 옛 질문에 대한 판정을 재활용하지 않는다.
+            for c in claims:
+                if c.get("limitations") == config.DRINKS_DEVELOP_FACTCHECK_NOTE:
+                    c.pop("limitations", None)
+                c["support_review"] = "not_reviewed"
             # 사실 확인만 실패했던 결과: 추출은 다시 하지 않고 사실 확인만 다시 한다(안 하면 같은 실패가 되풀이된다).
             beat("factcheck")
             factcheck = run_factcheck(topic, [], claims, {}, ledger, deps, flags)
             apply_factcheck(claims, factcheck)
         return save_evidence(job, rpc, lease, beat, claims, factcheck, reuse.get("report") or [],
-                             reuse.get("skipped") or [], flags, reused_from=reuse.get("from_request_id"))
+                             reuse.get("skipped") or [], flags, ledger, deps, reused_from=reuse.get("from_request_id"))
     beat("sources")
     context: list[dict[str, Any]] = []
     sources, skipped = gather_sources(job, rpc, lease, deps, context)
@@ -834,14 +848,15 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
     beat("factcheck")
     factcheck = run_factcheck(topic, context, claims, sources_of, ledger, deps, flags)
     apply_factcheck(claims, factcheck)
-    return save_evidence(job, rpc, lease, beat, claims, factcheck, report, skipped, flags)
+    return save_evidence(job, rpc, lease, beat, claims, factcheck, report, skipped, flags, ledger, deps)
 
 
 def save_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], beat: Callable[[str], None], claims: list[dict[str, Any]],
                   factcheck: dict[str, Any], report: list[dict[str, Any]], skipped: list[dict[str, Any]], flags: list[dict[str, Any]],
-                  *, reused_from: Optional[str] = None) -> dict[str, Any]:
+                  ledger: Ledger, deps: Deps, *, reused_from: Optional[str] = None) -> dict[str, Any]:
     """핵심 주장을 고르고 저장한다. 저장이 거부돼도(0076) 만든 결과를 요청 기록에 보관한다 — 다음 요청이 모델을 다시 부르지 않고 쓴다."""
     question = job["topic"]["question"]
+    factcheck["question"] = question   # 어느 질문으로 판정했나 — 질문이 바뀐 재사용은 다시 판정한다(0084)
     unsaved = {"evidence_pack": {"claims": claims}, "factcheck": factcheck, "report": report, "skipped": skipped, "jev_claim_flags": flags}
     core, excluded = pick_core(claims, factcheck)
     if factcheck.get("enabled", True) and factcheck.get("status") not in ("ok", "no_claims"):
@@ -851,8 +866,12 @@ def save_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], beat: Ca
     qa = factcheck.get("question_answer") or {}
     if factcheck.get("status") == "ok" and qa.get("answered") is False:
         # 2026-11-10 버번: 근거가 제목 질문의 핵심에 답하지 못하는데 주장 수만 채워 통과했다 → 대본이 엉뚱한 이야기가 됐다.
-        raise DevelopError("evidence_off_topic", off_topic_message(job["topic"], qa, report, skipped), "blocked",
-                           {"unsaved_evidence": unsaved, "excluded": excluded, "sources": report, "skipped": skipped, "question_answer": qa})
+        beat("rescue")
+        rescue = propose_reframe(job["topic"], claims, ledger, deps)
+        res = {"unsaved_evidence": unsaved, "excluded": excluded, "sources": report, "skipped": skipped, "question_answer": qa}
+        if rescue:
+            res["rescue"] = rescue
+        raise DevelopError("evidence_off_topic", off_topic_message(job["topic"], qa, report, skipped, rescue), "blocked", res)
     if len(core) < config.DRINKS_DEVELOP_MIN_CORE_CLAIMS:
         raise DevelopError("evidence_insufficient",
                            f"출처에서 확인된 주장이 {len(core)}건입니다(최소 {config.DRINKS_DEVELOP_MIN_CORE_CLAIMS}건) — 이 질문에 답할 자료가 충분하지 않습니다.",
@@ -876,6 +895,79 @@ def save_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], beat: Ca
             "continued_blank_draft": bool(saved.get("continued_blank_draft")), "reused_from": reused_from,
             "dropped_total": sum(sum((r.get("dropped_by") or {}).values()) for r in report),
             "needs_operator": (["DB 인용 대조가 일치하지 않은 인용이 있음 — 화면에서 확인"] if qc.get("unmatched") else [])}
+
+
+# ─────────────────────────────────────────────────────────────
+# 근거 막힘 해결안(2026-11-13, 운영자 지시) — docs/deviation-drinks-evidence-rescue.md
+#   evidence_off_topic(근거는 맞는데 질문에 답하지 못함)일 때, 지금 근거로 답할 수 있는 질문을 모델이 제안하고
+#   **같은 AI 사실 확인**으로 그 질문을 미리 판정한다. 통과한 것만 해결안으로 남긴다. 적용은 운영자 [해결안 적용] 한 번(0084).
+#   ★ 소재 질문을 바꾸는 것이라 자동 적용하지 않는다. 실패·예산 부족이면 해결안 없이 원래대로 막힌다.
+# ─────────────────────────────────────────────────────────────
+
+REFRAME_SYSTEM = (
+    "너는 술(위스키·사케·전통주) 숏폼 기획자다. 입력: 원래 소재 질문, 그리고 원문 인용이 확인된 근거 주장 목록.\n"
+    "원래 질문에는 이 근거로 답할 수 없었다. 같은 독자가 궁금해할 만하고, **이 근거 주장들의 원문 인용만으로 완전히 답할 수 있는** "
+    "질문 하나를 제안한다. 원래 질문의 주제·대상(술 종류)은 지키고, 범위만 근거가 말하는 곳으로 좁힌다. 근거에 없는 내용을 전제하지 않는다.\n"
+    "question: 독자에게 묻는 한국어 질문 한 문장(60자 이내). title: 영상 제목(질문과 같아도 된다, 40자 이내). "
+    "why_ko: 원래 질문 대신 이것을 다루는 이유 한 문장.\n"
+    '답은 JSON 만: {"question": "…", "title": "…", "why_ko": "…"}'
+)
+
+
+def reframe_user_prompt(topic: dict[str, Any], claims: list[dict[str, Any]]) -> str:
+    rows = [{"text": c["text"], "quotes": [r["original_quote"] for r in c.get("source_refs") or []]}
+            for c in claims if c["claim_type"] != "opinion"]
+    return f"원래 소재 질문: {topic.get('question') or topic.get('title') or ''}\n근거 주장:\n" + json.dumps(rows, ensure_ascii=False)
+
+
+def llm_reframe(topic: dict[str, Any], claims: list[dict[str, Any]]) -> dict[str, Any]:
+    from . import llm
+
+    llm.set_text_purpose("drinks_develop_rescue")
+    return llm.call_json(model=config.DRINKS_DEVELOP_FACTCHECK_MODEL, system=REFRAME_SYSTEM,
+                         user=reframe_user_prompt(topic, claims), max_tokens=config.DRINKS_DEVELOP_RESCUE_MAX_TOKENS)
+
+
+def propose_reframe(topic: dict[str, Any], claims: list[dict[str, Any]], ledger: Ledger, deps: Deps) -> Optional[dict[str, Any]]:
+    """해결안(질문 좁히기) 하나 또는 None. 모델 제안 → 같은 사실 확인으로 새 질문 판정 → (켜졌으면) Jev 로 답 문장 재확인."""
+    if not config.DRINKS_DEVELOP_RESCUE_ENABLED:
+        return None
+    model = config.DRINKS_DEVELOP_FACTCHECK_MODEL
+    try:
+        est = estimate_usd(model, len(REFRAME_SYSTEM) + len(reframe_user_prompt(topic, claims)), config.DRINKS_DEVELOP_RESCUE_MAX_TOKENS)
+        out = ledger.run(model, est, lambda: deps.reframe(topic, claims), "근거 막힘 해결안: 질문 좁히기")
+    except DevelopError as exc:
+        if exc.code == "canceled":
+            raise
+        return None
+    except DbError:
+        raise
+    except Exception:  # noqa: BLE001 — 해결안은 덤이다. 못 만들면 원래대로 막힌다
+        return None
+    if not isinstance(out, dict):
+        return None
+    q = str(out.get("question") or "").strip()[:200]
+    if not q or q == str(topic.get("question") or "").strip():
+        return None
+    title = str(out.get("title") or "").strip()[:120] or q
+    trial = json.loads(json.dumps(claims))
+    for c in trial:
+        c["support_review"] = "not_reviewed"
+        c.pop("limitations", None)
+    fc = run_factcheck({**topic, "title": title, "question": q}, [], trial, {}, ledger, deps, [])
+    apply_factcheck(trial, fc)
+    qa = fc.get("question_answer") or {}
+    core, _ = pick_core(trial, fc)
+    if fc.get("status") != "ok" or qa.get("answered") is not True or len(core) < config.DRINKS_DEVELOP_MIN_CORE_CLAIMS:
+        return None
+    answer = str(qa.get("answer_ko") or "")
+    by_id = {c["claim_id"]: c for c in trial}
+    quotes = " ".join(r["original_quote"] for cid in qa.get("claim_ids") or [] if cid in by_id for r in by_id[cid]["source_refs"])
+    jev = deps.jev_check(answer, quotes) if answer and quotes else None
+    if jev is not None and jev >= config.DRINKS_DEVELOP_JEV_UNSUPPORTED_MIN:
+        return None   # Jev 가 '답이 인용을 벗어난다'고 본 해결안은 내놓지 않는다
+    return {"kind": "reframe", "question": q, "title": title, "why_ko": str(out.get("why_ko") or "")[:300],
+            "answer_ko": answer[:400], "core_claims": len(core), "jev_unsupported_p": None if jev is None else round(jev, 3)}
 
 
 # ─────────────────────────────────────────────────────────────
