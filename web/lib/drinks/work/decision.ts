@@ -88,9 +88,10 @@ function publicationStep(item: WorkItem): Primary | null {
   const owner = { request_id: item.pub_request_id, expected_version: item.pub_version };
   const canPrefill = typeof item.pub_version === "number";
   switch (s) {
-    case "draft": return prim("S16", "승인 요청", "publish", { action: canPrefill ? { name: "publication_action", payload: { ...owner, action: "submit" } } : null });
-    case "awaiting_approval": return prim("S17", "승인", "publish"); // 지문은 화면이 보여 주고 그대로 돌려준다 → action null
-    case "approved": return prim("S18", "예약", "publish", { action: canPrefill ? { name: "publication_action", payload: { ...owner, action: "schedule" } } : null });
+    // 0086: 승인 요청·승인·예약을 [게시] 한 번으로(drinks_publication_go). 화면에 보인 버전이 아니면 서버가 거부한다. 시각이 없으면 지금.
+    case "draft": return prim("S16", "게시", "publish", { action: canPrefill ? { name: "publication_go", payload: owner } : null });
+    case "awaiting_approval": return prim("S17", "게시", "publish", { action: canPrefill ? { name: "publication_go", payload: owner } : null });
+    case "approved": return prim("S18", "게시", "publish", { action: canPrefill ? { name: "publication_go", payload: owner } : null });
     case "scheduled": return busy("S19", "예약됨(취소만)", "publish");
     case "publishing": return busy("S19", "게시 중(취소 요청만)", "publish");
     case "published": return prim("S20", "성과 보기", "none", { href: "/drinks/analytics" });
@@ -158,7 +159,7 @@ function explainerStep(item: WorkItem, ex: ExplainerStatus | null | undefined): 
     case "auto_qa_pass": return prim("S12", "검수하고 승인", "review", { action: approveAll(planId) });
     case "process_review_pass": return prim("S13", "검수하고 승인", "review", { action: approveAll(planId) });
     case "quality_review_pass": return prim("S14", "검수하고 승인", "review", { action: approveAll(planId) });
-    case "ready_to_publish": return prim("S15", "발행안 만들기", "publish");
+    case "ready_to_publish": return prim("S15", "게시", "publish");
     default: return needsReview(item, `설명형 상태 ${item.explainer_state}`);
   }
 }
@@ -188,7 +189,7 @@ function cardStep(item: WorkItem): Primary {
   }
   switch (item.output_review_status) {
     case null: case "pending": return prim("S14", "산출물 승인", "review");
-    case "approved": return prim("S15", "발행안 만들기", "publish");
+    case "approved": return prim("S15", "게시", "publish");
     case "changes_requested": return render("다시 제작(검수 수정 요청)", item.job_id);
     default: return needsReview(item, `산출물 검수 상태 ${item.output_review_status}`); // blocked 는 ② B3
   }

@@ -134,11 +134,18 @@ export function CreatePublication({ outputReviewId, accounts, postType, slotHint
   const [choice, setChoice] = useState<AudioChoice>(defaultChoice());
   const windowProblem = publishWindowProblem(when);
   const cannot = !acc ? "계정을 고르세요" : audioRequired && !choice.audioId ? "음원을 고르세요(필수)" : windowProblem || "";
-  const submit = () => run("create_publication", {
-    output_review_id: outputReviewId, account_id: acc, caption, post_type: postType,
-    publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
-    ...(audioRequired ? { audio: audioPayload(choice) } : {}),
-  }, "발행안을 만들었습니다(작성 중)", "발행안 작성");
+  // 0086: [게시] 한 번 = 발행안 만들기 + 승인 요청·승인·예약. 시각을 비우면 지금 게시한다.
+  const submit = async () => {
+    const made = await run("create_publication", {
+      output_review_id: outputReviewId, account_id: acc, caption, post_type: postType,
+      publish_at: when ? new Date(`${when}:00+09:00`).toISOString() : null,
+      ...(audioRequired ? { audio: audioPayload(choice) } : {}),
+    }, "발행안을 만들었습니다", "발행안 작성");
+    const r = made.ok ? (made.result as { request_id?: string; version?: number } | undefined) : undefined;
+    if (!r?.request_id) return made;
+    return run("publication_go", { request_id: r.request_id, expected_version: r.version },
+      when ? "예약했습니다 — 그 시각에 올라갑니다" : "게시를 시작했습니다 — 몇 분 안에 올라갑니다", "게시");
+  };
   const claimed = useRegisterPrimary("create_publication", { submit, disabled: busy || Boolean(cannot), title: cannot }, hidePrimary && usable.length > 0);
   if (usable.length === 0) return <span className="muted">이 형식({postType === "carousel" ? "카드뉴스" : "릴스"})을 올릴 수 있는 계정이 없습니다 — 위에서 계정을 등록하세요.</span>;
   return (
@@ -153,7 +160,8 @@ export function CreatePublication({ outputReviewId, accounts, postType, slotHint
       {publishWindowProblem(when) && <span className="banner-warn">{publishWindowProblem(when)}</span>}
       {slotHint && <span className="muted">전략 추천 시간대: {slotHint}</span>}
       {audioRequired && <AudioFields options={audioOptions ?? []} value={choice} onChange={setChoice} />}
-      {!claimed && <button className="btn" disabled={busy || Boolean(cannot)} title={cannot} onClick={submit}>발행안 만들기</button>}
+      {!claimed && <button className="btn pick" disabled={busy || Boolean(cannot)} title={cannot} onClick={submit}>{when ? "예약 게시" : "지금 게시"}</button>}
+      <span className="muted">시각을 비우면 지금 올라갑니다.</span>
     </div>
   );
 }

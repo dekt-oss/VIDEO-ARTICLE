@@ -43,6 +43,10 @@ export async function POST(request: Request) {
     res.body.dispatch = await triggerWorkflow("drinks-explainer-buy.yml", null);
   }
   const action = (body as { action?: unknown } | null)?.action;
+  if (res.status === 200 && action === "publication_go" && (res.body.result as { due_now?: boolean } | undefined)?.due_now === true) {
+    // [게시](지금): 예약 크론이 꺼져 있어도 바로 올라가게 발행 워커를 깨운다. 실제 게시 여부는 워커가 DB 조건(계정·승인·시각)으로 다시 잰다.
+    res.body.dispatch = await triggerWorkflow("drinks-publish.yml", null);
+  }
   if (res.status === 200 && action === "meme_draft_action"
       && (res.body.result as { status?: string } | undefined)?.status === "approved") {
     // 밈 제작 워커(로컬 렌더, 유료 키 없음). 토큰이 없으면 큐에만 남는다. 게시는 하지 않는다.
