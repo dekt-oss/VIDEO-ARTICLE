@@ -144,7 +144,8 @@ export default function StudioClient({ items, problems, status, statusProblem, f
     const ok = list.length - failed.length;
     const head = ok > 0 ? `${ok}개 소재의 초안을 만들기 시작했어요. 편당 몇 분 걸려요. 새로고침하면 다 된 소재에 '초안 있음'이 붙어요.${waitsForCron ? " 작업기가 깨어나는 대로(최대 몇 시간) 시작해요." : ""}` : "";
     setMsg({ text: [head, ...failed.map((x) => x.why)].filter(Boolean).join(" "), bad: failed.length > 0 });
-    router.refresh();
+    // 주소에 다른 소재가 열려 있으면 그 소재 화면(초안 등)으로 튀지 않게 소재 목록 주소로 간다(2026-11-12 운영자: 고른 것과 다른 초안이 떴다).
+    if (selectedTopicId) go(null); else router.refresh();
   };
 
   return (

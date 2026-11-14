@@ -76,10 +76,10 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   const lastByTopic = new Map<string, { status: string; error_code: string | null }>();
   for (const r of (lastRes.data ?? []) as { topic_id: string; status: string; error_code: string | null }[]) if (!lastByTopic.has(r.topic_id)) lastByTopic.set(r.topic_id, r);
   const plans = (planRes.data ?? []) as { topic_id: string; format: string }[];
-  let stopped = 0;
+  const stopped: string[] = [];
   for (const t of mineRows) {
     // 자료 부족 등으로 멈춘 소재는 다시 눌러도 같은 실패다 — 고를 목록에서 뺀다(내 소재 탭에는 남는다).
-    if (isStopped(lastByTopic.get(t.id), INSUFFICIENT) && !plans.some((p) => p.topic_id === t.id)) { stopped += 1; continue; }
+    if (isStopped(lastByTopic.get(t.id), INSUFFICIENT) && !plans.some((p) => p.topic_id === t.id)) { stopped.push(t.title); continue; }
     items.push({ key: `t:${t.id}`, started: [], drafts: [], collectedOn: null, topicId: t.id, candidateId: null, title: t.title, question: t.question,
       kind: (t.categories ?? []).map((c) => CATEGORY_LABEL[c as keyof typeof CATEGORY_LABEL] ?? c).join(" · ") || "주제 미정",
       origin: (t.discovery_platforms ?? []).map((p) => PLATFORM_LABEL[p] ?? p).join(" · ") || "직접 등록한 소재",
@@ -89,7 +89,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   if (cands.state !== "ok") problems.push(`수집함: ${cands.state === "failed" ? cands.error : "서버 키 없음"}`);
   else {
     if (cands.data.evidenceProblem) problems.push(`근거 수: ${cands.data.evidenceProblem} — 근거가 없는 후보가 섞여 보일 수 있어요`);
-    summary = `매일 아침(KST 06:30) 새 질문을 모아요. 수집한 날짜별로, 최신 날짜부터 보여요. 수집한 질문 ${cands.data.total}개 중 자동으로 초안까지 만들 수 있는 것만 보여요. 비슷한 질문은 하나로 묶었어요.${cands.data.scanCapped ? ` 최근 ${cands.data.scanCapped}묶음까지만 자료를 확인했어요 — 더 오래된 질문은 여기 안 보여요.` : ""}${stopped ? ` 자료가 부족해 멈춘 소재 ${stopped}개는 뺐어요.` : ""}`;
+    summary = `매일 아침(KST 06:30) 새 질문을 모아요. 수집한 날짜별로, 최신 날짜부터 보여요. 수집한 질문 ${cands.data.total}개 중 자동으로 초안까지 만들 수 있는 것만 보여요. 비슷한 질문은 하나로 묶었어요.${cands.data.scanCapped ? ` 최근 ${cands.data.scanCapped}묶음까지만 자료를 확인했어요 — 더 오래된 질문은 여기 안 보여요.` : ""}${stopped.length ? ` 자료가 부족해 멈춘 소재 ${stopped.length}개(${stopped.slice(0, 3).map((x) => `“${x}”`).join(", ")}${stopped.length > 3 ? " 등" : ""})는 목록에서 뺐어요 — 이유는 [내 소재] 탭에서 볼 수 있어요.` : ""}`;
     for (const { candidate: c, merged } of cands.data.rows) {
       const d = pickDefaults(c.key_question);
       items.push({ key: `c:${c.id}`, started: [], drafts: [], collectedOn: seoulDateOf(c.created_at), topicId: c.promoted_topic_id, candidateId: c.promoted_topic_id ? null : c.id, title: d.title, question: d.question,

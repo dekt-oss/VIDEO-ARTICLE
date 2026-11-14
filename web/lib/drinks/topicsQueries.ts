@@ -163,6 +163,21 @@ export async function loadOpenBudgets(): Promise<DevelopBudgetRow[] | null> {
   return r.error || !r.data ? null : (r.data as DevelopBudgetRow[]);
 }
 
+/** 홈용: 오늘(KST 0시~24시) 수집한 질문 — 건수(상태 무관)와 아직 고르지 않은 것 중 점수 높은 앞 5개. 못 읽으면 null(0 이 아니다). */
+export async function loadTodayCandidates(today: string): Promise<{ count: number; top: { id: string; question: string }[] } | null> {
+  const db = createAdminClient();
+  if (!db) return null;
+  const since = `${today}T00:00:00+09:00`;
+  const until = new Date(Date.parse(since) + 24 * 60 * 60 * 1000).toISOString();
+  const [c, top] = await Promise.all([
+    db.from("drink_discovery_candidates").select("id", { count: "exact", head: true }).gte("created_at", since).lt("created_at", until),
+    db.from("drink_discovery_candidates").select("id, key_question").eq("status", "suggested").gte("created_at", since).lt("created_at", until)
+      .order("provisional_score", { ascending: false, nullsFirst: false }).order("id").limit(5),
+  ]);
+  if (c.error || typeof c.count !== "number" || top.error || !top.data) return null;
+  return { count: c.count, top: (top.data as { id: string; key_question: string }[]).map((r) => ({ id: r.id, question: r.key_question })) };
+}
+
 /** 홈 타일용: 열린 후보 전체 건수만. 못 읽으면 null(0 이 아니다). */
 export async function countOpenCandidates(): Promise<number | null> {
   const db = createAdminClient();
