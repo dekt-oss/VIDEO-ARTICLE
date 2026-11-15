@@ -5,6 +5,7 @@
   · 장면마다 점토(클레이) 그림 1장 — 클립을 사지 않는다. 그림 안 글자는 전부 막는다(모델이 엉터리 한자를 그린다).
   · 째리(로고 병뚜껑)가 첫·끝 장면 그림 속에 나오고, 나머지 장면은 그림 모서리 스티커로 나온다.
   · 화면 = 크림 바탕 + 맨 위 제목 + 둥근 그림 카드 + 아래 자막(나레이션 전문) + 로고.
+    → 2026-11-15 화면 꽉 채우기 + 그림이 천천히 움직이게 바꿨다(이유는 draw_layers 주석의 인스타 실측).
   · 목소리 = Edge Hyunsu 1.45배, **장면 통째로** 읽힌다. 자막 줄마다 따로 읽히면 반쪽 문장 억양이 떨어져 AI 같다(운영자 지적).
     자막은 단어 시각(WordBoundary)에 맞춰 넘긴다.
 
@@ -252,34 +253,52 @@ def title_layout(title: str) -> tuple[int, list[str]]:
     return 52, _wrap(d, title, _font("Pretendard-Black.otf", 52), 980)[:2]
 
 
-def draw_frame(title: str, picture: Any, line: str, out: str, *, corner: bool) -> None:
+PIC_Y = 480          # 그림(1080×1080, 화면 폭 꽉) 윗변. 그 위는 브랜드·제목
+CAPTION_Y = 1230     # 자막 첫 줄 윗변(그림 아래쪽). 인스타 하단 UI(아래 약 1/3)에 가리지 않는 높이
+WHITE = (255, 255, 255)
+
+
+def draw_layers(title: str, picture: Any, *, corner: bool) -> tuple[Any, Any, Any]:
+    """장면 한 장 = (배경, 그림, 덮개). 2026-11-15: 크림 카드 → 화면 꽉 채우기.
+
+    인스타 실측(11/10~13 네 편): 도달 103~116 에서 멈추고 평균 5~6초에 넘겼다. 그림이 화면의 40% 인 카드는
+    슬라이드 광고처럼 보인다 → 그림을 화면 폭 꽉, 남는 위아래는 같은 그림을 흐리게 깔고, 글자는 흰 글씨+검은 테두리.
+    그림은 조립 때 천천히 다가가거나 물러난다(_scene_video) — 첫 프레임부터 화면이 움직인다.
+    """
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
+
+    rgb = picture.convert("RGB")
+    pic = ImageOps.fit(_fit(rgb), (W, W), Image.LANCZOS)
+    bg = ImageEnhance.Brightness(ImageOps.fit(rgb, (W, H), Image.LANCZOS).filter(ImageFilter.GaussianBlur(40))).enhance(0.45)
+    top = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(top)
+    bf = _font("Pretendard-Bold.otf", 30)
+    label = f"술째리고 · {config.DRINKS_CARD_AI_NOTICE}"
+    tile = jjeri(44)
+    x0 = int((W - 54 - d.textlength(label, font=bf)) / 2)
+    top.paste(tile, (x0, 258), tile)
+    d.text((x0 + 54, 280), label, font=bf, fill=WHITE, anchor="lm")
+    size, tl = title_layout(title)
+    y = 390 - (len(tl) - 1) * (size + 8) // 2
+    for t in tl:
+        d.text((W / 2, y), t, font=_font("Pretendard-Black.otf", size), fill=WHITE, anchor="mm", stroke_width=4, stroke_fill=INK); y += size + 8
+    if corner:   # 그림 속에 째리가 없는 장면은 그림 오른쪽 위에서 째려본다(아래쪽은 자막 자리)
+        cap = jjeri(170, tile=False, outline=True).rotate(-12, resample=Image.BICUBIC, expand=True)
+        top.paste(cap, (W - cap.width - 24, PIC_Y + 24), cap)
+    return bg, pic, top
+
+
+def draw_caption(line: str) -> Any:
+    """자막 한 줄 묶음 = 투명 바탕 위 흰 글씨+검은 테두리(그림 위에서도 읽힌다)."""
     from PIL import Image, ImageDraw
 
-    pic = _fit(picture)
-    im = Image.new("RGB", (W, H), BG)
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    size, tl = title_layout(title)
-    y = 190 - (len(tl) - 1) * 34
-    for t in tl:
-        d.text((W / 2, y), t, font=_font("Pretendard-Black.otf", size), fill=INK, anchor="mm"); y += size + 8
-    d.rounded_rectangle((W / 2 - 60, 238, W / 2 + 60, 246), radius=4, fill=ORANGE)
-    x, y0 = (W - pic.width) // 2, 300 + (960 - pic.height) // 2
-    mask = Image.new("L", pic.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, pic.width - 1, pic.height - 1), radius=36, fill=255)
-    im.paste(pic, (x, y0), mask)
-    if corner:   # 그림 속에 째리가 없는 장면은 모서리에서 그림을 째려본다
-        cap = jjeri(170, tile=False, outline=True).rotate(12, resample=Image.BICUBIC, expand=True)
-        im.paste(cap, (x + pic.width - cap.width + 40, y0 + pic.height - cap.height + 60), cap)
-    sf = _font("Pretendard-Bold.otf", 50)
-    y = 1360
-    for ln in _wrap(d, line, sf, 900):
-        d.text((W / 2, y), ln, font=sf, fill=INK, anchor="mt"); y += 70
-    bf = _font("Pretendard-Bold.otf", 30)
-    tile = jjeri(44)
-    im.paste(tile, (W - 50 - 44 - 8 - int(d.textlength("술째리고", font=bf)), H - 92), tile)
-    d.text((W - 50, H - 70), "술째리고", font=bf, fill=INK, anchor="rm")
-    d.text((50, H - 70), config.DRINKS_CARD_AI_NOTICE, font=_font("Pretendard-Medium.otf", 26), fill=(120, 110, 100), anchor="lm")
-    im.save(out)
+    sf = _font("Pretendard-Black.otf", 64)
+    y = CAPTION_Y
+    for ln in _wrap(d, line, sf, 960)[:3]:
+        d.text((W / 2, y), ln, font=sf, fill=WHITE, anchor="mt", stroke_width=7, stroke_fill=INK); y += 84
+    return im
 
 
 # ─────────────────────────────────────────────────────────────
@@ -343,43 +362,70 @@ class ClayScene:
     mascot: bool             # 그림 속에 째리가 있나(있으면 모서리 째리를 빼서 두 번 안 나온다)
 
 
+def _scene_video(work: str, n_scene: int, sec: float, captions: list[tuple[str, float, float]], zoom_in: bool) -> str:
+    """배경 + (천천히 움직이는) 그림 + 덮개 + 자막 줄들 → 소리 없는 장면 영상 하나."""
+    fps = config.DRINKS_CLAY_FPS
+    n = max(1, round(sec * fps))
+    zmax = config.DRINKS_CLAY_ZOOM_MAX
+    z = f"1+{zmax - 1:.4f}*on/{n}" if zoom_in else f"{zmax}-{zmax - 1:.4f}*on/{n}"
+    args = ["ffmpeg", "-v", "error", "-y"]
+    for name in ("bg.png", "pic.png", "top.png", *(c[0] for c in captions)):
+        args += ["-loop", "1", "-framerate", str(fps), "-t", f"{n / fps:.4f}", "-i", name]
+    # 2배로 키운 뒤 zoompan — 원본 크기로 바로 하면 정수 좌표로 떨린다
+    graph = (f"[1:v]scale={W * 2}:{W * 2},zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={W}x{W}:fps={fps}[p];"
+             f"[0:v][p]overlay=0:{PIC_Y}[a];[a][2:v]overlay=0:0[c]")
+    last = "c"
+    for j, (_, a, b) in enumerate(captions):
+        graph += f";[{last}][{3 + j}:v]overlay=0:0:enable='between(t,{a:.3f},{b - 0.001:.3f})'[c{j}]"
+        last = f"c{j}"
+    out = f"v{n_scene:02d}.mp4"
+    subprocess.run(args + ["-filter_complex", graph, "-map", f"[{last}]", "-frames:v", str(n), "-r", str(fps), "-pix_fmt", "yuv420p",
+                           "-c:v", "libx264", "-preset", "medium", "-crf", "20", out], check=True, cwd=work)
+    return out
+
+
 def render(title: str, scenes: list[ClayScene], out_path: str, work: str, tts_fn: Optional[TtsFn] = None) -> dict[str, Any]:
     from PIL import Image
 
     os.makedirs(work, exist_ok=True)
-    frames: list[tuple[str, float]] = []
+    fps = config.DRINKS_CLAY_FPS
+    videos: list[str] = []
     audios: list[str] = []
     per: dict[int, float] = {}
+    shortest = 9.0
     k = 0
-    for sc in scenes:
+    for i, sc in enumerate(scenes):
         raw = os.path.join(work, f"s{sc.n:02d}" + (".wav" if tts_fn else ".mp3"))
         words = speak(sc.narration, raw, tts_fn)
         a0, a1 = spoken_window(raw, words)
+        # 장면 길이를 프레임 단위로 맞춰 소리를 자른다 — 장면이 여럿이어도 그림과 소리가 밀리지 않는다
+        total = round((a1 - a0 + config.DRINKS_CLAY_SCENE_GAP_SEC) * fps) / fps
         wav = os.path.join(work, f"s{sc.n:02d}.cut.wav")
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", raw, "-af", f"atrim={a0:.3f}:{a1:.3f},asetpts=PTS-STARTPTS,apad=pad_dur={config.DRINKS_CLAY_SCENE_GAP_SEC}",
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", raw, "-af", f"atrim={a0:.3f}:{a1:.3f},asetpts=PTS-STARTPTS,apad,atrim=0:{total:.4f}",
                         "-ar", "44100", "-ac", "1", wav], check=True)
-        total = a1 - a0 + config.DRINKS_CLAY_SCENE_GAP_SEC
         st = [max(t - a0, 0.0) for t in line_starts(sc.lines, words, a1 - a0)]
         st[0] = 0.0
-        pic = Image.open(sc.picture).convert("RGB")
+        bg, pic, top = draw_layers(title, Image.open(sc.picture), corner=not sc.mascot)
+        bg.save(os.path.join(work, "bg.png")); pic.save(os.path.join(work, "pic.png")); top.save(os.path.join(work, "top.png"))
+        caps = []
         for j, line in enumerate(sc.lines):
             k += 1
-            png = os.path.join(work, f"l{k:03d}.png")
-            draw_frame(title, pic, line, png, corner=not sc.mascot)
+            name = f"l{k:03d}.png"
+            draw_caption(line).save(os.path.join(work, name))
             end = st[j + 1] if j + 1 < len(st) else total
-            frames.append((png, max(end - st[j], 0.05)))
+            caps.append((name, st[j], end))
+            shortest = min(shortest, max(end - st[j], 0.05))
+        videos.append(_scene_video(work, sc.n, total, caps, zoom_in=i % 2 == 0))
         audios.append(wav)
         per[sc.n] = round(total, 2)
-    vlist, alist = os.path.join(work, "v.txt"), os.path.join(work, "a.txt")
-    with open(vlist, "w", encoding="utf-8") as f:
-        f.write("".join(f"file '{os.path.basename(p)}'\nduration {d:.3f}\n" for p, d in frames) + f"file '{os.path.basename(frames[-1][0])}'\n")
-    with open(alist, "w", encoding="utf-8") as f:
+    with open(os.path.join(work, "v.txt"), "w", encoding="utf-8") as f:
+        f.write("".join(f"file '{v}'\n" for v in videos))
+    with open(os.path.join(work, "a.txt"), "w", encoding="utf-8") as f:
         f.write("".join(f"file '{os.path.basename(a)}'\n" for a in audios))
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", "v.txt", "-f", "concat", "-safe", "0", "-i", "a.txt",
-                    "-vf", "fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-c:a", "aac", "-b:a", "160k",
-                    "-ar", "44100", "-movflags", "+faststart", "-shortest", os.path.abspath(out_path)], check=True, cwd=work)
-    return {"per_scene_sec": per, "total_sec": round(sum(per.values()), 2), "caption_lines": len(frames),
-            "shortest_line_sec": round(min(d for _, d in frames), 2)}
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-movflags", "+faststart", "-shortest", os.path.abspath(out_path)],
+                   check=True, cwd=work)
+    return {"per_scene_sec": per, "total_sec": round(sum(per.values()), 2), "caption_lines": k, "shortest_line_sec": round(shortest, 2)}
 
 
 def probe(path: str) -> dict[str, Any]:
