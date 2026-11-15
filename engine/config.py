@@ -5007,7 +5007,7 @@ DRINKS_CLAY_PROVIDER: str = "clay"
 # 이 작업기가 사도 되는 편 공급자(쉼표). 비면 전부. GitHub 구매 작업기(drinks-explainer-buy.yml)는 "clay" 만 준다 —
 # 2026-11-10 운영자 "웹에서도 승인하면 자동으로 돌아가게". 클립(omni·veo_fast)은 여전히 운영자 PC 워커만 산다.
 DRINKS_EXPLAINER_SEND_PROVIDERS: tuple[str, ...] = tuple(x.strip() for x in os.getenv("DRINKS_EXPLAINER_SEND_PROVIDERS", "").split(",") if x.strip())
-DRINKS_CLAY_RENDERER_VERSION: str = "drinks-explainer-clay-v1"
+DRINKS_CLAY_RENDERER_VERSION: str = "drinks-explainer-clay-v2"   # v2(2026-11-15): 화면 꽉 채우기 + 그림 움직임
 DRINKS_CLAY_ASPECT: str = "1:1"                    # 그림은 정사각형 카드로 화면 가운데에 앉는다(9:16 화면은 코드가 그린다)
 DRINKS_CLAY_IMAGE_MODEL: str = os.getenv("DRINKS_CLAY_IMAGE_MODEL", "gemini-2.5-flash-image")   # 샘플(2026-11-10) 실측 모델. 장당 정가는 PRICING
 DRINKS_CLAY_IMAGE_USD: float = 0.039               # PRICING 에 없을 때 쓰는 장당 정가(샘플 실측 단가)
@@ -5028,6 +5028,8 @@ DRINKS_CLAY_MASCOT_SCENES: str = "first_last"      # 째리가 그림 속에 나
 DRINKS_CLAY_TTS_VOICE: str = "ko-KR-HyunsuMultilingualNeural"   # 2026-11-10 운영자 비교 청취로 확정(InJoon·SunHi·ElevenLabs 탈락)
 DRINKS_CLAY_TTS_RATE: str = "+45%"                 # 1.1 → 1.32 → 1.45배(운영자가 두 번 올림)
 DRINKS_CLAY_SCENE_GAP_SEC: float = 0.10            # 장면 사이 숨
+DRINKS_CLAY_FPS: int = 30
+DRINKS_CLAY_ZOOM_MAX: float = 1.08                 # 장면마다 그림이 1.0↔1.08배로 천천히 다가가거나 물러난다(정지 화면으로 안 보이게, 2026-11-15)
 DRINKS_CLAY_LINE_MAX_CHARS: int = 24               # 자막 한 줄 묶음 최대 글자(띄어쓰기 포함). 화면 폭 900px·50pt 에서 두 줄 안
 DRINKS_CLAY_FINAL_SEC: tuple[float, float] = (30.0, 70.0)   # 클립 길이 제약이 없어 설명형(40~55초)보다 넓다. 샘플 49초
 DRINKS_EXPLAINER_PLACEHOLDER_SYL_PER_SEC: float = 5.9   # tts=placeholder 의 길이 추정(§3-6-2 말 속도). 무음 시험 전용
