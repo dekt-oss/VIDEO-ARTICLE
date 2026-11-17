@@ -57,7 +57,10 @@ export default async function DrinksWorkspacePage(props: {
   const sp = await props.searchParams;
   if (topicId === "meme") return <CardMemeWorkspace memeDraftId={sp.meme ?? null} panel={sp.panel ?? null} />;
   // 릴스·카드뉴스의 기본 화면은 스튜디오의 한 줄 흐름이다(0078). 이 긴 화면은 근거·이력을 볼 때만 ?detail=1 로 연다.
-  if (sp.lane !== "meme" && sp.detail !== "1" && !sp.panel && !sp.plan) {
+  // 2026-11-17: ?panel=·?plan= 이 붙은 링크(만들기 목록·홈·옛 주소 넘기기)도 스튜디오로 보낸다 — 그 예외 때문에 운영자가
+  //   단순화한 화면 대신 옛 8단계 화면에 계속 떨어졌다(docs/계획_주류흐름단순화_2026-11-17.md).
+  //   ?plan= (특정 옛 제작안의 이력)만 그대로 연다 — 스튜디오는 지금 초안만 보여서 옛 제작안을 열 수 없다.
+  if (sp.lane !== "meme" && sp.detail !== "1" && !sp.plan) {
     redirect(`/drinks/studio?topic=${encodeURIComponent(topicId)}${sp.lane === "card" || sp.lane === "explainer" ? `&lane=${sp.lane}` : ""}`);
   }
 
