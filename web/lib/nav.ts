@@ -67,7 +67,8 @@ export const GROUPS_DRINKS: NavGroup[] = [
   { title: "오늘 할 일", items: [{ href: "/drinks", label: "오늘 할 일", match: "exact" }] },
   // 콘텐츠 스튜디오(2026-11-07): 소재 고르기 → 초안 다듬기 → 버전·생성 한 화면. 2026-11-08 옛 /drinks/topics 를 여기로 합쳤다.
   { title: "콘텐츠 스튜디오", items: [{ href: "/drinks/studio", label: "콘텐츠 스튜디오", match: "prefix" }] },
-  { title: "만들기", items: [{ href: "/drinks/work", label: "만들기", match: "prefix" }] },
+  // 2026-11-17: "만들기"는 스튜디오 '내 소재' 탭이다(옛 /drinks/work 목록은 그리로 넘긴다).
+  { title: "만들기", items: [{ href: "/drinks/studio?tab=mine", label: "만들기", match: "exact" }] },
   // D단계 순환(2026-10-27): 발행(인스타 예약·게시 여부 확인)·성과(스냅샷 + 전략 제안)
   {
     title: "발행·성과",

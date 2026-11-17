@@ -15,7 +15,7 @@ export default function MineTab({ items, decisions }: { items: WorkItem[]; decis
   const order = [...groups.entries()].sort(([, a], [, b]) => (b[0].updated_at ?? "").localeCompare(a[0].updated_at ?? ""));
   return (
     <>
-      <p className="muted">단계 칩은 서버 상태로 계산한 &ldquo;지금 할 일&rdquo;입니다. 막힌 작업은 칩에 이유가 붙습니다.</p>
+      <p className="muted">칩은 지금 할 일이에요. 멈춘 작업은 무엇이 막혔고 열면 무엇을 누르면 되는지 함께 적었어요.</p>
       {order.map(([k, list]) => {
         const head = list[0];
         return (
@@ -37,7 +37,7 @@ export default function MineTab({ items, decisions }: { items: WorkItem[]; decis
                     {blocked && <span className="muted"> · {d.blocks[0].message}</span>}
                     {d && d.warnings.length > 0 && <span className="muted"> · {d.warnings[0]}</span>}
                   </span>
-                  <Link className="btn" href={workHref(it, d?.primary.panel)}>작업공간 →</Link>
+                  <Link className="btn" href={workHref(it, d?.primary.panel)}>{blocked ? d.primary.label : "열기"} →</Link>
                 </div>
               );
             })}

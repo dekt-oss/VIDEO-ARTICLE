@@ -18,7 +18,7 @@ import { PICK_FORMATS, PICK_FORMAT_HINT, PICK_FORMAT_LABEL } from "@/lib/drinks/
 import { PUBLISH_WINDOW, publishWindowProblem } from "@/lib/drinks/publishWindow";
 import {
   BATCH_MAX, activePlan, batchTargets, cardCost, defaultFormat, defaultPublishAt, draftRows, formatAction, isPhotoPlan, progressText, studioPhase,
-  type FormatChoice, type StudioLane, type StudioPlan, type StudioScreen, type StudioStatus,
+  type DraftRow, type FormatChoice, type StudioLane, type StudioPlan, type StudioScreen, type StudioStatus,
 } from "@/lib/drinks/studio";
 
 export interface StudioCollectItem {
@@ -187,7 +187,8 @@ export default function StudioClient({ items, problems, status, statusProblem, f
         setMsg(r.ok ? { text: "취소를 요청했어요. 새 작업과 재시도는 멈추고, 이미 쓴 비용 기록은 남아요." } : { text: r.error ?? "취소하지 못했어요.", bad: true });
         router.refresh();
       }} busy={busy} />}
-      {screen === "blocked" && <Blocked code={phase.code} status={status} onBack={() => setOverride("collect")} />}
+      {screen === "blocked" && <Blocked code={phase.code} status={status} busy={busy} onBack={() => setOverride("collect")} onRefresh={() => router.refresh()}
+        onRetry={() => { const it = status ? items.find((i) => i.topicId === status.topic.id) : null; if (it) prepare(it); }} />}
       {screen === "choice" && status && <Choice phase={phase} status={status} busy={busy} onBack={() => setOverride("collect")}
         onRetry={() => { const it = items.find((i) => i.topicId === status.topic.id); if (it) prepare(it); }} />}
       {screen === "draft" && plan && <Draft key={`${plan.plan_revision_id}-${plan.version}`} plan={plan} onBack={() => setOverride("collect")} onRefresh={() => router.refresh()} />}
@@ -340,9 +341,21 @@ function Preparing({ status, onCancel, busy }: { status: StudioStatus; onCancel:
   );
 }
 
-function Blocked({ code, status, onBack }: { code?: string; status: StudioStatus | null; onBack: () => void }) {
+function Blocked({ code, status, busy, onBack, onRefresh, onRetry }: { code?: string; status: StudioStatus | null; busy: boolean; onBack: () => void; onRefresh: () => void; onRetry: () => void }) {
   const script = code === "script_check_failed";
   const offTopic = code === "evidence_off_topic";
+  // 2026-11-17 운영자: "막힌 이유 보여줘서 어쩌자는거야" — 해결안이 있으면 그것을 맨 앞에, 버튼 하나로.
+  const rescue = status?.last?.rescue ?? null;
+  const [working, setWorking] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const applyRescue = async () => {
+    if (!status?.last) return;
+    setWorking(true); setProblem(null);
+    const r = await post("apply_rescue", { request_id: status.last.request_id });
+    setWorking(false);
+    if (!r.ok) { setProblem(r.error ?? "해결안을 적용하지 못했어요."); return; }
+    onRefresh();
+  };
   return (
     <section aria-labelledby="sj-block-h" className="sj-progress-wrap">
       <p className="sj-kicker">NEEDS A DIFFERENT TOPIC</p>
@@ -350,8 +363,25 @@ function Blocked({ code, status, onBack }: { code?: string; status: StudioStatus
       <p className="sj-status">{script ? "확인된 내용 안에서 다시 써 봤지만 검사를 통과하지 못했어요."
         : offTopic ? "자료는 있지만 제목이 묻는 핵심과 다른 이야기라, 엉뚱한 영상이 되지 않게 멈췄어요."
         : "추가 자료까지 확인했지만, 핵심 내용을 뒷받침하지 못했어요."}</p>
-      <p className="sj-note">확인되지 않은 내용으로 초안을 만들지 않았어요.<br />자료를 직접 입력하지 않고 다른 소재를 고를 수 있어요.</p>
-      <button type="button" className="sj-btn sj-main" onClick={onBack}>다른 소재 고르기 <span aria-hidden="true">→</span></button>
+      {rescue?.question ? (
+        <div className="sj-rescue">
+          <p><b>이렇게 고칠게요:</b> 질문을 <b>“{rescue.question}”</b>(으)로 좁히면 모은 자료로 답할 수 있어요.</p>
+          {rescue.why_ko && <p className="sj-note">이유: {rescue.why_ko}</p>}
+          {rescue.answer_ko && <p className="sj-note">자료로 할 수 있는 답: {rescue.answer_ko}</p>}
+          <button type="button" className="sj-btn sj-main" disabled={busy || working} onClick={applyRescue}>{working ? "적용 중…" : "해결안 적용하고 다시 만들기"} <span aria-hidden="true">→</span></button>
+          <span className="sj-note">자료 확인과 초안을 다시 만들어요. 이번 주 AI 초안 한도에서 나가요.</span>
+        </div>
+      ) : script ? (
+        <div className="sj-rescue">
+          <p><b>이렇게 고칠게요:</b> 확인된 내용 안에서 초안을 한 번 더 써 볼게요. 그래도 안 되면 다른 소재를 권해요.</p>
+          <button type="button" className="sj-btn sj-main" disabled={busy} onClick={onRetry}>초안 다시 만들기 <span aria-hidden="true">→</span></button>
+          <span className="sj-note">이번 주 AI 초안 한도에서 나가요.</span>
+        </div>
+      ) : (
+        <p className="sj-note">확인되지 않은 내용으로 초안을 만들지 않았어요. 이 질문으로는 고칠 방법을 찾지 못해서 다른 소재를 고르는 게 빨라요.</p>
+      )}
+      {problem && <p className="sj-error" role="alert">{problem}</p>}
+      <button type="button" className={rescue?.question || script ? "sj-btn" : "sj-btn sj-main"} onClick={onBack}>다른 소재 고르기 <span aria-hidden="true">→</span></button>
       {status?.last?.excluded && status.last.excluded.length > 0 && (
         <details className="sj-details"><summary>확인 내역 보기</summary>
           <ul>{status.last.excluded.map((x) => <li key={x.claim_id}>{x.text} — <span className="sj-muted">{x.why}</span></li>)}</ul>
@@ -371,7 +401,7 @@ function Choice({ phase, status, busy, onBack, onRetry }: { phase: ReturnType<ty
       <p className="sj-status" role="status">{phase.reason}</p>
       <div className="sj-row">
         {retry && <button type="button" className="sj-btn sj-main" disabled={busy} onClick={onRetry}>멈춘 곳부터 다시 준비하기</button>}
-        {legacy && <Link className="sj-btn sj-main" href={`/drinks/work/${status.topic.id}`}>기존 작업공간에서 열기</Link>}
+        {legacy && <Link className="sj-btn sj-main" href={`/drinks/work/${status.topic.id}?detail=1`}>기존 작업공간에서 열기</Link>}
         {phase.code?.startsWith("budget") && <Link className="sj-btn" href="/drinks/studio">이번 주 한도 보기</Link>}
         <button type="button" className="sj-btn" onClick={onBack}>다른 소재 고르기</button>
       </div>
@@ -427,6 +457,68 @@ function MakeChoice({ value, onChange, disabled }: { value: MakeMethod; onChange
   );
 }
 
+// ── 장면 글 바로 고치기(0087, 0원) ─────────────────────────────────────────────
+// 작성 중 초안은 그 자리에서 고치고, 승인한 초안(지시서 단계)은 고친 글로 새 초안이 된다 — 다시 [이 초안 승인] 한 번이면 지시서를 새로 만든다.
+function SceneList({ plan, rows, editable, onRefresh, onDirty }: { plan: StudioPlan; rows: DraftRow[]; editable: boolean; onRefresh: () => void;
+  /** 편집기가 열려 있거나 저장 중이면 true — 부모가 승인·제작 버튼을 잠근다(저장 안 한 글로 사지 않게, 코덱스 리뷰) */
+  onDirty?: (dirty: boolean) => void }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  useEffect(() => { onDirty?.(open !== null || busy); }, [open, busy, onDirty]);
+  useEffect(() => () => onDirty?.(false), [onDirty]);   // 편집기가 사라지면 부모 잠금도 푼다
+  // 한 장면의 칸을 한 번에 보낸다(반쪽 저장 없음). 실패하면 입력을 그대로 두고, 버전 충돌일 때만 새로 읽는다.
+  const save = async (row: DraftRow) => {
+    const edits = (row.edits ?? []).map((e) => ({ n: e.n, field: e.field, text: (vals[`${e.n}:${e.field}`] ?? e.text).trim(), was: e.text.trim() }))
+      .filter((e) => e.text !== e.was).map(({ n, field, text }) => ({ n, field, text }));
+    if (edits.length === 0) { setMsg({ text: "바뀐 글이 없어요." }); return; }
+    setBusy(true); setMsg(null);
+    const r = await post("studio_edit_scene", { plan_revision_id: plan.plan_revision_id, expected_version: plan.version, edits });
+    setBusy(false);
+    if (!r.ok) {
+      const conflict = r.code === "version_conflict" || r.code === "plan_not_current";
+      setMsg({ text: conflict ? "초안이 다른 곳에서 바뀌었어요. 새로 읽었으니 다시 고쳐 주세요." : `${r.error ?? "저장하지 못했어요."} 지금 초안은 그대로이고, 적은 글은 남아 있어요.`, bad: true });
+      if (conflict) onRefresh();
+      return;
+    }
+    setOpen(null); setVals({});
+    setMsg({ text: r.result?.new_draft ? "고친 글로 새 초안을 만들었어요. [이 초안 승인]을 누르면 지시서를 새로 만들어요(0원)." : "저장했어요(0원)." });
+    onRefresh();
+  };
+  return (
+    <>
+      <ol className="sj-scenes">
+        {rows.map((row, idx) => (
+          <li key={row.title} className="sj-scene">
+            <div className="sj-scene-head">
+              <h2>{row.title}</h2>
+              {editable && row.edits && row.edits.length > 0 && (
+                <button type="button" className="sj-btn sj-quiet sj-edit" disabled={busy} aria-expanded={open === idx} onClick={() => { setOpen(open === idx ? null : idx); setVals({}); }}>{open === idx ? "닫기" : "고치기"}</button>
+              )}
+            </div>
+            {open === idx && row.edits ? (
+              <div className="sj-edit-box">
+                {row.edits.map((e) => (
+                  <label key={`${e.n}:${e.field}`} className="sj-field">{e.label}
+                    <textarea rows={3} maxLength={400} value={vals[`${e.n}:${e.field}`] ?? e.text} disabled={busy}
+                      onChange={(ev) => setVals((m) => ({ ...m, [`${e.n}:${e.field}`]: ev.target.value }))} />
+                  </label>
+                ))}
+                <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={() => save(row)}>{busy ? "저장 중…" : "저장 (0원)"}</button></div>
+              </div>
+            ) : (
+              <dl>{row.lines.map((l) => <div key={l.label}><dt>{l.label}</dt><dd>{l.text}</dd></div>)}</dl>
+            )}
+          </li>
+        ))}
+      </ol>
+      {editable && <p className="sj-note">[고치기]로 글을 바로 고쳐요(0원). 고친 글은 지시서를 만들 때 대본 자동 검사를 다시 거치고, 근거에 없는 숫자는 승인 때 막혀요.</p>}
+      {msg && <p className={msg.bad ? "sj-error" : "sj-message"} role={msg.bad ? "alert" : "status"}>{msg.text}</p>}
+    </>
+  );
+}
+
 // ── ② 초안: 어떤 화면에 무엇이 나오는지 글로 ─────────────────────────────────────
 function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => void; onRefresh: () => void }) {
   const video = plan.format === "video";
@@ -437,6 +529,7 @@ function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => vo
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [make, setMake] = useState<MakeMethod>("clay");
+  const [editing, setEditing] = useState(false);
   const approve = async () => {
     setBusy(true); setProblem(null);
     const r = await post("studio_approve_draft", { plan_revision_id: plan.plan_revision_id, expected_plan_version: plan.version });
@@ -455,30 +548,34 @@ function Draft({ plan, onBack, onRefresh }: { plan: StudioPlan; onBack: () => vo
     <section aria-labelledby="sj-draft-h">
       <div className="sj-intro">
         <div><p className="sj-kicker">DRAFT</p><h1 id="sj-draft-h">이 구성으로 만들까요?</h1>
-          <p>{draft ? "화면마다 무엇이 나오는지 읽어 보세요. 고칠 곳은 코멘트로 적으면 다시 만들어요." : "승인한 초안이에요."}</p></div>
+          <p>{draft ? "화면마다 무엇이 나오는지 읽어 보세요. 한 장면만 바꾸려면 [고치기], 전체 방향을 바꾸려면 아래에 수정 방향을 적어요." : "승인한 초안이에요."}</p></div>
         <span className="sj-versiontag">{video ? `릴스 ${rows.length}장면${totalSec ? ` · ${totalSec}초` : ""}` : `카드뉴스 ${plan.plan_json.pages?.length ?? 0}장`}</span>
       </div>
-      <ol className="sj-scenes">
-        {rows.map((row) => (
-          <li key={row.title} className="sj-scene">
-            <h2>{row.title}</h2>
-            <dl>{row.lines.map((l) => <div key={l.label}><dt>{l.label}</dt><dd>{l.text}</dd></div>)}</dl>
-          </li>
-        ))}
-      </ol>
-      {nums.length > 0 && <p className="sj-warnline" role="alert">자동 검사: 근거 자료에 없는 숫자가 있어요({nums.join(", ")}). 코멘트로 고쳐 다시 만들어 주세요.</p>}
-      {draft && <CommentBox plan={plan} label="수정 코멘트" note="다시 만들면 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
+      <SceneList plan={plan} rows={rows} editable={draft} onRefresh={onRefresh} onDirty={setEditing} />
+      {nums.length > 0 && <p className="sj-warnline" role="alert">근거 자료에 없는 숫자가 있어요({nums.join(", ")}). 그 장면을 [고치기]로 바로 고치거나, 아래에 수정 방향을 적어 주세요.</p>}
+      {draft && <CommentBox plan={plan} label="수정 방향 (AI 가 대본 전체를 다시 써요)" note="한 장면만 바꿀 거면 위의 [고치기]가 빨라요. 다시 쓰기는 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
       {draft && video && <MakeChoice value={make} onChange={setMake} disabled={busy} />}
       {problem && <p className="sj-error" role="alert">{problem}</p>}
       <div className="sj-actions">
         <button type="button" className="sj-btn sj-quiet" onClick={onBack}>← 다른 소재 보기</button>
         {draft && (
           <div><span className="sj-note">승인해도 돈은 나가지 않아요. 근거는 자동으로 검사해요.</span>
-            <button type="button" className="sj-btn sj-main" disabled={busy || nums.length > 0} onClick={approve}>{busy ? "승인 중…" : "이 초안 승인"} <span aria-hidden="true">→</span></button></div>
+            <button type="button" className="sj-btn sj-main" disabled={busy || editing || nums.length > 0} title={editing ? "고치던 글을 먼저 저장하거나 닫아 주세요" : undefined} onClick={approve}>{busy ? "승인 중…" : editing ? "고치던 글을 먼저 저장하세요" : "이 초안 승인"} <span aria-hidden="true">→</span></button></div>
         )}
       </div>
     </section>
   );
+}
+
+/** 지시서 작업 오류를 운영자 말로. 저장된 문장은 'code: 설명' 모양이라 코드명을 떼고 쉬운 설명을 앞에 둔다. */
+function planErrorText(code: string | null | undefined, message: string | null | undefined): string {
+  const body = (message ?? "").replace(/^[a-z_]+:\s*/, "").trim();
+  const known: Record<string, string> = {
+    hook_text_overflow: "첫 화면 자막이 한 줄에 다 들어가지 않아요.",
+    visual_claims_missing: "장면별 화면 설명표가 없어요.",
+    duration_out_of_range: "목소리로 읽은 길이가 정해진 범위를 벗어나요.",
+  };
+  return [code ? known[code] : null, body].filter(Boolean).join(" ") || "원인을 읽지 못했어요.";
 }
 
 // ── ③ 작업 명세서: 실제 제작에 쓰는 세부 지시 ───────────────────────────────────
@@ -516,15 +613,21 @@ function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioS
     if (!r.ok) { fail(r, "제작을 요청하지 못했어요."); return; }
     setBusy(false); onRefresh();
   };
-  const requestPlan = async () => {
+  const requestPlan = async (switchTo?: MakeMethod) => {
     setBusy(true); setProblem(null);
-    const r = await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id, ...(ex?.episode ? {} : { provider: make }) });
+    const r = await post("explainer_request_plan", { plan_revision_id: plan.plan_revision_id, ...(switchTo ? { provider: switchTo } : ex?.episode ? {} : { provider: make }) });
     if (!r.ok) { fail(r, "명세서를 요청하지 못했어요."); return; }
     setBusy(false); onRefresh();
   };
   const cost = cardCost(plan);
   const card = plan.format === "carousel";
   const waiting = !card && !d;
+  // 지시서 작업이 실패해 멈춘 편: 원문 오류 대신 무엇이 막혔고 어떻게 고칠지 + 버튼 하나(2026-11-17).
+  const failedPlan = waiting && !production?.activeJob && ex?.episode?.state === "plan_draft" && Boolean(ex.episode.last_message);
+  // 고칠 수 있는 때: 작성 중이거나, 승인했어도 아직 돈·제작을 시작하지 않았을 때(서버가 같은 조건으로 다시 막는다).
+  const editable = plan.plan_status === "draft" || (plan.plan_status === "approved" && (card ? plan.jobs.length === 0 : !open && !ex?.episode?.approval_id));
+  const [editing, setEditing] = useState(false);
+  const lockText = "고치던 글을 먼저 저장하세요";
   return (
     <section aria-labelledby="sj-spec-h">
       <div className="sj-intro">
@@ -561,16 +664,33 @@ function Spec({ status, plan, production, onBack, onRefresh }: { status: StudioS
       )}
       {d && <p className="sj-note">완성 길이 {(d.final_ms / 1000).toFixed(1)}초 · 예상 ${d.estimate.estimate_usd.toFixed(2)}{isClay ? `(그림 ${d.slots.length}장)` : `(그림 $${d.estimate.images_usd.toFixed(2)} + 영상 $${d.estimate.clips_usd.toFixed(2)})`} · 실패 재시도 예비 ${d.estimate.reserve_usd.toFixed(2)}{d.unverified.length > 0 ? ` · 미검증: ${d.unverified.join(", ")}` : ""}</p>}
       {waiting && !production?.activeJob && !ex?.episode && <MakeChoice value={make} onChange={setMake} disabled={busy} />}
-      {waiting && !production?.activeJob && <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={requestPlan}>{busy ? "요청 중…" : "명세서 만들기 (0원)"}</button></div>}
-      {ex?.episode?.last_message && <p className="sj-warnline" role="alert">{ex.episode.last_message}</p>}
-      {!waiting && <CommentBox plan={plan} label="초안부터 고치려면" note="코멘트대로 초안을 새로 만들어요. 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
+      {failedPlan && (
+        <div className="sj-rescue" role="alert">
+          {provider !== CLAY_PROVIDER ? <>
+            <p><b>영상 클립 방식의 검사에 걸려 지시서를 만들지 못했어요.</b> {planErrorText(ex?.episode?.last_code, ex?.episode?.last_message)}</p>
+            <p><b>이렇게 고칠게요:</b> 사진클레이 방식으로 바꿔 지시서를 다시 만들어요. 돈은 들지 않아요.</p>
+            <button type="button" className="sj-btn sj-main" disabled={busy} onClick={() => requestPlan(CLAY_PROVIDER)}>{busy ? "요청 중…" : "사진클레이로 다시 만들기 (0원)"}</button>
+          </> : <>
+            <p><b>지시서를 만들다 멈췄어요.</b> {planErrorText(ex?.episode?.last_code, ex?.episode?.last_message)}</p>
+            <p><b>이렇게 고칠게요:</b> 아래 [장면 대사 고치기]에서 그 장면을 고치거나 수정 방향을 적어 주세요. 대본은 그대로 두고 다시 만들어도 되는 문제면 아래 버튼만 누르세요.</p>
+            <button type="button" className="sj-btn sj-main" disabled={busy} onClick={() => requestPlan()}>{busy ? "요청 중…" : "지시서 다시 만들기 (0원)"}</button>
+          </>}
+        </div>
+      )}
+      {waiting && !production?.activeJob && !failedPlan && <div className="sj-row"><button type="button" className="sj-btn sj-main" disabled={busy} onClick={() => requestPlan()}>{busy ? "요청 중…" : "명세서 만들기 (0원)"}</button></div>}
+      {editable && (
+        <details className="sj-more" open={failedPlan}><summary>{card ? "카드 글 고치기" : "장면 대사 고치기"} (0원{plan.plan_status === "approved" ? " · 고치면 새 초안이 되고, [이 초안 승인]을 누르면 다시 만들어요" : ""})</summary>
+          <SceneList plan={plan} rows={draftRows(plan)} editable onRefresh={onRefresh} onDirty={setEditing} />
+        </details>
+      )}
+      {(!waiting || failedPlan) && <CommentBox plan={plan} label="수정 방향 (AI 가 대본 전체를 다시 써요)" note="코멘트대로 초안을 새로 만들어요. 이번 주 AI 초안 한도에서 나가요." onRefresh={onRefresh} />}
       {problem && <p className="sj-error" role="alert">{problem}</p>}
       <div className="sj-actions">
         <button type="button" className="sj-btn sj-quiet" onClick={onBack}>← 초안 다시 보기</button>
         {card && <div><span className="sj-note">{cost.text}. 게시는 하지 않아요.</span>
-          <button type="button" className="sj-btn sj-main" disabled={busy || cost.usd === null} onClick={generateCard}>{busy ? "요청 중…" : `승인하고 제작${cost.usd ? ` · $${cost.usd.toFixed(2)}` : ""}`} <span aria-hidden="true">→</span></button></div>}
+          <button type="button" className="sj-btn sj-main" disabled={busy || editing || cost.usd === null} onClick={generateCard}>{busy ? "요청 중…" : editing ? lockText : `승인하고 제작${cost.usd ? ` · $${cost.usd.toFixed(2)}` : ""}`} <span aria-hidden="true">→</span></button></div>}
         {d && <div><span className="sj-note">누르면 이 금액을 상한으로 결재해요. 이 안에서만 사고, 게시는 하지 않아요.</span>
-          <button type="button" className="sj-btn sj-main" disabled={busy} onClick={buyVideo}>{busy ? "요청 중…" : `승인하고 제작 · 상한 $${cap.toFixed(2)}`} <span aria-hidden="true">→</span></button></div>}
+          <button type="button" className="sj-btn sj-main" disabled={busy || editing} onClick={buyVideo}>{busy ? "요청 중…" : editing ? lockText : `승인하고 제작 · 상한 $${cap.toFixed(2)}`} <span aria-hidden="true">→</span></button></div>}
       </div>
     </section>
   );

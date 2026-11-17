@@ -32,7 +32,9 @@ export interface StudioStatus {
   topic: { id: string; title: string; question: string; status: string; version: number };
   picks: { format_intent: string; approved_at: string | null; recommended_reason: string | null }[];
   active: StudioRequest | null;
-  last: (StudioRequest & { factcheck?: Record<string, unknown> | null; excluded?: { claim_id: string; why: string; text: string }[] | null; has_unsaved?: boolean }) | null;
+  last: (StudioRequest & { factcheck?: Record<string, unknown> | null; excluded?: { claim_id: string; why: string; text: string }[] | null; has_unsaved?: boolean;
+    /** 0087: 막힌 근거 요청의 해결안(0084 result.rescue) — [해결안 적용] 한 번으로 질문을 좁혀 다시 만든다 */
+    rescue?: { question?: string; why_ko?: string; answer_ko?: string } | null }) | null;
   recoveries_24h: number;
   limits: { max_recoveries_24h: number };
   review: { review_id: string; status: string; version: number; blank: boolean; core_claim_ids: string[] | null; core_takeaway: string | null;
@@ -171,7 +173,9 @@ export function batchTargets<T extends FormatProgress>(list: T[], f: FormatChoic
 }
 
 /** 초안 구성표 한 줄: 어떤 화면에 무엇을 보여 주고 무엇을 말하는가. */
-export interface DraftRow { title: string; lines: { label: string; text: string }[] }
+/** edits: 운영자가 바로 고칠 수 있는 칸(0087 drinks_studio_edit_scene). n 은 1부터, field 는 서버 칸 이름. */
+export interface DraftEdit { n: number; field: "narration" | "heading" | "body"; label: string; text: string }
+export interface DraftRow { title: string; lines: { label: string; text: string }[]; edits?: DraftEdit[] }
 
 const PAGE_ROLE: Record<string, string> = { cover: "표지", explain: "설명", compare: "비교", checklist: "체크리스트", source: "출처" };
 const SCENE_ROLE: Record<string, string> = { reality: "실사", mechanism: "3D 도해" };
@@ -198,6 +202,7 @@ export function draftRows(plan: StudioPlan): DraftRow[] {
     return (plan.plan_json.scenes ?? []).map((sc, i) => ({
       title: `${i + 1}번 장면${typeof sc.timing_sec === "number" ? ` · ${sc.timing_sec}초` : ""}${sc.visual_role ? ` · ${SCENE_ROLE[sc.visual_role] ?? sc.visual_role}` : ""}`,
       lines: [...line("화면", sc.staging_ko ?? sc.explanation), ...line("내레이션·자막", sc.narration), ...line("화면 글자", overlayTexts(sc.overlays).join(" / "))],
+      edits: [{ n: i + 1, field: "narration" as const, label: "내레이션·자막", text: sc.narration ?? "" }],
     }));
   }
   const reel = plan.plan_json.reel;
@@ -208,6 +213,7 @@ export function draftRows(plan: StudioPlan): DraftRow[] {
       title: `${i + 1}장 · ${PAGE_ROLE[pg.role] ?? pg.role}`,
       lines: [...line("제목", h.text), ...line("본문", pg.body), ...line("이미지", pg.image_prompt),
         ...line("배치", photo ? `배경 사진 위에 제목·본문${h.accent ? ` · '${h.accent}'을 금색으로 강조` : ""}` : "글자 카드")],
+      edits: [{ n: i + 1, field: "heading" as const, label: "제목", text: pg.heading ?? "" }, { n: i + 1, field: "body" as const, label: "본문", text: pg.body ?? "" }],
     };
   });
   if (reel?.hook_title || reel?.share_line) rows.push({ title: "함께 나오는 세로 릴스", lines: [...line("첫 화면", reel.hook_title), ...line("마지막 화면", reel.share_line)] });

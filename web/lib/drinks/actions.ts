@@ -105,6 +105,7 @@ export const DRINKS_ACTIONS = {
   studio_save_draft: "drinks_studio_save_draft",
   studio_rewrite: "drinks_studio_rewrite",
   studio_approve_draft: "drinks_studio_approve_draft",
+  studio_edit_scene: "drinks_studio_edit_scene",   // 0087: 장면 글 한 칸 바로 고치기(0원)
   studio_generate: "drinks_studio_generate",
 } as const;
 

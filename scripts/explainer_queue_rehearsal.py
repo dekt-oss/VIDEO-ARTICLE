@@ -314,7 +314,7 @@ def run_full_episode(db: PgRpc, out_root: Path) -> dict[str, Any]:
     deps = q.Deps(adapter=adapter, tts_fn=tts)
     plan = seed_plan(db)
     trail = [state_of(db, plan)]
-    db("drinks_explainer_request_plan", {"plan_revision_id": plan})
+    db("drinks_explainer_request_plan", {"plan_revision_id": plan, "provider": "omni"})
     with Wire() as wire_plan:
         run_one(db, storage, deps)
     st = status(db, plan)
@@ -381,7 +381,7 @@ def run_full_episode(db: PgRpc, out_root: Path) -> dict[str, Any]:
 
 def plan_to_directive(db: PgRpc, storage: dp.Storage, deps: q.Deps, **seed: Any) -> str:
     plan = seed_plan(db, **seed)
-    db("drinks_explainer_request_plan", {"plan_revision_id": plan})
+    db("drinks_explainer_request_plan", {"plan_revision_id": plan, "provider": "omni"})
     run_one(db, storage, deps)
     return plan
 

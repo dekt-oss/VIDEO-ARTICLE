@@ -407,3 +407,55 @@ test("0077 확정된 글자 카드 → [사진형으로 다시 만들기]: 같�
   const ev = await rows("select action from drink_workflow_events where entity_id = $1 and action in ('plan_submit','plan_approve') order by id", [re.planId]);
   assert.deepEqual(ev.map((e: Any) => e.action), ["plan_submit", "plan_approve"], "제출·승인 검사를 건너뛰지 않는다");
 });
+
+test("0087 장면 바로 고치기: 작성 중 초안은 그 자리에서, 승인본은 새 초안으로(옛 승인본은 제작에 못 쓴다), 제작을 시작했으면 막는다", async () => {
+  const prep = await ok("studio_prepare", { candidate_id: await candidate(), format_intent: "card", categories: ["sake"] });
+  const topic = prep.topic_id as string;
+  await workerEvidence(await rpc("drinks_start_develop", { worker_id: "t" }));
+  const { planId } = await workerCard();
+  const v0 = (await row("select version from drink_plan_revisions where id = $1", [planId])).version;
+  const e1 = await ok("studio_edit_scene", { plan_revision_id: planId, expected_version: v0, edits: [{ n: 2, field: "body", text: "애호가들은 마시기 전에 물을 조금 넣어요" }] });
+  assert.deepEqual([e1.plan_revision_id, e1.new_draft], [planId, false], "작성 중 초안은 그 자리에서");
+  assert.equal((await row("select plan_json -> 'pages' -> 1 ->> 'body' as b from drink_plan_revisions where id = $1", [planId])).b, "애호가들은 마시기 전에 물을 조금 넣어요");
+  await fails("studio_edit_scene", { plan_revision_id: planId, expected_version: v0, edits: [{ n: 2, field: "body", text: "옛 버전" }] }, "version_conflict");
+  await fails("studio_edit_scene", { plan_revision_id: planId, expected_version: e1.version, edits: [{ n: 2, field: "narration", text: "카드에 대사 칸은 없다" }] }, "invalid_input");
+  await fails("studio_edit_scene", { plan_revision_id: planId, expected_version: e1.version, edits: [{ n: 99, field: "body", text: "없는 장" }] }, "invalid_input");
+  await fails("studio_edit_scene", { plan_revision_id: planId, expected_version: e1.version, edits: [{ n: 2, field: "heading", text: "제목은 바뀌어도" }, { n: 2, field: "body", text: "x" }] }, "invalid_input");
+  assert.notEqual((await row("select plan_json -> 'pages' -> 1 ->> 'heading' as h from drink_plan_revisions where id = $1", [planId])).h, "제목은 바뀌어도", "한 칸이 틀리면 아무것도 저장하지 않는다");
+
+  // 승인(돈 0원) → 승인본을 고치면 새 작성 중 초안. 옛 승인본은 막혀 제작에 못 쓴다.
+  await ok("studio_approve_draft", { plan_revision_id: planId, expected_plan_version: e1.version });
+  const ap = await row("select plan_status, version from drink_plan_revisions where id = $1", [planId]);
+  assert.equal(ap.plan_status, "approved");
+  const e2 = await ok("studio_edit_scene", { plan_revision_id: planId, expected_version: ap.version, edits: [{ n: 3, field: "heading", text: "연기 향은 어디서 올까" }] });
+  assert.equal(e2.new_draft, true);
+  const np = await row("select plan_status, drafted_from_unapproved, plan_json -> 'pages' -> 2 ->> 'heading' as h from drink_plan_revisions where id = $1", [e2.plan_revision_id]);
+  assert.deepEqual([np.plan_status, np.drafted_from_unapproved, np.h], ["draft", false, "연기 향은 어디서 올까"]);
+  const old = await row("select plan_status, blocked_at from drink_plan_revisions where id = $1", [planId]);
+  assert.ok(old.plan_status === "approved" && old.blocked_at, "옛 승인본은 기록으로 남고 막힌다");
+  assert.equal((await row("select d.current_revision_id as c from drink_deliverables d join drink_plan_revisions p on p.deliverable_id = d.id where p.id = $1", [planId])).c, e2.plan_revision_id);
+  await fails("request_render", { plan_revision_id: planId }, "not_renderable");
+  await fails("studio_edit_scene", { plan_revision_id: planId, expected_version: ap.version + 1, edits: [{ n: 3, field: "heading", text: "또 고치기" }] }, "plan_blocked");
+  // 새 초안을 승인하면 그 초안으로 만든다
+  const nv = (await row("select version from drink_plan_revisions where id = $1", [e2.plan_revision_id])).version;
+  await ok("studio_approve_draft", { plan_revision_id: e2.plan_revision_id, expected_plan_version: nv });
+  assert.equal((await row("select plan_status from drink_plan_revisions where id = $1", [e2.plan_revision_id])).plan_status, "approved");
+
+  // 제작을 시작한 승인본은 고칠 수 없다
+  const job = await ok("request_render", { plan_revision_id: e2.plan_revision_id });
+  assert.ok(job.job_id);
+  const av = (await row("select version from drink_plan_revisions where id = $1", [e2.plan_revision_id])).version;
+  await fails("studio_edit_scene", { plan_revision_id: e2.plan_revision_id, expected_version: av, edits: [{ n: 2, field: "body", text: "제작 뒤에 고치기" }] }, "already_making");
+  assert.equal((await rows("select id from drink_plan_revisions where topic_id = $1 and plan_status = 'draft' and blocked_at is null", [topic])).length, 0, "막혔을 때 새 초안을 만들지 않는다");
+});
+
+test("0087 막힘 화면에 해결안: 근거가 질문에 답하지 못해 막힌 요청의 해결안을 스튜디오 상태가 싣는다", async () => {
+  const prep = await ok("studio_prepare", { candidate_id: await candidate(), format_intent: "card", categories: ["sake"] });
+  const topic = prep.topic_id as string;
+  const g = await rpc("drinks_start_develop", { worker_id: "t" });
+  await rpc("drinks_finish_develop", { ...lease(g), outcome: "blocked", error_code: "evidence_off_topic", error_message: "답하지 못함",
+    result: { rescue: { question: "사케는 왜 날짜를 안 적을까?", why_ko: "근거가 표시 규칙을 말한다", answer_ko: "표시 의무가 없다" } } });
+  const st = await status(topic);
+  assert.equal(st.last.error_code, "evidence_off_topic");
+  assert.equal(st.last.rescue?.question, "사케는 왜 날짜를 안 적을까?");
+});

@@ -59,8 +59,20 @@ const BLOCK_PRIMARY: Record<BlockCode, { code: string; label: string; panel: Pan
   publish_blocked: { code: "B5", label: "게시 문제 보기", panel: "publish" },
   budget_blocked: { code: "B6", label: "결재 보충/새 결재", panel: "spend" },
   no_pass: { code: "B7", label: "계획 바꾸기", panel: "plan" },
-  develop_blocked: { code: "B8", label: "막힌 이유 → 다시 요청", panel: "evidence" },
+  develop_blocked: { code: "B8", label: "고쳐서 다시 만들기", panel: "evidence" },
 };
+
+/** 막힌 초안 요청을 운영자 말로: 무엇이 막혔고, 열면 무엇을 해 주는지(2026-11-17 운영자: "막힌 이유 보여줘서 어쩌자는거야"). */
+export function developBlockText(kind: string | null | undefined, code: string | null | undefined): string {
+  const what = kind === "evidence" ? "자료 확인" : "초안 쓰기";
+  switch (code) {
+    case "evidence_off_topic": return "모은 자료가 질문의 핵심에 답하지 못해 멈췄어요. 열면 질문을 좁힌 해결안이 있고, [해결안 적용] 한 번이면 다시 만들어요.";
+    case "evidence_insufficient": return "믿을 만한 자료가 모자라 멈췄어요. 열면 해결안이 있고, [해결안 적용] 한 번이면 다시 만들어요.";
+    case "script_check_failed": return "초안이 자동 검사를 통과하지 못했어요. 열어서 장면을 바로 고치거나 수정 방향을 적으면 다시 써요.";
+    case "budget_exceeded": case "budget_missing": return "이번 주 AI 초안 한도를 다 써서 멈췄어요. 다음 주 한도가 열리면 [다시 만들기] 한 번이면 돼요.";
+    default: return `${what}가 중간에 멈췄어요. 열면 멈춘 곳부터 [다시 만들기] 한 번으로 이어 가요.`;
+  }
+}
 
 function findBlocks(item: WorkItem): Block[] {
   const out: Block[] = [];
@@ -76,7 +88,7 @@ function findBlocks(item: WorkItem): Block[] {
   if ((item.pub_status === "paused" || item.pub_status === "failed") && !digest) add("publish_blocked", `게시 요청이 ${item.pub_status === "paused" ? "멈춤" : "실패"}(${item.pub_pause_code ?? "사유 없음"}) 상태입니다`);
   if (item.explainer_state === "blocked_budget") add("budget_blocked", "결재 금액이 부족하거나 닫혀 있습니다(아직 사지 않았습니다)");
   if (item.explainer_state === "blocked_no_pass") add("no_pass", "합격 후보가 없습니다 — 계획을 바꿔야 합니다");
-  if (item.develop_status === "blocked" || item.develop_status === "failed") add("develop_blocked", `개발 요청(${item.develop_kind ?? "?"})이 ${item.develop_status}: ${item.develop_error_code ?? "사유 없음"}`);
+  if (item.develop_status === "blocked" || item.develop_status === "failed") add("develop_blocked", developBlockText(item.develop_kind, item.develop_error_code));
   return out;
 }
 

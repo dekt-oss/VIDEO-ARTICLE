@@ -102,7 +102,7 @@ def plan(args: argparse.Namespace) -> int:
     print(st.approval_sentence(STAGE, purpose="장면별 지시서 만들기(0원, TTS 실측)", cap_usd=0.0, estimate_usd=0.0, scope="explainer_plan 작업 1건 + 워커 1회"))
     st.require_yes(args, "운영 DB 쓰기")
     rpc, dp = _rpc_and_storage()
-    rpc("drinks_explainer_request_plan", {"plan_revision_id": args.plan_id})
+    rpc("drinks_explainer_request_plan", {"plan_revision_id": args.plan_id, "provider": "omni"})
     res = dp.run_queue(rpc, dp.Storage(), worker_id="s2-plan", tts="edge", max_jobs=1)
     st.dump(st.preview_dir("explainer-s2") / "live-plan.json", res)
     print(json.dumps(res, ensure_ascii=False, default=str)[:2000])

@@ -107,7 +107,7 @@ const ORDER = "a".repeat(64);
 
 async function withDirective(): Promise<{ plan: string; topic: string }> {
   const out = await approvedPlan();
-  await ok("explainer_request_plan", { plan_revision_id: out.plan });
+  await ok("explainer_request_plan", { plan_revision_id: out.plan, provider: "omni" });
   const j = await startJob(out.plan);
   assert.equal(j.renderer, "explainer_plan");
   await rpc("drinks_explainer_save_directive", { ...lease(j), directive: DIRECTIVE, order_hash: ORDER });
@@ -142,7 +142,7 @@ test("옛 렌더는 계속 못 간다 — 무료·유료 둘 다, 형식을 나�
 
 test("지시서: 0원 작업, 한 번 저장하면 못 바꾼다, 작업은 동시에 하나", async () => {
   const { plan } = await approvedPlan();
-  const r1 = await ok("explainer_request_plan", { plan_revision_id: plan });
+  const r1 = await ok("explainer_request_plan", { plan_revision_id: plan, provider: "omni" });
   assert.equal(r1.renderer, "explainer_plan");
   assert.equal((await ok("explainer_request_plan", { plan_revision_id: plan })).existing, true);
   assert.equal((await row("select spend_approval_id from drink_production_jobs where id = $1", [r1.job_id])).spend_approval_id, null);
@@ -198,6 +198,48 @@ test("사진클레이(0079): 그림만 허용한 결재로 사고, 고를 후보
   // 클립 편은 그대로: 그림만 허용한 결재로는 못 사고, 선택 없이는 조립이 안 된다
   const clip = await withDirective();
   await fails("explainer_request_buy", { plan_revision_id: clip.plan, spend_approval_id: await approval(clip.plan, { allowed_kinds: ["image"] }) }, "kind_not_approved");
+});
+
+test("0087 만드는 방식: 기본은 사진클레이, 지시서 전(0원)에는 바꿀 수 있고, 지시서 뒤에는 못 바꾼다", async () => {
+  const dflt = await approvedPlan();
+  await ok("explainer_request_plan", { plan_revision_id: dflt.plan });
+  assert.equal((await row("select provider from drink_explainer_episodes where plan_revision_id = $1", [dflt.plan])).provider, "clay", "provider 없이 부르면 사진클레이");
+  // 옛 화면이 omni 로 만든 편의 지시서 작업이 실패했다(막걸리 편 재현) → 사진클레이로 바꿔 다시 만든다
+  const { plan } = await approvedPlan();
+  await ok("explainer_request_plan", { plan_revision_id: plan, provider: "omni" });
+  const j = await startJob(plan);
+  await rpc("drinks_explainer_finish_job", { ...lease(j), outcome: "failed", error_code: "hook_text_overflow", error_message: "훅 자막이 한 줄에 들어가지 않습니다" });
+  assert.equal(await stateOf(plan), "plan_draft");
+  const again = await ok("explainer_request_plan", { plan_revision_id: plan, provider: "clay" });
+  assert.equal(again.renderer, "explainer_plan");
+  const ep = await row("select provider, last_code from drink_explainer_episodes where plan_revision_id = $1", [plan]);
+  assert.deepEqual([ep.provider, ep.last_code], ["clay", null]);
+  const k = await startJob(plan);
+  await rpc("drinks_explainer_save_directive", { ...lease(k), directive: DIRECTIVE, order_hash: ORDER });
+  await rpc("drinks_explainer_finish_job", { ...lease(k), outcome: "succeeded", result: { status_code: "directive_ready" } });
+  await assert.rejects(db.query("update drink_explainer_episodes set provider = 'omni' where plan_revision_id = $1", [plan]), /drinks:immutable:/);
+  await fails("explainer_request_plan", { plan_revision_id: plan, provider: "omni" }, "invalid_state");
+});
+
+test("0087 장면 대사를 고친 새 초안도 시각 주장표를 이어 쓴다 — 여러 번 고쳐도 끊기지 않는다", async () => {
+  const { plan: first } = await approvedPlan();
+  const table = (await row("select drinks_plan_visual_claims($1) as v", [first])).v;
+  assert.deepEqual(table, [{ scene: 1 }, { scene: 2 }]);
+  let cur = first;
+  for (let i = 1; i <= 12; i += 1) {
+    const v = (await row("select version from drink_plan_revisions where id = $1", [cur])).version;
+    const e = await ok("studio_edit_scene", { plan_revision_id: cur, expected_version: v, edits: [{ n: 1, field: "narration", text: `위스키에 물, 왜 넣을까요? (${i})` }] });
+    assert.equal(e.new_draft, true);
+    cur = e.plan_revision_id as string;
+    let p = await row("select version from drink_plan_revisions where id = $1", [cur]);
+    await ok("plan_action", { revision_id: cur, expected_version: p.version, action: "submit" });
+    p = await row("select version from drink_plan_revisions where id = $1", [cur]);
+    await ok("plan_action", { revision_id: cur, expected_version: p.version, action: "approve" });
+  }
+  assert.deepEqual((await row("select drinks_plan_visual_claims($1) as v", [cur])).v, table, "12번 고쳐도 처음 표");
+  const ctx = await rpc("drinks_explainer_job_context", { plan_revision_id: cur });
+  assert.deepEqual(ctx.visual_claims, table, "지시서 워커가 받는 표");
+  assert.ok((await row("select blocked_at from drink_plan_revisions where id = $1", [first])).blocked_at, "처음 승인본은 막혀 제작에 못 쓴다");
 });
 
 test("표가 직접 막는다: 구매 작업은 결재 없이 못 넣고, 다른 렌더러는 못 넣는다", async () => {

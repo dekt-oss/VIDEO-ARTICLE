@@ -184,3 +184,11 @@ section .sj-message, section .sj-error { margin: 12px 0 0 !important; }
   .sj > section { min-height: 0; }
   .sj-cover-title { font-size: 24px; }
 }
+
+/* 2026-11-17 장면 바로 고치기 · 막혔을 때 처방 */
+.sj-scene-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.sj-scene-head h2 { margin: 0; }
+.sj-edit { min-height: 32px; padding: 4px 12px; font-size: 13px; }
+.sj-edit-box { display: grid; gap: 10px; }
+.sj-rescue { display: grid; gap: 8px; justify-items: start; background: var(--sj-warm); border-radius: 9px; padding: 14px 16px; margin: 12px 0; }
+.sj-rescue p { margin: 0; }

@@ -2,6 +2,7 @@
 // 행의 "지금 할 일"은 web/lib/drinks/work/decision.ts(담당 B) 가 정하고, 행 자체는 queries.ts::loadWorkItems(담당 B) 가 준다.
 // 설명형 단계(결재·구매·판정…)는 제작 상태를 읽어야 정확한데, 목록에서는 제작 상태를 싣지 않는다 — 작업공간이 다시 계산한다.
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { decide } from "@/lib/drinks/work/decision";
@@ -28,8 +29,11 @@ function safeDecide(item: WorkItem): Decision | null {
   try { return decide(item); } catch { return null; }
 }
 
-export default async function DrinksWorkListPage(props: { searchParams: Promise<{ filter?: string }> }) {
-  const { filter: raw } = await props.searchParams;
+export default async function DrinksWorkListPage(props: { searchParams: Promise<{ filter?: string; legacy?: string }> }) {
+  const { filter: raw, legacy } = await props.searchParams;
+  // 2026-11-17: 만들기 목록은 스튜디오 '내 소재' 탭 하나로 합쳤다(같은 행·같은 순서). 여기 행 버튼이 옛 8단계 화면을 열었다.
+  //   ?legacy=1 일 때만 이 목록을 그대로 보인다.
+  if (legacy !== "1") redirect("/drinks/studio?tab=mine");
   const filter: Filter = FILTERS.some(([k]) => k === raw) ? (raw as Filter) : "all";
   const res = await loadWorkItems(filter).catch((e: unknown) => ({ state: "failed", error: e instanceof Error ? e.message : String(e) }));
   const { items, state, error } = unpack(res);
