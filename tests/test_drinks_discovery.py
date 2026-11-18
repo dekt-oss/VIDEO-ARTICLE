@@ -157,6 +157,43 @@ def test_keyed_connectors_refuse_without_key_and_send_key_only_in_header(monkeyp
         assert req.headers.get("x-goog-api-key") == "TESTKEY-not-real"
 
 
+def test_youtube_searches_by_relevance_and_takes_questions_from_comments_only(monkeypatch):
+    """2026-11-15 검증 실행: 최신순은 댓글 없는 새 쇼츠만 걸렸고 '질문'은 전부 영상 제목(홍보 문구)이었다."""
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(youtube_data_api_key="TESTKEY-not-real"))
+    seen = []
+
+    def yt(req):
+        seen.append(req)
+        p = req.url.path
+        if p.endswith("/search"):
+            return js({"items": [{"id": {"videoId": "v1"}, "snippet": {"title": "위스키 고를 때 뭘 봐야 하지?"}}], "nextPageToken": "n"})
+        if p.endswith("/videos"):
+            return js({"items": [{"id": "v1", "snippet": {"title": "위스키 고를 때 뭘 봐야 하지?", "description": "위스키 입문 가이드"},
+                                  "statistics": {"viewCount": "90000"}}]})
+        return js({"items": [{"snippet": {"topLevelComment": {"snippet": {"textDisplay": "버번이랑 스카치 위스키 차이가 뭔가요?"}}}},
+                             {"snippet": {"topLevelComment": {"snippet": {"textDisplay": "영상 잘 봤어요"}}}}]})
+    since = dd.first_run_start({"lookback_days": 30})
+    b = dd.youtube(fetcher(yt, ["www.googleapis.com"]), {"queries": ["위스키 추천"]}, since, 5)
+    q = seen[0].url.params
+    assert (q["order"], q["regionCode"], q["relevanceLanguage"]) == ("relevance", "KR", "ko")
+    assert "publishedAfter" not in q, "관련도순은 날짜로 자르지 않는다"
+    assert b.incomplete == 0, "관련도순은 '다 못 봤다'를 세지 않는다"
+    item = b.found[0].item()
+    assert item["questions"] == ["버번이랑 스카치 위스키 차이가 뭔가요?"], "제목·설명은 질문으로 쓰지 않는다"
+    card = dd.build_card([{**item, "id": "1"}], topics=[])
+    assert card["key_question"] == "버번이랑 스카치 위스키 차이가 뭔가요?", "대표 질문도 유튜브 제목이 아니라 댓글"
+
+
+def test_collect_main_purges_expired_youtube_before_grouping(monkeypatch):
+    from engine import drinks_collect as dc
+    called = []
+    monkeypatch.setattr(dc, "supabase_rpc", lambda: lambda fn, p: called.append((fn, p)) or {})
+    monkeypatch.setattr(dc, "run_queue", lambda rpc, worker_id: [])
+    assert dc.main([]) == 0
+    assert ("drinks_purge_expired_youtube", {"days": config.DRINKS_YT_RETENTION_DAYS}) in called
+    assert config.DRINKS_YT_RETENTION_DAYS <= 30, "유튜브 API 정책 III.E.4 상한"
+
+
 def test_naver_returns_search_snippets_only(monkeypatch):
     monkeypatch.setattr(config, "SECRETS", config.Secrets(naver_client_id="id-test", naver_client_secret="secret-test"))
 

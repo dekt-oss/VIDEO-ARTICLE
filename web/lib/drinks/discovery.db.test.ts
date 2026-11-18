@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { DRINKS_ACTIONS, runDrinksAction } from "./actions.ts";
 
 const MIGS = ["0050_drinks_factory_phase_a.sql", "0051_drinks_factory_phase_b.sql", "0052_drinks_discovery.sql",
-  "0053_drinks_production.sql"]
+  "0053_drinks_production.sql", "0089_drinks_youtube_retention.sql"]
   .map((f) => join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations", f));
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
@@ -263,4 +263,30 @@ test("후보 카드 다시 계산: 자료 없이 카드만 갱신 · 원출처 �
   await ok("set_discovery_origin", { discovery_item_id: did, expected_version: d2.version, rights_status: "link_and_summary_ok" });
   assert.equal((await row("select origin_group from drink_discovery_items where id = $1", [did])).origin_group, "보도자료-1");
   await fails("set_discovery_origin", { discovery_item_id: did, expected_version: d2.version, origin_group: "x" }, "version_conflict");
+});
+
+test("유튜브 30일 정리(0089): 오래된 원자료만 비우고 관측은 지운다 · 다시 받은 영상은 남긴다 · 다른 경로의 수정은 여전히 막힌다", async () => {
+  const yt = await ok("register_discovery_source", { platform: "youtube", name: `YT ${uniq()}`, categories: ["whisky"], queries: [uniq()] });
+  const ins = (url: string, discovered: string, observed: string | null) => row(
+    `insert into drink_discovery_items (platform, canonical_url, source_id, channel_name, title, summary, coverage, collection_status,
+       questions, latest_metrics, metrics_observed_at, discovered_at, created_by)
+     values ('youtube', $1, $2, '채널', '제목', '설명', 'title_summary_comments', 'collected', array['위스키 차이가 뭔가요?'],
+       case when $4::timestamptz is null then null else '{"views": 9}'::jsonb end, $4::timestamptz, $3::timestamptz, 'collector') returning id`,
+    [url, yt.source_id, discovered, observed]);
+  const old = await ins(`https://www.youtube.com/watch?v=old${uniq()}`, "2026-01-01", "2026-01-02");
+  const refreshed = await ins(`https://www.youtube.com/watch?v=new${uniq()}`, "2026-01-01", new Date().toISOString());
+  for (const id of [old.id, refreshed.id])
+    await db.query(`insert into drink_discovery_observations (item_id, metrics, observed_at) values ($1, '{"views": 9}', $2)`,
+      [id, id === old.id ? "2026-01-02" : new Date().toISOString()]);
+  const r = await worker("drinks_purge_expired_youtube", { days: 30 });   // service_role 권한으로
+  assert.ok(r.discovery_items >= 1 && r.observations >= 1, JSON.stringify(r));
+  const a = await row("select * from drink_discovery_items where id = $1", [old.id]);
+  assert.equal(a.title, null); assert.equal(a.channel_name, null); assert.deepEqual(a.questions, []); assert.equal(a.latest_metrics, null);
+  const b = await row("select * from drink_discovery_items where id = $1", [refreshed.id]);
+  assert.equal(b.title, "제목", "30일 안에 다시 받은 영상은 비우지 않는다");
+  assert.equal((await rows("select 1 from drink_discovery_observations where item_id = $1", [old.id])).length, 0);
+  assert.deepEqual(await worker("drinks_purge_expired_youtube", { days: 30 }), { days: 30, discovery_items: 0, observations: 0, run_items: 0 });
+  await workerFails("drinks_purge_expired_youtube", { days: 31 }, "invalid_input");
+  assert.equal((await rows("select 1 from drink_discovery_observations where item_id = $1", [refreshed.id])).length, 1, "최근 관측은 남는다");
+  await assert.rejects(db.query("delete from drink_discovery_observations where item_id = $1", [refreshed.id]), /immutable/);
 });

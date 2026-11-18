@@ -147,7 +147,9 @@ class Found:
             "channel_name": self.channel_name, "title": self.title,
             "summary": (self.summary or "")[: config.DRINKS_DISCOVERY_SUMMARY_CHARS] or None,
             "posted_at": self.posted_at, "metrics": self.metrics, "coverage": self.coverage,
-            "questions": extract_questions(self.title or "", self.summary or "", *self.comments),
+            # 유튜브는 시청자 댓글의 질문만 — 제목·설명은 만든 사람의 홍보 문구다(2026-11-15 검증 실행: 3건 모두 제목이었다).
+            "questions": extract_questions(*self.comments) if self.platform == "youtube"
+            else extract_questions(self.title or "", self.summary or "", *self.comments),
             "signals": extract_signals(text),
         }
 
@@ -267,14 +269,18 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
     parsed = incomplete = dropped = 0
     queries = (cfg.get("queries") or [])[: config.DRINKS_YT_SEARCH_MAX_QUERIES]   # 등록 때 3개로 막는다(0052)
     for q in queries:
-        params = {"part": "snippet", "q": q, "type": "video", "order": "date", "maxResults": min(25, max(1, limit - len(found)))}
-        if since:
+        by_date = config.DRINKS_YT_SEARCH_ORDER == "date"
+        params = {"part": "snippet", "q": q, "type": "video", "order": config.DRINKS_YT_SEARCH_ORDER,
+                  "regionCode": config.DRINKS_YT_REGION, "relevanceLanguage": config.DRINKS_YT_LANGUAGE,
+                  "maxResults": min(25, max(1, limit - len(found)))}
+        if since and by_date:
             params["publishedAfter"] = since.isoformat().replace("+00:00", "Z")
         s = json.loads(f.get("https://www.googleapis.com/youtube/v3/search", accept=JSON_TYPES, params=params, headers=hdr).body)
         vids = [x for x in s.get("items") or [] if (x.get("id") or {}).get("videoId")]
         parsed += len(vids)
         # 최신순이라 상한 밖의 글은 '받은 데까지 전진'을 할 수 없다 — 워처마크 이후 새 영상이 상한을 넘을 때만 다 못 봤다고 센다.
-        if s.get("nextPageToken") and since is not None:
+        #   관련도순은 시간순이 아니라 "다 못 봤다"가 의미 없다(네이버 정확도순과 같음).
+        if s.get("nextPageToken") and since is not None and by_date:
             incomplete += 1
         if not vids:
             continue
@@ -640,7 +646,8 @@ def build_card(items: list[dict], topics: list[dict]) -> dict[str, Any]:
     sig = Counter(s for it in items for s in (it.get("signals") or []))
     signals = set(sig)
     # 대표 질문: 질문 꼴 제목을 먼저(글쓴이가 직접 던진 질문), 없으면 본문·댓글에서 뽑은 질문, 그것도 없으면 제목.
-    titles = [it.get("title") for it in items if it.get("title") and _is_question(clean_text(it["title"])) and question_ok(it["title"])]
+    titles = [it.get("title") for it in items if it.get("title") and it.get("platform") != "youtube"   # 유튜브 제목은 만든 사람 문구
+              and _is_question(clean_text(it["title"])) and question_ok(it["title"])]
     qs = [q for it in items for q in good_questions(it)]
     key_q = (titles or qs or [items[0].get("title") or items[0].get("canonical_url")])[0]
     dominant = next((s for s in ["storage", "misconception", "selection", "debate", "new_product", "event", "question"] if s in signals), "question")
