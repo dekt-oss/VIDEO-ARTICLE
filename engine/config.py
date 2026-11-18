@@ -4336,6 +4336,14 @@ DRINKS_DISCOVERY_SIMILAR_MIN: float = 0.34   # 낱말 Jaccard(흔한 낱말·주
 DRINKS_DISCOVERY_SUMMARY_CHARS: int = 600    # 확보한 요약 보관 길이(원문 전문을 보관하지 않음)
 DRINKS_YT_COMMENTS_PER_VIDEO: int = 20       # commentThreads.list 1회(쿼터 1). 질문 문장만 뽑는다
 DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 — 검색어 수 상한(0052 등록 때도 3개로 막는다)
+# 최신순(date)은 막 올라온 쇼츠만 걸려 댓글 질문이 0~1건이었다(2026-11-15 검증 실행 실측) — 관련도순으로 인기 영상 댓글을 본다.
+#   관련도순은 시간순이 아니라 워처마크·날짜 필터를 쓰지 않는다(네이버 정확도순과 같음). 같은 영상은 URL 중복 제거가 막는다.
+DRINKS_YT_SEARCH_ORDER: str = "relevance"
+DRINKS_YT_REGION: str = "KR"
+DRINKS_YT_LANGUAGE: str = "ko"
+# YouTube API 개발자 정책 III.E.4: 승인받지 않은 API 데이터(검색 결과·공개 댓글)는 30일 넘게 보관하지 않는다(2026-11-15 원문 확인).
+#   수집 워커가 실행마다 이 일수 지난 유튜브 원자료(제목·설명·채널명·댓글 질문·지표)를 비운다 — 0089.
+DRINKS_YT_RETENTION_DAYS: int = 30
 DRINKS_DISCOVERY_BACKFILL_DAYS: int = 365    # 발견 첫 실행은 최근 1년부터(오래된 것부터 받아 워처마크를 전진)
 # 소재의 질문 유형(0058 drink_topics.question_kind 의 체크와 같은 목록 — tests/test_drinks_bootstrap.py 가 SQL 과 대조).
 #   후보의 signals 중 우선순위가 가장 높은 것을 소재로 올릴 때 복사한다. 목록에 없는 신호(question·new_product·event)는 general.

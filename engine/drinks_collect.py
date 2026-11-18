@@ -312,6 +312,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         log.info("drinks: 예약 실행 %d건 생성", schedule_runs(rpc, today_local()))
     results = run_queue(rpc, worker_id=config.WORKER_ID)
+    try:  # 유튜브 API 정책: 30일 지난 원자료를 비운다(0089). 실패해도 수집 결과는 그대로 — 다음 실행이 다시 비운다
+        log.info("drinks: 유튜브 30일 정리 %s", rpc("drinks_purge_expired_youtube", {"days": config.DRINKS_YT_RETENTION_DAYS}))
+    except Exception:  # noqa: BLE001
+        log.exception("drinks: 유튜브 30일 정리 실패")
     try:
         from .drinks_discover import read_candidate_interests, suggest_candidates
 
