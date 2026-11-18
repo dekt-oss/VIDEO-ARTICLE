@@ -4673,6 +4673,8 @@ DRINKS_DEVELOP_WEB_SEARCH_ENABLED: bool = _get_bool("DRINKS_DEVELOP_WEB_SEARCH_E
 DRINKS_DEVELOP_WEB_SEARCH_MODEL: str = os.getenv("DRINKS_DEVELOP_WEB_SEARCH_MODEL", "gemini-2.5-flash")
 DRINKS_DEVELOP_WEB_SEARCH_USD: float = 0.04          # 검색 1회 예상(grounding 요금 + 토큰). 원장 가잡기용
 DRINKS_DEVELOP_WEB_MAX_SOURCES: int = 4              # 검색으로 읽을 문서 수 상한(문서 1개 = 추출 호출 1회)
+DRINKS_DEVELOP_WEB_DEEP_ENABLED: bool = _get_bool("DRINKS_DEVELOP_WEB_DEEP_ENABLED", True)   # 막힐 상황이면 다른 검색 문장으로 한 번 더 찾는다(질문은 그대로)
+DRINKS_DEVELOP_WEB_DEEP_MAX_SOURCES: int = 4         # 더 찾기에서 새로 읽는 문서 수 상한
 DRINKS_DEVELOP_WEB_MIN_SLOTS: int = 2                # 출처 상한(DRINKS_DEVELOP_MAX_SOURCES) 안에서 웹 문서에 남기는 최소 자리
 DRINKS_DEVELOP_WEB_BLOCKED_HOSTS: tuple[str, ...] = (
     "blog.naver.com", "cafe.naver.com", "m.blog.naver.com", "m.cafe.naver.com", "tistory.com", "brunch.co.kr", "youtube.com", "youtu.be",

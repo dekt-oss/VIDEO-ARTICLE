@@ -43,9 +43,13 @@ export async function POST(request: Request) {
     res.body.dispatch = await triggerWorkflow("drinks-explainer-buy.yml", null);
   }
   const action = (body as { action?: unknown } | null)?.action;
-  if (res.status === 200 && action === "publication_go" && (res.body.result as { due_now?: boolean } | undefined)?.due_now === true) {
+  const go = res.body.result as { due_now?: boolean; publish_at?: string } | undefined;
+  if (res.status === 200 && action === "publication_go" && go?.due_now === true) {
     // [게시](지금): 예약 크론이 꺼져 있어도 바로 올라가게 발행 워커를 깨운다. 실제 게시 여부는 워커가 DB 조건(계정·승인·시각)으로 다시 잰다.
     res.body.dispatch = await triggerWorkflow("drinks-publish.yml", null);
+  } else if (res.status === 200 && action === "publication_go" && go?.publish_at) {
+    // [예약 게시]: GitHub 크론은 하루 서너 번만 돈다(실측) — 예약 시각에 맞춰 깨우는 워크플로를 하나 건다(2026-11-18).
+    res.body.dispatch = await triggerWorkflow("drinks-publish-at.yml", null, { at: new Date(go.publish_at).toISOString() });
   }
   if (res.status === 200 && action === "meme_draft_action"
       && (res.body.result as { status?: string } | undefined)?.status === "approved") {

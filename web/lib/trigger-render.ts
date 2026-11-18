@@ -21,6 +21,8 @@ export interface TriggerResult {
 export async function triggerWorkflow(
   workflow: string,
   mode: string | null = "poll",
+  /** mode 대신 보낼 입력(예: drinks-publish-at.yml 의 at). 주면 mode 는 무시한다. */
+  inputs?: Record<string, string>,
 ): Promise<TriggerResult> {
   const token = process.env.GITHUB_DISPATCH_TOKEN;
   if (!token) {
@@ -41,7 +43,7 @@ export async function triggerWorkflow(
           "X-GitHub-Api-Version": "2022-11-28",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(mode === null ? { ref } : { ref, inputs: { mode } }),
+        body: JSON.stringify(inputs ? { ref, inputs } : mode === null ? { ref } : { ref, inputs: { mode } }),
       }
     );
     // 성공은 204 No Content.
