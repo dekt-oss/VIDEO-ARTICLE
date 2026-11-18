@@ -239,7 +239,7 @@ export default function ExplainerProduction({ planId, status, activeJob, hidePri
             {step === "output_review" && <p className="banner-info">품질 검수를 통과했습니다 — 아래 파일 묶음을 승인하면 게시 대기로 갑니다.</p>}
           </>
       )}
-      {step === "none" && ep?.state === "ready_to_publish" && <p className="banner-info">게시 대기입니다. 게시 화면에서 발행안을 만드세요. 캡션은 제목·핵심 결론·“AI 생성 영상” 한 줄로 자동으로 채워집니다(고쳐 써도 됩니다).</p>}
+      {step === "none" && ep?.state === "ready_to_publish" && <p className="banner-info">게시 대기입니다. 게시 화면에서 발행안을 만드세요. 캡션은 첫 질문·답·술째리고 소개·해시태그로 자동으로 채워집니다(고쳐 써도 됩니다).</p>}
     </section>
   );
 }

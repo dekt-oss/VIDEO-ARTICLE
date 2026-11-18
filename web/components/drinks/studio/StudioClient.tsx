@@ -11,6 +11,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import ExplainerProduction from "@/components/drinks/ExplainerProduction";
 import { CHECKS, REEL_CHECKS } from "@/components/drinks/ProductionControls";
 import { RequestActions } from "@/components/drinks/PublishControls";
+import { autoCaption } from "@/lib/drinks/caption";
 import { CLAY_PROVIDER, MAKE_METHOD_LABEL, clayStage, PROCESS_CHECKS, QUALITY_CHECKS, canJudge, kstMinute, neededKinds, nextStep, usableApproval, type ExplainerStatus, type MakeMethod } from "@/lib/drinks/explainerQueue";
 import { blockerLabel } from "@/lib/drinks/model";
 import { relativeDayLabel } from "@/lib/date";
@@ -42,6 +43,8 @@ export interface StudioProduction {
 export interface StudioPublish {
   accounts: { id: string; label: string; postTypes: string[] }[];
   aiLabel: string | null;
+  /** 소재의 술 종류(캡션 해시태그) */
+  categories?: string[];
   request: { id: string; version: number; status: string; approval_digest: string | null; caption: string | null; publish_at: string | null; external_url: string | null } | null;
 }
 
@@ -859,34 +862,41 @@ function Publish({ status, plan, files, publish, production, onDone, onRefresh }
   const postType = reel ? "reel" : "carousel";
   const usable = (publish?.accounts ?? []).filter((a) => a.postTypes.includes(postType));
   const req = publish?.request ?? null;
-  const first = plan.plan_json.pages?.[0]?.heading?.replace(/\[|\]/g, "") ?? plan.plan_json.scenes?.[0]?.narration ?? status.topic.question;
-  const [caption, setCaption] = useState(req?.caption ?? (reel ? `${first}\n\n${publish?.aiLabel ?? "AI 생성 영상"}` : first));
+  // 캡션 자동 채움(2026-11-18 운영자 "부실하다·술째리고 홍보"): 릴스는 첫 장면 질문 + 마지막 장면 답, 카드는 표지 제목 + 핵심 결론.
+  const scenes = plan.plan_json.scenes ?? [];
+  const lead = reel ? scenes[0]?.narration ?? status.topic.question : plan.plan_json.pages?.[0]?.heading?.replace(/\[|\]/g, "") ?? status.topic.title;
+  const answer = reel ? scenes[scenes.length - 1]?.narration ?? status.review?.core_takeaway : status.review?.core_takeaway;
+  const [caption, setCaption] = useState(req?.caption ?? autoCaption({ title: lead, takeaway: answer, categories: publish?.categories ?? [] }));
   const [acc, setAcc] = useState(usable[0]?.id ?? "");
   const [when, setWhen] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  useEffect(() => { setWhen((w) => w || defaultPublishAt(Date.now(), PUBLISH_WINDOW)); }, []);
+  // 예약 시각 초기값: 이미 적어 둔 발행안이면 그 시각(덮어쓰지 않는다), 없으면 15분 뒤.
+  useEffect(() => { setWhen((w) => w || (req?.publish_at ? new Date(Date.parse(req.publish_at) + 9 * 3_600_000).toISOString().slice(0, 16) : defaultPublishAt(Date.now(), PUBLISH_WINDOW))); }, [req?.publish_at]);
   const stop = (r: Post, fallback: string) => { setBusy(false); setProblem(r.error ?? fallback); onRefresh(); };
-  const register = async () => {
+  const [note, setNote] = useState<string | null>(null);
+  // 작성 중(또는 아직 없음)일 때만 시각을 고를 수 있다. 승인 대기·승인된 발행안은 적어 둔 시각 그대로 마무리한다(0086 은 작성 중에만 시각을 바꾼다).
+  const pickTime = !req || req.status === "draft";
+  // [지금 게시] / [예약 게시] — 발행안 만들기 → 승인 요청 → 승인 → 예약을 publication_go 한 번으로(0086). 지금이면 발행 워커를 바로 깨운다.
+  const register = async (now: boolean) => {
     const accLabel = usable.find((a) => a.id === acc)?.label ?? "";
-    if (!window.confirm(`인스타에 공개 게시합니다.\n\n계정: ${accLabel}\n시각: ${when.replace("T", " ")} (한국)\n캡션: ${caption}\n\n진행할까요?`)) return;
+    const at = now ? new Date() : new Date(`${when}:00+09:00`);
+    if (!window.confirm(`인스타에 공개 게시합니다.\n\n계정: ${accLabel}\n시각: ${now ? "지금 바로" : `${when.replace("T", " ")} (한국) 예약`}\n캡션: ${caption}\n\n진행할까요?`)) return;
     setBusy(true); setProblem(null);
-    let id = req?.id ?? "", version = req?.version ?? 0, st = req?.status ?? "", digest = req?.approval_digest ?? null;
+    let id = req?.id ?? "", version = req?.version ?? 0;
     if (!req) {
-      const c = await post("create_publication", { output_review_id: production?.outputReview?.id, account_id: acc, caption, post_type: postType, publish_at: new Date(`${when}:00+09:00`).toISOString() });
+      const c = await post("create_publication", { output_review_id: production?.outputReview?.id, account_id: acc, caption, post_type: postType, publish_at: at.toISOString() });
       if (!c.ok) { stop(c, "발행안을 만들지 못했어요."); return; }
-      id = String(c.result?.request_id); version = Number(c.result?.version); st = String(c.result?.status);
+      id = String(c.result?.request_id); version = Number(c.result?.version);
     }
-    const NEEDS = { submit: "draft", approve: "awaiting_approval", schedule: "approved" } as const;
-    for (const action of ["submit", "approve", "schedule"] as const) {
-      if (st !== NEEDS[action]) continue;
-      const r = await post("publication_action", { request_id: id, expected_version: version, action, ...(action === "approve" ? { expected_digest: digest } : {}) });
-      if (!r.ok) { stop(r, "등록을 마치지 못했어요."); return; }
-      version = Number(r.result?.version); st = String(r.result?.status); digest = (r.result?.approval_digest as string | null) ?? digest;
-    }
+    const r = await post("publication_go", { request_id: id, expected_version: version, ...(pickTime ? { publish_at: at.toISOString() } : {}) });
+    if (!r.ok) { stop(r, "게시를 걸지 못했어요."); return; }
+    // 지금 게시인데 발행 작업기를 바로 못 깨웠으면 숨기지 않는다 — 예약 확인 작업이 돌 때 올라간다.
+    if (r.result?.due_now && r.dispatch && !r.dispatch.triggered) setNote("게시를 걸었지만 작업기를 바로 깨우지 못했어요. 예약 확인 작업이 돌 때(보통 몇 분, 늦으면 몇 시간) 올라가요. 급하면 Claude 에게 \u201c게시 작업 돌려 줘\u201d라고 말해 주세요.");
     setBusy(false); onRefresh();
   };
   const windowProblem = publishWindowProblem(when);
+  const nowProblem = publishWindowProblem(new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 16));   // 지금(한국)이 게시 가능 시간인가
   const canRegister = !req || ["draft", "awaiting_approval", "approved"].includes(req.status);
   return (
     <section aria-labelledby="sj-pub-h">
@@ -903,17 +913,24 @@ function Publish({ status, plan, files, publish, production, onDone, onRefresh }
             <label className="sj-field">계정<select value={acc} onChange={(e) => setAcc(e.target.value)}>{usable.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label>
           )}
           <label className="sj-field">캡션<textarea value={caption} rows={5} readOnly={Boolean(req)} onChange={(e) => setCaption(e.target.value)} /></label>
-          <label className="sj-field">게시 시각(한국)<input type="datetime-local" value={when} readOnly={Boolean(req)} onChange={(e) => setWhen(e.target.value)} /></label>
+          <label className="sj-field">{pickTime ? "예약 시각(한국 · [예약 게시]에만 씀)" : "게시 시각(한국 · 이미 정한 시각)"}<input type="datetime-local" value={when} readOnly={!pickTime} onChange={(e) => setWhen(e.target.value)} /></label>
           {windowProblem && <p className="sj-warnline" role="alert">{windowProblem}</p>}
         </div>
       )}
       {req && !canRegister && req.status !== "published" && <RequestActions id={req.id} version={req.version} status={req.status} digest={req.approval_digest} summary={req.caption ?? ""} />}
       {problem && <p className="sj-error" role="alert">{problem}</p>}
+      {note && <p className="sj-warnline" role="status">{note}</p>}
+      {pickTime && nowProblem && <p className="sj-note">지금은 게시 가능 시간이 아니라 [지금 게시]가 잠겨 있어요. 예약 게시를 쓰세요.</p>}
       <div className="sj-actions">
         <button type="button" className="sj-btn sj-quiet" onClick={onDone}>다음 소재 고르기</button>
-        {canRegister && publish && usable.length > 0 && (
-          <button type="button" className="sj-btn sj-main" disabled={busy || !when || !caption.trim() || Boolean(windowProblem)} onClick={register}>{busy ? "등록 중…" : "인스타에 등록"} <span aria-hidden="true">→</span></button>
-        )}
+        {canRegister && publish && usable.length > 0 && (pickTime ? (
+          <div className="sj-row">
+            <button type="button" className="sj-btn" disabled={busy || !when || !caption.trim() || Boolean(windowProblem)} onClick={() => register(false)}>{busy ? "등록 중…" : "예약 게시"}</button>
+            <button type="button" className="sj-btn sj-main" disabled={busy || !caption.trim() || Boolean(nowProblem)} title={nowProblem ?? undefined} onClick={() => register(true)}>{busy ? "등록 중…" : "지금 게시"} <span aria-hidden="true">→</span></button>
+          </div>
+        ) : (
+          <button type="button" className="sj-btn sj-main" disabled={busy || Boolean(windowProblem)} onClick={() => register(false)}>{busy ? "등록 중…" : "정한 시각에 게시"} <span aria-hidden="true">→</span></button>
+        ))}
       </div>
     </section>
   );

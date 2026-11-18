@@ -43,8 +43,9 @@ def test_format_gate_blocks_sync_required_meme_and_missing_spec():
     assert pub.format_gate({"content_format": "meme", "caption": "x"})[0] == "meme_spec_missing"
 
 
-def test_format_gate_requires_ai_label_for_explainer_and_bought_scene_meme():
-    assert pub.format_gate({"content_format": "explainer", "caption": "물 이야기"})[0] == "ai_label_missing"
+def test_format_gate_ai_label_optional_for_explainer_required_for_bought_scene_meme():
+    # 0088(2026-11-18 운영자 "왜 필수임? 그냥 바로 올릴 수 있게"): 설명형 캡션의 AI 한 줄은 선택. 산 장면 밈은 그대로.
+    assert pub.format_gate({"content_format": "explainer", "caption": "물 이야기"}) is None
     assert pub.format_gate({"content_format": "explainer", "caption": f"물 이야기\n{config.DRINKS_AI_LABEL_TEXT}"}) is None
     bought = _spec(scene={"source": "bought_reaction", "asset_id": "a"})
     assert pub.format_gate({"content_format": "meme", "caption": "농담", "meme_spec": bought})[0] == "ai_label_missing"

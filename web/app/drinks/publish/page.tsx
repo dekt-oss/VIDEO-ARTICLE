@@ -34,7 +34,6 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
       ) : (() => {
         const { accounts, requests, ready_outputs: ready, slot_weights: slots } = board.data;
         const readyMemes = board.data.ready_memes ?? [];
-        const aiLabel = board.data.ai_label_text ?? "AI 생성 영상";
         const accLabel = new Map(accounts.map((a) => [a.id, `${a.display_name} (${a.external_account_id})`]));
         const publishable = accounts.filter((a) => a.status !== "disabled").map((a) => ({ id: a.id,
           label: `${a.display_name} · ${a.external_account_id}${a.connection === "fake" ? " · 시험" : ""}${a.publish_enabled ? "" : " · 발행 꺼짐"}`,
@@ -72,7 +71,6 @@ export default async function DrinksPublishPage(props: { searchParams: Promise<{
                     <Link href={`/drinks/production/${o.plan_revision_id}`}>{o.topic_title}</Link>{" "}
                     <span className="pill">{postType === "carousel" ? `카드뉴스 ${o.pages}장` : o.format === "carousel" ? "카드뉴스 릴스" : o.content_format === "explainer" ? "설명형 릴스" : "릴스"}</span>
                     <span className="muted"> · 검수 {kst(o.reviewed_at)}</span>
-                    {o.content_format === "explainer" && <div className="muted">설명형은 캡션에 &apos;{aiLabel}&apos; 한 줄이 있어야 발행안을 만들 수 있습니다(기획 v2 §3-4).</div>}
                   </span>
                   <CreatePublication outputReviewId={o.output_review_id} accounts={publishable} postType={postType} slotHint={slotHint}
                     audioOptions={board.data.audio_options} audioRequired={postType === "reel" && o.format === "carousel"} />

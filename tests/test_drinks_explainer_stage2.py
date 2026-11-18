@@ -103,7 +103,6 @@ def test_quality_six_items_match_in_sql_screen_and_python():
     assert 'stage="quality" title="품질 검수 6항목" items={QUALITY_CHECKS}' in WEB_SCREEN
     assert "const all = items.every(([k]) => ck[k]);" in WEB_SCREEN and "disabled={busy || !all}" in WEB_SCREEN
     assert "자동 검사 통과는 품질 합격이 아닙니다" in WEB_SCREEN
-    assert config.DRINKS_EXPLAINER_CAPTION_AI_LINE in WEB_SCREEN, "게시 대기 안내가 캡션 'AI 생성 영상' 줄을 말한다"
 
 
 # ── ③ 스크립트 — 0원, 게이트, 문서 금액 ──────────────────────

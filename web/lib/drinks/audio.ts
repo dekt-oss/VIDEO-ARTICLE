@@ -56,7 +56,7 @@ const AUDIO_BLOCK_KO: Record<string, string> = {
   audio_connection_unsupported: "인스타 음원은 Facebook 로그인 연결 계정으로만 붙입니다",
   audio_sync_required: "박자를 맞춰야 하는 편이라 자동 게시하지 않습니다",
   // 0068
-  ai_label_missing: "캡션에 'AI 생성 영상' 한 줄이 없습니다(설명형·산 장면 밈 필수)",
+  ai_label_missing: "캡션에 'AI 생성 영상' 한 줄이 없습니다(산 장면을 쓴 밈 필수)",
   meme_not_publishable: "밈 제작안이 게시 대기 상태가 아닙니다(되돌림·버림·박자 맞춤)",
   audio_mismatch: "밈 제작안이 정한 음원과 다른 음원입니다",
 };
