@@ -1096,7 +1096,7 @@ def test_web_search_failure_does_not_stop_other_sources():
 def test_web_sources_come_before_keyword_matched_official_list(monkeypatch):
     web = [dd.Source("web", "웹", "본문", url="https://a.example/x")]
     official = [dd.Source("official", "공식", "본문", url="https://b.example/y")]
-    monkeypatch.setattr(dd, "find_web", lambda topic, deps, ledger=None: (web, []))
+    monkeypatch.setattr(dd, "find_web", lambda topic, deps, ledger=None, **kw: (web, []))
     monkeypatch.setattr(dd, "find_official", lambda topic, deps: (official, []))
     got, _ = dd.gather_sources(job(), FakeRpc(sources=[]), {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
     assert [s.origin for s in got] == ["web", "official"]
@@ -1106,7 +1106,7 @@ def test_web_sources_keep_slots_even_when_operator_sources_fill_the_cap(monkeypa
     linked = [{"snapshot_id": f"s{i}", "title": f"운영자 {i}", "body_text": "본문 " * 50, "linked": True, "role": "evidence", "source_kind": "official",
                "canonical_url": f"https://op{i}.example/x"} for i in range(5)]
     web = [dd.Source("web", f"웹 {i}", "본문", url=f"https://w{i}.example/x") for i in range(3)]
-    monkeypatch.setattr(dd, "find_web", lambda topic, deps, ledger=None: (web, []))
+    monkeypatch.setattr(dd, "find_web", lambda topic, deps, ledger=None, **kw: (web, []))
     monkeypatch.setattr(dd, "find_official", lambda topic, deps: ([], []))
     got, _ = dd.gather_sources(job(), FakeRpc(sources=linked), {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
     assert len(got) == config.DRINKS_DEVELOP_MAX_SOURCES

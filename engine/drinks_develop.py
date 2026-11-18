@@ -620,7 +620,8 @@ def web_source_kind(host: str) -> str:
     return "media"
 
 
-def find_web(topic: dict[str, Any], deps: Deps, ledger: Optional[Ledger] = None) -> tuple[list[Source], list[str]]:
+def find_web(topic: dict[str, Any], deps: Deps, ledger: Optional[Ledger] = None, *, skip: Optional[set[str]] = None,
+             limit: Optional[int] = None) -> tuple[list[Source], list[str]]:
     """질문으로 웹을 검색해 공개 문서를 읽는다(2026-11-18). 쇼핑·커뮤니티·SNS·동영상은 읽지 않는다. 본문은 직접 받아 온다."""
     from urllib.parse import urlsplit
 
@@ -641,10 +642,18 @@ def find_web(topic: dict[str, Any], deps: Deps, ledger: Optional[Ledger] = None)
         return [], [f"web: 검색 실패({type(exc).__name__})"]
     notes: list[str] = []
     out: list[Source] = []
+    cap = config.DRINKS_DEVELOP_WEB_MAX_SOURCES if limit is None else limit
     for hit in hits or []:
-        if len(out) >= config.DRINKS_DEVELOP_WEB_MAX_SOURCES:
+        if len(out) >= cap:
             break
         url = str(hit.get("url") or "")
+        # 이미 읽었거나 운영자가 근거에서 뺀 문서는 내려받기 전에 건너뛴다(코덱스 리뷰)
+        if skip is not None:
+            k = same_doc_key(url)
+            if k and k in skip:
+                continue
+            if k:
+                skip.add(k)
         host = (urlsplit(url).hostname or "").lower()
         if not host or any(host == b or host.endswith("." + b) for b in config.DRINKS_DEVELOP_WEB_BLOCKED_HOSTS):
             notes.append(f"web: {host or url} 건너뜀(쇼핑·커뮤니티·SNS·동영상)")
@@ -675,7 +684,8 @@ def find_web(topic: dict[str, Any], deps: Deps, ledger: Optional[Ledger] = None)
 
 
 def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: Deps,
-                   context_out: Optional[list[dict[str, Any]]] = None, ledger: Optional[Ledger] = None) -> tuple[list[Source], list[dict[str, Any]]]:
+                   context_out: Optional[list[dict[str, Any]]] = None, ledger: Optional[Ledger] = None,
+                   excluded_out: Optional[set[str]] = None) -> tuple[list[Source], list[dict[str, Any]]]:
     """출처 후보를 모은다. 반환: (쓸 수 있는 출처 — 순서 = 우선순위, 쓰지 못한 출처와 이유 목록).
     context_out 을 주면 '질문이 나온 곳'(질문·인기 신호 출처·커뮤니티 글)의 제목·앞부분을 담는다 — 사실 근거가 아니라 AI 사실 확인이
     '사람들이 무엇을 믿고 있나'를 읽는 데만 쓴다."""
@@ -717,7 +727,8 @@ def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: D
     usable.sort(key=lambda s: same_doc_key(s.url) in auto)
     notes: list[str] = []
     # 질문으로 찾은 웹 문서를 공식 목록(낱말로 맞춘 문서)보다 앞에 둔다 — 질문에 맞춰 찾은 것이라 엉뚱한 근거가 덜 나온다.
-    web, n = find_web(topic, deps, ledger)
+    # 소재에 이미 붙은 문서(운영자가 근거에서 뺀 것 포함)는 내려받지 않는다
+    web, n = find_web(topic, deps, ledger, skip={same_doc_key(r.get("canonical_url")) for r in rows} - {""})
     usable += web
     notes += n
     off, n = find_official(topic, deps)
@@ -736,6 +747,10 @@ def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: D
     seen = {same_doc_key(s.url) for s in usable if s.snapshot_id}
     seen |= {same_doc_key(r.get("canonical_url")) for r in rows if r.get("linked") and r.get("role") == "discovery"}
     seen -= {""}
+    if excluded_out is not None:
+        # 더 찾기(dig)가 되살리면 안 되는 문서: 소재에 붙은 문서 전부(발견 역할·쓰지 않는 종류 포함)
+        excluded_out |= {same_doc_key(r.get("canonical_url")) for r in rows} - {""}
+        excluded_out |= {same_doc_key(s.url) for s in web} - {""}   # 이번에 이미 내려받은 웹 문서(상한에서 빠졌어도 다시 받지 않는다)
     out: list[Source] = []
     for s in usable:
         k = same_doc_key(s.url)
@@ -877,58 +892,128 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
                              reuse.get("skipped") or [], flags, ledger, deps, reused_from=reuse.get("from_request_id"))
     beat("sources")
     context: list[dict[str, Any]] = []
-    sources, skipped = gather_sources(job, rpc, lease, deps, context, ledger)
+    excluded: set[str] = set()
+    sources, skipped = gather_sources(job, rpc, lease, deps, context, ledger, excluded)
     per_source: list[list[dict[str, Any]]] = []   # 출처별 {text, original_quote, claim_type, src: Source}
     report: list[dict[str, Any]] = []
-    for src in sources:
-        if not src.text or len(src.text) < config.DRINKS_MIN_BODY_CHARS:
-            skipped.append({"title": src.title, "why": "본문이 너무 짧음"})
-            continue
-        beat(f"extract:{src.title[:60]}")
-        text = src.text[: config.DRINKS_DEVELOP_SOURCE_MAX_CHARS]
-        est = estimate_usd(config.DRINKS_DEVELOP_EXTRACT_MODEL, len(EXTRACT_SYSTEM) + len(question) + len(text), config.DRINKS_DEVELOP_EXTRACT_MAX_TOKENS)
-        raw = ledger.run(config.DRINKS_DEVELOP_EXTRACT_MODEL, est, lambda t=text: deps.extract_claims(question, t), f"근거 추출: {src.title[:80]}")
-        # 모델에 보낸 글(앞부분)에 대해서만 대조한다 — 잘린 뒤쪽을 인용했다면 그것은 모델이 본 적 없는 글이다.
-        kept, dropped = verify_claims(raw, text)
-        report.append({"title": src.title, "origin": src.origin, "url": src.url, "chars": len(text), "claims_raw": len(raw or []),
-                       "claims_kept": len(kept), "claims_dropped": sum(dropped.values()), "dropped_by": dropped})
-        for k in kept:
-            k["src"] = src
-        per_source.append(kept)
+
+    def extract(srcs: list[Source]) -> list[list[dict[str, Any]]]:
+        out: list[list[dict[str, Any]]] = []
+        for src in srcs:
+            if not src.text or len(src.text) < config.DRINKS_MIN_BODY_CHARS:
+                skipped.append({"title": src.title, "why": "본문이 너무 짧음"})
+                continue
+            beat(f"extract:{src.title[:60]}")
+            text = src.text[: config.DRINKS_DEVELOP_SOURCE_MAX_CHARS]
+            est = estimate_usd(config.DRINKS_DEVELOP_EXTRACT_MODEL, len(EXTRACT_SYSTEM) + len(question) + len(text), config.DRINKS_DEVELOP_EXTRACT_MAX_TOKENS)
+            raw = ledger.run(config.DRINKS_DEVELOP_EXTRACT_MODEL, est, lambda t=text: deps.extract_claims(question, t), f"근거 추출: {src.title[:80]}")
+            # 모델에 보낸 글(앞부분)에 대해서만 대조한다 — 잘린 뒤쪽을 인용했다면 그것은 모델이 본 적 없는 글이다.
+            kept, dropped = verify_claims(raw, text)
+            report.append({"title": src.title, "origin": src.origin, "url": src.url, "chars": len(text), "claims_raw": len(raw or []),
+                           "claims_kept": len(kept), "claims_dropped": sum(dropped.values()), "dropped_by": dropped})
+            for k in kept:
+                k["src"] = src
+            out.append(kept)
+        return out
+
+    ids: dict[int, str] = {}
+
+    def build(kept_all: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
+        """통과한 주장이 있는 출처만 소재에 붙이고(읽었지만 쓸모없던 출처로 소재를 어지럽히지 않는다) AI 사실 확인까지."""
+        beat("link")
+        for k in kept_all:
+            s: Source = k["src"]
+            if id(s) in ids:
+                continue
+            if s.snapshot_id and s.role != "evidence":
+                rpc("drinks_develop_link_snapshot", {**lease, "snapshot_id": s.snapshot_id, "relation_note": "자동 개발: 근거 추출에 사용"})
+                ids[id(s)] = s.snapshot_id
+            elif s.snapshot_id:
+                ids[id(s)] = s.snapshot_id
+            else:
+                added = rpc("drinks_develop_add_source", {**lease, "source": s.new_source})
+                ids[id(s)] = added["snapshot_id"]
+        claims: list[dict[str, Any]] = []
+        for i, k in enumerate(kept_all, 1):
+            s = k["src"]
+            c = {"claim_id": f"c{i}", "text": k["text"], "claim_type": k["claim_type"], "support_review": "not_reviewed",
+                 "source_refs": [{"snapshot_id": ids[id(s)], "original_quote": k["original_quote"]}]}
+            if k["claim_type"] == "opinion":
+                c["attribution"] = s.publisher or s.title
+            claims.append(c)
+        flags = _claim_flags(claims, deps)
+        sources_of = {c["claim_id"]: {"title": k["src"].title, "url": k["src"].url, "publisher": k["src"].publisher} for c, k in zip(claims, kept_all)}
+        beat("factcheck")
+        factcheck = run_factcheck(topic, context, claims, sources_of, ledger, deps, flags)
+        apply_factcheck(claims, factcheck)
+        return claims, factcheck, flags
+
+    def short(claims: list[dict[str, Any]], factcheck: dict[str, Any]) -> bool:
+        """막힐 상황인가 — 질문에 답하지 못하거나, 확인된 핵심 주장이 모자람(save_evidence 와 같은 기준)."""
+        qa = factcheck.get("question_answer") or {}
+        if factcheck.get("status") == "ok" and qa.get("answered") is False:
+            return True
+        return len(pick_core(claims, factcheck)[0]) < config.DRINKS_DEVELOP_MIN_CORE_CLAIMS
+
+    def dig() -> bool:
+        """한 번 더 깊이 찾는다(2026-11-18 운영자: "내가 원하는 주제가 선택되면 그 주제로 어떻게든 내용을 만들어 달라").
+        질문은 바꾸지 않는다 — 다른 낱말·영어 자료로 다시 검색하고, 이미 읽은 문서는 건너뛴다. 새 자료는 앞에 둔다."""
+        nonlocal per_source
+        if not config.DRINKS_DEVELOP_WEB_DEEP_ENABLED or deps.web_search is None:
+            return False
+        beat("dig")
+        read = ({same_doc_key(x.get("url")) for x in report} | {same_doc_key(s.url) for s in sources} | excluded) - {""}
+        deep: list[Source] = []
+        for q in deep_queries(topic):
+            left = config.DRINKS_DEVELOP_WEB_DEEP_MAX_SOURCES - len(deep)
+            if left <= 0:
+                break
+            got, notes = find_web({**topic, "question": q}, deps, ledger, skip=read, limit=left)
+            skipped.extend({"title": "(더 찾기)", "why": n} for n in notes)
+            deep += got
+        if not deep:
+            skipped.append({"title": "(더 찾기)", "why": "새로 읽을 문서를 찾지 못함"})
+            return False
+        per_source = extract(deep[: config.DRINKS_DEVELOP_WEB_DEEP_MAX_SOURCES]) + per_source
+        return True
+
+    per_source = extract(sources)
     # 운영자가 붙인 출처끼리 먼저 번갈아 채우고, 공식 목록에서 자동으로 온 출처는 남은 자리만 채운다
     kept_all = fill_claims(per_source, auto_official_keys(), config.DRINKS_DEVELOP_MAX_CLAIMS)
+    dug = False
+    if len(kept_all) < config.DRINKS_DEVELOP_MIN_CLAIMS:
+        dug = dig()
+        kept_all = fill_claims(per_source, auto_official_keys(), config.DRINKS_DEVELOP_MAX_CLAIMS)
     if len(kept_all) < config.DRINKS_DEVELOP_MIN_CLAIMS:
         raise DevelopError("evidence_insufficient", insufficient_message(len(kept_all), report, skipped), "blocked",
-                           {"sources": report, "skipped": skipped, "claims_kept": len(kept_all)})
-    # 통과한 주장이 있는 출처만 소재에 붙인다(읽었지만 쓸모없던 출처로 소재를 어지럽히지 않는다)
-    beat("link")
-    ids: dict[int, str] = {}
-    for k in kept_all:
-        s: Source = k["src"]
-        if id(s) in ids:
-            continue
-        if s.snapshot_id and s.role != "evidence":
-            rpc("drinks_develop_link_snapshot", {**lease, "snapshot_id": s.snapshot_id, "relation_note": "자동 개발: 근거 추출에 사용"})
-            ids[id(s)] = s.snapshot_id
-        elif s.snapshot_id:
-            ids[id(s)] = s.snapshot_id
-        else:
-            added = rpc("drinks_develop_add_source", {**lease, "source": s.new_source})
-            ids[id(s)] = added["snapshot_id"]
-    claims = []
-    for i, k in enumerate(kept_all, 1):
-        s = k["src"]
-        c = {"claim_id": f"c{i}", "text": k["text"], "claim_type": k["claim_type"], "support_review": "not_reviewed",
-             "source_refs": [{"snapshot_id": ids[id(s)], "original_quote": k["original_quote"]}]}
-        if k["claim_type"] == "opinion":
-            c["attribution"] = s.publisher or s.title
-        claims.append(c)
-    flags = _claim_flags(claims, deps)
-    sources_of = {c["claim_id"]: {"title": k["src"].title, "url": k["src"].url, "publisher": k["src"].publisher} for c, k in zip(claims, kept_all)}
-    beat("factcheck")
-    factcheck = run_factcheck(topic, context, claims, sources_of, ledger, deps, flags)
-    apply_factcheck(claims, factcheck)
+                           {"sources": report, "skipped": skipped, "claims_kept": len(kept_all), "dug": dug})
+    claims, factcheck, flags = build(kept_all)
+    # 사실 확인을 못 했으면(모델 실패) '자료 부족'이 아니다 — 더 찾지 않고 save_evidence 가 보관·복구 가능한 실패로 닫는다.
+    if not dug and factcheck.get("status") in ("ok", "no_claims") and short(claims, factcheck):
+        first = (claims, factcheck, flags)
+        try:
+            if dig():
+                dug = True
+                claims, factcheck, flags = build(fill_claims(per_source, auto_official_keys(), config.DRINKS_DEVELOP_MAX_CLAIMS))
+                if factcheck.get("status") not in ("ok", "no_claims"):
+                    # 더 찾은 뒤 사실 확인이 실패했다 — 앞서 끝난 판정을 버리지 않는다(코덱스 재검사)
+                    skipped.append({"title": "(더 찾기)", "why": f"더 찾은 자료의 사실 확인을 마치지 못함({factcheck.get('status')}) — 앞서 모은 근거로 판정"})
+                    claims, factcheck, flags = first
+        except DevelopError as exc:
+            if exc.code == "canceled":
+                raise
+            # 한도·결재 문제로 더 찾기를 못 마쳤다 — 앞서 만든 주장·판정을 그대로 쓴다(잃지 않는다, 코덱스 리뷰).
+            skipped.append({"title": "(더 찾기)", "why": f"더 찾기를 마치지 못함({exc.code}) — 앞서 모은 근거로 판정"})
+            claims, factcheck, flags = first
+    if dug:
+        factcheck["dug"] = True   # 기록: 막히기 전에 한 번 더 찾았다
     return save_evidence(job, rpc, lease, beat, claims, factcheck, report, skipped, flags, ledger, deps)
+
+
+def deep_queries(topic: dict[str, Any]) -> list[str]:
+    """더 찾기에 쓰는 검색 문장(질문은 그대로, 검색 낱말만 바꾼다). 모델 호출 없이 만든다."""
+    q = str(topic.get("question") or topic.get("title") or "").strip()
+    return [f"{q} 이유를 설명하는 기사나 전문가 글", f"{q} (영어 자료로 찾아 줘: in English, explained, why)"]
 
 
 def save_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], beat: Callable[[str], None], claims: list[dict[str, Any]],

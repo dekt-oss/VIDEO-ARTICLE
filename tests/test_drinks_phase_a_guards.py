@@ -51,7 +51,10 @@ def test_drinks_code_never_reaches_render_or_publish_paths():
     #   클립은 가잡기 전에 거절. tests/test_drinks_explainer_queue.py 가 워크플로를 감시)가 더해졌다.
     # 2026-11-13: 발행 워커(drinks-publish.yml) — 운영자 "게시 눌렀는데 왜 또 시각을 묻나". [지금 게시](0086 drinks_publication_go)가
     #   승인·예약까지 끝낸 요청만 바로 올리게 깨운다. 워커는 계정 연결·발행 스위치·승인·시각을 DB(drinks_pub_block)로 다시 잰다.
+    # 2026-11-18: 예약 깨우기(drinks-publish-at.yml) — 크론이 하루 서너 번만 돌아 예약이 빠질 수 있었다. 예약 시각까지 기다렸다가
+    #   발행 워커를 부를 뿐 아무것도 올리지 않는다(게시 여부는 DB). 비밀을 쓰지 않는다.
     assert calls == ['"drinks-collect.yml", null', '"drinks-produce.yml", null', '"drinks-explainer-buy.yml", null', '"drinks-publish.yml", null',
+                     '"drinks-publish-at.yml", null, { at: new Date(go.publish_at',
                      '"drinks-meme.yml", null',
                      '"drinks-apify.yml", null', '"drinks-develop.yml", null'], \
         f"주류 라우트가 깨우는 워크플로는 수집·로컬 제작·그림 구매·밈 제작·정밀화·소재 개발 워커뿐: {calls}"
