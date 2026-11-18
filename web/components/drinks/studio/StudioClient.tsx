@@ -190,7 +190,7 @@ export default function StudioClient({ items, problems, status, statusProblem, f
         setMsg(r.ok ? { text: "취소를 요청했어요. 새 작업과 재시도는 멈추고, 이미 쓴 비용 기록은 남아요." } : { text: r.error ?? "취소하지 못했어요.", bad: true });
         router.refresh();
       }} busy={busy} />}
-      {screen === "blocked" && <Blocked code={phase.code} status={status} busy={busy} onBack={() => setOverride("collect")} onRefresh={() => router.refresh()}
+      {screen === "blocked" && <Blocked code={phase.code} status={status} busy={busy} budgetId={pickContext.budgetId} onBack={() => setOverride("collect")} onRefresh={() => router.refresh()}
         onRetry={() => { const it = status ? items.find((i) => i.topicId === status.topic.id) : null; if (it) prepare(it); }} />}
       {screen === "choice" && status && <Choice phase={phase} status={status} busy={busy} onBack={() => setOverride("collect")}
         onRetry={() => { const it = items.find((i) => i.topicId === status.topic.id); if (it) prepare(it); }} />}
@@ -344,7 +344,7 @@ function Preparing({ status, onCancel, busy }: { status: StudioStatus; onCancel:
   );
 }
 
-function Blocked({ code, status, busy, onBack, onRefresh, onRetry }: { code?: string; status: StudioStatus | null; busy: boolean; onBack: () => void; onRefresh: () => void; onRetry: () => void }) {
+function Blocked({ code, status, busy, budgetId, onBack, onRefresh, onRetry }: { code?: string; status: StudioStatus | null; busy: boolean; budgetId: string | null; onBack: () => void; onRefresh: () => void; onRetry: () => void }) {
   const script = code === "script_check_failed";
   const offTopic = code === "evidence_off_topic";
   // 2026-11-17 운영자: "막힌 이유 보여줘서 어쩌자는거야" — 해결안이 있으면 그것을 맨 앞에, 버튼 하나로.
@@ -359,6 +359,23 @@ function Blocked({ code, status, busy, onBack, onRefresh, onRetry }: { code?: st
     if (!r.ok) { setProblem(r.error ?? "해결안을 적용하지 못했어요."); return; }
     onRefresh();
   };
+  // 질문은 그대로 두고 자료를 다시 모은다(2026-11-18 운영자: "주제가 마음에 들어 요청한 거니까 자료가 부족하면 LLM 으로 어떻게든 모아와라").
+  //   자료 확인 단계가 이번에는 웹 검색으로 질문에 맞는 문서를 찾아 읽는다(engine/drinks_develop.find_web). 끝나면 초안까지 이어 만든다.
+  const searchMore = async () => {
+    if (!status) return;
+    setWorking(true); setProblem(null);
+    const r = await post("request_develop", { topic_id: status.topic.id, kind: "evidence", chain: true, ...(budgetId ? { budget_id: budgetId } : {}) });
+    setWorking(false);
+    if (!r.ok) {
+      // 사람이 고치던 근거(작성 중·검토 중)가 있으면 덮어쓰지 않으려고 서버가 막는다 — 드문 경우라 그 근거를 여는 길을 알려 준다.
+      setProblem(r.code === "draft_exists" || r.code === "review_in_progress"
+        ? "이 소재에는 사람이 고치던 근거가 있어서, 덮어쓰지 않으려고 새로 찾지 않았어요. 아래 [자세히 보기]에서 그 근거를 마무리하거나 지운 뒤 다시 눌러 주세요."
+        : r.error ?? "다시 찾기를 시작하지 못했어요.");
+      return;
+    }
+    onRefresh();
+  };
+  const evidenceBlock = !script;
   return (
     <section aria-labelledby="sj-block-h" className="sj-progress-wrap">
       <p className="sj-kicker">NEEDS A DIFFERENT TOPIC</p>
@@ -366,25 +383,29 @@ function Blocked({ code, status, busy, onBack, onRefresh, onRetry }: { code?: st
       <p className="sj-status">{script ? "확인된 내용 안에서 다시 써 봤지만 검사를 통과하지 못했어요."
         : offTopic ? "자료는 있지만 제목이 묻는 핵심과 다른 이야기라, 엉뚱한 영상이 되지 않게 멈췄어요."
         : "추가 자료까지 확인했지만, 핵심 내용을 뒷받침하지 못했어요."}</p>
-      {rescue?.question ? (
+      {evidenceBlock && (
         <div className="sj-rescue">
-          <p><b>이렇게 고칠게요:</b> 질문을 <b>“{rescue.question}”</b>(으)로 좁히면 모은 자료로 답할 수 있어요.</p>
-          {rescue.why_ko && <p className="sj-note">이유: {rescue.why_ko}</p>}
-          {rescue.answer_ko && <p className="sj-note">자료로 할 수 있는 답: {rescue.answer_ko}</p>}
-          <button type="button" className="sj-btn sj-main" disabled={busy || working} onClick={applyRescue}>{working ? "적용 중…" : "해결안 적용하고 다시 만들기"} <span aria-hidden="true">→</span></button>
-          <span className="sj-note">자료 확인과 초안을 다시 만들어요. 이번 주 AI 초안 한도에서 나가요.</span>
+          <p><b>이렇게 고칠게요:</b> 질문은 그대로 두고, 웹에서 이 질문에 맞는 자료를 더 찾아 읽은 뒤 초안까지 다시 만들어요.</p>
+          <p className="sj-note">찾은 문서도 원문 대조를 통과한 문장만 근거로 써요(지어낸 내용은 안 들어가요). 쇼핑몰·커뮤니티·SNS 글은 읽지 않아요.</p>
+          <button type="button" className="sj-btn sj-main" disabled={busy || working} onClick={searchMore}>{working ? "시작하는 중…" : "자료 더 찾아서 다시 만들기"} <span aria-hidden="true">→</span></button>
+          <span className="sj-note">이번 주 AI 초안 한도에서 나가요(보통 몇 센트).</span>
         </div>
+      )}
+      {rescue?.question ? (
+        <details className="sj-details"><summary>다른 방법: 질문을 좁혀서 만들기</summary>
+          <p>질문을 <b>“{rescue.question}”</b>(으)로 좁히면 지금 모은 자료로 답할 수 있어요.</p>
+          {rescue.why_ko && <p className="sj-note">이유: {rescue.why_ko}</p>}
+          <button type="button" className="sj-btn" disabled={busy || working} onClick={applyRescue}>{working ? "적용 중…" : "이 질문으로 바꿔 다시 만들기"}</button>
+        </details>
       ) : script ? (
         <div className="sj-rescue">
           <p><b>이렇게 고칠게요:</b> 확인된 내용 안에서 초안을 한 번 더 써 볼게요. 그래도 안 되면 다른 소재를 권해요.</p>
           <button type="button" className="sj-btn sj-main" disabled={busy} onClick={onRetry}>초안 다시 만들기 <span aria-hidden="true">→</span></button>
           <span className="sj-note">이번 주 AI 초안 한도에서 나가요.</span>
         </div>
-      ) : (
-        <p className="sj-note">확인되지 않은 내용으로 초안을 만들지 않았어요. 이 질문으로는 고칠 방법을 찾지 못해서 다른 소재를 고르는 게 빨라요.</p>
-      )}
+      ) : null}
       {problem && <p className="sj-error" role="alert">{problem}</p>}
-      <button type="button" className={rescue?.question || script ? "sj-btn" : "sj-btn sj-main"} onClick={onBack}>다른 소재 고르기 <span aria-hidden="true">→</span></button>
+      <button type="button" className="sj-btn" onClick={onBack}>다른 소재 고르기 <span aria-hidden="true">→</span></button>
       {status?.last?.excluded && status.last.excluded.length > 0 && (
         <details className="sj-details"><summary>확인 내역 보기</summary>
           <ul>{status.last.excluded.map((x) => <li key={x.claim_id}>{x.text} — <span className="sj-muted">{x.why}</span></li>)}</ul>

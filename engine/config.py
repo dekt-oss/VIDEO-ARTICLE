@@ -4658,6 +4658,20 @@ DRINKS_DEVELOP_PLAN_MAX_TOKENS: int = 16_000
 DRINKS_DEVELOP_CHARS_PER_TOKEN: float = 2.0          # 입력 토큰 추정(한국어·영어 섞임, 보수적으로 작게 잡아 비용을 크게 본다)
 # Europe PMC(오픈액세스 논문) — ★ 기본 꺼짐(2026-10-30): 사이트 robots.txt 가 Content-Signal ai-train=no 를 두고 ClaudeBot 을 막으며
 #   API 약관을 확인하지 못했다. 운영자가 약관을 확인한 뒤에만 켠다. 코드·테스트는 있다.
+# 웹 검색으로 출처 찾기(2026-11-18 운영자: "주제가 마음에 들어 초안을 요청한 거니까, 자료가 부족하면 LLM 으로 어떻게든 모아와라").
+#   Gemini + Google 검색이 주소만 찾고, 본문은 우리가 직접 읽어 인용 대조를 통과한 문장만 근거가 된다(지어낸 사실 0).
+#   찾은 문서는 사용 조건을 확인하지 않았으므로 summary_only — 사실만 요약해 쓰고 원문을 화면에 옮기지 않는다.
+DRINKS_DEVELOP_WEB_SEARCH_ENABLED: bool = _get_bool("DRINKS_DEVELOP_WEB_SEARCH_ENABLED", True)
+DRINKS_DEVELOP_WEB_SEARCH_MODEL: str = os.getenv("DRINKS_DEVELOP_WEB_SEARCH_MODEL", "gemini-2.5-flash")
+DRINKS_DEVELOP_WEB_SEARCH_USD: float = 0.04          # 검색 1회 예상(grounding 요금 + 토큰). 원장 가잡기용
+DRINKS_DEVELOP_WEB_MAX_SOURCES: int = 4              # 검색으로 읽을 문서 수 상한(문서 1개 = 추출 호출 1회)
+DRINKS_DEVELOP_WEB_MIN_SLOTS: int = 2                # 출처 상한(DRINKS_DEVELOP_MAX_SOURCES) 안에서 웹 문서에 남기는 최소 자리
+DRINKS_DEVELOP_WEB_BLOCKED_HOSTS: tuple[str, ...] = (
+    "blog.naver.com", "cafe.naver.com", "m.blog.naver.com", "m.cafe.naver.com", "tistory.com", "brunch.co.kr", "youtube.com", "youtu.be",
+    "instagram.com", "facebook.com", "x.com", "twitter.com", "tiktok.com", "reddit.com", "namu.wiki", "coupang.com", "11st.co.kr",
+    "gmarket.co.kr", "amazon.com", "amazon.co.jp", "rakuten.co.jp", "smartstore.naver.com", "shopping.naver.com", "kin.naver.com")
+# ★ 사용 조건은 확인하지 않았다. 운영자 지시(2026-11-18)로 '사실만 요약' 용도로 쓴다(summary_only) — 이 문구가 출처 기록에 그대로 남는다.
+DRINKS_DEVELOP_WEB_USAGE_TERMS: str = "웹 검색으로 찾은 공개 문서(자동) — 사용 조건 미확인, 운영자 지시(2026-11-18)로 사실만 요약해 쓰고 원문 문장을 화면에 옮기지 않는다"
 DRINKS_DEVELOP_EUROPEPMC_ENABLED: bool = _get_bool("DRINKS_DEVELOP_EUROPEPMC_ENABLED", False)
 DRINKS_DEVELOP_EUROPEPMC_HOSTS: tuple[str, ...] = ("www.ebi.ac.uk",)
 DRINKS_DEVELOP_EUROPEPMC_PAGE_SIZE: int = 5

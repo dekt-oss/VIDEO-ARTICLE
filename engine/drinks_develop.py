@@ -422,6 +422,8 @@ class Deps:
     # (topic, claims) → {"question","title","why_ko"}. None 이면 llm_reframe(실제 모델) — 근거 막힘 해결안(2026-11-13)
     reframe: Optional[Callable[..., Any]] = None
     fetcher_factory: Optional[Callable[[list[str]], Any]] = None   # hosts → SafeFetcher 같은 것(get 메서드)
+    # question → [{"url","title"}]. None 이면 웹 검색을 하지 않는다(시험 기본). 운영 워커는 llm.gemini_web_search 를 넣는다(main).
+    web_search: Optional[Callable[[str], list[dict[str, str]]]] = None
 
     def __post_init__(self) -> None:
         if self.factcheck is None:
@@ -607,8 +609,73 @@ def find_official(topic: dict[str, Any], deps: Deps) -> tuple[list[Source], list
     return out, notes
 
 
+def web_source_kind(host: str) -> str:
+    """웹 검색 문서의 출처 종류 — 주소만 보고 보수적으로. 정부·공공·대학은 official/expert, 나머지는 media."""
+    h = host.lower().rstrip(".")
+    # 도메인 끝으로만 판정한다(부분 문자열 금지 — foo.gov.example.com 같은 주소가 공식으로 오르지 않게).
+    if h.endswith((".ac.kr", ".edu", ".ac.uk", ".ac.jp")) or h == "ncbi.nlm.nih.gov" or h.endswith(".ncbi.nlm.nih.gov"):
+        return "expert"
+    if h.endswith((".go.kr", ".gov", ".gov.uk", ".go.jp", ".europa.eu", ".gc.ca", ".gov.au")):
+        return "official"
+    return "media"
+
+
+def find_web(topic: dict[str, Any], deps: Deps, ledger: Optional[Ledger] = None) -> tuple[list[Source], list[str]]:
+    """질문으로 웹을 검색해 공개 문서를 읽는다(2026-11-18). 쇼핑·커뮤니티·SNS·동영상은 읽지 않는다. 본문은 직접 받아 온다."""
+    from urllib.parse import urlsplit
+
+    from .drinks_fetch import FetchError, HTML_TYPES, Robots
+    from .drinks_parse import decode, parse_page
+
+    if not config.DRINKS_DEVELOP_WEB_SEARCH_ENABLED or deps.web_search is None:
+        return [], []
+    question = str(topic.get("question") or topic.get("title") or "")
+    try:
+        if ledger is not None:
+            hits = ledger.run(config.DRINKS_DEVELOP_WEB_SEARCH_MODEL, config.DRINKS_DEVELOP_WEB_SEARCH_USD, lambda: deps.web_search(question), f"웹 검색: {question[:60]}")
+        else:
+            hits = deps.web_search(question)
+    except DevelopError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 검색이 안 돼도 나머지 출처로 계속한다
+        return [], [f"web: 검색 실패({type(exc).__name__})"]
+    notes: list[str] = []
+    out: list[Source] = []
+    for hit in hits or []:
+        if len(out) >= config.DRINKS_DEVELOP_WEB_MAX_SOURCES:
+            break
+        url = str(hit.get("url") or "")
+        host = (urlsplit(url).hostname or "").lower()
+        if not host or any(host == b or host.endswith("." + b) for b in config.DRINKS_DEVELOP_WEB_BLOCKED_HOSTS):
+            notes.append(f"web: {host or url} 건너뜀(쇼핑·커뮤니티·SNS·동영상)")
+            continue
+        fetcher = deps.fetcher([host])
+        try:
+            if not Robots(fetcher).allowed(url):
+                notes.append(f"web: {host} robots 금지")
+                continue
+            res = fetcher.get(url, accept=HTML_TYPES)
+            page = parse_page(decode(res.body, res.charset), res.url)
+        except FetchError as exc:
+            notes.append(f"web: {host} 실패({exc.code})")
+            continue
+        text = clean_source_text(page.text)
+        if len(text) < config.DRINKS_MIN_BODY_CHARS:
+            notes.append(f"web: {host} 본문이 짧음")
+            continue
+        kind = web_source_kind(host)
+        title = page.title or str(hit.get("title") or host)
+        out.append(Source("web", title, text, url=url, publisher=host, source_kind=kind, rights_status="summary_only",
+                          usage_terms=config.DRINKS_DEVELOP_WEB_USAGE_TERMS, new_source={
+                              "canonical_url": url, "title": title, "publisher": host, "source_kind": kind, "depth": "full_text",
+                              "body_text": text[: config.DRINKS_MAX_BODY_CHARS], "rights_status": "summary_only",
+                              "usage_terms": config.DRINKS_DEVELOP_WEB_USAGE_TERMS, "origin_group": origin_group_of(host, url),
+                              "relation_note": "자동 개발: 웹 검색으로 찾은 문서"}))
+    return out, notes
+
+
 def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: Deps,
-                   context_out: Optional[list[dict[str, Any]]] = None) -> tuple[list[Source], list[dict[str, Any]]]:
+                   context_out: Optional[list[dict[str, Any]]] = None, ledger: Optional[Ledger] = None) -> tuple[list[Source], list[dict[str, Any]]]:
     """출처 후보를 모은다. 반환: (쓸 수 있는 출처 — 순서 = 우선순위, 쓰지 못한 출처와 이유 목록).
     context_out 을 주면 '질문이 나온 곳'(질문·인기 신호 출처·커뮤니티 글)의 제목·앞부분을 담는다 — 사실 근거가 아니라 AI 사실 확인이
     '사람들이 무엇을 믿고 있나'를 읽는 데만 쓴다."""
@@ -649,6 +716,10 @@ def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: D
     auto = auto_official_keys()
     usable.sort(key=lambda s: same_doc_key(s.url) in auto)
     notes: list[str] = []
+    # 질문으로 찾은 웹 문서를 공식 목록(낱말로 맞춘 문서)보다 앞에 둔다 — 질문에 맞춰 찾은 것이라 엉뚱한 근거가 덜 나온다.
+    web, n = find_web(topic, deps, ledger)
+    usable += web
+    notes += n
     off, n = find_official(topic, deps)
     usable += off
     notes += n
@@ -673,7 +744,15 @@ def gather_sources(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], deps: D
             continue
         seen.add(k)
         out.append(s)
-    return out[: config.DRINKS_DEVELOP_MAX_SOURCES], skipped
+    # 웹 검색 자료에 자리를 남긴다(최소 DRINKS_DEVELOP_WEB_MIN_SLOTS) — 운영자 출처가 상한을 다 채우면 검색비만 쓰고 같은 자료로 다시 판정한다(코덱스 리뷰).
+    cap = config.DRINKS_DEVELOP_MAX_SOURCES
+    webs = [s for s in out if s.origin == "web"]
+    rest = [s for s in out if s.origin != "web"]
+    keep_web = min(len(webs), config.DRINKS_DEVELOP_WEB_MIN_SLOTS)
+    picked = rest[: cap - keep_web] + webs[:keep_web]
+    picked += [s for s in out if s not in picked][: cap - len(picked)]
+    order = {id(s): i for i, s in enumerate(out)}
+    return sorted(picked, key=lambda s: order[id(s)]), skipped
 
 
 def auto_official_keys() -> set[str]:
@@ -798,7 +877,7 @@ def run_evidence(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: L
                              reuse.get("skipped") or [], flags, ledger, deps, reused_from=reuse.get("from_request_id"))
     beat("sources")
     context: list[dict[str, Any]] = []
-    sources, skipped = gather_sources(job, rpc, lease, deps, context)
+    sources, skipped = gather_sources(job, rpc, lease, deps, context, ledger)
     per_source: list[list[dict[str, Any]]] = []   # 출처별 {text, original_quote, claim_type, src: Source}
     report: list[dict[str, Any]] = []
     for src in sources:
@@ -1532,7 +1611,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="주류 소재 자동 개발 워커")
     ap.add_argument("--max-jobs", type=int, default=5)
     args = ap.parse_args(argv)
-    res = run_queue(supabase_rpc(), Deps(), worker_id=config.WORKER_ID, max_jobs=args.max_jobs)
+    from .llm import gemini_web_search
+
+    res = run_queue(supabase_rpc(), Deps(web_search=gemini_web_search), worker_id=config.WORKER_ID, max_jobs=args.max_jobs)
     return 1 if any(r.get("status") in ("failed", "lease_lost") for r in res) else 0
 
 

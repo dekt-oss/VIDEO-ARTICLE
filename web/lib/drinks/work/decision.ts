@@ -66,8 +66,8 @@ const BLOCK_PRIMARY: Record<BlockCode, { code: string; label: string; panel: Pan
 export function developBlockText(kind: string | null | undefined, code: string | null | undefined): string {
   const what = kind === "evidence" ? "자료 확인" : "초안 쓰기";
   switch (code) {
-    case "evidence_off_topic": return "모은 자료가 질문의 핵심에 답하지 못해 멈췄어요. 열면 질문을 좁힌 해결안이 있고, [해결안 적용] 한 번이면 다시 만들어요.";
-    case "evidence_insufficient": return "믿을 만한 자료가 모자라 멈췄어요. 열면 해결안이 있고, [해결안 적용] 한 번이면 다시 만들어요.";
+    case "evidence_off_topic": return "모은 자료가 질문의 핵심에 답하지 못해 멈췄어요. 열어서 [자료 더 찾아서 다시 만들기]를 누르면 질문은 그대로 두고 웹에서 자료를 더 찾아 다시 만들어요.";
+    case "evidence_insufficient": return "믿을 만한 자료가 모자라 멈췄어요. 열어서 [자료 더 찾아서 다시 만들기]를 누르면 웹에서 자료를 더 찾아 다시 만들어요.";
     case "script_check_failed": return "초안이 자동 검사를 통과하지 못했어요. 열어서 장면을 바로 고치거나 수정 방향을 적으면 다시 써요.";
     case "budget_exceeded": case "budget_missing": return "이번 주 AI 초안 한도를 다 써서 멈췄어요. 다음 주 한도가 열리면 [다시 만들기] 한 번이면 돼요.";
     default: return `${what}가 중간에 멈췄어요. 열면 멈춘 곳부터 [다시 만들기] 한 번으로 이어 가요.`;
