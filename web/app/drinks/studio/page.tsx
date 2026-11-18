@@ -149,6 +149,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
           publish = {
             accounts: board.data.accounts.filter((a) => a.status !== "disabled" && a.publish_enabled).map((a) => ({ id: a.id, label: `${a.display_name} · ${a.external_account_id}`, postTypes: a.capabilities?.post_types ?? [] })),
             aiLabel: board.data.ai_label_text ?? null,
+            categories: knownRows.find((t) => t.id === status?.topic.id)?.categories ?? [],
             request: req ? { id: req.id, version: req.version, status: req.status, approval_digest: req.approval_digest ?? null, caption: req.caption ?? null, publish_at: req.publish_at ?? null, external_url: req.external_url ?? null } : null,
           };
         }

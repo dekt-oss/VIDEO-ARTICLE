@@ -132,8 +132,7 @@ def format_gate(req: dict[str, Any]) -> Optional[tuple[str, str]]:
         if (spec.get("scene") or {}).get("source") == "bought_reaction" and "AI 생성" not in caption:
             return "ai_label_missing", f"산 장면을 쓴 밈의 캡션에는 '{config.DRINKS_AI_LABEL_TEXT}' 한 줄이 있어야 합니다"
         return None
-    if fmt == "explainer" and config.DRINKS_AI_LABEL_TEXT not in caption:
-        return "ai_label_missing", f"설명형 릴스 캡션에는 '{config.DRINKS_AI_LABEL_TEXT}' 한 줄이 있어야 합니다(기획 v2 §3-4)"
+    # 0088(2026-11-18 운영자): 설명형 캡션의 'AI 생성 영상' 한 줄은 선택이다 — 영상 화면에 AI 표시가 이미 나간다.
     return None
 
 

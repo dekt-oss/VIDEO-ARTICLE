@@ -206,10 +206,8 @@ def run(out_root: Path) -> dict[str, Any]:
             report["board_ready_memes"] = [m["draft_id"] for m in board.get("ready_memes") or []]
             report["board_ready_formats"] = sorted({o.get("content_format") for o in board.get("ready_outputs") or []})
 
-            # 막혀야 하는 것 셋: 설명형 캡션에 AI 표기 없음 · 박자 맞춤 밈 발행안 · 게시 대기 아닌 제작안
+            # 막혀야 하는 것: 박자 맞춤 밈 발행안 · 게시 대기 아닌 제작안(설명형 캡션의 AI 표기는 0088 부터 선택)
             blocked = {
-                "explainer_without_ai_label": expect_fail(lambda: db("drinks_create_publication", {"output_review_id": explainer["review_id"], "account_id": acc, "caption": "위스키 이야기 #술째리고",
-                                                                                                    "publish_at": (NOW() - timedelta(minutes=1)).isoformat()}), "ai_label_missing"),
                 "meme_sync_required": expect_fail(lambda: db("drinks_create_meme_publication", {"draft_id": synced["draft_id"], "account_id": acc}), "invalid_state"),
             }
             when = (NOW() - timedelta(minutes=1)).isoformat()
@@ -267,7 +265,6 @@ def run(out_root: Path) -> dict[str, Any]:
         "게시된 요청은 다시 집히지 않음": report["second_run_publishes"] == 0,
         "밈 제작안 → published": report["meme_draft_after"]["status"] == "published",
         "박자 맞춤 밈은 앱 부착 대기 + 발행안 거부": report["meme_sync_required"]["status"] == "manual_audio" and report["blocked"]["meme_sync_required"]["ok"],
-        "설명형 'AI 생성 영상' 없으면 발행안 거부": report["blocked"]["explainer_without_ai_label"]["ok"],
         "같은 밈 발행안 중복 거부": report["blocked"]["meme_duplicate"]["ok"],
         "게시 대기 밈이 발행 화면 목록에": report["meme"]["draft_id"] in report["board_ready_memes"] and report["meme_sync_required"]["draft_id"] not in report["board_ready_memes"],
         "성과 24h 칸 형식별 3행": report["metrics_24h"] == [("card", "24h"), ("explainer", "24h"), ("meme", "24h")],

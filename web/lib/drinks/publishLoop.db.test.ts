@@ -231,14 +231,11 @@ test("설명형: 캡션에 'AI 생성 영상' 한 줄이 없으면 작성·수�
   const acc = await account();
   const board = await rpc("drinks_publish_board", {});
   assert.equal(board.ready_outputs.find((o: Any) => o.output_review_id === review.id)?.content_format, "explainer");
-  await fails("create_publication", { output_review_id: review.id, account_id: acc, caption: "물 이야기", publish_at: SOON() }, "ai_label_missing");
-  const pub = await ok("create_publication", { output_review_id: review.id, account_id: acc, caption: "물 이야기\nAI 생성 영상", publish_at: SOON() });
+  // 0088(2026-11-18 운영자): 설명형 캡션의 'AI 생성 영상' 한 줄은 선택이다 — 없어도 만들고·고치고·승인 요청까지 간다.
+  const pub = await ok("create_publication", { output_review_id: review.id, account_id: acc, caption: "물 이야기", publish_at: SOON() });
   assert.equal(pub.content_format, "explainer");
-  await fails("update_publication", { request_id: pub.request_id, expected_version: pub.version, caption: "표기 지움" }, "ai_label_missing");
-  // 가드를 우회해 캡션만 바꾸면(작성 중) 승인 요청에서 막힌다
-  await db.query(`update drink_publication_requests set caption = '표기 없음' where id = $1`, [pub.request_id]);
-  const v = (await row("select version from drink_publication_requests where id = $1", [pub.request_id])).version;
-  await fails("publication_action", { request_id: pub.request_id, expected_version: v, action: "submit" }, "ai_label_missing");
+  const up = await ok("update_publication", { request_id: pub.request_id, expected_version: pub.version, caption: "물 이야기 — 술째리고" });
+  await ok("publication_action", { request_id: pub.request_id, expected_version: up.version, action: "submit" });
 });
 
 test("전략: 'format' 묶음을 받고 모르는 형식 값은 거부한다. 가점은 소재의 형식 의도를 본다", async () => {
