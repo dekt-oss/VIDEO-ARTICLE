@@ -1052,3 +1052,95 @@ def test_operator_attached_sources_come_before_auto_attached_official_ones(monke
             {"snapshot_id": "s2", "linked": True, "role": "evidence", "source_kind": "media", "title": "WA", "canonical_url": "https://wa.com/a", "body_text": body}]
     got, _ = dd.gather_sources(job(), FakeRpc(sources=rows), {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
     assert [s.title for s in got] == ["WA", "CFR"]
+
+
+# ── 웹 검색으로 출처 찾기(2026-11-18) ────────────────────────────────────────────
+
+class _WebFetcher:
+    def __init__(self, bodies):
+        self.bodies, self.urls = bodies, []
+
+    def get(self, url, accept=None, params=None):
+        self.urls.append(url)
+        if url.endswith("robots.txt"):
+            return SimpleNamespace(body=b"", charset="utf-8", url=url, status=200, content_type="text/plain")
+        html = f"<html><title>T</title><body><p>{self.bodies.get(url, '')}</p></body></html>"
+        return SimpleNamespace(body=html.encode(), charset="utf-8", url=url, status=200, content_type="text/html")
+
+
+def test_web_search_is_off_without_a_search_function_so_tests_and_old_callers_stay_offline():
+    assert dd.find_web({"question": "왜"}, dd.Deps(fetcher_factory=lambda h: (_ for _ in ()).throw(AssertionError("fetch")))) == ([], [])
+
+
+def test_web_search_reads_found_pages_skips_shops_and_sns_and_marks_rights_summary_only():
+    long = "Scotch whisky age statements refer to the youngest whisky in the bottle. " * 20
+    hits = [{"url": "https://www.legislation.gov.uk/uksi/2009/2890", "title": "SWR"}, {"url": "https://blog.naver.com/x/1", "title": "blog"},
+            {"url": "https://www.instagram.com/p/1", "title": "ig"}, {"url": "https://spiritory.com/magazine/label", "title": "mag"},
+            {"url": "https://www.ed.ac.uk/whisky", "title": "uni"}]
+    f = _WebFetcher({h["url"]: long for h in hits})
+    src, notes = dd.find_web({"question": "스카치 라벨 숙성 연수"}, dd.Deps(web_search=lambda q: hits, fetcher_factory=lambda hosts: f))
+    assert [s.url for s in src] == ["https://www.legislation.gov.uk/uksi/2009/2890", "https://spiritory.com/magazine/label", "https://www.ed.ac.uk/whisky"]
+    assert [s.source_kind for s in src] == ["official", "media", "expert"]
+    assert all(s.rights_status == "summary_only" and s.new_source["rights_status"] == "summary_only" and s.origin == "web" for s in src)
+    assert sum("건너뜀" in n for n in notes) == 2, notes
+    assert not any("naver" in u or "instagram" in u for u in f.urls), "막은 곳은 읽지도 않는다"
+
+
+def test_web_search_failure_does_not_stop_other_sources():
+    def boom(q):
+        raise RuntimeError("search down")
+    src, notes = dd.find_web({"question": "왜"}, dd.Deps(web_search=boom))
+    assert src == [] and notes and "검색 실패" in notes[0]
+
+
+def test_web_sources_come_before_keyword_matched_official_list(monkeypatch):
+    web = [dd.Source("web", "웹", "본문", url="https://a.example/x")]
+    official = [dd.Source("official", "공식", "본문", url="https://b.example/y")]
+    monkeypatch.setattr(dd, "find_web", lambda topic, deps, ledger=None: (web, []))
+    monkeypatch.setattr(dd, "find_official", lambda topic, deps: (official, []))
+    got, _ = dd.gather_sources(job(), FakeRpc(sources=[]), {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
+    assert [s.origin for s in got] == ["web", "official"]
+
+
+def test_web_sources_keep_slots_even_when_operator_sources_fill_the_cap(monkeypatch):
+    linked = [{"snapshot_id": f"s{i}", "title": f"운영자 {i}", "body_text": "본문 " * 50, "linked": True, "role": "evidence", "source_kind": "official",
+               "canonical_url": f"https://op{i}.example/x"} for i in range(5)]
+    web = [dd.Source("web", f"웹 {i}", "본문", url=f"https://w{i}.example/x") for i in range(3)]
+    monkeypatch.setattr(dd, "find_web", lambda topic, deps, ledger=None: (web, []))
+    monkeypatch.setattr(dd, "find_official", lambda topic, deps: ([], []))
+    got, _ = dd.gather_sources(job(), FakeRpc(sources=linked), {"request_id": "q", "lease_token": "l"}, dd.Deps(fetcher_factory=lambda h: None))
+    assert len(got) == config.DRINKS_DEVELOP_MAX_SOURCES
+    assert sum(s.origin == "web" for s in got) == config.DRINKS_DEVELOP_WEB_MIN_SLOTS, "웹 자료가 잘려 나가지 않는다"
+    assert got[0].origin == "linked", "운영자 출처가 여전히 맨 앞"
+
+
+def test_grounding_redirect_is_resolved_only_on_google_host(monkeypatch):
+    from engine import llm
+
+    asked = []
+
+    class C:
+        def get(self, url, follow_redirects=False, timeout=None):
+            asked.append(url)
+            return SimpleNamespace(headers={"location": "https://real.example/doc"})
+
+    data = {"candidates": [{"groundingMetadata": {"groundingChunks": [
+        {"web": {"uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", "title": "a"}},
+        {"web": {"uri": "https://127.0.0.1/grounding-api-redirect/x", "title": "evil"}},
+        {"web": {"uri": "http://plain.example/x", "title": "http"}}]}}]}
+    out = llm._grounding_urls(C(), data, 6)
+    assert asked == ["https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc"], "구글 중계 호스트만 요청한다"
+    assert [o["url"] for o in out] == ["https://real.example/doc", "https://127.0.0.1/grounding-api-redirect/x"]
+    # 사설 주소는 여기서 열지 않는다 — 본문을 여는 SafeFetcher 가 막는다
+    from engine.drinks_fetch import FetchError, check_url
+    with pytest.raises(FetchError):
+        check_url("https://127.0.0.1/grounding-api-redirect/x", ["127.0.0.1"])
+
+
+def test_web_source_kind_uses_domain_suffix_not_substring():
+    assert dd.web_source_kind("www.legislation.gov.uk") == "official"
+    assert dd.web_source_kind("www.mfds.go.kr") == "official"
+    assert dd.web_source_kind("pmc.ncbi.nlm.nih.gov") == "expert"
+    assert dd.web_source_kind("www.snu.ac.kr") == "expert"
+    for fake in ("foo.gov.example.com", "pmc.example.com", "gov.kr.shop.com", "edu-whisky.com"):
+        assert dd.web_source_kind(fake) == "media", fake

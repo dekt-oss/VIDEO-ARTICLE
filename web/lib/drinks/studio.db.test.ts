@@ -459,3 +459,31 @@ test("0087 막힘 화면에 해결안: 근거가 질문에 답하지 못해 막�
   assert.equal(st.last.error_code, "evidence_off_topic");
   assert.equal(st.last.rescue?.question, "사케는 왜 날짜를 안 적을까?");
 });
+
+test("0089 질문 그대로 다시 찾기: 마지막 결과가 '막힘(해결안 질문 아님)'이면 그보다 오래된 실패 결과를 재사용하지 않는다", async () => {
+  const prep = await ok("studio_prepare", { candidate_id: await candidate(), format_intent: "card", categories: ["sake"] });
+  const topic = prep.topic_id as string;
+  // 1) 옛 실패(저장 거부) — 보관 결과가 있다
+  let g = await rpc("drinks_start_develop", { worker_id: "t" });
+  let l = lease(g);
+  const s = await rpc("drinks_develop_add_source", { ...l, source: { url: `https://example.org/${uniq()}`, title: "공식", body_text: BODY, rights_status: "quote_ok", source_kind: "official" } });
+  const unsaved = { evidence_pack: { claims: [claim("c1", s.snapshot_id, QUOTE1), claim("c2", s.snapshot_id, QUOTE2), claim("c3", s.snapshot_id, QUOTE3)] } };
+  await rpc("drinks_finish_develop", { ...l, outcome: "failed", error_code: "draft_exists", error_message: "x", result: { unsaved_evidence: unsaved } });
+  // 2) 그 뒤 근거가 질문에 답하지 못해 막혔다(해결안은 다른 질문)
+  await ok("request_develop", { topic_id: topic, kind: "evidence", chain: true });
+  g = await rpc("drinks_start_develop", { worker_id: "t" });
+  l = lease(g);
+  await rpc("drinks_finish_develop", { ...l, outcome: "blocked", error_code: "evidence_off_topic", error_message: "x",
+    result: { unsaved_evidence: unsaved, rescue: { question: "다른 질문?" } } });
+  // 2-1) 보관 결과가 없는 막힘이 가장 최근이어도 옛 실패를 집지 않는다(코덱스 재검사)
+  await ok("request_develop", { topic_id: topic, kind: "evidence", chain: true });
+  g = await rpc("drinks_start_develop", { worker_id: "t" });
+  l = lease(g);
+  await rpc("drinks_finish_develop", { ...l, outcome: "blocked", error_code: "evidence_insufficient", error_message: "x", result: {} });
+  // 3) [자료 더 찾아서 다시 만들기] = 질문 그대로 근거 요청 → 워커는 새로 찾는다(재사용 없음)
+  const again = await ok("request_develop", { topic_id: topic, kind: "evidence", chain: true });
+  assert.equal(again.existing, false);
+  g = await rpc("drinks_start_develop", { worker_id: "t" });
+  assert.equal(g.job.request_id, again.request_id);
+  assert.equal((await rpc("drinks_develop_context", lease(g))).reusable, null, "옛 실패 결과로 같은 판정을 되풀이하지 않는다");
+});

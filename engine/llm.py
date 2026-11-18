@@ -540,3 +540,67 @@ def _record_text_usage(model: str, usage: dict[str, Any]) -> None:
             input_tokens=cin, output_tokens=cout))
     except Exception as exc:  # noqa: BLE001 — 기록 실패가 호출을 막지 않는다
         log.warning("텍스트 비용 기록 실패(무시): %s", exc)
+
+
+
+def gemini_web_search(question: str, *, model: Optional[str] = None, max_results: int = 6) -> list[dict[str, str]]:
+    """Gemini 의 Google 검색(grounding)으로 질문에 답하는 공개 문서 주소를 찾는다(2026-11-18 운영자 "자료가 부족하면 LLM 으로 어떻게든 모아와라").
+
+    반환: [{"url", "title"}] — 검색이 실제로 본 문서(groundingChunks)만 쓴다. 모델이 글로 적은 주소는 믿지 않는다(지어낸 주소 방지).
+    grounding 주소는 구글 중계 주소라서, 따라가지 않고 Location 머리만 읽어 원래 주소를 얻는다.
+    ★ 여기서 찾은 문서의 내용은 쓰지 않는다 — 사실은 우리가 그 주소를 직접 읽고 인용 대조(verify_claims)를 통과한 것만 쓴다."""
+    config.SECRETS.require("gemini_api_key")
+    model = model or config.DRINKS_DEVELOP_WEB_SEARCH_MODEL
+    _gemini_limiter.wait()
+    body = {
+        "system_instruction": {"parts": [{"text": "너는 술 상식 질문의 근거 자료를 찾는 조사원이다. 공공기관·학술·제조사·전문 매체의 원문 문서를 우선 찾는다. "
+                                                   "쇼핑몰·커뮤니티·SNS·동영상은 찾지 않는다. 답은 한두 문장으로 짧게."}]},
+        "contents": [{"role": "user", "parts": [{"text": f"이 질문에 답하는 신뢰할 만한 문서를 검색해 줘(한국어·영어 모두): {question}"}]}],
+        "tools": [{"google_search": {}}],
+        "generationConfig": {"maxOutputTokens": 2048, "temperature": 0.2, "thinkingConfig": {"thinkingBudget": 0}},
+    }
+    with httpx.Client(timeout=config.LLM_HTTP_TIMEOUT_SEC) as client:
+        resp = client.post(f"{config.GEMINI_BASE}/{model}:generateContent", headers=gemini_auth(), json=body)
+        if resp.status_code == 429 or resp.status_code >= 500:
+            raise httpx.TransportError(f"{resp.status_code} from gemini")
+        resp.raise_for_status()
+        # ★ 여기부터는 검색이 이미 처리됐다(요금 발생) — 무엇이 깨져도 예외를 올리지 않고 빈 결과를 돌려준다.
+        #   예외가 올라가면 주류 원장이 '실패'로 보고 검색비를 풀어 버린다(코덱스 리뷰).
+        try:
+            return _grounding_urls(client, resp.json(), max_results)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("웹 검색 결과를 읽지 못함(검색비는 원장에 남는다): %s", exc)
+            return []
+
+
+_GROUNDING_REDIRECT_HOST = "vertexaisearch.cloud.google.com"
+
+
+def _grounding_urls(client: httpx.Client, data: dict[str, Any], max_results: int) -> list[dict[str, str]]:
+    from urllib.parse import urlsplit
+
+    # 사용량을 토큰으로 기록하지 않는다 — 검색 요금(grounding)이 토큰에 안 잡혀 실제보다 작게 적힌다.
+    #   주류 원장(drinks_develop.Ledger)은 기록이 없으면 예상 금액(DRINKS_DEVELOP_WEB_SEARCH_USD)으로 확정한다.
+    chunks = ((data.get("candidates") or [{}])[0].get("groundingMetadata") or {}).get("groundingChunks") or []
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for ch in chunks:
+        web = ch.get("web") or {}
+        uri, title = str(web.get("uri") or ""), str(web.get("title") or "")
+        if not uri.startswith("https://"):
+            continue
+        real = uri
+        if urlsplit(uri).hostname == _GROUNDING_REDIRECT_HOST:
+            # 구글 중계 주소만 따라간다(목적지는 Location 머리로만 읽고 열지 않는다). 다른 주소는 그대로 두고 본문은 SafeFetcher 가 연다.
+            try:
+                r = client.get(uri, follow_redirects=False, timeout=15)
+                real = r.headers.get("location") or ""
+            except httpx.HTTPError:
+                real = ""
+        if not real.startswith("http") or real in seen:
+            continue
+        seen.add(real)
+        out.append({"url": real, "title": title})
+        if len(out) >= max_results:
+            break
+    return out
