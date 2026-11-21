@@ -184,6 +184,33 @@ def test_youtube_searches_by_relevance_and_takes_questions_from_comments_only(mo
     assert card["key_question"] == "버번이랑 스카치 위스키 차이가 뭔가요?", "대표 질문도 유튜브 제목이 아니라 댓글"
 
 
+def test_youtube_request_cap_keeps_what_was_collected(monkeypatch):
+    """2026-11-21 첫 운영 수집: 3개 검색어 × (2+25) = 81회가 상한 55 에 걸려 받은 것을 통째로 버렸다."""
+    monkeypatch.setattr(config, "SECRETS", config.Secrets(youtube_data_api_key="TESTKEY-not-real"))
+    seen = []
+
+    def yt(req):
+        seen.append(req)
+        p = req.url.path
+        if p.endswith("/search"):
+            return js({"items": [{"id": {"videoId": f"v{i}"}, "snippet": {"title": "위스키 추천"}} for i in range(25)]})
+        if p.endswith("/videos"):
+            return js({"items": [{"id": f"v{i}", "snippet": {"title": "위스키 추천"}} for i in range(25)]})
+        return js({"items": []})
+    assert config.DRINKS_YT_SEARCH_MAX_QUERIES * (2 + config.DRINKS_YT_VIDEOS_PER_QUERY) <= 55, "실행 요청 상한 안에 든다"
+    dd.youtube(fetcher(yt, ["www.googleapis.com"]), {"queries": ["위스키 추천"]}, None, 50)
+    assert seen[0].url.params["maxResults"] == str(config.DRINKS_YT_VIDEOS_PER_QUERY)
+    capped = SafeFetcher(["www.googleapis.com"], interval_sec=3, max_requests=5, transport=httpx.MockTransport(yt),
+                         resolver=lambda h, p: ["8.8.8.8"], verify_peer=False, sleep=lambda s: None)
+    b = dd.youtube(capped, {"queries": ["위스키 추천", "하이볼"]}, None, 50)
+    assert len(b.found) == 3 and b.incomplete == 1, "상한 전까지 받은 영상은 남기고 다 못 봤다고 센다"
+    empty = SafeFetcher(["www.googleapis.com"], interval_sec=3, max_requests=2, transport=httpx.MockTransport(yt),
+                        resolver=lambda h, p: ["8.8.8.8"], verify_peer=False, sleep=lambda s: None)
+    with pytest.raises(FetchError) as e:
+        dd.youtube(empty, {"queries": ["위스키 추천"]}, None, 50)
+    assert e.value.code == "request_cap", "하나도 못 받았으면 종전대로 상한 중단으로 드러낸다"
+
+
 def test_collect_main_purges_expired_youtube_before_grouping(monkeypatch):
     from engine import drinks_collect as dc
     called = []
