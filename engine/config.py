@@ -4341,6 +4341,10 @@ DRINKS_YT_SEARCH_MAX_QUERIES: int = 3        # search.list 는 1회 100 쿼터 �
 DRINKS_YT_SEARCH_ORDER: str = "relevance"
 DRINKS_YT_REGION: str = "KR"
 DRINKS_YT_LANGUAGE: str = "ko"
+# 검색어당 댓글을 볼 영상 수. 검색어마다 search 1 + videos 1 + 댓글 영상 수만큼 요청이다 — 3개 × (2+10) = 36 으로
+#   실행 요청 상한(max_items_per_run + max_bodies_per_run + 5 = 발견 기본 50+0+5 = 55, 0051 drinks_start_run)에 맞춘다.
+#   25 로 두면 최대 81회라 첫 운영 수집 3건이 모두 55회에서 상한 중단(2026-11-21 실측).
+DRINKS_YT_VIDEOS_PER_QUERY: int = 10
 # YouTube API 개발자 정책 III.E.4: 승인받지 않은 API 데이터(검색 결과·공개 댓글)는 30일 넘게 보관하지 않는다(2026-11-15 원문 확인).
 #   수집 워커가 실행마다 이 일수 지난 유튜브 원자료(제목·설명·채널명·댓글 질문·지표)를 비운다 — 0089.
 DRINKS_YT_RETENTION_DAYS: int = 30

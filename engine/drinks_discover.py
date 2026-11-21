@@ -266,22 +266,36 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
         raise FetchError("api_key_missing", "YOUTUBE_DATA_API_KEY 가 없습니다 — 유튜브 발견은 키를 넣기 전까지 멈춰 있습니다")
     hdr = {"X-Goog-Api-Key": key}
     found: list[Found] = []
-    parsed = incomplete = dropped = 0
+    n = {"parsed": 0, "incomplete": 0}
     queries = (cfg.get("queries") or [])[: config.DRINKS_YT_SEARCH_MAX_QUERIES]   # 등록 때 3개로 막는다(0052)
+    try:
+        _youtube_queries(f, hdr, queries, since, limit, found, n)
+    except FetchError as exc:
+        if exc.code != "request_cap" or not found:
+            raise
+        # 요청 상한에 닿아도 이미 받은 영상은 버리지 않는다(2026-11-21: 상한 중단이 받은 것을 통째로 버렸다) — 다 못 봤음으로 센다
+        log.info("drinks: 유튜브 발견 — 요청 상한으로 %d건까지만 받았다", len(found))
+        n["incomplete"] += 1
+    return Batch(found, n["parsed"], n["incomplete"])
+
+
+def _youtube_queries(f: SafeFetcher, hdr: dict, queries: list, since: Optional[datetime], limit: int,
+                     found: list, n: dict) -> None:
+    dropped = 0
     for q in queries:
         by_date = config.DRINKS_YT_SEARCH_ORDER == "date"
         params = {"part": "snippet", "q": q, "type": "video", "order": config.DRINKS_YT_SEARCH_ORDER,
                   "regionCode": config.DRINKS_YT_REGION, "relevanceLanguage": config.DRINKS_YT_LANGUAGE,
-                  "maxResults": min(25, max(1, limit - len(found)))}
+                  "maxResults": min(config.DRINKS_YT_VIDEOS_PER_QUERY, max(1, limit - len(found)))}
         if since and by_date:
             params["publishedAfter"] = since.isoformat().replace("+00:00", "Z")
         s = json.loads(f.get("https://www.googleapis.com/youtube/v3/search", accept=JSON_TYPES, params=params, headers=hdr).body)
         vids = [x for x in s.get("items") or [] if (x.get("id") or {}).get("videoId")]
-        parsed += len(vids)
+        n["parsed"] += len(vids)
         # 최신순이라 상한 밖의 글은 '받은 데까지 전진'을 할 수 없다 — 워처마크 이후 새 영상이 상한을 넘을 때만 다 못 봤다고 센다.
         #   관련도순은 시간순이 아니라 "다 못 봤다"가 의미 없다(네이버 정확도순과 같음).
         if s.get("nextPageToken") and since is not None and by_date:
-            incomplete += 1
+            n["incomplete"] += 1
         if not vids:
             continue
         ids = ",".join(x["id"]["videoId"] for x in vids)
@@ -318,10 +332,9 @@ def youtube(f: SafeFetcher, cfg: dict, since: Optional[datetime], limit: int) ->
                                   "comments": _metric(st, "commentCount")}),
                 coverage=coverage, comments=[t for t in comments if extract_questions(t)][:5]))
             if len(found) >= limit:
-                break
+                return
     if dropped:
-        log.info("drinks: 유튜브 발견 — 술과 무관·잡음으로 %d건 제외(API 결과 %d건)", dropped, parsed)
-    return Batch(found, parsed, incomplete)
+        log.info("drinks: 유튜브 발견 — 술과 무관·잡음으로 %d건 제외(API 결과 %d건)", dropped, n["parsed"])
 
 
 def kst_day_ordinal() -> int:
