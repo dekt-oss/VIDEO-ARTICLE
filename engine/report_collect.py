@@ -13,7 +13,9 @@ import re
 import sys
 from typing import Any
 
-from . import config, report_db, report_source
+from datetime import datetime, timedelta, timezone
+
+from . import config, dedup, report_db, report_source
 from .aria import get_client
 from .models import Report
 from .util import log
@@ -215,6 +217,33 @@ def collect_research(client: Any, macro: str | None = None,
     return out
 
 
+def drop_already_stored(reports: list[Report]) -> list[Report]:
+    """최근 REPORT_DEDUP_LOOKBACK_DAYS 일 안에 다른 번호로 들어온 같은 리포트를 뺀다.
+
+    dedup_signals 는 이번 회차 안에서만 비교한다. 같은 텔레그램 메시지가 다음 날 새 신호 번호로
+    다시 오거나, 같은 리포트가 포털 두 곳에서 오면 못 잡았다(engine/dedup.py 머리말 실측).
+    조회가 실패하면 거르지 않고 그대로 둔다(수집을 막지 않는다).
+    """
+    if not config.DEDUP_ACROSS_RUNS or not reports:
+        return reports
+    since = (datetime.now(timezone.utc)
+             - timedelta(days=config.REPORT_DEDUP_LOOKBACK_DAYS)).isoformat()
+    try:
+        existing = dedup.report_records(report_db.fetch_reports_for_dedup(since),
+                                        id_field="external_id")
+    except Exception as exc:  # noqa: BLE001 — 거르기는 부수 기능, 실패해도 수집은 계속
+        log.warning("같은 리포트 조회 실패(거르지 않고 진행): %s", exc)
+        return reports
+    kept, dropped = dedup.drop_known(
+        reports, ext_of=lambda r: r.external_id,
+        key_of=lambda r: dedup.report_key(r.title, r.summary),
+        title_of=lambda r: r.title, existing=existing,
+        body_of=lambda r: dedup.report_body(r.summary))
+    for ext, twin in dropped:
+        log.info("같은 리포트 이미 있음 — 건너뜀: %s (= %s)", ext, twin)
+    return kept
+
+
 def run() -> list[str]:
     """ARIA 신호 + 포털 리포트 수집 → reports 적재. 반환: 적재한 external_id 목록."""
     log.info("=== report_collect: 시작 ===")
@@ -243,6 +272,10 @@ def run() -> list[str]:
 
     sources: list[dict[str, Any]] = []
     reports.extend(collect_research(client, macro, sources_out=sources))
+
+    reports = drop_already_stored(reports)
+    kept_ids = {r.external_id for r in reports}
+    sources = [s for s in sources if s.get("source_id") in kept_ids]
 
     rows = [r.to_row() for r in reports]
     report_db.upsert_reports(rows)  # external_id unique → 멱등(재실행 중복 0)

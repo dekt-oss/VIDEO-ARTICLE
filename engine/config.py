@@ -3376,6 +3376,32 @@ ARIA_TODAY_ONLY: bool = _get_bool("ARIA_TODAY_ONLY", False)  # True 면 오늘(K
 
 # 같은 원문이 여러 테마에 매칭돼 신호가 복제되는 것을 문서 단위로 접는 키 길이(요약 앞부분).
 REPORT_DEDUP_PREFIX_CHARS: int = _get_int("REPORT_DEDUP_PREFIX_CHARS", 120)
+# ── 같은 아티클 재등장 막기(engine/dedup.py, 2026-11-23) ──────────────────────
+# 수집 회차를 넘어 "같은 글인데 external_id 만 다른" 것을 거른다. 근거·실측은 dedup.py 머리말.
+# 리포트 열쇠 = 면책 문구를 뺀 요약의 정규화 글자 앞 N자. 이보다 짧은 본문은 열쇠 없음(판정 안 함).
+REPORT_DEDUP_KEY_CHARS: int = _get_int("REPORT_DEDUP_KEY_CHARS", 150)
+REPORT_DEDUP_MIN_CHARS: int = _get_int("REPORT_DEDUP_MIN_CHARS", 60)
+# 열쇠가 같아도 본문이 이 비율 이상 앞에서부터 같아야 같은 글(연재물 머리말만 같은 경우 거름).
+# 실측: 진짜 재게시 65묶음은 전부 0.98 이상, 머리말만 같은 연재물은 0.16·0.54.
+REPORT_DEDUP_MIN_SHARED: float = _get_float("REPORT_DEDUP_MIN_SHARED", 0.9)
+# 이 문구가 든 문장은 열쇠에서 뺀다(날마다 같은 면책·고지 문구 — KB 장마감코멘트 등).
+REPORT_DEDUP_BOILERPLATE_MARKERS: tuple[str, ...] = (
+    "조사분석자료", "재산적 이해관계", "부당한 압력", "본인의 의견을 정확하게 반영",
+    "Compliance Notice", "투자판단의 참고", "법적 책임", "무단 복제",
+)
+# 수집 때 비교할 기존 리포트의 기간(일). 재게시는 며칠 안에 온다.
+REPORT_DEDUP_LOOKBACK_DAYS: int = _get_int("REPORT_DEDUP_LOOKBACK_DAYS", 14)
+# 논문 열쇠 = 정규화 제목. 이보다 짧은 제목('New Products' 같은 꼭지명)은 판정 안 함.
+PAPER_DEDUP_MIN_TITLE_CHARS: int = _get_int("PAPER_DEDUP_MIN_TITLE_CHARS", 25)
+# 한 열쇠를 이만큼 이상의 글이 나눠 가지면 상투 문구로 보고 판정에 안 쓴다(진짜 중복은 2~4건).
+DEDUP_BOILERPLATE_GROUP: int = _get_int("DEDUP_BOILERPLATE_GROUP", 5)
+# 지난 후보 논문 제목 조회 때 한 번에 묻는 id 수(.in_ 은 id 수백 개에서 URL 이 터진다).
+DEDUP_ID_CHUNK: int = _get_int("DEDUP_ID_CHUNK", 200)
+# ★ 논문은 수집 때 거르지 않는다 — 사전공개본이 후보 창(21일) 밖이면 정식본까지 사라진다(리뷰 지적).
+#   후보를 차릴 때만 묶어서, 아직 안 보인 쪽이 한 번 나오게 한다.
+# 끄기 스위치(문제 생기면 env 로 즉시 끈다).
+DEDUP_ACROSS_RUNS: bool = _get_bool("DEDUP_ACROSS_RUNS", True)
+
 # 메시지 헤더에서 증권사(출처)를 추정할 때 쓰는 알려진 증권사명 — get_signal 상세(channel) 실패 시 폴백.
 REPORT_KNOWN_BROKERS: tuple[str, ...] = (
     "신한투자증권", "하나증권", "유안타증권", "키움증권", "현대차증권", "미래에셋증권",

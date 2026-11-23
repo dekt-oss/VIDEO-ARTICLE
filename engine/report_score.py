@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
-from . import config, report_batch, report_db, report_scoring
+from . import config, dedup, report_batch, report_db, report_scoring
 from .llm import JSONParseError, call_json
 from .util import log, today_local
 
@@ -48,6 +49,25 @@ def _score_one(report: dict) -> dict:
     }
 
 
+def _report_groups() -> dict[str, str] | None:
+    """같은 글 묶음(engine/dedup). 조회 실패면 None — 묶지 않고 예전처럼 id 로만 고른다.
+
+    재게시는 며칠 안에 온다 → 최근 REPORT_DEDUP_LOOKBACK_DAYS 일 수집분만 읽는다(전송량).
+    """
+    if not config.DEDUP_ACROSS_RUNS:
+        return None
+    since = (datetime.now(timezone.utc)
+             - timedelta(days=config.REPORT_DEDUP_LOOKBACK_DAYS)).isoformat()
+    try:
+        groups = dedup.group_ids(dedup.report_records(report_db.fetch_reports_for_dedup(since)))
+    except Exception as exc:  # noqa: BLE001 — 후보 차리기를 막지 않는다
+        log.warning("같은 리포트 묶음 조회 실패(묶지 않고 진행): %s", exc)
+        return None
+    merged = sum(1 for k, v in groups.items() if k != v)
+    log.info("같은 리포트 묶음: %d건이 다른 글과 같은 글", merged)
+    return groups
+
+
 def run(only_unscored: bool = True, limit: int | None = None) -> int:
     log.info("=== report_score: 시작 ===")
     if limit is None:
@@ -77,7 +97,8 @@ def run(only_unscored: bool = True, limit: int | None = None) -> int:
 
     exclude = (report_db.fetch_prior_report_batch_ids(batch_date)
                if config.REPORT_BATCH_EXCLUDE_PRIOR else None)
-    rows = report_batch.build_report_batch_rows(batch_date, all_scores, exclude_ids=exclude)
+    rows = report_batch.build_report_batch_rows(batch_date, all_scores, exclude_ids=exclude,
+                                                group_of=_report_groups())
     report_db.replace_report_daily_batch(batch_date, rows)
     if exclude:
         log.info("배치 신선도 필터: 이전 등장 %d건 제외", len(exclude))
