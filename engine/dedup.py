@@ -116,32 +116,22 @@ def drop_known(
 ) -> tuple[list[Any], list[tuple[str, str]]]:
     """이미 있는 글(다른 external_id)과 같은 글인 새 글을 뺀다. 이번 회차 안의 겹침도 뺀다.
 
-    existing: [(external_id, 열쇠, 제목, 본문)] — 비교 대상 기존 글(본문은 리포트만, 논문은 None).
-    같은 external_id 의 재수집(갱신)은 빼지 않는다 — upsert 가 갱신으로 처리한다.
-    반환: (남은 것, [(뺀 external_id, 같은 글로 본 external_id)]).
+    판정은 group_ids 하나로 한다(배치와 같은 규칙). 기존 글을 앞에 두므로 묶음의 대표는 기존 글이고,
+    새 글은 자기가 대표일 때만 남는다. 이미 저장된 external_id 의 재수집은 갱신이라 빼지 않는다.
+    ★ 같은 회차의 다른 새 글을 거쳐 기존 글과 이어지면(연쇄) 그것도 같은 글로 본다 — 배치(group_ids)와
+      같은 판정이 목적이다(2026-11-24 통합, 이전 구현은 빠진 글을 비교 대상에서 지워 연쇄를 놓쳤다).
+    existing: [(external_id, 열쇠, 제목, 본문)]. 반환: (남은 것, [(뺀 external_id, 대표 external_id)]).
     """
-    ignore = boilerplate_keys([(e[0], e[1]) for e in existing]
-                              + [(ext_of(it), key_of(it)) for it in items])
-    seen: dict[str, list[tuple[str, str | None, str | None]]] = defaultdict(list)
-    for ext, key, title, body in existing:
-        if key and key not in ignore:
-            seen[key].append((ext, title, body))
     stored = {e[0] for e in existing}
+    fresh = [(ext_of(it), key_of(it), title_of(it), body_of(it)) for it in items]
+    rep = group_ids(list(existing) + [r for r in fresh if r[0] not in stored])
     kept: list[Any] = []
     dropped: list[tuple[str, str]] = []
-    for it in items:
-        ext, key, title, body = ext_of(it), key_of(it), title_of(it), body_of(it)
-        if ext in stored:          # 이미 저장된 글의 재수집 = 갱신. 빼지 않는다.
+    for it, (ext, *_rest) in zip(items, fresh):
+        if ext in stored or rep.get(ext, ext) == ext:
             kept.append(it)
-            continue
-        if key and key not in ignore:
-            twin = next((e for e, t, b in seen[key]
-                         if e != ext and same_article(title, t, body, b)), None)
-            if twin:
-                dropped.append((ext, twin))
-                continue
-            seen[key].append((ext, title, body))
-        kept.append(it)
+        else:
+            dropped.append((ext, rep[ext]))
     return kept, dropped
 
 

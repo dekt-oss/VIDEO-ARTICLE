@@ -171,3 +171,70 @@ def test_paper_titles_differing_only_in_greek_letters_are_different():
     a = dedup.paper_key("Observation of the rare decay B0→K*0τ+τ− at the LHCb experiment")
     b = dedup.paper_key("Observation of the rare decay B0→K*0μ+μ− at the LHCb experiment")
     assert a and b and a != b
+
+
+# ── 연결부: 후보 차리기가 실제로 묶음을 받는가(조용히 꺼지면 안 된다) ─────────────
+
+def test_paper_groups_wiring_hides_journal_version_of_shown_preprint(monkeypatch):
+    """후보 풀의 정식본 + 지난 후보의 사전공개본(제목은 DB 에서 가져옴) → 같은 묶음 → 정식본 제외."""
+    from engine import score
+
+    title = "Scalable decision-making for games of imperfect information"
+    asked: list[list[str]] = []
+
+    def fake_titles(ids):
+        asked.append(list(ids))
+        return [{"id": "p_arxiv", "title": title}]
+
+    monkeypatch.setattr(score.db, "fetch_paper_titles", fake_titles)
+    pool = [{"id": "p_doi", "external_id": "10.1/x", "title": title},
+            {"id": "p_new", "external_id": "10.1/y", "title": "A completely different and new paper title"}]
+    groups = score._paper_groups(pool, {"p_arxiv", "p_new"})
+    assert groups is not None and groups["p_doi"] == groups["p_arxiv"]
+    assert asked == [["p_arxiv"]]                      # 풀에 이미 있는 id 는 다시 묻지 않는다
+    scores = [{"paper_id": p, "fun_index": 5, "importance_index": 5} for p in ("p_doi", "p_new")]
+    rows = batch.build_batch_rows("2026-11-24", scores, exclude_ids={"p_arxiv"}, group_of=groups)
+    assert [r["paper_id"] for r in rows] == ["p_new"]
+
+
+def test_report_groups_wiring_reads_recent_reports_and_groups_twins(monkeypatch):
+    from engine import report_score
+
+    since_seen: list[str | None] = []
+
+    def fake_fetch(since=None):
+        since_seen.append(since)
+        return [{"id": "r1", "external_id": "aria_signal:1", "title": "엔비디아 불안감 완화", "summary": NVDA},
+                {"id": "r2", "external_id": "aria_signal:2", "title": "엔비디아 불안감 완화", "summary": NVDA}]
+
+    monkeypatch.setattr(report_score.report_db, "fetch_reports_for_dedup", fake_fetch)
+    groups = report_score._report_groups()
+    assert groups == {"r1": "r1", "r2": "r1"}
+    assert since_seen and since_seen[0]                # 전체 표가 아니라 최근 기간만 읽는다(전송량)
+
+
+def test_group_helpers_fail_open(monkeypatch):
+    from engine import report_score, score
+
+    monkeypatch.setattr(score.db, "fetch_paper_titles", _boom)
+    monkeypatch.setattr(report_score.report_db, "fetch_reports_for_dedup", _boom)
+    assert score._paper_groups([{"id": "p", "title": "x" * 40}], {"q"}) is None
+    assert report_score._report_groups() is None
+
+
+def test_chain_through_another_new_item_counts_as_same_article():
+    """기존 E ← 새 X1(제목이 E를 포함) ← 새 X2(제목이 X1에 포함) — 본문이 같으면 셋 다 같은 글(배치와 같은 판정)."""
+    existing = [_rec("E", "삼성전기", SEMCO)]
+    run = [_report("X1", "삼성전기 3분기 리뷰", SEMCO), _report("X2", "3분기 리뷰", SEMCO)]
+    kept, dropped = _drop(run, existing)
+    assert kept == [] and dropped == [("X1", "E"), ("X2", "E")]
+
+
+def test_batch_steps_actually_pass_the_groups():
+    """묶음을 만들어 놓고 후보 차리기에 안 넘기면 필터가 조용히 꺼진다 — 연결을 고정한다."""
+    import inspect
+
+    from engine import report_score, score
+
+    assert "group_of=_paper_groups(pool, exclude)" in inspect.getsource(score.run)
+    assert "group_of=_report_groups()" in inspect.getsource(report_score.run)
