@@ -12,6 +12,16 @@ from .db import client, reclaim_stale_draft_requests, select_all
 from .util import log
 
 
+def fetch_reports_for_dedup(since_iso: str | None = None) -> list[dict[str, Any]]:
+    """같은 글 판정용(engine/dedup) — id·external_id·제목·요약. since_iso 면 그 시각 이후 수집분만.
+
+    ★ 전송량 실측(2026-11-23): 14일치 409행 ≈ 0.77MB/회, 수집·채점 각 1회 → 하루 약 1.5MB.
+      2026-11-22 egress 한도 초과가 있었다 — 기간(REPORT_DEDUP_LOOKBACK_DAYS)·열을 늘리기 전에 다시 잰다.
+    """
+    where = (lambda q: q.gte("collected_at", since_iso)) if since_iso else None
+    return select_all("reports", "id, external_id, title, summary", key=("id",), where=where)
+
+
 def existing_external_ids(external_ids: Iterable[str]) -> set[str]:
     """이미 reports 에 존재하는 external_id 집합(재탕 방지 사전 조회)."""
     ids = [e for e in external_ids if e]

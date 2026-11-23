@@ -15,14 +15,24 @@ def build_batch_rows(
     batch_date: str,
     scores: list[dict[str, Any]],
     exclude_ids: set[str] | None = None,
+    group_of: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """3개 정렬 모드의 상위를 라운드로빈으로 합쳐 중복 없는 상위 N 선정.
 
     각 행: {batch_date, paper_id, rank, sort_mode}. sort_mode 는 '선정 사유' 모드.
     exclude_ids: 이전 배치에 이미 등장한 논문(신선도 위해 후보에서 제외).
+    group_of: id → '같은 글 묶음' 대표 id(engine/dedup.group_ids). 같은 글이 번호만 바꿔
+      두 번 들어온 경우 묶음당 한 건만 고르고, 지난 배치에 오른 글과 같은 묶음이면 뺀다.
+      없으면 id 그대로(예전 동작).
     """
+    grp = group_of or {}
+
+    def _g(rid: str) -> str:
+        return grp.get(rid, rid)
+
     if exclude_ids:
-        scores = [s for s in scores if s.get("paper_id") not in exclude_ids]
+        gone = {_g(i) for i in exclude_ids}
+        scores = [s for s in scores if _g(s.get("paper_id")) not in gone]
 
     def key_fun(s: dict[str, Any]) -> float:
         return float(s.get("fun_index") or 0)
@@ -55,8 +65,8 @@ def build_batch_rows(
                 while ptr[mode] < len(lst):
                     pid = lst[ptr[mode]]["paper_id"]
                     ptr[mode] += 1
-                    if pid not in seen:
-                        seen.add(pid)
+                    if _g(pid) not in seen:
+                        seen.add(_g(pid))
                         chosen.append((pid, mode))
                         progressed = True
                         break

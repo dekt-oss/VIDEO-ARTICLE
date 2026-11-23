@@ -15,14 +15,24 @@ def build_report_batch_rows(
     batch_date: str,
     scores: list[dict[str, Any]],
     exclude_ids: set[str] | None = None,
+    group_of: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """3개 정렬 모드(관심/스토리/안전)의 상위를 라운드로빈으로 합쳐 중복 없는 상위 N.
 
     각 행: {batch_date, report_id, rank, sort_mode}. sort_mode 는 '선정 사유' 모드.
     exclude_ids: 이전 배치에 이미 등장한 리포트(신선도 위해 후보에서 제외).
+    group_of: id → '같은 글 묶음' 대표 id(engine/dedup.group_ids). 같은 글이 번호만 바꿔
+      두 번 들어온 경우 묶음당 한 건만 고르고, 지난 배치에 오른 글과 같은 묶음이면 뺀다.
+      없으면 id 그대로(예전 동작).
     """
+    grp = group_of or {}
+
+    def _g(rid: str) -> str:
+        return grp.get(rid, rid)
+
     if exclude_ids:
-        scores = [s for s in scores if s.get("report_id") not in exclude_ids]
+        gone = {_g(i) for i in exclude_ids}
+        scores = [s for s in scores if _g(s.get("report_id")) not in gone]
 
     def _prio(s: dict[str, Any]) -> float:
         # ARIA 신호 강도 = 동점 보정(2차 키). 없으면 0.
@@ -54,8 +64,8 @@ def build_report_batch_rows(
             while ptr[mode] < len(lst):
                 rid = lst[ptr[mode]]["report_id"]
                 ptr[mode] += 1
-                if rid not in seen:
-                    seen.add(rid)
+                if _g(rid) not in seen:
+                    seen.add(_g(rid))
                     chosen.append((rid, mode))
                     progressed = True
                     break

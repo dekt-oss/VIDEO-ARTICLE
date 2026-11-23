@@ -10,7 +10,7 @@ import sys
 
 import httpx
 
-from . import batch, config, db, scoring, translate
+from . import batch, config, db, dedup, scoring, translate
 from .llm import JSONParseError, call_json
 from .util import log, today_local
 
@@ -83,6 +83,25 @@ def _score_one(paper: dict) -> dict:
     }
 
 
+def _paper_groups(pool: list[dict], prior_ids: set[str] | None) -> dict[str, str] | None:
+    """같은 논문 묶음(사전공개본 ↔ 정식본, engine/dedup). 조회 실패면 None — id 로만 고른다.
+
+    비교 대상 = 오늘 후보 풀(이미 읽어 둔 것) + 지난 후보 논문의 제목. 전체 표를 다시 읽지 않는다(전송량).
+    """
+    if not config.DEDUP_ACROSS_RUNS:
+        return None
+    try:
+        in_pool = {p["id"] for p in pool}
+        prior = db.fetch_paper_titles([i for i in (prior_ids or ()) if i not in in_pool])
+        groups = dedup.group_ids(dedup.paper_records(list(pool) + prior))
+    except Exception as exc:  # noqa: BLE001 — 후보 차리기를 막지 않는다
+        log.warning("같은 논문 묶음 조회 실패(묶지 않고 진행): %s", exc)
+        return None
+    merged = sum(1 for k, v in groups.items() if k != v)
+    log.info("같은 논문 묶음: %d편이 다른 논문과 같은 글", merged)
+    return groups
+
+
 def run(only_unscored: bool = True, limit: int | None = None,
         retry_failed: bool = False) -> int:
     log.info("=== score: 시작 ===")
@@ -123,7 +142,8 @@ def run(only_unscored: bool = True, limit: int | None = None,
     all_scores = db.fetch_scores_for_papers([p["id"] for p in pool])
     # 신선도: 이전(오늘 이전) 배치에 이미 오른 논문은 후보에서 제외 → 날마다 반복 등장 방지.
     exclude = db.fetch_prior_batch_paper_ids(batch_date) if config.BATCH_EXCLUDE_PRIOR else None
-    rows = batch.build_batch_rows(batch_date, all_scores, exclude_ids=exclude)
+    rows = batch.build_batch_rows(batch_date, all_scores, exclude_ids=exclude,
+                                  group_of=_paper_groups(pool, exclude))
     db.replace_daily_batch(batch_date, rows)
     if exclude:
         log.info("배치 신선도 필터: 이전 등장 %d편 제외", len(exclude))

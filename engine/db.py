@@ -77,6 +77,17 @@ def select_all(table: str, cols: str, *, key: tuple[str, ...], order: str | None
         off += len(rows)
 
 
+def fetch_paper_titles(paper_ids: Iterable[str]) -> list[dict[str, Any]]:
+    """id 목록의 제목만(배치 묶음용 — 지난 후보 논문)."""
+    ids = [i for i in paper_ids if i]
+    out: list[dict[str, Any]] = []
+    step = config.DEDUP_ID_CHUNK
+    for i in range(0, len(ids), step):
+        resp = client().table("papers").select("id, title").in_("id", ids[i:i + step]).execute()
+        out.extend(resp.data or [])
+    return out
+
+
 def existing_external_ids(external_ids: Iterable[str]) -> set[str]:
     """이미 papers 에 존재하는 external_id 집합(재탕 방지용 사전 조회)."""
     ids = [e for e in external_ids if e]
