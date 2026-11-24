@@ -54,6 +54,12 @@ jobs:
       DRINKS_IG_LIVE: "1"
       SOOLJJERIGO_IG_TOKEN: ${{ secrets.SOOLJJERIGO_IG_TOKEN }}
       SOOLJJERIGO_FB_TOKEN: ${{ secrets.SOOLJJERIGO_FB_TOKEN }}
+      # 0090(2026-11-24): 술째리고 유튜브 쇼츠 계정. 옛 'a Paper a Day' 채널의 토큰(비밀 이름은 그대로 _EN)을 쓴다.
+      #   대시보드 계정 등록의 '비밀 이름'에 YOUTUBE_REFRESH_TOKEN_EN 을 적는다. 클라이언트는 논문 채널과 같다.
+      DRINKS_YT_LIVE: "1"
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN_EN: ${{ secrets.YOUTUBE_REFRESH_TOKEN_EN }}
       # 어느 단계인가: 수동이면 고른 값, 예약이면 크론 문자열로 정한다(게시 크론이 기본).
       STEP: ${{ github.event_name == 'workflow_dispatch' && inputs.step || (github.event.schedule == '15 23 * * *' && 'metrics') || (github.event.schedule == '45 23 * * 0' && 'strategy') || 'publish' }}
     steps:
@@ -62,7 +68,8 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: python -m pip install -r engine/requirements.txt
+      # 유튜브 클라이언트는 requirements 에 두지 않는다(publish.yml 과 같은 규칙) — 이 워크플로에서만 설치.
+      - run: python -m pip install -r engine/requirements.txt google-api-python-client google-auth
       - name: publish
         if: env.STEP == 'publish'
         run: python -m engine.drinks_publish

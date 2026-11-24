@@ -23,6 +23,8 @@
     근거 게이트·논증 설계·원문 대조가 워커에만 있다. **[초안 생성]·[재검사] 버튼은 둘 다 `report_draft_requests` 큐에 적재**하고
     엣지를 직접 부르지 않는다. 리포트 수집·채점은 `report.yml`(일일 크론), **논문 라인 수집·채점은 여전히 로컬**이다. → 상세 §범위
   - 유튜브 업로드(버튼, 기본 비공개, 언어별 채널) — `docs/deviation-youtube-upload.md`.
+    **영어 논문 라인은 일시 중지**(2026-11-24) — 영어 채널이 술째리고 쇼츠 채널이 됐다(주류 발행 계정, 공개 게시).
+    — `docs/deviation-drinks-youtube-channel.md`
   - 유튜브 쇼츠 성과 수집(읽기 전용, `analytics` 매일 KST 07:00) — `docs/deviation-youtube-analytics.md`.
   - 표현방식: `comic`(만화식) · `webtoon`(장면 파생). **webtoon 은 9:16 실측(`sample-continuity` → `verify-aspect`)
     전에는 운영에 쓰지 않는다.** `RENDER_BUDGET_CAP_USD` 는 잡 단위라 여러 버전·언어 총액은 ⑤ 확인 모달만 본다.

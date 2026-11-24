@@ -14,6 +14,7 @@ import { requireOperator } from "@/lib/apiGuard";
 import { queueWriter } from "@/lib/supabase/admin";
 import { approvalBlockReasons } from "@/lib/approvalGate";
 import { RENDER_STATUS_ACTIVE } from "@/lib/renderStatus";
+import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 
 const ALLOWED_LANGS = ["ko", "en"];
 // ★ 목록을 여기 다시 적지 않는다 — 새 상태(qa_pending·degraded)를 한 곳이라도 빠뜨리면
@@ -51,6 +52,8 @@ export async function POST(request: Request) {
   // ★ 언어는 비용을 늘리지 않는다 — 에셋이 언어 독립 캐시라 두 번째 언어는 $0 다.
   const reqLangs: unknown[] = Array.isArray(body?.langs) ? body.langs : ["ko"];
   const langs = [...new Set(reqLangs.map(String).filter((l) => ALLOWED_LANGS.includes(l)))];
+  // 멈춘 언어를 조용히 빼고 한국어로 바꿔 렌더하지 않는다(운영자가 고른 것과 다른 것에 돈이 나간다) — 거부한다.
+  if (langs.some(isLangPaused)) return NextResponse.json({ error: LANG_PAUSED_MESSAGE }, { status: 409 });
   if (langs.length === 0) langs.push("ko");
 
   const results: ApproveResult[] = [];

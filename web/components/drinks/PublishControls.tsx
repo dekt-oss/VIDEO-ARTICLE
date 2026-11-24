@@ -63,27 +63,31 @@ export function RegisterAccount() {
     credential_ref: "", carousel: true, reel: false });
   const set = (k: string, v: unknown) => setF((x) => ({ ...x, [k]: v }));
   const fake = f.connection === "fake";
+  const yt = f.connection === "google_oauth"; // 0090: 유튜브 쇼츠 계정 — 릴스만, 채널 ID(UC…)로 등록
   return (
     <div className="dk-row" style={{ flexWrap: "wrap", gap: 6 }}>
       <select value={f.connection} onChange={(e) => set("connection", e.target.value)}>
         <option value="instagram_login">Instagram 로그인</option>
         <option value="facebook_login">Facebook 로그인(페이지 연결)</option>
+        <option value="google_oauth">YouTube(쇼츠)</option>
         <option value="fake">시험용 가짜 계정</option>
       </select>
-      <input placeholder={fake ? "fake_로 시작하는 ID" : "인스타 계정 ID(숫자)"} value={f.external_account_id}
+      <input placeholder={fake ? "fake_로 시작하는 ID" : yt ? "유튜브 채널 ID(UC로 시작)" : "인스타 계정 ID(숫자)"} value={f.external_account_id}
         onChange={(e) => set("external_account_id", e.target.value)} />
       <input placeholder="표시 이름(예: 술째리고)" value={f.display_name} onChange={(e) => set("display_name", e.target.value)} />
       <select value={f.account_type} onChange={(e) => set("account_type", e.target.value)}>
         <option value="business">비즈니스</option><option value="creator">크리에이터</option><option value="test">시험</option>
       </select>
-      {!fake && <input placeholder="토큰을 둔 서버 비밀 이름(예: SOOLJJERIGO_IG_TOKEN)" value={f.credential_ref}
+      {!fake && <input placeholder={yt ? "토큰을 둔 서버 비밀 이름(예: YOUTUBE_REFRESH_TOKEN_EN)" : "토큰을 둔 서버 비밀 이름(예: SOOLJJERIGO_IG_TOKEN)"} value={f.credential_ref}
         onChange={(e) => set("credential_ref", e.target.value.toUpperCase())} />}
-      <label className="muted"><input type="checkbox" checked={f.carousel} onChange={(e) => set("carousel", e.target.checked)} /> 카드뉴스</label>
-      <label className="muted"><input type="checkbox" checked={f.reel} onChange={(e) => set("reel", e.target.checked)} /> 릴스</label>
+      {yt ? <span className="muted">릴스(쇼츠)만 올립니다</span> : <>
+        <label className="muted"><input type="checkbox" checked={f.carousel} onChange={(e) => set("carousel", e.target.checked)} /> 카드뉴스</label>
+        <label className="muted"><input type="checkbox" checked={f.reel} onChange={(e) => set("reel", e.target.checked)} /> 릴스</label>
+      </>}
       <button className="btn" disabled={busy || !f.external_account_id || !f.display_name || (!fake && !f.credential_ref)}
         onClick={() => run("register_account", { external_account_id: f.external_account_id.trim(), display_name: f.display_name.trim(),
           account_type: f.account_type, connection: f.connection, credential_ref: fake ? null : f.credential_ref.trim(),
-          capabilities: { post_types: [f.carousel && "carousel", f.reel && "reel"].filter(Boolean) } },
+          capabilities: { post_types: yt ? ["reel"] : [f.carousel && "carousel", f.reel && "reel"].filter(Boolean) } },
           "계정을 등록했습니다 — 워커가 토큰 주인을 대조한 뒤 '연결 확인됨'이 됩니다", "계정 등록")}>계정 등록</button>
       <span className="muted">토큰 원문은 여기 넣지 않습니다. 서버 비밀 저장소에 두고 그 이름만 적습니다.</span>
     </div>

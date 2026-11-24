@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { triggerPublish } from "@/lib/trigger-publish";
 import { requireOperator } from "@/lib/apiGuard";
 import { queueWriter } from "@/lib/supabase/admin";
+import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 
 const ALLOWED_PRIVACY = ["private", "unlisted", "public"] as const;
 
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
     );
   }
   if (!job) return NextResponse.json({ error: "render job 없음" }, { status: 404 });
+  if (isLangPaused(job.lang ?? "ko")) return NextResponse.json({ error: LANG_PAUSED_MESSAGE }, { status: 409 });
   // ★ §8-3 — done 이거나, degraded 를 사람이 확인하고 승인한 것만 발행한다.
   //   degraded 는 "중요 요소가 빠진 채 렌더됨"이라 그냥 올리면 결함이 그대로 나간다.
   //   승인 표식(degraded_approved_at)은 status 를 덮지 않으므로, 발행 후에도 "결함이

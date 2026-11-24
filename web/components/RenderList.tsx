@@ -20,6 +20,7 @@ import {
 import AsyncJobStatus from "@/components/AsyncJobStatus";
 import { useJobPolling } from "@/lib/useJobPolling";
 import { RENDER_STATUS_AWAITING_HUMAN } from "@/lib/renderStatus";
+import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 
 const STATUS_LABEL: Record<string, string> = {
   queued: "대기",
@@ -500,9 +501,9 @@ export default function RenderList({ jobs }: { jobs: RenderJob[] }) {
                     {(primary.key === "upload" || primary.key === "retry_upload") && (
                       <button
                         className="btn pick"
-                        disabled={busy === j.id || !j.output_url}
+                        disabled={busy === j.id || !j.output_url || isLangPaused(j.lang ?? "ko")}
                         onClick={() => uploadYoutube(j.id)}
-                        title={`${primary.why} (${(j.lang ?? "ko") === "en" ? "EN" : "KO"} 채널)`}
+                        title={isLangPaused(j.lang ?? "ko") ? LANG_PAUSED_MESSAGE : `${primary.why} (${(j.lang ?? "ko") === "en" ? "EN" : "KO"} 채널)`}
                       >
                         {primary.label}
                       </button>
@@ -533,10 +534,10 @@ export default function RenderList({ jobs }: { jobs: RenderJob[] }) {
                         </button>
                         <button
                           className="btn btn-quiet"
-                          disabled={busy === j.id}
+                          disabled={busy === j.id || isLangPaused(otherLang)}
                           onClick={() => addLanguage(j.id, otherLang)}
                           title={
-                            otherExists
+                            isLangPaused(otherLang) ? LANG_PAUSED_MESSAGE : otherExists
                               ? `${otherLang.toUpperCase()} 버전이 이미 있습니다 — 다시 만들면 기존 것과 별개 잡이 생깁니다`
                               : "이미지·클립은 재사용하고 나레이션·자막만 새로 만듭니다(추가 비용 ≈ TTS)"
                           }

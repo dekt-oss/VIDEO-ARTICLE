@@ -58,6 +58,7 @@ const STATUS_LABEL: Record<DirectiveStatus, string> = {
 
 // 통합 작업 화면(WorkspaceClient)이 이 칸을 다루는 손잡이 — 계약은 lib/work/panes.ts 한 곳.
 import type { CutsPaneHandle } from "@/lib/work/panes";
+import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 export type { CutsPaneHandle } from "@/lib/work/panes";
 
 export default function DirectiveClient({
@@ -111,7 +112,7 @@ export default function DirectiveClient({
   const [blockedReasons, setBlockedReasons] = useState<string[] | null>(null);
   // ⑤ 렌더 언어 선택(규격 v2): 한국어 | 영어 | 둘 다. 승인 시 언어별 렌더 잡을 발주.
   // 기본 "둘 다": 한 번 승인에 KO/EN 2개 파일(공통 비주얼 공유). 필요시 단일 언어로 변경 가능.
-  const [renderLang, setRenderLang] = useState<"ko" | "en" | "both">("both");
+  const [renderLang, setRenderLang] = useState<"ko" | "en" | "both">("ko") // 영어 라인 일시 중지(lib/langPause);
   const [pendingNav, setPendingNav] = useState<VersionType | null>(null);
   const [prefixSel, setPrefixSel] = useState<Record<number, string>>({});
   const [prefixVal, setPrefixVal] = useState<Record<number, string>>({});
@@ -671,8 +672,8 @@ export default function DirectiveClient({
                 disabled={saving || gen.busy}
               >
                 <option value="ko">한국어</option>
-                <option value="en">English</option>
-                <option value="both">한·영 둘 다</option>
+                <option value="en" disabled={isLangPaused("en")}>English{isLangPaused("en") ? "(일시 중지)" : ""}</option>
+                <option value="both" disabled={isLangPaused("en")}>한·영 둘 다</option>
               </select>
             </label>
             <button className="btn pick" onClick={() => setShowApprove(true)} disabled={saving || gen.busy}>

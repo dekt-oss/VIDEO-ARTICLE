@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { triggerRender } from "@/lib/trigger-render";
 import { requireOperator } from "@/lib/apiGuard";
 import { queueWriter } from "@/lib/supabase/admin";
+import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 
 const LANGS = ["ko", "en"] as const;
 
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
   if (!sourceJobId || !LANGS.includes(lang)) {
     return NextResponse.json({ error: "invalid payload" }, { status: 400 });
   }
+  if (isLangPaused(lang)) return NextResponse.json({ error: LANG_PAUSED_MESSAGE }, { status: 409 });
 
   const { data: source, error: sourceErr } = await supabase
     .from("render_jobs")
