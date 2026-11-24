@@ -224,7 +224,8 @@ def run(langs: list[str] | None = None, days: int | None = None) -> int:
     if not config.YOUTUBE_ANALYTICS_ENABLED:
         log.info("YOUTUBE_ANALYTICS_ENABLED=false — 성과 수집 건너뜀")
         return 0
-    langs = langs or list(config.YOUTUBE_ANALYTICS_TOKEN_SECRET_BY_LANG.keys())
+    # 멈춘 언어의 채널은 이제 다른 콘텐츠(술째리고)를 올린다 — 논문 성과로 섞어 저장하지 않는다.
+    langs = [lg for lg in (langs or list(config.YOUTUBE_ANALYTICS_TOKEN_SECRET_BY_LANG.keys())) if lg not in config.YOUTUBE_PAUSED_LANGS]
     days = days if days is not None else config.YOUTUBE_ANALYTICS_WINDOW_DAYS
     snapshot_date = today_local().isoformat()
 

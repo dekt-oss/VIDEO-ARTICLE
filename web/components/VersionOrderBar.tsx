@@ -18,6 +18,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import { apiErrorText } from "@/lib/apiError";
 // 승인 차단 사유 표시 문자열 — DirectiveClient 와 같은 표를 쓴다.
 import { blockLabel } from "@/lib/blockLabels";
+import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 
 const LANGS: { key: string; label: string }[] = [
   { key: "ko", label: "한국어" },
@@ -72,7 +73,7 @@ export default function VersionOrderBar({
   const [versions, setVersions] = useState<Set<VersionType>>(
     () => new Set<VersionType>([DEFAULT_VERSION_KEY]),
   );
-  const [langs, setLangs] = useState<Set<string>>(() => new Set(["ko", "en"]));
+  const [langs, setLangs] = useState<Set<string>>(() => new Set(["ko"])); // 영어 라인 일시 중지(lib/langPause)
   const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   // 발주한 지시서 생성이 끝날 때까지 이 화면에서 보여 줄 진행 상태. 예전에는 발주 직후 곧바로
@@ -260,10 +261,10 @@ export default function VersionOrderBar({
             <input
               type="checkbox"
               checked={langs.has(l.key)}
-              disabled={disabled || busy}
+              disabled={disabled || busy || isLangPaused(l.key)}
               onChange={() => toggle(langs, l.key, setLangs)}
             />
-            <span>{l.label}</span>
+            <span title={isLangPaused(l.key) ? LANG_PAUSED_MESSAGE : undefined}>{l.label}{isLangPaused(l.key) ? "(일시 중지)" : ""}</span>
           </label>
         ))}
       </div>

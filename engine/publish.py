@@ -98,6 +98,9 @@ def process_upload(req: dict) -> str:
         raise ValueError("완료된 렌더 mp4 가 없어 업로드 불가")
 
     lang = req.get("lang") or job.get("lang") or config.DEFAULT_LANG
+    if lang in config.YOUTUBE_PAUSED_LANGS:
+        # 영어 채널은 술째리고 홍보 채널이 됐다 — 논문 영상이 그 채널로 가면 안 된다(2026-11-24).
+        raise ValueError(f"{lang} 논문 라인은 일시 중지됐습니다(그 채널은 술째리고 홍보 채널로 전환) — 업로드하지 않습니다")
     privacy = _validate_privacy(req.get("privacy_status"))
     paper_id = req.get("paper_id") or ""
     meta = db.get_upload_meta(paper_id) if paper_id else {"paper": {}}

@@ -38,6 +38,7 @@ import RenderList from "@/components/RenderList";
 import ReportRenderList from "@/components/ReportRenderList";
 import { apiErrorText } from "@/lib/apiError";
 import { seoulDateTimeLabel } from "@/lib/date";
+import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 
 export type Factory = "paper" | "report";
 
@@ -172,7 +173,7 @@ export default function WorkspaceClient({
     });
   }
 
-  const [renderLang, setRenderLang] = useState<"ko" | "en" | "both">("both");
+  const [renderLang, setRenderLang] = useState<"ko" | "en" | "both">("ko") // 영어 라인 일시 중지(lib/langPause);
   const langs = useMemo(() => (renderLang === "both" ? ["ko", "en"] : [renderLang]), [renderLang]);
   const [mobilePane, setMobilePane] = useState<"script" | "cuts">(initialStep === 5 ? "cuts" : "script");
   const [busy, setBusy] = useState(false);
@@ -539,8 +540,8 @@ export default function WorkspaceClient({
             <label className="render-lang" title="렌더할 언어(둘째 언어는 비용 $0 — 에셋 공유)">
               <select value={renderLang} onChange={(e) => setRenderLang(e.target.value as "ko" | "en" | "both")} disabled={busy}>
                 <option value="ko">한국어</option>
-                <option value="en">English</option>
-                <option value="both">한·영 둘 다</option>
+                <option value="en" disabled={isLangPaused("en")}>English{isLangPaused("en") ? "(일시 중지)" : ""}</option>
+                <option value="both" disabled={isLangPaused("en")}>한·영 둘 다</option>
               </select>
             </label>
           )}

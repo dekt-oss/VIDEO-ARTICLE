@@ -3290,6 +3290,10 @@ YOUTUBE_MADE_FOR_KIDS: bool = _get_bool("YOUTUBE_MADE_FOR_KIDS", False)
 YOUTUBE_TITLE_MAX: int = 100
 YOUTUBE_DESC_MAX: int = 5000
 # 언어별 채널(리프레시 토큰) 매핑. secrets 속성명을 가리킨다(값이 아니라 이름).
+# ★ 일시 중지된 논문 언어(2026-11-24 운영자: 영어 논문 라인 중지 — 영어 채널을 술째리고 홍보 채널로 전환).
+#   이 언어는 업로드(engine.publish)·성과 수집(analytics·perf_report)이 건너뛴다. 웹은 web/lib/langPause.ts 가 같은 표다.
+#   토큰 맵의 'en' 은 지우지 않는다 — 같은 채널(같은 토큰)을 주류 발행 워커가 YOUTUBE_REFRESH_TOKEN_EN 으로 쓴다.
+YOUTUBE_PAUSED_LANGS: tuple[str, ...] = ("en",)
 YOUTUBE_REFRESH_TOKEN_SECRET_BY_LANG: dict[str, str] = {
     "ko": "youtube_refresh_token_ko",
     "en": "youtube_refresh_token_en",
@@ -4978,6 +4982,11 @@ DRINKS_CARD_REEL_HOOK_TOP_RATIO: float = 0.20        # 훅 제목 시작 높이(
 DRINKS_CARD_REEL_AUDIO_VOLUME: int = 90
 DRINKS_CARD_REEL_VIDEO_VOLUME: int = 10
 DRINKS_IG_AUDIO_POLL_SEC: float = 60.0               # 음원 붙인 컨테이너 상태 조회 간격(문서: 1분 간격, 최대 5분)
+# 0090 주류 유튜브 쇼츠 계정(2026-11-24 운영자: 'a Paper a Day' → 술째리고 홍보 채널). docs/deviation-drinks-youtube-channel.md
+# 공개 상태: 스튜디오 [게시]는 "공개 게시"다(인스타와 같다) — 승인·예약을 거친 편만 올라간다. 논문 업로드의 기본 비공개와 다르다.
+DRINKS_YT_PRIVACY: str = os.getenv("DRINKS_YT_PRIVACY", "public")
+DRINKS_YT_CATEGORY_ID: str = "24"                        # 24 = Entertainment
+DRINKS_YT_FALLBACK_TITLE: str = "술째리고"              # 캡션 첫 줄이 비었을 때
 # ── 밈형 제작 엔진 (2026-11-02, 총괄 계획 §4-3·기획 v2 §5). docs/deviation-drinks-meme-engine.md ──
 # 길이·화면 숫자는 시험 2 실측(인기 밈 24편, 가운데값 13초)과 설계값이다. 우리 계정 성과로 잰 값이 아니다.
 DRINKS_MEME_MIN_SEC: float = 6.0                     # web/lib/drinks/meme.ts · 0066 과 같아야 한다(tests/test_drinks_meme.py 가 대조)

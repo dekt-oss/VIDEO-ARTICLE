@@ -42,6 +42,9 @@ CHANNEL_REGISTRY: dict[ChannelKey, ChannelSpec] = {
         "lang": "ko",
         "tz": config.TIMEZONE,
     },
+    # ★ 2026-11-24: 이 채널은 술째리고 홍보 채널로 바뀌었다(영어 논문 라인 일시 중지, config.YOUTUBE_PAUSED_LANGS).
+    #   논문 업로드는 engine.publish 가 막는다. 키·ID 는 토큰 점검(scripts/check_youtube_tokens.py)이 쓰므로 남긴다.
+    #   주류 쇼츠는 이 레지스트리를 쓰지 않고 주류 발행 계정(0090, engine/providers/drinks_youtube.py)으로 올라간다.
     "paper_en": {
         "key": "paper_en",
         "title": "a Paper a Day",

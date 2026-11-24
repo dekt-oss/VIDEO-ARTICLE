@@ -17,7 +17,7 @@ export const ACCOUNT_STATUS_LABEL: Record<string, string> = {
 };
 
 export const CONNECTION_LABEL: Record<string, string> = {
-  instagram_login: "Instagram 로그인", facebook_login: "Facebook 로그인(페이지 연결)", fake: "시험용 가짜 계정",
+  instagram_login: "Instagram 로그인", facebook_login: "Facebook 로그인(페이지 연결)", google_oauth: "YouTube(쇼츠)", fake: "시험용 가짜 계정",
 };
 
 export interface AccountView {

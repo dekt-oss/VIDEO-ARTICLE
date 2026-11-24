@@ -378,6 +378,12 @@ def provider_for(account: dict[str, Any], *, fake: Optional[FakeInstagram] = Non
     """계정 연결 방식 → 공급자. 실제 Graph API 는 DRINKS_IG_LIVE=1 일 때만(운영자 승인 전 꺼짐)."""
     if account.get("connection") == "fake":
         return fake or FakeInstagram()
+    if account.get("connection") == "google_oauth":   # 0090: 유튜브 쇼츠 계정 — 같은 발행 흐름, 다른 공급자
+        if os.getenv("DRINKS_YT_LIVE") != "1":
+            raise PublishError("provider_disabled", "실제 유튜브 게시는 꺼져 있습니다(DRINKS_YT_LIVE 미설정)")
+        from .drinks_youtube import DrinksYouTube
+
+        return DrinksYouTube()
     if os.getenv("DRINKS_IG_LIVE") != "1":
         raise PublishError("provider_disabled", "실제 인스타 게시는 아직 꺼져 있습니다(DRINKS_IG_LIVE 미설정 — 운영자 승인 대기)")
     return GraphInstagram()
