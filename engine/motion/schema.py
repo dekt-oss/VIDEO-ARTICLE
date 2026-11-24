@@ -31,7 +31,8 @@ TEMPLATE_CUES: dict[str, int] = {
 # 단위는 긴 것부터(조원 > 조). 앞에 숫자·소수점이 붙어 있으면 토큰 중간이라 잡지 않는다.
 _UNITS = ("%p", "%", "bp", "배", "조원", "조", "억원", "억", "만원", "만km", "만명", "만대", "만", "천억원", "천억",
           "천원", "천", "원", "달러", "명", "대", "개", "년", "월", "일", "분기", "x", "X")
-_NUM_RE = re.compile(r"(?<![\d.])([-+−]?)(\d+(?:[.,]\d+)*)\s*(" + "|".join(re.escape(u) for u in _UNITS) + r")?")
+# 글자에 바로 붙은 숫자(EV6·아이오닉5·HBM4·Level2+)는 모델명이지 양이 아니다 — 잡지 않는다.
+_NUM_RE = re.compile(r"(?<![\d.A-Za-z가-힣])([-+−]?)(\d+(?:[.,]\d+)*)\s*(" + "|".join(re.escape(u) for u in _UNITS) + r")?")
 
 
 # 화면 글자가 아니라 배치 값인 칸(강조 위치·아이콘 모양). ★ rel(막대 높이)·count(아이콘 수)는 **여기 없다** —
@@ -66,11 +67,19 @@ def _korean_amounts(text: str) -> str:
     return _RANGE_RE.sub(lambda m: f"{m.group(1)}{m.group(3)} {m.group(2)}{m.group(3)}", t)
 
 
-def tokens_in(text: str) -> list[tuple[str, str, str]]:
+_HANGUL_AFTER = re.compile(r"[가-힣A-Za-z]{1,2}")
+# 말에서 숫자 뒤에 흔히 붙는 조사 — 화면 칸에서도 단위로 보지 않는다.
+_PARTICLES = frozenset("은는이가을를에의도와과로만")
+
+
+def tokens_in(text: str, strict_units: bool = False) -> list[tuple[str, str, str]]:
     """(부호, 숫자, 단위) 목록. '+' 는 부호 없음과 같게 본다(+18.0% = 18.0%), '−'(유니코드)는 '-'.
-    '조원'·'억원' 은 '조'·'억' 으로 맞춘다('100조 원' = '100조원')."""
+    '조원'·'억원' 은 '조'·'억' 으로 맞춘다('100조 원' = '100조원').
+    strict_units(화면 칸): 목록에 없는 단위가 바로 붙으면('74.5곳') 그 글자를 단위로 잡는다 —
+    단위 없음으로 보면 숫자만 같아도 통과한다(독립 검사 지적). 나레이션은 조사가 붙어 끄지 않는다."""
     out = []
-    for m in _NUM_RE.finditer(_korean_amounts(text)):
+    src = _korean_amounts(text)
+    for m in _NUM_RE.finditer(src):
         sign = "-" if m.group(1) in ("-", "−") else ""
         num = m.group(2).replace(",", "")
         try:
@@ -78,6 +87,10 @@ def tokens_in(text: str) -> list[tuple[str, str, str]]:
         except ValueError:
             pass
         unit = m.group(3) or ""
+        if strict_units and not unit:
+            tail = _HANGUL_AFTER.match(src, m.end())
+            if tail and tail.group(0)[0] not in _PARTICLES:
+                unit = tail.group(0)
         out.append((sign, num, _WON_UNIT.get(unit, unit)))
     return out
 
@@ -86,9 +99,14 @@ def numbers_in(text: str) -> list[str]:
     return ["".join(t) for t in tokens_in(text)]
 
 
+# 근거 풀에서 빼는 키 — 값이 아니라 위치·기간·검증 메타다. 넣으면 쪽수 9 가 '9조'의 근거가 됐다(독립 검사).
+_NON_VALUE_KEYS = frozenset({"fact_id", "scope", "interpretation", "source_page", "period", "validation",
+                             "chunk_id", "table_or_figure", "basis", "attribution"})
+
+
 def _fact_texts(fact: Any) -> list[str]:
     if isinstance(fact, dict):
-        out = _strings({k: v for k, v in fact.items() if k not in ("fact_id", "scope", "interpretation")})
+        out = _strings({k: v for k, v in fact.items() if k not in _NON_VALUE_KEYS})
         v, u = fact.get("value"), fact.get("unit")
         if v is not None and u:
             num = float(v)
@@ -145,8 +163,20 @@ def number_gate(slots: Any, facts: list[Any], strict_sign: bool = True) -> list[
     """칸(또는 문장) 숫자 중 근거 사실에 (부호·숫자·단위)째 없는 것들(빈 목록이면 통과).
     ★ 토큰 정확 대조 — 근거 '15조' 에 화면 '5조' 는 통과하지 못한다(코덱스 코드 리뷰)."""
     pool = {t for f in facts for s in _fact_texts(f) for t in tokens_in(s)}
-    bad = ["".join(t) for s in _strings(slots) for t in tokens_in(s) if not _ok(t, pool, strict_sign)]
+    screen = strict_sign   # 화면 칸 검사(=부호 엄격)는 단위도 엄격하게
+    bad = ["".join(t) for s in _strings(_joined(slots)) for t in tokens_in(s, strict_units=screen)
+           if not _ok(t, pool, strict_sign)]
     return sorted(set(bad))
+
+
+def _joined(slots: Any) -> Any:
+    """숫자와 단위를 다른 칸에 쓰는 템플릿(hook_number: number + unit)은 **붙여서** 검문한다 —
+    따로 두면 단위 없는 숫자로 보여 단위 대조가 빠졌다(독립 검사: 근거 74.5조에 74.5+억 통과)."""
+    if isinstance(slots, dict) and "number" in slots and "unit" in slots:
+        s = {k: v for k, v in slots.items() if k not in ("number", "unit")}
+        s["number"] = f"{slots.get('number') or ''}{slots.get('unit') or ''}"
+        return s
+    return slots
 
 
 def _sentences(text: str) -> list[str]:
@@ -188,10 +218,26 @@ def _icon_counts(slots: dict, max_icons: int) -> bool:
 
 
 def _bar_units_match(slots: dict) -> bool:
-    """막대 값은 같은 단위끼리만 높이를 비교한다(조 vs % 를 한 축에 세우면 거짓 그림이다)."""
-    units = {(tokens_in(str(i.get("value") or "")) or [("", "", "")])[0][2]
-             for i in (slots.get("items") or []) if isinstance(i, dict) and i.get("value")}
-    return len(units) <= 1
+    """막대는 **모든 칸에 단위 있는 값**이 있고 단위가 같아야 높이를 잰다(조 vs % 를 한 축에 세우면 거짓 그림).
+    ★ 값 없이 상대 높이(rel)만 주는 막대는 받지 않는다 — 단위 없는 숫자는 근거의 아무 숫자와나 맞아
+      검문이 무력했다(독립 검사: 근거 쪽수·검증 횟수로 rel 3·9 통과)."""
+    items = [i for i in (slots.get("items") or []) if isinstance(i, dict)]
+    toks = [(tokens_in(str(i.get("value") or ""), strict_units=True) or [("", "", "")])[0] for i in items]
+    if not items or any(not t[1] or not t[2] for t in toks):
+        return False
+    for i in items:
+        i.pop("rel", None)
+    return len({t[2] for t in toks}) == 1
+
+
+def _scrub_title(text: str, facts: list[Any], warns: list[str]) -> str:
+    bad = number_gate(text, facts)
+    if not bad:
+        return text.strip()
+    warns.append(f"motion_title_number_dropped:{','.join(bad)[:40]}")
+    out = _NUM_RE.sub(lambda m: "" if "".join(tokens_in(m.group(0), strict_units=True)[0]) in bad else m.group(0),
+                      _korean_amounts(text))
+    return re.sub(r"\s{2,}", " ", out).strip(" ,·")
 
 
 TEMPLATE_LABEL_KO: dict[str, str] = {
@@ -212,6 +258,7 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
     header_in = obj.get("header") if isinstance(obj.get("header"), dict) else {}
     warns: list[str] = []
     cuts: list[dict[str, Any]] = []
+    all_facts: list[Any] = []
     raw = [c for c in (obj.get("cuts") or []) if isinstance(c, dict)]
     if len(raw) > config.MOTION_MAX_CUTS:
         warns.append(f"motion_cuts_trimmed:{len(raw)}")
@@ -225,6 +272,7 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
         slots = m.get("slots") if isinstance(m.get("slots"), dict) else {}
         keys = [str(k) for k in (c.get("source_facts") or []) if str(k).strip()]
         facts, missing = resolve_facts(keys, fact_sheet)
+        all_facts += facts
         if missing:
             warns.append(f"motion_fact_key_unresolved:{i}:{','.join(missing)[:60]}")
         narr, nbad = scrub_narration(narr, facts)
@@ -244,7 +292,7 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
             warns.append(f"motion_icon_ratio_without_values:{i}")
             tpl, slots = "text_card", _fallback_slots(narr)
         if tpl == "bar_compare" and not _bar_units_match(slots):
-            warns.append(f"motion_bar_units_mixed:{i}")
+            warns.append(f"motion_bar_needs_same_unit_values:{i}")
             tpl, slots = "text_card", _fallback_slots(narr)
         cue_words = [str(w) for w in (m.get("cue_words") or []) if str(w).strip()]
         lost = [w for w in cue_words if w not in narr]
@@ -265,12 +313,16 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
             "motion": {"template": tpl, "slots": slots, "cue_words": cue_words,
                        "source": source_line(facts, broker)},
         })
-    title = [str(x) for x in (header_in.get("title_lines") or []) if str(x).strip()][:2]
+    # 상단 제목 띠는 영상 내내 떠 있다 — 숫자 검문을 거친다(독립 검사: '999조 시장' 통과).
+    #   근거는 모든 컷이 가리킨 사실의 합. 어긋난 숫자 토큰은 지우고 경고한다.
+    title = [_scrub_title(str(x), all_facts, warns) for x in (header_in.get("title_lines") or []) if str(x).strip()][:2]
+    title = [t for t in title if t]
+    hook = _scrub_title(str(header_in.get("hook_ko") or ""), all_facts, warns)
     header = {
         "aspect_ratio": "9:16",
-        "hook_ko": str(header_in.get("hook_ko") or (title[0] if title else "")),
+        "hook_ko": hook or (title[0] if title else ""),
         "hook_en": str(header_in.get("hook_en") or ""),
-        "title_lines": title or [str(header_in.get("hook_ko") or "오늘의 리포트")],
+        "title_lines": title or [hook or "오늘의 리포트"],
         "cta_ko": str(header_in.get("cta_ko") or ""), "cta_en": str(header_in.get("cta_en") or ""),
         "total_estimated_sec": int(sum(c["estimated_sec"] for c in cuts)),
         "version_type": config.MOTION_VERSION, "broker": broker,

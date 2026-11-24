@@ -5186,3 +5186,4 @@ MOTION_MAX_CUTS: int = 10
 MOTION_MAX_ICONS: int = 10                             # icon_ratio 한쪽 아이콘 상한
 MOTION_SILENCE_DB: str = "-35dB"                       # 자막 시각 추정용 무음 기준(silencedetect)
 MOTION_SILENCE_MIN_SEC: float = 0.15
+MOTION_END_CARD_TITLE_MAX: int = 70                    # 끝 출처 카드 리포트 제목 최대 글자

@@ -86,7 +86,8 @@ def _clean_title(t: str) -> str:
         if not any(seg in k for k in kept):
             kept.append(seg)
     out = " ".join(kept)
-    return out if len(out) <= 70 else out[:69] + "…"
+    cap = config.MOTION_END_CARD_TITLE_MAX
+    return out if len(out) <= cap else out[:cap - 1] + "…"
 
 
 def motion_meta(directive: dict[str, Any]) -> dict[str, str]:

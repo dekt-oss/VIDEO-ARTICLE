@@ -110,6 +110,39 @@ def test_icon_ratio_without_values_falls_back():
     assert d["cuts"][0]["motion"]["template"] == "text_card"
 
 
+# ── 독립 검사(페이블, 2026-11-24) 회귀 ──
+_G = [{"display": "74.5조 투자", "source_page": 9, "period": "2027E", "validation": {"matches": 3}}]
+
+
+def test_split_number_and_unit_are_checked_together():
+    assert schema.number_gate({"number": "74.5", "unit": "억"}, _G) == ["74.5억"]
+    assert schema.number_gate({"number": "74.5", "unit": "조"}, _G) == []
+
+
+def test_page_period_validation_are_not_evidence():
+    assert schema.number_gate({"number": "9", "unit": "조"}, _G) == ["9조"]
+    assert schema.number_gate({"number": "2027", "unit": "조"}, _G) == ["2027조"]
+
+
+def test_unknown_unit_on_screen_is_a_unit():
+    assert schema.number_gate({"v": "74.5곳"}, _G) == ["74.5곳"]
+
+
+def test_bar_without_values_falls_back():
+    raw = copy.deepcopy(FX["directive"])
+    raw["cuts"][0]["motion"] = {"template": "bar_compare", "slots": {"items": [{"label": "a", "rel": 3}, {"label": "b", "rel": 9}]}}
+    d = _norm(raw)
+    assert d["cuts"][0]["motion"]["template"] == "text_card"
+
+
+def test_title_numbers_are_checked():
+    raw = copy.deepcopy(FX["directive"])
+    raw["header"] = {"title_lines": ["999조 시장", "정말?"], "hook_ko": "999조 시장, 정말?"}
+    h = _norm(raw)["header"]
+    assert h["title_lines"] == ["시장", "정말?"] and "999" not in h["hook_ko"]
+    assert any(w.startswith("motion_title_number_dropped") for w in h["mode_warnings"])
+
+
 def test_bar_with_mixed_units_falls_back():
     fs = dict(FX["fact_sheet"], e="매출 15조, 성장률 30%")
     raw = copy.deepcopy(FX["directive"])
