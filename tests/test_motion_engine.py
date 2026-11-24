@@ -26,7 +26,7 @@ def test_fixture_normalizes_clean_and_keeps_motion_fields():
     d = _norm()
     assert d["version_type"] == "motion" and d["header"]["mode_warnings"] == []
     assert [c["motion"]["template"] for c in d["cuts"]] == [
-        "stamp_card", "card_stack", "scale_tilt", "vs_split", "bar_compare", "cycle3", "stamp_card"]
+        "stamp_card", "card_stack", "scale_tilt", "vs_split", "stamp_card", "cycle3", "stamp_card"]
     assert all(c["scene_kind"] == "motion_graphic" and c["visual_prompt"] == "" for c in d["cuts"])
     assert d["header"]["title_lines"] == ["현대차 중고차가격", "떡락한다구요?"]
     assert d["header"]["cost_plan"]["estimated_total_generation_cost_usd"] == 0.0
@@ -54,9 +54,74 @@ def test_number_with_matching_unit_passes():
     assert schema.number_gate({"v": "7.7%"}, [FX["fact_sheet"]["number_facts"][0]]) == ["7.7%"]
 
 
-def test_layout_values_are_not_screen_numbers():
-    slots = {"items": [{"label": "A", "rel": 10.2}], "highlight": 0}
-    assert schema.number_gate(slots, []) == []
+def test_layout_position_is_not_a_number_but_bar_height_is():
+    assert schema.number_gate({"highlight": 0, "icon": "car"}, []) == []
+    assert schema.number_gate({"items": [{"label": "A", "rel": 10.2}]}, []) == ["10.2"]   # 막대 높이는 양이다
+
+
+# ── 코덱스 코드 리뷰(2026-11-24) 회귀 ──
+_F = [{"display": "매출 15조원, 증가율 -15.9%, 주행 7.7만km"}]
+
+
+def test_exact_tokens_not_substrings():
+    assert schema.number_gate({"v": "5조"}, _F) == ["5조"]            # '15조' 안의 '5조' 가 아니다
+    assert schema.number_gate({"v": "15조원"}, _F) == []
+    assert schema.number_gate({"v": "7.7만달러"}, _F) != []          # 근거는 7.7만km
+
+
+def test_screen_sign_is_strict_but_speech_is_not():
+    assert schema.number_gate({"v": "15.9%"}, _F) == ["15.9%"]
+    assert schema.number_gate({"v": "-15.9%"}, _F) == []
+    assert schema.number_gate("판매가 15.9% 줄었어요.", _F, strict_sign=False) == []
+
+
+def test_korean_spoken_amounts_match_fact_notation():
+    f = [{"display": "SDC 1.1조원, 2027~2028년 타이트, 영업이익 100조원"}]
+    assert schema.number_gate("디스플레이는 1조 1천억 원 흑자예요.", f, strict_sign=False) == []
+    assert schema.number_gate("2027년부터 2028년까지 빠듯해요.", f, strict_sign=False) == []
+    assert schema.number_gate("한 분기에 100조 원을 번다.", f, strict_sign=False) == []
+
+
+def test_ungrounded_number_sentence_is_removed_from_narration():
+    raw = copy.deepcopy(FX["directive"])
+    raw["cuts"][2]["narration_ko"] = "그런데 앞으로는 기준이 바뀐다고 봅니다. 중고값이 99조 원 줄어요. 자율주행이 업데이트로 좋아지는 차냐, 아니냐로요."
+    d = _norm(raw)
+    assert "99" not in d["cuts"][2]["narration_ko"]
+    assert any(w.startswith("motion_narration_number_dropped:3") for w in d["header"]["mode_warnings"])
+
+
+def test_icon_counts_come_from_values_not_llm():
+    raw = copy.deepcopy(FX["directive"])
+    raw["cuts"][0]["source_facts"] = ["e"]
+    fs = dict(FX["fact_sheet"], e="BYD 고용 100만 명, 현대차·기아 20만 명")
+    raw["cuts"][0]["motion"] = {"template": "icon_ratio", "cue_words": [],
+                                "slots": {"a": {"label": "BYD", "value": "100만 명", "count": 10},
+                                          "b": {"label": "현대", "value": "20만 명", "count": 1}}}
+    raw["cuts"][0]["narration_ko"] = "직원 수를 비교해 봅니다."
+    c = _norm(raw, fs)["cuts"][0]
+    assert c["motion"]["template"] == "icon_ratio"
+    assert (c["motion"]["slots"]["a"]["count"], c["motion"]["slots"]["b"]["count"]) == (5, 1)
+
+
+def test_icon_ratio_without_values_falls_back():
+    raw = copy.deepcopy(FX["directive"])
+    raw["cuts"][0]["motion"] = {"template": "icon_ratio", "slots": {"a": {"label": "A", "count": 10}, "b": {"label": "B", "count": 1}}}
+    d = _norm(raw)
+    assert d["cuts"][0]["motion"]["template"] == "text_card"
+
+
+def test_bar_with_mixed_units_falls_back():
+    fs = dict(FX["fact_sheet"], e="매출 15조, 성장률 30%")
+    raw = copy.deepcopy(FX["directive"])
+    raw["cuts"][0]["source_facts"] = ["e"]
+    raw["cuts"][0]["narration_ko"] = "비교해 봅니다."
+    raw["cuts"][0]["motion"] = {"template": "bar_compare", "slots": {"items": [{"label": "a", "value": "15조"}, {"label": "b", "value": "30%"}]}}
+    assert _norm(raw, fs)["cuts"][0]["motion"]["template"] == "text_card"
+
+
+def test_approval_screen_gets_a_korean_screen_summary():
+    c = _norm()["cuts"][3]
+    assert c["visual_prompt_ko"].startswith("[좌우 비교]") and "옵션 차만" in c["visual_prompt_ko"]
 
 
 def test_unresolved_key_and_unknown_template_and_cue_warnings():

@@ -26,12 +26,17 @@ TEMPLATE_CUES: dict[str, int] = {
     "strike_vs_fact": 2, "flow_chain": 2, "cycle3": 5, "scale_tilt": 1, "stamp_card": 2, "text_card": 1,
 }
 
-# 숫자 + 붙은 단위(한글 1~2자·%·배·x 등). "20~30%" 는 20 과 30% 로 나뉜다.
-_NUM_RE = re.compile(r"\d+(?:[.,]\d+)*\s*(?:%|배|조|억|만|천|원|달러|명|대|개|년|월|일|분기|x|X|p|bp)?")
+# 숫자 토큰 = 부호 + 숫자 + 붙은 단위. **토큰째 정확히** 대조한다(코덱스 코드 리뷰: 부분문자열 비교는
+# 근거 "15조"에 화면 "5조", 근거 "-15.9%"에 화면 "15.9%"를 통과시켰다). "20~30%" 는 20 과 30% 로 나뉜다.
+# 단위는 긴 것부터(조원 > 조). 앞에 숫자·소수점이 붙어 있으면 토큰 중간이라 잡지 않는다.
+_UNITS = ("%p", "%", "bp", "배", "조원", "조", "억원", "억", "만원", "만km", "만명", "만대", "만", "천억원", "천억",
+          "천원", "천", "원", "달러", "명", "대", "개", "년", "월", "일", "분기", "x", "X")
+_NUM_RE = re.compile(r"(?<![\d.])([-+−]?)(\d+(?:[.,]\d+)*)\s*(" + "|".join(re.escape(u) for u in _UNITS) + r")?")
 
 
-# 화면 글자가 아니라 배치 값인 칸(막대 상대 높이·강조 위치·아이콘 개수) — 숫자 검문 대상이 아니다.
-LAYOUT_KEYS = frozenset({"rel", "highlight", "count", "icon"})
+# 화면 글자가 아니라 배치 값인 칸(강조 위치·아이콘 모양). ★ rel(막대 높이)·count(아이콘 수)는 **여기 없다** —
+#   양을 전달하므로 숫자처럼 검문한다(rel) 또는 코드가 값에서 다시 계산한다(count). 코덱스 코드 리뷰.
+LAYOUT_KEYS = frozenset({"highlight", "icon", "count"})
 
 
 def _strings(v: Any) -> list[str]:
@@ -50,8 +55,35 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", "", str(s)).replace(",", "")
 
 
+_RANGE_RE = re.compile(r"(\d[\d.,]*)\s*[~∼\-–]\s*(\d[\d.,]*)\s*(" + "|".join(re.escape(u) for u in _UNITS) + r")")
+_WON_UNIT = {"조원": "조", "억원": "억", "만원": "만", "천억원": "천억", "천원": "천"}
+
+
+def _korean_amounts(text: str) -> str:
+    """말로 쓴 금액을 Fact Sheet 표기로 맞춘다: '1조 1천억' → '1.1조', '2027~2028년' → '2027년 2028년'."""
+    t = re.sub(r"(\d+)\s*조\s*(\d)\s*천\s*억", lambda m: f"{m.group(1)}.{m.group(2)}조", str(text or ""))
+    t = re.sub(r"(\d+)\s*조\s*(\d{1,4})\s*억", lambda m: f"{int(m.group(1)) + int(m.group(2)) / 10000:g}조", t)
+    return _RANGE_RE.sub(lambda m: f"{m.group(1)}{m.group(3)} {m.group(2)}{m.group(3)}", t)
+
+
+def tokens_in(text: str) -> list[tuple[str, str, str]]:
+    """(부호, 숫자, 단위) 목록. '+' 는 부호 없음과 같게 본다(+18.0% = 18.0%), '−'(유니코드)는 '-'.
+    '조원'·'억원' 은 '조'·'억' 으로 맞춘다('100조 원' = '100조원')."""
+    out = []
+    for m in _NUM_RE.finditer(_korean_amounts(text)):
+        sign = "-" if m.group(1) in ("-", "−") else ""
+        num = m.group(2).replace(",", "")
+        try:
+            num = repr(float(num)).rstrip("0").rstrip(".") if "." in num else str(int(num))
+        except ValueError:
+            pass
+        unit = m.group(3) or ""
+        out.append((sign, num, _WON_UNIT.get(unit, unit)))
+    return out
+
+
 def numbers_in(text: str) -> list[str]:
-    return [_norm(m.group(0)) for m in _NUM_RE.finditer(str(text or ""))]
+    return ["".join(t) for t in tokens_in(text)]
 
 
 def _fact_texts(fact: Any) -> list[str]:
@@ -98,23 +130,81 @@ def source_line(facts: list[Any], broker: str) -> str:
     return f"자료: {who}" + (" " + "·".join(f"p{p}" for p in pages) if pages else "")
 
 
-def number_gate(slots: dict, facts: list[Any]) -> list[str]:
-    """칸 숫자 중 근거 사실에 단위째 없는 것들(빈 목록이면 통과)."""
-    pool = _norm(" ".join(s for f in facts for s in _fact_texts(f)))
-    bad = []
-    for s in _strings(slots):
-        for n in numbers_in(s):
-            if n and n not in pool:
-                bad.append(n)
+def _ok(tok: tuple[str, str, str], pool: set[tuple[str, str, str]], strict_sign: bool) -> bool:
+    """숫자·단위가 근거에 있나. 단위가 없으면 숫자만 같으면 된다(칸 number="100" + unit="조원" 처럼
+    숫자와 단위를 다른 칸에 나눠 쓰는 템플릿). strict_sign 이면 부호도 같아야 한다 — **화면 숫자**는
+    그렇다(근거 '-15.9%' 에 화면 '15.9%' 금지, 코덱스). **말**은 '적자 1조 1천억'·'15.9% 줄었다'처럼
+    부호 대신 낱말로 방향을 말하므로 나레이션 검사에선 부호를 안 본다."""
+    for p in pool:
+        if p[1] == tok[1] and (not tok[2] or p[2] == tok[2]) and (not strict_sign or p[0] == tok[0]):
+            return True
+    return False
+
+
+def number_gate(slots: Any, facts: list[Any], strict_sign: bool = True) -> list[str]:
+    """칸(또는 문장) 숫자 중 근거 사실에 (부호·숫자·단위)째 없는 것들(빈 목록이면 통과).
+    ★ 토큰 정확 대조 — 근거 '15조' 에 화면 '5조' 는 통과하지 못한다(코덱스 코드 리뷰)."""
+    pool = {t for f in facts for s in _fact_texts(f) for t in tokens_in(s)}
+    bad = ["".join(t) for s in _strings(slots) for t in tokens_in(s) if not _ok(t, pool, strict_sign)]
     return sorted(set(bad))
 
 
-def _fallback_slots(cut: dict) -> dict:
-    narr = str(cut.get("narration_ko") or "").strip()
-    first = re.split(r"(?<=[.?!])\s+", narr)[0] if narr else ""
+def _sentences(text: str) -> list[str]:
+    return [x for x in re.split(r"(?<=[.?!])\s+", str(text or "").strip()) if x.strip()]
+
+
+def scrub_narration(narr: str, facts: list[Any]) -> tuple[str, list[str]]:
+    """근거에 없는 숫자가 든 **문장을 뺀다**(코덱스: 화면에서 지운 숫자가 음성·자막으로 다시 나갔다).
+    반환: (남은 나레이션, 뺀 숫자들). 다 빠지면 빈 문자열 — 호출자가 그 컷을 버린다."""
+    keep, bad = [], []
+    for s in _sentences(narr):
+        b = number_gate(s, facts, strict_sign=False)
+        if b:
+            bad += b
+        else:
+            keep.append(s)
+    return " ".join(keep), sorted(set(bad))
+
+
+def _fallback_slots(narr: str) -> dict:
+    first = _sentences(narr)[0] if narr else ""
     # 폴백 카드에도 숫자를 싣지 않는다 — 검문을 통과 못 한 숫자가 문장째 되살아나면 안 된다.
     body = re.sub(r"\d", "", first)
     return {"title": "리포트 요약", "body": body[:60]}
+
+
+def _icon_counts(slots: dict, max_icons: int) -> bool:
+    """icon_ratio 의 아이콘 수를 **값에서 코드가 계산**한다(LLM count 무시). 비율을 못 내면 False."""
+    a, b = slots.get("a") or {}, slots.get("b") or {}
+    va, vb = templates._num(a.get("value")), templates._num(b.get("value"))
+    ua = (tokens_in(str(a.get("value") or "")) or [("", "", "")])[0][2]
+    ub = (tokens_in(str(b.get("value") or "")) or [("", "", "")])[0][2]
+    if not va or not vb or va <= 0 or vb <= 0 or ua != ub:
+        return False
+    big, small = max(va, vb), min(va, vb)
+    n = max(1, min(max_icons, round(big / small)))
+    a["count"], b["count"] = (n, 1) if va >= vb else (1, n)
+    return True
+
+
+def _bar_units_match(slots: dict) -> bool:
+    """막대 값은 같은 단위끼리만 높이를 비교한다(조 vs % 를 한 축에 세우면 거짓 그림이다)."""
+    units = {(tokens_in(str(i.get("value") or "")) or [("", "", "")])[0][2]
+             for i in (slots.get("items") or []) if isinstance(i, dict) and i.get("value")}
+    return len(units) <= 1
+
+
+TEMPLATE_LABEL_KO: dict[str, str] = {
+    "hook_number": "큰 숫자", "bar_compare": "막대 비교", "vs_split": "좌우 비교", "icon_ratio": "아이콘 비율",
+    "card_stack": "카드 목록", "strike_vs_fact": "오해→실제", "flow_chain": "흐름도", "cycle3": "순환 고리",
+    "scale_tilt": "저울", "stamp_card": "도장 카드", "text_card": "설명 카드",
+}
+
+
+def screen_summary(tpl: str, slots: dict) -> str:
+    """승인 화면용 한 줄: [템플릿] 화면에 찍힐 글자들."""
+    words = [s for s in _strings(slots) if s.strip()]
+    return f"[{TEMPLATE_LABEL_KO.get(tpl, tpl)}] " + " · ".join(words)[:200]
 
 
 def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str = "") -> dict[str, Any]:
@@ -137,24 +227,38 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
         facts, missing = resolve_facts(keys, fact_sheet)
         if missing:
             warns.append(f"motion_fact_key_unresolved:{i}:{','.join(missing)[:60]}")
+        narr, nbad = scrub_narration(narr, facts)
+        if nbad:
+            warns.append(f"motion_narration_number_dropped:{i}:{','.join(nbad)[:60]}")
+        if not narr:
+            warns.append(f"motion_cut_dropped_no_grounded_narration:{i}")
+            continue
         if tpl not in templates.TEMPLATES:
             warns.append(f"motion_unknown_template:{i}:{tpl[:20]}")
-            tpl, slots = "text_card", _fallback_slots(c)
+            tpl, slots = "text_card", _fallback_slots(narr)
         bad = number_gate(slots, facts)
         if bad:
             warns.append(f"motion_number_ungrounded:{i}:{','.join(bad)[:60]}")
-            tpl, slots = "text_card", _fallback_slots(c)
+            tpl, slots = "text_card", _fallback_slots(narr)
+        if tpl == "icon_ratio" and not _icon_counts(slots, config.MOTION_MAX_ICONS):
+            warns.append(f"motion_icon_ratio_without_values:{i}")
+            tpl, slots = "text_card", _fallback_slots(narr)
+        if tpl == "bar_compare" and not _bar_units_match(slots):
+            warns.append(f"motion_bar_units_mixed:{i}")
+            tpl, slots = "text_card", _fallback_slots(narr)
         cue_words = [str(w) for w in (m.get("cue_words") or []) if str(w).strip()]
         lost = [w for w in cue_words if w not in narr]
         if lost:
             warns.append(f"motion_cue_not_in_narration:{i}:{','.join(lost)[:40]}")
         cue_words = [w for w in cue_words if w in narr][:TEMPLATE_CUES.get(tpl, 2)]
         cuts.append({
-            "cut_no": i, "scene_kind": "motion_graphic",
+            "cut_no": len(cuts) + 1, "scene_kind": "motion_graphic",
             "narration_ko": narr, "narration_en": str(c.get("narration_en") or ""),
             "estimated_sec": int(c.get("estimated_sec") or config.CUT_MIN_SEC),
             "answers_ko": str(c.get("answers_ko") or ""), "staging_ko": f"[모션] {tpl}",
-            "visual_prompt": "", "novelty_event": str(c.get("novelty_event") or ""),
+            # 승인 화면 '화면' 칸(SequenceEditor KoBox)이 이 글을 보여준다 — 영상에 나갈 글자·숫자를 승인 전에 본다.
+            "visual_prompt": "", "visual_prompt_ko": screen_summary(tpl, slots),
+            "novelty_event": str(c.get("novelty_event") or ""),
             "style_anchor_ref": "", "effects": [], "transition": "cut", "bgm_cue": "",
             "source_facts": keys, "render_notes": str(c.get("render_notes") or ""),
             "motion_source": "still",
