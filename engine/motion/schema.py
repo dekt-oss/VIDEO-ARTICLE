@@ -31,8 +31,10 @@ TEMPLATE_CUES: dict[str, int] = {
 # 단위는 긴 것부터(조원 > 조). 앞에 숫자·소수점이 붙어 있으면 토큰 중간이라 잡지 않는다.
 _UNITS = ("%p", "%", "bp", "배", "조원", "조", "억원", "억", "만원", "만km", "만명", "만대", "만", "천억원", "천억",
           "천원", "천", "원", "달러", "명", "대", "개", "년", "월", "일", "분기", "x", "X")
-# 글자에 바로 붙은 숫자(EV6·아이오닉5·HBM4·Level2+)는 모델명이지 양이 아니다 — 잡지 않는다.
-_NUM_RE = re.compile(r"(?<![\d.A-Za-z가-힣])([-+−]?)(\d+(?:[.,]\d+)*)\s*(" + "|".join(re.escape(u) for u in _UNITS) + r")?")
+# 영문에 바로 붙은 숫자(EV6·HBM4·Level2+)는 모델명이지 양이 아니다 — 잡지 않는다.
+# ★ 한글 앞 글자는 막지 않는다: '약999조'·'총999조원' 은 금액이다(독립 재검사 ❌A — 한글까지 막았더니 우회됐다).
+_NUM_RE = re.compile(r"(?<![\d.A-Za-z])([-+−]?)(\d+(?:[.,]\d+)*)")
+_UNIT_RE = re.compile(r"\s*(" + "|".join(re.escape(u) for u in _UNITS) + r")")
 
 
 # 화면 글자가 아니라 배치 값인 칸(강조 위치·아이콘 모양). ★ rel(막대 높이)·count(아이콘 수)는 **여기 없다** —
@@ -67,18 +69,18 @@ def _korean_amounts(text: str) -> str:
     return _RANGE_RE.sub(lambda m: f"{m.group(1)}{m.group(3)} {m.group(2)}{m.group(3)}", t)
 
 
-_HANGUL_AFTER = re.compile(r"[가-힣A-Za-z]{1,2}")
-# 말에서 숫자 뒤에 흔히 붙는 조사 — 화면 칸에서도 단위로 보지 않는다.
+# 목록에 없는 단위: 바로 붙은 한글 한 글자('곳'·'위'·'차') 또는 영문 1~4자('GWh'·'E').
+_TAIL_RE = re.compile(r"[가-힣]|[A-Za-z]{1,4}")
+# 말에서 숫자 뒤에 흔히 붙는 조사 — 단위로 보지 않는다.
 _PARTICLES = frozenset("은는이가을를에의도와과로만")
 
 
-def tokens_in(text: str, strict_units: bool = False) -> list[tuple[str, str, str]]:
-    """(부호, 숫자, 단위) 목록. '+' 는 부호 없음과 같게 본다(+18.0% = 18.0%), '−'(유니코드)는 '-'.
-    '조원'·'억원' 은 '조'·'억' 으로 맞춘다('100조 원' = '100조원').
-    strict_units(화면 칸): 목록에 없는 단위가 바로 붙으면('74.5곳') 그 글자를 단위로 잡는다 —
-    단위 없음으로 보면 숫자만 같아도 통과한다(독립 검사 지적). 나레이션은 조사가 붙어 끄지 않는다."""
-    out = []
+def token_spans(text: str) -> tuple[str, list[tuple[int, int, tuple[str, str, str]]]]:
+    """(정규화한 글, [(시작, 끝, (부호, 숫자, 단위))]). **화면 칸·나레이션·근거가 같은 규칙**으로 나뉜다 —
+    한쪽만 미등록 단위를 잡으면 근거와 똑같은 글자('12곳')도 어긋났다(독립 재검사 ⚠️1).
+    '+' 는 부호 없음(+18.0% = 18.0%), '−' 는 '-'. '조원'·'억원' 은 '조'·'억'('100조 원' = '100조원')."""
     src = _korean_amounts(text)
+    out = []
     for m in _NUM_RE.finditer(src):
         sign = "-" if m.group(1) in ("-", "−") else ""
         num = m.group(2).replace(",", "")
@@ -86,13 +88,21 @@ def tokens_in(text: str, strict_units: bool = False) -> list[tuple[str, str, str
             num = repr(float(num)).rstrip("0").rstrip(".") if "." in num else str(int(num))
         except ValueError:
             pass
-        unit = m.group(3) or ""
-        if strict_units and not unit:
-            tail = _HANGUL_AFTER.match(src, m.end())
-            if tail and tail.group(0)[0] not in _PARTICLES:
-                unit = tail.group(0)
-        out.append((sign, num, _WON_UNIT.get(unit, unit)))
-    return out
+        end, unit = m.end(), ""
+        u = _UNIT_RE.match(src, end)
+        if u:
+            unit, end = u.group(1), u.end()
+        else:
+            t = _TAIL_RE.match(src, end)
+            if t and t.group(0)[0] not in _PARTICLES:
+                unit, end = t.group(0), t.end()
+        out.append((m.start(), end, (sign, num, _WON_UNIT.get(unit, unit))))
+    return src, out
+
+
+def tokens_in(text: str, strict_units: bool = False) -> list[tuple[str, str, str]]:
+    """(부호, 숫자, 단위) 목록. strict_units 는 예전 호출 호환용(이제 항상 같은 규칙)."""
+    return [t for _, _, t in token_spans(text)[1]]
 
 
 def numbers_in(text: str) -> list[str]:
@@ -231,13 +241,16 @@ def _bar_units_match(slots: dict) -> bool:
 
 
 def _scrub_title(text: str, facts: list[Any], warns: list[str]) -> str:
-    bad = number_gate(text, facts)
+    """근거 없는 숫자 토큰을 **그 자리(단위 포함)째** 지운다(재검사 ❌B: 미등록 단위가 남았다)."""
+    bad = set(number_gate(text, facts))
     if not bad:
         return text.strip()
-    warns.append(f"motion_title_number_dropped:{','.join(bad)[:40]}")
-    out = _NUM_RE.sub(lambda m: "" if "".join(tokens_in(m.group(0), strict_units=True)[0]) in bad else m.group(0),
-                      _korean_amounts(text))
-    return re.sub(r"\s{2,}", " ", out).strip(" ,·")
+    warns.append(f"motion_title_number_dropped:{','.join(sorted(bad))[:40]}")
+    src, spans = token_spans(text)
+    for a, b, tok in reversed(spans):
+        if "".join(tok) in bad:
+            src = src[:a] + src[b:]
+    return re.sub(r"\s{2,}", " ", src).strip(" ,·")
 
 
 TEMPLATE_LABEL_KO: dict[str, str] = {

@@ -143,6 +143,27 @@ def test_title_numbers_are_checked():
     assert any(w.startswith("motion_title_number_dropped") for w in h["mode_warnings"])
 
 
+# ── 독립 재검사(2026-11-24) 회귀 ──
+def test_amount_glued_to_korean_is_still_a_number():
+    assert schema.number_gate({"v": "약999조"}, _G) == ["999조"]
+    assert schema.number_gate({"v": "총999조원"}, _G) == ["999조"]
+    assert schema.number_gate("시장은 무려999조다.", _G, strict_sign=False) == ["999조"]
+
+
+def test_model_names_glued_to_english_are_not_numbers():
+    assert schema.number_gate({"v": "EV6·HBM4·Level2+"}, []) == []
+
+
+def test_title_unknown_unit_number_is_removed_with_its_unit():
+    w: list = []
+    assert schema._scrub_title("999곳 시장", _G, w) == "시장" and w
+
+
+def test_same_text_as_evidence_passes_even_with_unlisted_units():
+    f = [{"display": "거점 12곳, 점유율 3위, 2차전지 5GWh, 2027E"}]
+    assert schema.number_gate({"a": "12곳", "b": "3위", "c": "2차전지", "d": "5GWh", "e": "2027E"}, f) == []
+
+
 def test_bar_with_mixed_units_falls_back():
     fs = dict(FX["fact_sheet"], e="매출 15조, 성장률 30%")
     raw = copy.deepcopy(FX["directive"])

@@ -36,7 +36,7 @@ Fact Sheet 다. 컷마다 아래 [템플릿] 중 하나를 고르고 칸(slots)�
 [템플릿] (cue 개수 · slots)
 - hook_number (2: 숫자 등장, 도장): {{"chip","number","unit","stamp_title","stamp_sub"}}  큰 숫자 + 도장
 - bar_compare (2: 막대, 배지): {{"title","subtitle","items":[{{"label","value"}}…2~4],"highlight":<강조 index>,"badge"}}
-    value 가 있으면 그 숫자로 높이를 잰다(같은 단위끼리만). 값이 리포트에 없고 순서만 있으면 value 대신 "rel"(상대값)
+    **모든 막대에 같은 단위의 value 가 있어야 한다**(그 숫자로 높이를 잰다). 값이 없는 비교는 card_stack·vs_split 을 써라
 - vs_split (2: 왼쪽, 오른쪽): {{"title","left":{{"label","value","sub"}},"right":{{…}}}}
 - icon_ratio (3: A, B, 배지): {{"icon":"person|car|coin","a":{{"label","sub","count","value"}},"b":{{…}},"badge"}}  count 는 1~{config.MOTION_MAX_ICONS}, 비율이 맞게
 - card_stack (카드 수+1): {{"title","items":["…"2~4],"note"}}
