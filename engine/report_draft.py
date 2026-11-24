@@ -214,7 +214,7 @@ def requested_versions(req: dict[str, Any]) -> list[str]:
     out: list[str] = []
     for v in raw:
         s = str(v or "").strip()
-        if s in config.VIDEO_VERSIONS and s not in out:
+        if s in (*config.VIDEO_VERSIONS, *config.REPORT_ONLY_VERSIONS) and s not in out:
             out.append(s)
     return out
 

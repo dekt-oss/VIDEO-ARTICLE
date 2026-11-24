@@ -22,9 +22,10 @@ import {
 
 // ★ 2026-09-30 운영자: "만화식으로 만드는 건 안 보이게. 엔진은 삭제하는 게 아닌데 당분간 렌더할 일은 없어."
 //   화면(발주·탭·기본값)에서만 뺀다. 이름표는 남아 옛 기록이 "만화식"으로 보인다.
-test("두 공장 모두 지금은 3D 그래픽만 발주하고, 기본값도 3D 그래픽이다", () => {
+test("논문은 3D 그래픽만, 리포트는 3D 그래픽·모션그래픽을 발주하고, 기본값은 3D 그래픽이다", () => {
   assert.deepEqual(PAUSED_VERSIONS, ["comic"]);
-  assert.deepEqual(REPORT_VERSION_KEYS, ["photo"]);
+  // 2026-11-24 모션그래픽(리포트 전용) 추가. 기본값 전환은 운영 렌더 확인 뒤 별도 커밋.
+  assert.deepEqual(REPORT_VERSION_KEYS, ["photo", "motion"]);
   assert.deepEqual(VERSION_KEYS, ["photo"]);
   assert.equal(REPORT_DEFAULT_VERSION_KEY, "photo");
   assert.equal(DEFAULT_VERSION_KEY, "photo");

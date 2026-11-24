@@ -101,6 +101,17 @@ jobs:
           JEV_ENABLED: "1"
         run: python -m engine.report_directive
 
+      # 모션그래픽(version_type=motion) 렌더용 Node + HyperFrames CLI(버전 고정, engine/config.py
+      # MOTION_HYPERFRAMES_PKG 와 같게). 렌더 잡이 있을 때만 — 지시서만 만드는 실행에는 안 깐다.
+      # 미리 한 번 불러 두면 렌더 중 첫 npx 다운로드 시간이 잡 시간에 섞이지 않는다.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
+        if: ${{ steps.check.outputs.has_rj == 'true' }}
+        with:
+          node-version: "22"
+      - name: Prepare HyperFrames (motion)
+        if: ${{ steps.check.outputs.has_rj == 'true' }}
+        run: npx --yes hyperframes@0.9.72 --version || echo "hyperframes 사전 설치 실패 — 모션 잡만 실패한다"
+
       # 렌더(ffmpeg) — mode=render|poll 이고 렌더 잡이 있을 때.
       - name: Render report videos
         if: ${{ !cancelled() && (env.MODE == 'render' || env.MODE == 'poll') && steps.check.outputs.has_rj == 'true' }}

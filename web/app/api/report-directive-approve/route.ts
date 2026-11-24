@@ -49,6 +49,8 @@ export async function POST(request: Request) {
   const reqLangs: string[] = Array.isArray(body.langs) ? body.langs : ["ko"];
   const langs = [...new Set(reqLangs.filter((l) => ALLOWED.includes(l)))];
   if (langs.length === 0) langs.push("ko");
+  // 모션그래픽은 장면 글자가 한국어라 한국어만 렌더한다(engine config.MOTION_LANGS).
+  if (directive.version_type === "motion") langs.splice(0, langs.length, "ko");
 
   const { error: upErr } = await supabase
     .from("report_directives")

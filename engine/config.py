@@ -5159,3 +5159,30 @@ DRINKS_CAPTION_BRAND_TAG: str = "술째리고"     # 해시태그의 마지막(�
 DRINKS_CAPTION_SOURCE_NOTE: str = "출처는 마지막 장에 있어요."
 DRINKS_CAPTION_SHARE_DEFAULT: str = "술"       # "{share_target} 좋아하는 친구에게" 의 기본 대상
 DRINKS_CAPTION_CTA_DEFAULT: str = DRINKS_CARD_FOLLOW_LINE1
+
+
+# ─────────────────────────────────────────────────────────────
+# 모션그래픽(motion) 리포트 영상 — docs/plans/2026-11-24-motion-graphics-engine.md
+# HTML 장면 템플릿 → HyperFrames(npx) 렌더. 그림·영상 생성 API 를 부르지 않는다(렌더 0원).
+# ★ 리포트 라인 전용 버전이다. VIDEO_VERSIONS(논문·리포트 공용, 엣지 미러 있음)에 넣지 않는다 —
+#   넣으면 공용 정규화(directive.normalize_directive)·논문 발주 화면·엣지 미러가 이 버전을
+#   그림 버전으로 다루기 시작한다. motion 은 자기 정규화(engine/motion/schema.py)를 쓴다.
+# ─────────────────────────────────────────────────────────────
+REPORT_ONLY_VERSIONS: tuple[str, ...] = ("motion",)
+MOTION_VERSION: str = "motion"
+MOTION_LANGS: tuple[str, ...] = ("ko",)              # 장면 글자가 한국어라 영어 렌더는 지원하지 않는다
+MOTION_HYPERFRAMES_PKG: str = os.getenv("MOTION_HYPERFRAMES_PKG", "hyperframes@0.9.72")
+MOTION_RENDER_TIMEOUT_SEC: int = _get_int("MOTION_RENDER_TIMEOUT_SEC", 1500)
+MOTION_TTS_SPEED: float = _get_float("MOTION_TTS_SPEED", 1.2)   # 채널 기본 1.2배속(손작업 3편과 같다)
+MOTION_TTS_RETRIES: int = 2                            # 컷 하나 TTS 실패 시 재시도 횟수(그래도 실패면 잡 실패)
+MOTION_VO_LEAD_SEC: float = 0.10                       # 장면 시작 뒤 음성 시작
+MOTION_SCENE_PAD_SEC: float = 0.30                     # 장면 끝 여유
+MOTION_END_CARD_SEC: float = 7.5                       # 출처 끝 카드(읽을 시간 — hyperframes check 권고)
+MOTION_BGM_VOLUME: float = 0.14                        # 목소리 아래
+MOTION_LOUDNORM: str = "loudnorm=I=-14:TP=-1.5:LRA=11" # 쇼츠 기준 음량
+MOTION_CAPTION_MAX_CHARS: int = 12                     # 자막 한 덩어리 최대 글자(공백 제외)
+MOTION_MIN_CUTS: int = 4
+MOTION_MAX_CUTS: int = 10
+MOTION_MAX_ICONS: int = 10                             # icon_ratio 한쪽 아이콘 상한
+MOTION_SILENCE_DB: str = "-35dB"                       # 자막 시각 추정용 무음 기준(silencedetect)
+MOTION_SILENCE_MIN_SEC: float = 0.15
