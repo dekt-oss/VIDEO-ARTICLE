@@ -41,9 +41,12 @@ class DrinksYouTube:
         key = account.get("account_id") or account.get("credential_ref")
         if key in self._services:
             return self._services[key]
-        from google.auth.exceptions import RefreshError
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
+        try:
+            from google.auth.exceptions import RefreshError
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+        except ImportError as exc:   # 워크플로가 라이브러리를 안 깔았다 — 워커 전체(인스타 포함)를 죽이지 않는다
+            raise PublishError("provider_disabled", "유튜브 라이브러리(google-api-python-client)가 설치되지 않았습니다") from exc
 
         token = os.getenv(account.get("credential_ref") or "", "")
         cid, secret = os.getenv("YOUTUBE_CLIENT_ID", ""), os.getenv("YOUTUBE_CLIENT_SECRET", "")
@@ -56,6 +59,8 @@ class DrinksYouTube:
             items = yt.channels().list(part="snippet", mine=True).execute().get("items") or []
         except RefreshError as exc:
             raise AuthError("token_refresh_failed", f"유튜브 토큰 갱신 실패: {str(exc)[:200]}") from exc
+        except Exception as exc:  # noqa: BLE001 — 403·쿼터·네트워크: 계정 대조 루프를 뚫고 워커 전체를 멈추지 않게
+            raise PublishError("youtube_api_error", f"유튜브 채널 확인 실패({type(exc).__name__}): {str(exc)[:200]}") from exc
         if not items:
             raise AuthError("no_channel", "이 토큰에 연결된 유튜브 채널이 없습니다")
         self._services[key] = yt
@@ -76,8 +81,14 @@ class DrinksYouTube:
         # ★ 채널 가드는 게시 호출 **전**에 — 토큰이 다른 채널 것이면 에러 없이 엉뚱한 채널에 올라간다.
         if self.verify(account)["id"] != account.get("external_account_id"):
             raise PublishError("provider_mismatch", "토큰의 유튜브 채널이 등록된 채널 ID 와 다릅니다")
+        # 파일도 게시 호출 **전**에 받아 둔다 — 다운로드 실패가 '게시 여부 불명(unknown)'이 되지 않게.
+        path = os.path.join(tempfile.mkdtemp(prefix="drinks_yt_"), "reel.mp4")
+        try:
+            _download(url, path)
+        except Exception as exc:  # noqa: BLE001
+            raise PublishError("file_download_failed", f"릴스 파일을 받지 못했습니다: {type(exc).__name__}") from exc
         cid = f"yt-{uuid.uuid4().hex}"
-        self._pending[cid] = {"url": url, "caption": caption or ""}
+        self._pending[cid] = {"path": path, "caption": caption or ""}
         return cid
 
     def container_status(self, account: dict[str, Any], cid: str) -> str:
@@ -90,9 +101,7 @@ class DrinksYouTube:
         if job is None:
             raise PublishError("container_missing", "올릴 파일 정보를 잃었습니다(워커 재시작)")
         yt = self._service(account)
-        work = tempfile.mkdtemp(prefix="drinks_yt_")
-        path = os.path.join(work, "reel.mp4")
-        _download(job["url"], path)
+        path = job["path"]
         body = {
             "snippet": {"title": video_title(job["caption"]), "description": job["caption"][: config.YOUTUBE_DESC_MAX],
                         "categoryId": config.DRINKS_YT_CATEGORY_ID},

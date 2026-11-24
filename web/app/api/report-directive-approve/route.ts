@@ -7,7 +7,6 @@ import { requireOperator } from "@/lib/apiGuard";
 import { queueWriter } from "@/lib/supabase/admin";
 import { RENDER_STATUS_ACTIVE } from "@/lib/renderStatus";
 import { reportApprovalBlockReasons } from "@/lib/approvalGate";
-import { isLangPaused, LANG_PAUSED_MESSAGE } from "@/lib/langPause";
 
 export async function POST(request: Request) {
   // 비용·발행 라우트 — 운영자 키 게이트(web/lib/apiGuard.ts).
@@ -49,7 +48,6 @@ export async function POST(request: Request) {
   const ALLOWED = ["ko", "en"];
   const reqLangs: string[] = Array.isArray(body.langs) ? body.langs : ["ko"];
   const langs = [...new Set(reqLangs.filter((l) => ALLOWED.includes(l)))];
-  if (langs.some(isLangPaused)) return NextResponse.json({ error: LANG_PAUSED_MESSAGE }, { status: 409 });
   if (langs.length === 0) langs.push("ko");
 
   const { error: upErr } = await supabase

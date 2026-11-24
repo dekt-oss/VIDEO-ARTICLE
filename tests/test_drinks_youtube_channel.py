@@ -39,7 +39,8 @@ class _Guarded(dy.DrinksYouTube):
         return {"id": self._cid, "username": "x"}
 
 
-def test_channel_guard_runs_before_publish_and_only_reels():
+def test_channel_guard_runs_before_publish_and_only_reels(monkeypatch):
+    monkeypatch.setattr(dy, "_download", lambda url, dest: open(dest, "wb").close())
     ok = _Guarded(YT_ACCOUNT["external_account_id"])
     cid = ok.create_container(YT_ACCOUNT, kind="reel", url="https://x/v.mp4", caption="c")
     assert ok.container_status(YT_ACCOUNT, cid) == "FINISHED"
@@ -78,3 +79,12 @@ def test_drinks_publish_workflow_carries_youtube_secrets():
     wf = (ROOT / ".github/workflows/drinks-publish.yml").read_text(encoding="utf-8")
     for name in ("DRINKS_YT_LIVE", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN_EN", "google-api-python-client"):
         assert name in wf
+
+
+def test_download_failure_is_before_publish_called(monkeypatch):
+    def boom(url, dest):
+        raise OSError("net")
+    monkeypatch.setattr(dy, "_download", boom)
+    with pytest.raises(PublishError) as e:   # create_container 단계 = 게시 호출 전 → failed(재시도 가능), unknown 아님
+        _Guarded(YT_ACCOUNT["external_account_id"]).create_container(YT_ACCOUNT, kind="reel", url="https://x/v.mp4", caption="c")
+    assert e.value.code == "file_download_failed"
