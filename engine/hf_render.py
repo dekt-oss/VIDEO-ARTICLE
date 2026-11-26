@@ -119,10 +119,11 @@ def build_html(template: str, *, top_line: str, slots: list[Slot], duration: flo
         "__ACCENT__": accent,
         "__DURATION__": f"{duration:.3f}",
     }
+    missing = [k for k in fill if k not in template]
+    if missing:
+        raise HfRenderError(f"템플릿에 칸이 없습니다: {', '.join(missing)}")
     for k, v in fill.items():
         template = template.replace(k, v)
-    if any(k in template for k in fill):
-        raise HfRenderError("템플릿 칸이 남았습니다")
     return template
 
 
@@ -184,6 +185,8 @@ def verify_output(probe: dict[str, Any], expected_sec: float) -> None:
     """렌더 결과가 계획과 맞는가. 하나라도 어긋나면 실패."""
     if (probe.get("width"), probe.get("height")) != (config.RENDER_WIDTH, config.RENDER_HEIGHT):
         raise HfRenderError(f"화면 크기가 다릅니다: {probe.get('width')}×{probe.get('height')}")
+    if probe.get("fps") != float(config.RENDER_FPS):
+        raise HfRenderError(f"초당 프레임이 {config.RENDER_FPS} 이 아닙니다: {probe.get('fps')}")
     if not probe.get("audio_streams"):
         raise HfRenderError("소리가 없습니다")
     if abs(float(probe.get("duration_sec") or 0) - expected_sec) > config.HF_DURATION_TOLERANCE_SEC:
@@ -217,16 +220,20 @@ def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
         _run(render_command(raw), cwd=proj)
         if not os.path.exists(raw) or os.path.getsize(raw) == 0:
             raise HfRenderError("렌더가 끝났다는데 파일이 없습니다")
-        final = os.path.join(work, "final.mp4")
-        _run(assemble.build_loudnorm_command(raw, final))
-        try:
-            probe = _probe(final)
-        except subprocess.CalledProcessError as e:
-            raise HfRenderError(f"결과 파일을 읽을 수 없습니다(깨진 mp4): {e}") from e
-        verify_output(probe, duration)
-        # 검증을 통과한 뒤에만 최종 위치로 — 중간에 죽어도 깨진 파일이 out_path 에 남지 않는다(2026-11-26 실제 발생)
+        # 같은 폴더의 임시 파일에 쓰고 검증 뒤 os.replace — 중간에 죽어도 깨진 파일이 out_path 에 남지 않는다(2026-11-26 실제 발생)
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-        shutil.move(final, out_path)
+        part = out_path + ".part.mp4"
+        try:
+            _run(assemble.build_loudnorm_command(raw, part))
+            try:
+                probe = _probe(part)
+            except subprocess.CalledProcessError as e:
+                raise HfRenderError(f"결과 파일을 읽을 수 없습니다(깨진 mp4): {e}") from e
+            verify_output(probe, duration)
+            os.replace(part, out_path)
+        finally:
+            if os.path.exists(part):
+                os.remove(part)
     return {"out": out_path, "duration_sec": duration, "track": track.key,
             "slots": [s.__dict__ for s in slots], "probe": probe}
 

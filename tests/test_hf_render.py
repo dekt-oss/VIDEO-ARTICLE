@@ -58,6 +58,8 @@ def test_html_escapes_text_and_fills_every_slot():
     assert 'data-start="0.000"' in page  # 첫 글은 0프레임부터 보인다
     assert 'class="word key clip"' in page
     assert "cdn." not in page  # 렌더가 네트워크에 기대지 않는다
+    with pytest.raises(h.HfRenderError, match="칸이 없"):
+        h.build_html(tpl.replace("__WORDS__", ""), top_line="t", slots=slots, duration=dur, pulses=GRID)
 
 
 def test_commands_are_pinned_and_strict():
@@ -78,9 +80,9 @@ def test_beats_json_parsing_and_matching():
 
 
 def test_verify_output_rejects_bad_results():
-    good = {"width": 1080, "height": 1920, "audio_streams": 1, "duration_sec": 5.5}
+    good = {"width": 1080, "height": 1920, "audio_streams": 1, "duration_sec": 5.5, "fps": 30.0}
     h.verify_output(good, 5.49)
-    for bad in ({"width": 720}, {"audio_streams": 0}, {"duration_sec": 4.0}):
+    for bad in ({"width": 720}, {"audio_streams": 0}, {"duration_sec": 4.0}, {"fps": 24.0}):
         with pytest.raises(h.HfRenderError):
             h.verify_output({**good, **bad}, 5.49)
 

@@ -81,3 +81,5 @@
 - 실패 경로: 렌더 도중 세션이 끊겨 **깨진 mp4 가 최종 위치에 남는 일이 실제로 있었다** → 임시 파일에 쓰고 검증 통과 뒤에만 옮기도록 고침.
 - LEDGER 는 계획의 `LEDGER.md` 대신 기계가 읽는 `ledger.json` 한 파일로 했다(권리·출처·주의를 같은 파일에).
 - gsap 3.15.0 은 템플릿 `assets/lib/` 에 넣었다(GreenSock 'no charge' 표준 라이선스 — 상업 사용 무료).
+- 계획의 `--variables-file … --strict-variables` 대신 **엔진이 index.html 을 직접 채운다**(글 개수가 편마다 달라 칸 수가 바뀌기 때문 — 변수로는 시간 있는 요소를 만들 수 없다). 대신 템플릿에 필수 칸이 하나라도 없으면 렌더 전에 멈추고(테스트 고정), 렌더는 `--strict` 로 린트 오류에서 멈춘다.
+- 코덱스 코드 리뷰(`outputs/reviews/hyperframes-s1-code-codex.md`) 3건 반영: 같은 폴더 임시 파일 + `os.replace`, 칸 누락 거부, 30fps 검사.
