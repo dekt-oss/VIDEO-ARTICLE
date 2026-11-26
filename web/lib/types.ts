@@ -326,7 +326,9 @@ export type VersionType =
   // editorial 은 2026-07-28 폐기(docs/deviation-webtoon-b1-removal.md). 저장된 옛 행이 있어 타입에는 남긴다.
   // explainer(설명판형)·photo(실사형)는 금융 리포트 라인 전용.
   | "comic" | "webtoon" | "image_sequence" | "explainer" | "photo"
-  | "editorial" | "animation" | "hybrid";
+  | "editorial" | "animation" | "hybrid"
+  // motion(모션그래픽, HyperFrames)은 리포트 라인 전용(docs/plans/2026-11-24-motion-graphics-engine.md).
+  | "motion";
 export type DirectiveStatus =
   | "draft"
   | "approved"

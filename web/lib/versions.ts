@@ -47,6 +47,10 @@ const ALL_REPORT_VERSION_META: VersionMeta[] = [
     label: "3D 그래픽",
     hint: "무광 CG 한 화풍. 원리는 단면 도해로, 현장은 같은 재질의 3D 장면으로",
   },
+  // 2026-11-24 운영자 지시 — HyperFrames 모션그래픽. 그림 생성 API 를 안 써서 렌더비 0원.
+  //   리포트 라인 전용(논문 목록에는 없다). 한국어만 렌더한다.
+  //   ★ 기본값 전환(맨 앞으로)은 운영 렌더 1편 확인 뒤 별도 커밋(계획서 §8).
+  { key: "motion", label: "모션그래픽", hint: "도형·숫자·자막 애니메이션. 그림 생성 없음(렌더 0원), 한국어만" },
 ];
 
 export const REPORT_VERSION_META: VersionMeta[] = ALL_REPORT_VERSION_META.filter(notPaused);

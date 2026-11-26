@@ -1,0 +1,61 @@
+{
+ "meta": {"title": "자동차(NEUTRAL) 2027년 전망: Capex를 하는 자, 그 돈을 버는 자", "date": "2026.11.18",
+          "broker": "삼성증권 EV/모빌리티팀", "analyst": "임은영 Senior Analyst · 문다빈 Research Assistant"},
+ "broker": "삼성증권",
+ "fact_sheet": {
+  "company": "자동차",
+  "what": [
+   "테슬라 방식의 아키텍쳐를 선택하는 완성차업체가 많아질수록, Legacy 아키텍쳐 차량은 중고차 가치 하락이 예상된다",
+   "일본업체의 중고차 가치가 높은 것은 잔고장이 없고, 내구성이 좋고, 판촉 활동을 최소화했기 때문",
+   "중고차 가치를 결정짓는 요소가 내구품질과 낮은 인센티브에서 자율주행 업데이트 가능성으로 전환",
+   "Legacy 완성차업체는 옵션을 선택하면 칩과 센서를 탑재, 테슬라는 모든 차량에 칩과 센서가 탑재",
+   "한국 시장 신차 가격 대비 중고차 가치(주행거리 77,000km): 모델Y가 아이오닉5·EV6보다 높다",
+   "중고차 가격 하락 → 판매부진 → 신차 가격 하락의 악순환, 할부 금융·리스·렌터카 기업 실적 둔화 예상",
+   "현대차/기아도 대부분의 차량에 Level2+(레벨2+) 자율주행을 탑재할 예정"
+  ],
+  "basis": [], "risks": [], "opinion": "자동차 업종 NEUTRAL",
+  "number_facts": [
+   {"fact_id": "num_used_km", "value": 7.7, "unit": "만km", "metric": "주행거리", "source_page": 9,
+    "display": "주행거리 7.7만km(77,000km) 기준 중고차 가치"}
+  ]
+ },
+ "directive": {
+  "header": {"title_lines": ["현대차 중고차가격", "떡락한다구요?"], "hook_ko": "현대차 중고차가격 떡락한다구요?"},
+  "cuts": [
+   {"narration_ko": "현대차 중고값, 떡락한다고요? 증권사 리포트에 이런 전망이 실렸습니다.", "source_facts": ["what[0]"],
+    "motion": {"template": "stamp_card", "cue_words": ["떡락", "증권사"],
+               "slots": {"headline": "내 차 중고값, 떡락?", "stamp": "전망", "stamp_sub": "증권사 리포트의 예상",
+                         "card_title": "리포트 내용", "card_body": "기존 방식 차량 중고차 가치 하락 예상"}}},
+   {"narration_ko": "지금까지 중고값을 정한 건 튼튼함이었죠. 일본차 중고값이 높은 것도 잔고장 없고 오래 가서라고 리포트는 설명합니다.",
+    "source_facts": ["what[1]"],
+    "motion": {"template": "card_stack", "cue_words": ["튼튼함", "잔고장", "오래 가서", "일본차"],
+               "slots": {"title": "지금까지 중고값을 정한 것", "items": ["튼튼함", "잔고장 없음", "오래 감"],
+                         "note": "예) 일본차 중고값이 높은 이유"}}},
+   {"narration_ko": "그런데 앞으로는 기준이 바뀐다고 봅니다. 자율주행이 업데이트로 좋아지는 차냐, 아니냐로요.",
+    "source_facts": ["what[2]"],
+    "motion": {"template": "scale_tilt", "cue_words": ["자율주행"],
+               "slots": {"chip": "앞으로의 기준 (전망)", "left": "내구성", "right": "자율주행 업데이트"}}},
+   {"narration_ko": "차이는 처음부터 칩과 센서를 넣었느냐예요. 테슬라는 모든 차에 넣어 두고, 기존 업체는 자율주행 옵션을 고른 차에만 넣습니다.",
+    "source_facts": ["what[3]"],
+    "motion": {"template": "vs_split", "cue_words": ["테슬라는", "기존 업체는"],
+               "slots": {"title": "칩·센서를 처음부터 넣었나?",
+                         "left": {"label": "테슬라", "value": "모든 차", "sub": "기본 탑재"},
+                         "right": {"label": "기존 업체", "value": "옵션 차만", "sub": "고른 차에만"}}}},
+   {"narration_ko": "리포트가 실은 한국 중고차 가치 그래프에서도, 모델Y가 아이오닉5, EV6보다 높게 나옵니다.",
+    "source_facts": ["what[4]", "num_used_km"],
+    "motion": {"template": "stamp_card", "cue_words": ["한국 중고차", "모델Y"],
+               "slots": {"headline": "신차 값 대비 중고차 가치", "stamp": "모델Y", "stamp_sub": "그래프에서 가장 높음",
+                         "card_title": "한국 시장 · 주행 7.7만km", "card_body": "아이오닉5·EV6보다 높게 나온다"}}},
+   {"narration_ko": "리포트는 업데이트 안 되는 차가 중고값 하락, 판매 부진, 신차값 하락의 악순환에 빠질 수 있다고 봐요. 할부, 리스, 렌터카 회사 실적도 둔해질 수 있고요.",
+    "source_facts": ["what[5]"],
+    "motion": {"template": "cycle3", "cue_words": ["중고값 하락", "판매 부진", "신차값 하락", "악순환", "할부"],
+               "slots": {"nodes": ["중고값 ↓", "판매 ↓", "신차값 ↓"], "center": "악순환", "center_sub": "리포트 전망",
+                         "chips": ["할부 금융", "리스", "렌터카", "실적 둔화 (전망)"]}}},
+   {"narration_ko": "다만 아직 떨어진 게 아니라, 기준이 바뀔 수 있다는 전망입니다. 현대차와 기아도 대부분의 차에 레벨2+ 자율주행을 넣을 예정이고요.",
+    "source_facts": ["what[6]"],
+    "motion": {"template": "stamp_card", "cue_words": ["전망입니다", "현대차와 기아도"],
+               "slots": {"headline": "이미 떨어진 게 아니다", "stamp": "전망", "stamp_sub": "기준이 바뀔 수 있다 · 실적 아님",
+                         "card_title": "현대차·기아 (계획)", "card_body": "대부분의 차에 Level2+ 자율주행 탑재 예정"}}}
+  ]
+ }
+}

@@ -210,6 +210,15 @@ def generate(draft_row: dict[str, Any], version_type: str,
     ★ 근거 판정(engine/grounding.py, 2026-09-30 운영자 승인)은 **남는 한 벌에만** 한 번 묻는다 —
       경고만 내고 재생성을 띄우지 않으므로, 버려질 첫 시도에 물을 이유가 없다.
     """
+    if version_type == config.MOTION_VERSION:
+        # 모션그래픽은 그림을 그리지 않는다 — 그림 버전용 정규화·화면 계약·시퀀스를 거치지 않고
+        # 자기 정규화(숫자 검문·쪽수)를 쓴다. docs/plans/2026-11-24-motion-graphics-engine.md
+        from .motion import directive as motion_directive
+        d = motion_directive.generate(draft_row, report)
+        # 숫자 검문은 숫자만 본다 — 낱말 주장은 다른 버전과 같은 Jev 근거 경고(fail-open)로 본다.
+        grounding.attach_report_warning(d, draft_row, report)
+        warning_triage.attach(d["header"])
+        return d
     d = _generate_with_retry(draft_row, version_type, report)
     grounding.attach_report_warning(d, draft_row, report)
     warning_triage.attach(d["header"])
