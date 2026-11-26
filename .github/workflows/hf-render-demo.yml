@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: "22"
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: pip install python-dotenv Pillow
+      - run: pip install -r engine/requirements.txt
       - name: 박자표 대조
         run: python -m engine.hf_render --check-beats sooljjerigo-groove-117
       - name: 데모 렌더

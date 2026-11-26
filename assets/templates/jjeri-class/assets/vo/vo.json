@@ -1,0 +1,146 @@
+[
+ {
+  "k": 0,
+  "sid": "s1",
+  "file": "assets/vo/b00.mp3",
+  "sec": 3.939,
+  "head": 0.109,
+  "end": 3.645
+ },
+ {
+  "k": 1,
+  "sid": "s2",
+  "file": "assets/vo/b01.mp3",
+  "sec": 3.62,
+  "head": 0.177,
+  "end": 3.269
+ },
+ {
+  "k": 2,
+  "sid": "s3",
+  "file": "assets/vo/b02.mp3",
+  "sec": 3.211,
+  "head": 0.108,
+  "end": 2.841
+ },
+ {
+  "k": 3,
+  "sid": "s3",
+  "file": "assets/vo/b03.mp3",
+  "sec": 3.37,
+  "head": 0.11,
+  "end": 3.043
+ },
+ {
+  "k": 4,
+  "sid": "s4",
+  "file": "assets/vo/b04.mp3",
+  "sec": 2.732,
+  "head": 0.098,
+  "end": 2.413
+ },
+ {
+  "k": 5,
+  "sid": "s4",
+  "file": "assets/vo/b05.mp3",
+  "sec": 3.415,
+  "head": 0.107,
+  "end": 3.109
+ },
+ {
+  "k": 6,
+  "sid": "s4",
+  "file": "assets/vo/b06.mp3",
+  "sec": 4.507,
+  "head": 0.147,
+  "end": 3.988
+ },
+ {
+  "k": 7,
+  "sid": "s5",
+  "file": "assets/vo/b07.mp3",
+  "sec": 3.666,
+  "head": 0.121,
+  "end": 3.394
+ },
+ {
+  "k": 8,
+  "sid": "s5",
+  "file": "assets/vo/b08.mp3",
+  "sec": 3.62,
+  "head": 0.137,
+  "end": 3.286
+ },
+ {
+  "k": 9,
+  "sid": "s6",
+  "file": "assets/vo/b09.mp3",
+  "sec": 3.802,
+  "head": 0.135,
+  "end": 3.388
+ },
+ {
+  "k": 10,
+  "sid": "s7",
+  "file": "assets/vo/b10.mp3",
+  "sec": 3.689,
+  "head": 0.077,
+  "end": 3.405
+ },
+ {
+  "k": 11,
+  "sid": "s8",
+  "file": "assets/vo/b11.mp3",
+  "sec": 3.666,
+  "head": 0.116,
+  "end": 3.152
+ },
+ {
+  "k": 12,
+  "sid": "s9",
+  "file": "assets/vo/b12.mp3",
+  "sec": 4.303,
+  "head": 0.077,
+  "end": 3.829
+ },
+ {
+  "k": 13,
+  "sid": "s10",
+  "file": "assets/vo/b13.mp3",
+  "sec": 4.871,
+  "head": 0.097,
+  "end": 4.541
+ },
+ {
+  "k": 14,
+  "sid": "s10",
+  "file": "assets/vo/b14.mp3",
+  "sec": 3.552,
+  "head": 0.13,
+  "end": 3.201
+ },
+ {
+  "k": 15,
+  "sid": "s11",
+  "file": "assets/vo/b15.mp3",
+  "sec": 3.348,
+  "head": 0.174,
+  "end": 2.764
+ },
+ {
+  "k": 16,
+  "sid": "s11",
+  "file": "assets/vo/b16.mp3",
+  "sec": 3.733,
+  "head": 0.119,
+  "end": 3.163
+ },
+ {
+  "k": 17,
+  "sid": "s12",
+  "file": "assets/vo/b17.mp3",
+  "sec": 4.757,
+  "head": 0.126,
+  "end": 4.406
+ }
+]

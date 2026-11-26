@@ -17,16 +17,16 @@ on:
     inputs:
       factsheet_model:
         description: "Fact Sheet 추출 모델 (2026-09-28: gemini-3.8-flash)"
-        default: "gemini-3.8-flash"
+        default: "claude-haiku-5-5"
       script_model:
         description: "대본 합성 모델 (2026-09-28: 2.5-pro → gemini-3.8-flash, 더 좋고 출력은 더 쌈)"
-        default: "gemini-3.8-flash"
+        default: "claude-haiku-5-5"
       selfcheck_model:
         description: "자기검증 모델"
-        default: "gemini-2.5-flash"
+        default: "claude-haiku-5-5"
       compliance_model:
         description: "컴플라이언스 심사관 모델"
-        default: "gemini-2.5-flash"
+        default: "claude-haiku-5-5"
   # 대시보드 버튼은 GITHUB_DISPATCH_TOKEN 으로 즉시 실행된다. 이 크론은 그 토큰이 실패했을 때
   # 요청을 집어가는 안전망이다(다음 시각까지 대기). 큐가 비면 즉시 종료한다
   # (report_draft.poll_once 가 "대기 없음" 로그만 남기고 0 을 반환 — LLM 호출 0회).
@@ -99,11 +99,11 @@ jobs:
         env:
           # 러너의 GEMINI_API_KEY(논문 렌더가 쓰는 유료 키)로 돌도록 기본은 gemini.
           # push 트리거는 inputs 가 비므로 || 기본값 필수(빈 문자열 env 방지).
-          MODEL_REPORT_FACTSHEET: ${{ inputs.factsheet_model || 'gemini-3.8-flash' }}
-          MODEL_REPORT_SCRIPT: ${{ inputs.script_model || 'gemini-3.8-flash' }}
-          MODEL_REPORT_SELFCHECK: ${{ inputs.selfcheck_model || 'gemini-2.5-flash' }}
-          MODEL_REPORT_COMPLIANCE: ${{ inputs.compliance_model || 'gemini-2.5-flash' }}
+          MODEL_REPORT_FACTSHEET: ${{ inputs.factsheet_model || 'claude-haiku-5-5' }}
+          MODEL_REPORT_SCRIPT: ${{ inputs.script_model || 'claude-haiku-5-5' }}
+          MODEL_REPORT_SELFCHECK: ${{ inputs.selfcheck_model || 'claude-haiku-5-5' }}
+          MODEL_REPORT_COMPLIANCE: ${{ inputs.compliance_model || 'claude-haiku-5-5' }}
           # 논증 단위(설명엔진 v2 §7). 추출과 같은 급이면 충분하다 — 원문을 읽고 단계를
           # 쪼개는 구조화 작업이라 대본 합성만큼의 모델을 쓸 이유가 없다.
-          MODEL_REPORT_REASONING: ${{ inputs.factsheet_model || 'gemini-2.5-flash' }}
+          MODEL_REPORT_REASONING: ${{ inputs.factsheet_model || 'claude-haiku-5-5' }}
         run: python -m engine.report_draft

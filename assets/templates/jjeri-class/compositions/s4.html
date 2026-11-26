@@ -1,0 +1,97 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #1F2A44; }
+    .art { position: absolute; left: 60px; top: 410px; width: 960px; height: 580px; overflow: visible; }
+    .capbox { position: absolute; left: 296px; width: 720px; top: 1052px; height: 176px; }
+    .captext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 42px; line-height: 1.42; letter-spacing: -0.02em; color: #1F2A44; opacity: 0; }
+    .src { position: absolute; left: 84px; width: 912px; top: 996px; text-align: right; }
+    .src span { display: inline-block; background: #FDE68A; color: #1F2A44; font-weight: 600; font-size: 28px; padding: 2px 16px; border-radius: 8px; }
+    .chipbox { position: absolute; width: 600px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .chip { display: inline-block; font-weight: 700; font-size: 34px; padding: 6px 20px; border-radius: 14px; border: 3px solid #0E1525; white-space: nowrap; }
+    .c-yel { background: #FDE68A; color: #1F2A44; }
+    .c-cream { background: #FFF8EE; color: #1F2A44; }
+    .c-amber { background: #F0A93B; color: #1F2A44; }
+    .c-maho { background: #8E2A14; color: #fff; }
+    .c-tom { background: #C2410C; color: #fff; }
+    .tagbox { position: absolute; left: 70px; top: 418px; }
+    .tag { display: inline-block; font-weight: 700; font-size: 32px; padding: 4px 18px; border-radius: 12px; border: 3px solid #0E1525; }
+    .t-yel { background: #FDE68A; color: #1F2A44; }
+    .t-grey { background: #E5E7EB; color: #1F2A44; }
+    .t-tom { background: #C2410C; color: #fff; }
+    .t-amber { background: #F0A93B; color: #1F2A44; }
+    .t-maho { background: #8E2A14; color: #fff; }
+
+    .captext b { font-weight: 800; }
+    .search { position: absolute; left: 400px; top: 640px; width: 620px; height: 104px; background: #fff; border: 6px solid #C2410C; border-radius: 52px; display: flex; align-items: center; padding: 0 30px; gap: 18px; }
+    .search .q { font-weight: 800; font-size: 44px; color: #1F2A44; letter-spacing: -0.02em; }
+    .search .q span { opacity: 0; }
+    .search .cur { width: 4px; height: 48px; background: #C2410C; }
+    .search .hint { position: absolute; left: 0; right: 0; top: -54px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; }
+    .cbox { position: absolute; left: 170px; width: 740px; top: 880px; height: 120px; background: #fff; border: 4px solid #0E1525; border-radius: 22px; padding: 14px 28px; }
+    .cbox .lab { font-weight: 600; font-size: 30px; color: #6B7583; }
+    .cbox .q { font-weight: 800; font-size: 44px; color: #1F2A44; }
+    .cbox .q span { opacity: 0; }
+
+    .stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 540px 410px; transform: translate(0px, 30px) scale(0.95); }
+
+  </style>
+  <div id="root" data-composition-id="s4" data-width="1080" data-height="1920">
+    <div class="stage"><svg id="s4-art" class="art" viewBox="0 0 960 580" xmlns="http://www.w3.org/2000/svg"><g transform="translate(70 130) scale(1.0)"><g id="s4-b1">
+      <path d="M40 0 L200 0 Q240 150 200 300 L40 300 Q0 150 40 0 Z" fill="#C68A4E" stroke="#3B2412" stroke-width="6" stroke-linejoin="round"/>
+      
+      <path d="M80 0 Q64 150 80 300 M120 0 L120 300 M160 0 Q176 150 160 300" fill="none" stroke="#9A6334" stroke-width="4"/>
+      <path d="M31 40 Q120 52 209 40" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 100 Q120 112 218 100" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 200 Q120 212 218 200" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M31 260 Q120 272 209 260" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/>
+      <ellipse cx="120" cy="0" rx="80" ry="13" fill="#9A6334" stroke="#3B2412" stroke-width="5"/>
+      <circle cx="120" cy="150" r="9" fill="#3B2412"/>
+    </g></g><path id="s4-arc" d="M330 250 Q480 60 640 210" fill="none" stroke="#FFF8EE" stroke-width="7" stroke-dasharray="16 14" stroke-linecap="round" opacity="0"/><g transform="translate(712 250) scale(0.6)"><g id="s4-e1">
+      <path d="M40 0 L200 0 Q240 150 200 300 L40 300 Q0 150 40 0 Z" fill="#C68A4E" stroke="#3B2412" stroke-width="6" stroke-linejoin="round"/>
+      
+      <path d="M80 0 Q64 150 80 300 M120 0 L120 300 M160 0 Q176 150 160 300" fill="none" stroke="#9A6334" stroke-width="4"/>
+      <path d="M31 40 Q120 52 209 40" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 100 Q120 112 218 100" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 200 Q120 212 218 200" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M31 260 Q120 272 209 260" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/>
+      <ellipse cx="120" cy="0" rx="80" ry="13" fill="#9A6334" stroke="#3B2412" stroke-width="5"/>
+      <circle cx="120" cy="150" r="9" fill="#3B2412"/>
+    </g></g><g transform="translate(712 62) scale(0.6)"><g id="s4-e2">
+      <path d="M40 0 L200 0 Q240 150 200 300 L40 300 Q0 150 40 0 Z" fill="#C68A4E" stroke="#3B2412" stroke-width="6" stroke-linejoin="round"/>
+      
+      <path d="M80 0 Q64 150 80 300 M120 0 L120 300 M160 0 Q176 150 160 300" fill="none" stroke="#9A6334" stroke-width="4"/>
+      <path d="M31 40 Q120 52 209 40" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 100 Q120 112 218 100" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 200 Q120 212 218 200" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M31 260 Q120 272 209 260" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/>
+      <ellipse cx="120" cy="0" rx="80" ry="13" fill="#9A6334" stroke="#3B2412" stroke-width="5"/>
+      <circle cx="120" cy="150" r="9" fill="#3B2412"/>
+    </g></g><g transform="translate(300 250) scale(0.6)"><g id="s4-e3">
+      <path d="M40 0 L200 0 Q240 150 200 300 L40 300 Q0 150 40 0 Z" fill="#C68A4E" stroke="#3B2412" stroke-width="6" stroke-linejoin="round"/>
+      
+      <path d="M80 0 Q64 150 80 300 M120 0 L120 300 M160 0 Q176 150 160 300" fill="none" stroke="#9A6334" stroke-width="4"/>
+      <path d="M31 40 Q120 52 209 40" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 100 Q120 112 218 100" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 200 Q120 212 218 200" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M31 260 Q120 272 209 260" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/>
+      <ellipse cx="120" cy="0" rx="80" ry="13" fill="#9A6334" stroke="#3B2412" stroke-width="5"/>
+      <circle cx="120" cy="150" r="9" fill="#3B2412"/>
+    </g></g></svg><div class="chipbox" style="left:-50px; top:850px;"><span id="s4-c1" class="chip c-cream">미국 · 새 통만</span></div><div class="chipbox" style="left:340px; top:850px;"><span id="s4-c2" class="chip c-yel">스코틀랜드 · 한 번 쓴 통</span></div><div class="chipbox" style="left:190px; top:420px;"><span id="s4-c3" class="chip c-amber">구하기 쉽고 비교적 저렴</span></div></div><div class="capbox"><div id="s4-cap0" class="captext"><span><b style="color:#B45309">버번</b>은 새 오크통에만<br>담아야 해요.</span></div><div id="s4-cap1" class="captext"><span>그래서 한 번 쓴 통이<br>스코틀랜드로 건너오죠.</span></div><div id="s4-cap2" class="captext"><span>구하기 쉽고 비교적 저렴해서<br>스카치 대부분이 이 통을 써요.</span></div></div>
+    <div class="src"><span id="s4-src">Whisky Advocate · 미국 버번 규정</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#s4-art", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0);
+    tl.fromTo("#s4-b1", { y: -40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "back.out(1.4)" }, 0.15);
+    tl.fromTo("#s4-c1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.7);
+    tl.fromTo("#s4-arc", { opacity: 0 }, { opacity: 0.9, duration: 0.3, ease: "power2.out" }, 2.635);
+    tl.to("#s4-c1", { opacity: 0, duration: 0.15, ease: "power2.in" }, 2.735);
+    tl.fromTo("#s4-b1", { x: 0 }, { x: 390, duration: 1.0, ease: "power2.inOut" }, 2.835);
+    tl.to("#s4-b1", { keyframes: [{ y: -110, duration: 0.5, ease: "power2.out" }, { y: 0, duration: 0.5, ease: "power2.in" }] }, 2.835);
+    tl.to("#s4-arc", { opacity: 0, duration: 0.2 }, 3.835);
+    tl.fromTo("#s4-c2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 3.885);
+    tl.fromTo("#s4-e1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 6.207);
+    tl.fromTo("#s4-e2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 6.407);
+    tl.fromTo("#s4-e3", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 6.606999999999999);
+    tl.fromTo("#s4-c3", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 7.007);
+    tl.fromTo("#s4-cap0", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.15);
+    tl.to("#s4-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.12, ease: "power2.in" }, 2.615);
+    tl.fromTo("#s4-cap1", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 2.735);
+    tl.to("#s4-cap1", { opacity: 0, filter: "blur(6px)", duration: 0.12, ease: "power2.in" }, 5.887);
+    tl.fromTo("#s4-cap2", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 6.007);
+    tl.to(["#s4-art", "#s4-c2", "#s4-c3", "#s4-src", "#s4-cap0", "#s4-cap1", "#s4-cap2"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }, 10.07);
+    window.__timelines["s4"] = tl;
+  </script>
+</template>

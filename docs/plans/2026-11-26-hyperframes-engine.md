@@ -83,3 +83,6 @@
 - gsap 3.15.0 은 템플릿 `assets/lib/` 에 넣었다(GreenSock 'no charge' 표준 라이선스 — 상업 사용 무료).
 - 계획의 `--variables-file … --strict-variables` 대신 **엔진이 index.html 을 직접 채운다**(글 개수가 편마다 달라 칸 수가 바뀌기 때문 — 변수로는 시간 있는 요소를 만들 수 없다). 대신 템플릿에 필수 칸이 하나라도 없으면 렌더 전에 멈추고(테스트 고정), 렌더는 `--strict` 로 린트 오류에서 멈춘다.
 - 코덱스 코드 리뷰(`outputs/reviews/hyperframes-s1-code-codex.md`) 3건 반영: 같은 폴더 임시 파일 + `os.replace`, 칸 누락 거부, 30fps 검사.
+- **main 에 리포트용 하이퍼프레임 엔진(`engine/motion/`, `docs/plans/2026-11-24-motion-graphics-engine.md`)이 먼저 들어와 있었다.** 고정 버전은 그쪽 `MOTION_HYPERFRAMES_PKG`(0.9.72) 하나를 같이 쓴다(`HF_HYPERFRAMES_PKG`). 렌더 함수는 리포트 전용 지시서·음성 구조라 합치지 않고 따로 둔다.
+- S2 워크플로는 `workflow_dispatch` 에 더해 이 경로를 고친 PR 에서도 돈다(시크릿·돈 없음, 액션 분만) — 렌더 회귀를 PR 에서 바로 보려고.
+- 페이블 독립 검사 ❌1(러너 의존성 누락) 반영, ⚠️ 중 예외 감싸기·박자 개수 하한·깨진 파일 정리 테스트·브랜드 상수화 반영.

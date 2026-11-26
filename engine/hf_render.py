@@ -101,7 +101,7 @@ def plan_slots(items: list[dict[str, Any]], grid: list[float], period: float) ->
 
 
 def build_html(template: str, *, top_line: str, slots: list[Slot], duration: float, pulses: list[float],
-               brand: str = "술째리고", accent: str = config.HF_DEFAULT_ACCENT) -> str:
+               brand: str = config.DRINKS_CAPTION_BRAND_TAG, accent: str = config.HF_DEFAULT_ACCENT) -> str:
     """템플릿 칸 채우기. 글은 전부 escape. 첫 글은 0초부터 보여 0프레임이 비지 않게 한다."""
     words, hits = [], []
     for n, s in enumerate(slots):
@@ -129,12 +129,12 @@ def build_html(template: str, *, top_line: str, slots: list[Slot], duration: flo
 
 def render_command(out_path: str) -> list[str]:
     npx = shutil.which("npx") or "npx"
-    return [npx, "--yes", f"hyperframes@{config.HF_CLI_VERSION}", "render", "--strict", "-o", out_path]
+    return [npx, "--yes", config.HF_HYPERFRAMES_PKG, "render", "--strict", "-o", out_path]
 
 
 def beats_command(audio_path: str) -> list[str]:
     npx = shutil.which("npx") or "npx"
-    return [npx, "--yes", f"hyperframes@{config.HF_CLI_VERSION}", "beats", audio_path, "--json"]
+    return [npx, "--yes", config.HF_HYPERFRAMES_PKG, "beats", audio_path, "--json"]
 
 
 def _env() -> dict[str, str]:
@@ -146,7 +146,10 @@ def parse_beats_json(stdout: str) -> list[float]:
     i = stdout.find("{")
     if i < 0:
         raise HfRenderError("박자 검출 출력이 JSON 이 아닙니다")
-    data = json.loads(stdout[i:])
+    try:
+        data = json.loads(stdout[i:])
+    except json.JSONDecodeError as e:
+        raise HfRenderError(f"박자 검출 출력을 읽을 수 없습니다: {e}") from e
     if not data.get("ok", True):
         raise HfRenderError(f"박자 검출 실패: {data.get('error') or data}")
     beats = [float(b) for b in data.get("beatTimes") or []]
@@ -164,21 +167,27 @@ def match_ratio(detected: list[float], grid: list[float], tol: float = config.HF
 
 
 def check_beats(track: Track) -> dict[str, Any]:
-    out = subprocess.run(beats_command(track.path), capture_output=True, text=True, encoding="utf-8",
-                         timeout=config.HF_RENDER_TIMEOUT_SEC, env=_env())
-    if out.returncode != 0:
-        raise HfRenderError(f"박자 검출 명령 실패(코드 {out.returncode}): {out.stderr[-400:]}")
-    detected = parse_beats_json(out.stdout)
-    ratio = match_ratio(detected, beat_grid(track))
-    return {"track": track.key, "detected": len(detected), "ratio": round(ratio, 3),
-            "ok": ratio >= config.HF_BEAT_MATCH_MIN_RATIO}
+    detected = parse_beats_json(_run(beats_command(track.path)))
+    grid = beat_grid(track)
+    ratio = match_ratio(detected, grid)
+    # 몇 박만 검출돼도 ratio 1.0 이 나오지 않게 개수 하한도 본다
+    enough = len(detected) >= config.HF_BEAT_MATCH_MIN_RATIO * len(grid)
+    return {"track": track.key, "detected": len(detected), "grid": len(grid), "ratio": round(ratio, 3),
+            "ok": ratio >= config.HF_BEAT_MATCH_MIN_RATIO and enough}
 
 
-def _run(cmd: list[str], cwd: Optional[str] = None) -> None:
-    out = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                         timeout=config.HF_RENDER_TIMEOUT_SEC, env=_env())
+def _run(cmd: list[str], cwd: Optional[str] = None) -> str:
+    """명령 실행. 실패·시간 초과·명령 없음 전부 HfRenderError. 반환: stdout."""
+    try:
+        out = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=config.HF_RENDER_TIMEOUT_SEC, env=_env())
+    except subprocess.TimeoutExpired as e:
+        raise HfRenderError(f"시간 초과({config.HF_RENDER_TIMEOUT_SEC}초): {' '.join(cmd[:4])}") from e
+    except FileNotFoundError as e:
+        raise HfRenderError(f"명령을 찾을 수 없습니다: {cmd[0]} — node/ffmpeg 설치를 확인하세요") from e
     if out.returncode != 0:
         raise HfRenderError(f"명령 실패(코드 {out.returncode}): {' '.join(cmd[:4])} … {(out.stderr or out.stdout)[-600:]}")
+    return out.stdout
 
 
 def verify_output(probe: dict[str, Any], expected_sec: float) -> None:

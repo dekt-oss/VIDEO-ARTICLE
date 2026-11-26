@@ -15,7 +15,7 @@ on:
     inputs:
       score_model:
         description: "리포트 4축 채점 모델 (gemini-* 면 러너 GEMINI 키 사용)"
-        default: "gemini-2.5-flash"
+        default: "claude-haiku-5-5"
       signal_limit:
         description: "ARIA list_signals 상위 N (후보 풀)"
         default: "40"
@@ -69,5 +69,5 @@ jobs:
       - name: Score reports + rebuild daily batch (4축 채점 → report_daily_batch)
         env:
           # 러너의 GEMINI 키로 채점(엣지 함수 쿼터와 분리). claude 로 바꾸려면 input + ANTHROPIC_API_KEY.
-          MODEL_REPORT_SCORING: ${{ inputs.score_model || 'gemini-2.5-flash' }}
+          MODEL_REPORT_SCORING: ${{ inputs.score_model || 'claude-haiku-5-5' }}
         run: python -m engine.report_score

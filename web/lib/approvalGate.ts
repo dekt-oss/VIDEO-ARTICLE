@@ -99,8 +99,9 @@ export function reportApprovalBlockReasons(
 
   return [...new Set([
     ...recomputed,
+    // motion_*: 모션그래픽 엔진만 판단할 수 있는 차단(예: 근거 있는 컷이 0개 — engine/motion/schema.py).
     ...stored.filter((reason): reason is string =>
-      typeof reason === "string" && reason.startsWith("claim_id_invalid")),
+      typeof reason === "string" && (reason.startsWith("claim_id_invalid") || reason.startsWith("motion_"))),
     ...explainer.filter((reason): reason is string => typeof reason === "string"),
   ])].sort();
 }

@@ -1,0 +1,469 @@
+{
+ "format": "jjeri_class",
+ "version": 1,
+ "series": "째리의 술 수업",
+ "episode": "1교시",
+ "topic": "버번 vs 셰리 캐스크",
+ "voice": {
+  "provider": "edge",
+  "voice": "ko-KR-HyunsuMultilingualNeural",
+  "rate": "+10%",
+  "atempo": 1.055
+ },
+ "keywords": [
+  {
+   "word": "술째리고",
+   "color": "#C2410C"
+  },
+  {
+   "word": "버번",
+   "color": "#B45309"
+  },
+  {
+   "word": "셰리",
+   "color": "#A61B1B"
+  }
+ ],
+ "title_accents": {
+  "버번": "#F0A93B",
+  "셰리": "#F2836B"
+ },
+ "chapters": [
+  {
+   "from_scene": "s1",
+   "title": "버번 vs 셰리 캐스크"
+  },
+  {
+   "from_scene": "s2",
+   "title": "통이 뭐길래?"
+  },
+  {
+   "from_scene": "s4",
+   "title": "버번 캐스크"
+  },
+  {
+   "from_scene": "s6",
+   "title": "셰리 캐스크"
+  },
+  {
+   "from_scene": "s8",
+   "title": "셰리 통은 귀해서"
+  },
+  {
+   "from_scene": "s10",
+   "title": "한눈에 보기"
+  },
+  {
+   "from_scene": "s11",
+   "title": "집 규칙"
+  },
+  {
+   "from_scene": "s12",
+   "title": "당신은 어느 쪽?"
+  }
+ ],
+ "scenes": [
+  {
+   "id": "s1",
+   "template": "glass_pair_question",
+   "tag": null,
+   "source_chip": null,
+   "slots": {
+    "left": {
+     "label": "버번 캐스크",
+     "liquid": "amber",
+     "question": "바닐라?"
+    },
+    "right": {
+     "label": "셰리 캐스크",
+     "liquid": "mahogany",
+     "question": "진한 과일?"
+    }
+   },
+   "beats": [
+    {
+     "text": "버번 캐스크와 셰리 캐스크,\n맛이 어떻게 다를까요?",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s2",
+   "template": "myth_question",
+   "tag": {
+    "text": "흔히 하는 생각",
+    "tone": "grey"
+   },
+   "source_chip": null,
+   "slots": {
+    "from": {
+     "icon": "glass",
+     "liquid": "clear",
+     "label": "투명한 원액"
+    },
+    "to": {
+     "icon": "barrel",
+     "wood": "light",
+     "label": "그냥 그릇?"
+    }
+   },
+   "beats": [
+    {
+     "text": "흔히 오크통은 그냥\n술을 담는 그릇이라고 생각하죠.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s3",
+   "template": "truth_infuse_stamp",
+   "tag": {
+    "text": "실제로는",
+    "tone": "tomato"
+   },
+   "source_chip": "Whisky Advocate",
+   "slots": {
+    "wall_label": "오크 나무",
+    "inside_label": "원액",
+    "from_color": "clear",
+    "to_color": "amber",
+    "stamp": "오크통 = 티백",
+    "stamp_on_beat": 1
+   },
+   "beats": [
+    {
+     "text": "그런데 갓 증류한 원액은\n사실 투명해요.",
+     "claim_ids": []
+    },
+    {
+     "text": "통을 티백처럼 우려내며\n색과 향을 입는 거예요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s4",
+   "template": "journey_multiply",
+   "tag": null,
+   "source_chip": "Whisky Advocate · 미국 버번 규정",
+   "slots": {
+    "object": {
+     "icon": "barrel",
+     "wood": "light"
+    },
+    "from_label": "미국 · 새 통만",
+    "to_label": "스코틀랜드 · 한 번 쓴 통",
+    "move_on_beat": 1,
+    "multiply_on_beat": 2,
+    "multiply_count": 3,
+    "benefit_chip": "구하기 쉽고 비교적 저렴"
+   },
+   "beats": [
+    {
+     "text": "버번은 새 오크통에만\n담아야 해요.",
+     "claim_ids": []
+    },
+    {
+     "text": "그래서 한 번 쓴 통이\n스코틀랜드로 건너오죠.",
+     "claim_ids": []
+    },
+    {
+     "text": "구하기 쉽고 비교적 저렴해서\n스카치 대부분이 이 통을 써요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s5",
+   "template": "flavor_rise",
+   "tag": null,
+   "source_chip": "Whisky Advocate · Frontiers in Chemistry(2018)",
+   "slots": {
+    "base": {
+     "icon": "charred_plank",
+     "label": "속을 그을린 새 미국산 오크"
+    },
+    "notes": [
+     {
+      "icon": "vanilla",
+      "label": "바닐라",
+      "beat": 0
+     },
+     {
+      "icon": "caramel",
+      "label": "캐러멜",
+      "beat": 0
+     },
+     {
+      "icon": "smoke",
+      "label": "스모크",
+      "beat": 1
+     },
+     {
+      "icon": "star_anise",
+      "label": "스파이스",
+      "beat": 1
+     }
+    ]
+   },
+   "beats": [
+    {
+     "text": "속을 그을린 미국산 오크는\n바닐라와 캐러멜 향을,",
+     "claim_ids": []
+    },
+    {
+     "text": "여기에 은은한 스모크와\n톡 쏘는 스파이스를 더해요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s6",
+   "template": "pour_infuse",
+   "tag": null,
+   "source_chip": null,
+   "slots": {
+    "pour": {
+     "icon": "bottle",
+     "label": "셰리",
+     "chip": "강화 와인 셰리"
+    },
+    "target": {
+     "icon": "barrel",
+     "wood": "dark",
+     "chip": "유럽산 오크통",
+     "tint": "sherry"
+    },
+    "result_chip": "셰리가 스며듦"
+   },
+   "beats": [
+    {
+     "text": "셰리 캐스크는 강화 와인인\n셰리를 머금었던 통이에요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s7",
+   "template": "fill_and_notes",
+   "tag": null,
+   "source_chip": "Whisky Advocate · Frontiers in Chemistry(2018)",
+   "slots": {
+    "source": {
+     "icon": "barrel",
+     "wood": "dark"
+    },
+    "glass_to": "mahogany",
+    "notes": [
+     {
+      "icon": "grapes"
+     },
+     {
+      "icon": "plum"
+     },
+     {
+      "icon": "cherries"
+     }
+    ],
+    "chips": [
+     "어두운 과일 향",
+     "풍부함"
+    ]
+   },
+   "beats": [
+    {
+     "text": "그래서 깊고 어두운\n과일 향과 풍부함을 끌어내요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s8",
+   "template": "scarcity_compare",
+   "tag": null,
+   "source_chip": null,
+   "slots": {
+    "many": {
+     "icon": "barrel",
+     "wood": "light",
+     "count": 6,
+     "chip": "버번 캐스크 · 흔해요",
+     "price_level": "₩ 저렴"
+    },
+    "one": {
+     "icon": "barrel",
+     "wood": "dark",
+     "chip": "셰리 캐스크 · 귀해요",
+     "price_level": "₩₩₩ 비쌈"
+    }
+   },
+   "beats": [
+    {
+     "text": "다만 셰리 캐스크는\n구하기 어렵고 훨씬 비싸요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s9",
+   "template": "two_methods",
+   "tag": {
+    "text": "블렌더의 방법",
+    "tone": "yellow"
+   },
+   "source_chip": null,
+   "slots": {
+    "rows": [
+     {
+      "label": "① 섞기",
+      "steps": [
+       "glass:amber",
+       "+",
+       "glass_small:mahogany",
+       "→",
+       "glass:blend"
+      ]
+     },
+     {
+      "label": "② 추가 숙성",
+      "steps": [
+       "glass:amber",
+       "→",
+       "barrel:dark",
+       "→",
+       "glass:deep"
+      ]
+     }
+    ]
+   },
+   "beats": [
+    {
+     "text": "그래서 조금만 섞거나,\n마지막에 셰리 통에서 더 익혀요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s10",
+   "template": "recap_board",
+   "tag": null,
+   "source_chip": "Whisky Advocate · Frontiers in Chemistry(2018)",
+   "slots": {
+    "rows": [
+     {
+      "subject": {
+       "icon": "barrel",
+       "wood": "light",
+       "chip": "버번"
+      },
+      "items": [
+       [
+        "vanilla",
+        "바닐라"
+       ],
+       [
+        "caramel",
+        "캐러멜"
+       ],
+       [
+        "smoke",
+        "스모크"
+       ]
+      ]
+     },
+     {
+      "subject": {
+       "icon": "barrel",
+       "wood": "dark",
+       "chip": "셰리"
+      },
+      "items": [
+       [
+        "grapes",
+        "어두운 과일"
+       ],
+       [
+        "glass:mahogany",
+        "풍부함"
+       ]
+      ]
+     }
+    ],
+    "exception_chip": "예외도 많아요",
+    "exception_on_beat": 1
+   },
+   "beats": [
+    {
+     "text": "정리하면 버번은 바닐라·캐러멜,\n셰리는 어두운 과일이에요.",
+     "claim_ids": []
+    },
+    {
+     "text": "물론 증류소와 숙성 기간에 따라\n예외도 많아요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s11",
+   "template": "house_rule_search",
+   "tag": null,
+   "source_chip": null,
+   "slots": {
+    "label": {
+     "lines": [
+      "WHISKY",
+      "SHERRY",
+      "CASK"
+     ],
+     "circle_lines": [
+      1,
+      2
+     ],
+     "chip": "캐스크 이름 찾기"
+    },
+    "search": {
+     "hint": "술째리고에서 검색",
+     "query": "셰리 캐스크",
+     "on_beat": 1,
+     "after_chip": "가격 비교까지 한 번에"
+    },
+    "show_prices": false
+   },
+   "beats": [
+    {
+     "text": "라벨에서 캐스크 이름을\n먼저 찾아보세요.",
+     "claim_ids": []
+    },
+    {
+     "text": "궁금하면 술째리고에서\n바로 검색해 보세요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "s12",
+   "template": "vote_comment",
+   "tag": null,
+   "source_chip": null,
+   "slots": {
+    "left": {
+     "label": "버번파",
+     "liquid": "amber"
+    },
+    "right": {
+     "label": "셰리파",
+     "liquid": "mahogany"
+    },
+    "comment": "저는 ○○파예요",
+    "loop_to_first_frame": true
+   },
+   "beats": [
+    {
+     "text": "여러분은 버번파? 셰리파?\n댓글로 알려 주세요!",
+     "claim_ids": []
+    }
+   ]
+  }
+ ],
+ "caption_draft": "버번 캐스크 vs 셰리 캐스크, 맛이 어떻게 다를까? 🥃 [째리의 술 수업 · 1교시]\n\n버번 통은 바닐라·캐러멜·스모크를, 셰리 통은 깊고 어두운 과일 향과 풍부함을 남겨요.\n라벨에 '셰리 캐스크'가 보이면 진한 과일 향부터 떠올려 보세요.\n\n여러분은 버번파? 셰리파? 댓글로 알려 주세요 👇\n술 가격 검색할 땐 술째리고 👀 @sooljjerigo\n\n출처: Whisky Advocate, Frontiers in Chemistry(2018)\n음악: \"Upbeat Corporate\" — Soundrider/Dope (CC BY)\n내레이션: AI 음성(Microsoft Edge TTS)\n※ 19세 미만은 음주할 수 없습니다\n\n#위스키 #버번 #셰리캐스크 #싱글몰트 #위스키공부 #술째리고\n"
+}

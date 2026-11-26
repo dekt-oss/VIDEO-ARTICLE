@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 
 import pytest
 
@@ -64,8 +65,9 @@ def test_html_escapes_text_and_fills_every_slot():
 
 def test_commands_are_pinned_and_strict():
     cmd = h.render_command("o.mp4")
-    assert f"hyperframes@{config.HF_CLI_VERSION}" in cmd and "--strict" in cmd
-    assert f"hyperframes@{config.HF_CLI_VERSION}" in h.beats_command("a.wav")
+    assert config.HF_HYPERFRAMES_PKG in cmd and "--strict" in cmd
+    assert config.HF_HYPERFRAMES_PKG == config.MOTION_HYPERFRAMES_PKG  # 저장소에 고정 버전은 하나
+    assert config.HF_HYPERFRAMES_PKG in h.beats_command("a.wav")
     assert h._env()["HYPERFRAMES_NO_TELEMETRY"] == "1"
 
 
@@ -85,6 +87,37 @@ def test_verify_output_rejects_bad_results():
     for bad in ({"width": 720}, {"audio_streams": 0}, {"duration_sec": 4.0}, {"fps": 24.0}):
         with pytest.raises(h.HfRenderError):
             h.verify_output({**good, **bad}, 5.49)
+
+
+def test_run_wraps_missing_command_and_failure():
+    with pytest.raises(h.HfRenderError, match="찾을 수 없"):
+        h._run(["no-such-command-hf-xyz"])
+    with pytest.raises(h.HfRenderError, match="명령 실패"):
+        h._run([sys.executable, "-c", "import sys; sys.exit(3)"])
+
+
+def test_broken_result_never_reaches_out_path(tmp_path, monkeypatch):
+    """렌더 도중 깨진 mp4(2026-11-26 실제 사고) — 최종 위치에 아무것도 남지 않고 임시 파일도 지운다."""
+    import subprocess as sp
+    from engine import drinks_render
+
+    def fake_run(cmd, cwd=None):
+        out = cmd[-1]
+        if "render" in cmd:
+            out = cmd[cmd.index("-o") + 1]
+        with open(out, "wb") as f:
+            f.write(b"not an mp4")
+        return ""
+
+    def broken_probe(path):
+        raise sp.CalledProcessError(1, ["ffprobe"])
+
+    monkeypatch.setattr(h, "_run", fake_run)
+    monkeypatch.setattr(drinks_render, "_probe", broken_probe)
+    out = tmp_path / "o.mp4"
+    with pytest.raises(h.HfRenderError, match="깨진"):
+        h.render_meme(out_path=str(out), **h.DEMO)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_worker_switch_stays_off_until_s3_approval():

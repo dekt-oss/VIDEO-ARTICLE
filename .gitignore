@@ -51,6 +51,7 @@ docs/실측_모델/
 # Phase 11 실제 운영자료 비교 산출물 — 로컬 검토용이며 저장소에 올리지 않는다.
 artifacts/
 .claude/worktrees/
+outputs/
 
 # 하이퍼프레임 실험 샘플(로컬 전용, 비비노 음원·대용량 글꼴 포함) — docs/plans/2026-11-26-hyperframes-engine.md
 experiments/

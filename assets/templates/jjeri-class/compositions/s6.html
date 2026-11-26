@@ -1,0 +1,74 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #1F2A44; }
+    .art { position: absolute; left: 60px; top: 410px; width: 960px; height: 580px; overflow: visible; }
+    .capbox { position: absolute; left: 296px; width: 720px; top: 1052px; height: 176px; }
+    .captext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 42px; line-height: 1.42; letter-spacing: -0.02em; color: #1F2A44; opacity: 0; }
+    .src { position: absolute; left: 84px; width: 912px; top: 996px; text-align: right; }
+    .src span { display: inline-block; background: #FDE68A; color: #1F2A44; font-weight: 600; font-size: 28px; padding: 2px 16px; border-radius: 8px; }
+    .chipbox { position: absolute; width: 600px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .chip { display: inline-block; font-weight: 700; font-size: 34px; padding: 6px 20px; border-radius: 14px; border: 3px solid #0E1525; white-space: nowrap; }
+    .c-yel { background: #FDE68A; color: #1F2A44; }
+    .c-cream { background: #FFF8EE; color: #1F2A44; }
+    .c-amber { background: #F0A93B; color: #1F2A44; }
+    .c-maho { background: #8E2A14; color: #fff; }
+    .c-tom { background: #C2410C; color: #fff; }
+    .tagbox { position: absolute; left: 70px; top: 418px; }
+    .tag { display: inline-block; font-weight: 700; font-size: 32px; padding: 4px 18px; border-radius: 12px; border: 3px solid #0E1525; }
+    .t-yel { background: #FDE68A; color: #1F2A44; }
+    .t-grey { background: #E5E7EB; color: #1F2A44; }
+    .t-tom { background: #C2410C; color: #fff; }
+    .t-amber { background: #F0A93B; color: #1F2A44; }
+    .t-maho { background: #8E2A14; color: #fff; }
+
+    .captext b { font-weight: 800; }
+    .search { position: absolute; left: 400px; top: 640px; width: 620px; height: 104px; background: #fff; border: 6px solid #C2410C; border-radius: 52px; display: flex; align-items: center; padding: 0 30px; gap: 18px; }
+    .search .q { font-weight: 800; font-size: 44px; color: #1F2A44; letter-spacing: -0.02em; }
+    .search .q span { opacity: 0; }
+    .search .cur { width: 4px; height: 48px; background: #C2410C; }
+    .search .hint { position: absolute; left: 0; right: 0; top: -54px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; }
+    .cbox { position: absolute; left: 170px; width: 740px; top: 880px; height: 120px; background: #fff; border: 4px solid #0E1525; border-radius: 22px; padding: 14px 28px; }
+    .cbox .lab { font-weight: 600; font-size: 30px; color: #6B7583; }
+    .cbox .q { font-weight: 800; font-size: 44px; color: #1F2A44; }
+    .cbox .q span { opacity: 0; }
+
+    .stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 540px 410px; transform: translate(0px, 30px) scale(0.95); }
+
+  </style>
+  <div id="root" data-composition-id="s6" data-width="1080" data-height="1920">
+    <div class="stage"><svg id="s6-art" class="art" viewBox="0 0 960 580" xmlns="http://www.w3.org/2000/svg"><g transform="translate(560 260) scale(1.0)"><g id="s6-b">
+      <path d="M40 0 L200 0 Q240 150 200 300 L40 300 Q0 150 40 0 Z" fill="#8A4A26" stroke="#3B2412" stroke-width="6" stroke-linejoin="round"/>
+      <clipPath id="s6-b-tc"><rect id="s6-b-tr" x="0" y="300" width="240" height="0"/></clipPath><path d="M40 0 L200 0 Q240 150 200 300 L40 300 Q0 150 40 0 Z" fill="#7A1F2B" fill-opacity="0.62" clip-path="url(#s6-b-tc)"/>
+      <path d="M80 0 Q64 150 80 300 M120 0 L120 300 M160 0 Q176 150 160 300" fill="none" stroke="#63331A" stroke-width="4"/>
+      <path d="M31 40 Q120 52 209 40" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 100 Q120 112 218 100" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 200 Q120 212 218 200" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M31 260 Q120 272 209 260" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/>
+      <ellipse cx="120" cy="0" rx="80" ry="13" fill="#63331A" stroke="#3B2412" stroke-width="5"/>
+      <circle cx="120" cy="150" r="9" fill="#3B2412"/>
+    </g></g><g transform="translate(120 60) scale(1.0)"><g id="s6-bt">
+      <path d="M44 20 L76 20 L76 96 C76 112 110 116 110 146 L110 330 C110 338 104 342 96 342 L24 342 C16 342 10 338 10 330 L10 146 C10 116 44 112 44 96 Z" fill="#1F3B2C" stroke="#0E1F16" stroke-width="5"/>
+      <rect x="40" y="6" width="40" height="18" rx="4" fill="#7A1F2B"/>
+      <rect x="18" y="196" width="84" height="84" rx="8" fill="#FFF8EE"/>
+      <text x="60" y="250" text-anchor="middle" font-family="Pretendard" font-weight="700" font-size="30" fill="#1F2A44">셰리</text>
+      <path d="M24 150 L24 320" stroke="#fff" stroke-opacity="0.25" stroke-width="8" stroke-linecap="round"/>
+    </g></g><path id="s6-st" d="M700 192 C704 215 692 240 680 262" fill="none" stroke="#7A1F2B" stroke-width="12" stroke-linecap="round" pathLength="1" stroke-dasharray="1 1.2" stroke-dashoffset="1.1"/></svg><div class="chipbox" style="left:-60px; top:850px;"><span id="s6-c1" class="chip c-cream">강화 와인 셰리</span></div><div class="chipbox" style="left:160px; top:800px;"><span id="s6-c2" class="chip c-maho">유럽산 오크통</span></div><div class="chipbox" style="left:440px; top:790px;"><span id="s6-c3" class="chip c-yel">셰리가 스며듦</span></div></div><div class="capbox"><div id="s6-cap0" class="captext"><span><b style="color:#A61B1B">셰리</b> 캐스크는 강화 와인인<br><b style="color:#A61B1B">셰리</b>를 머금었던 통이에요.</span></div></div>
+    
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#s6-art", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0);
+    tl.fromTo("#s6-b", { y: -40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "back.out(1.4)" }, 0.1);
+    tl.fromTo("#s6-c1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.4);
+    tl.fromTo("#s6-c2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.6);
+    tl.to("#s6-c1", { opacity: 0, duration: 0.15 }, 1.9);
+    tl.fromTo("#s6-bt", { x: 0, y: 0, rotation: 0 }, { x: 358, y: -102, rotation: 108, duration: 0.9, ease: "power2.inOut", transformOrigin: "50% 50%" }, 1.0);
+    tl.fromTo("#s6-st", { attr: { "stroke-dashoffset": 1.1 } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.25, ease: "power2.out" }, 1.85);
+    tl.fromTo("#s6-b-tr", { attr: { y: 300, height: 0 } }, { attr: { y: 0, height: 300 }, duration: 1.6, ease: "power1.inOut" }, 2.0);
+    tl.fromTo("#s6-c3", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 2.5);
+    tl.fromTo("#s6-cap0", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.15);
+    tl.to(["#s6-art", "#s6-c2", "#s6-c3", "#s6-cap0"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }, 4.449999999999999);
+    window.__timelines["s6"] = tl;
+  </script>
+</template>

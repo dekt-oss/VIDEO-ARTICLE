@@ -10,12 +10,13 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from . import config, dedup, report_batch, report_db, report_scoring
+from .score import is_transient
 from .llm import JSONParseError, call_json
 from .util import log, today_local
 
 
-def _score_one(report: dict) -> dict:
-    """리포트 1건 채점 → report_scores 행 dict."""
+def _score_one(report: dict) -> dict | None:
+    """리포트 1건 채점 → report_scores 행 dict. 일시 오류면 None(행을 만들지 않는다)."""
     try:
         obj = call_json(
             model=config.MODEL_REPORT_SCORING,
@@ -27,6 +28,11 @@ def _score_one(report: dict) -> dict:
         log.warning("리포트 채점 실패(JSON 파싱) report=%s: %s", report.get("external_id"), exc)
         axes = report_scoring.zero_axes("JSON 파싱 불가")
     except Exception as exc:  # noqa: BLE001 — API/네트워크 오류도 0점 처리하되 원인 구분해 남긴다
+        if is_transient(exc):
+            # 402·429·5xx·타임아웃은 리포트와 무관한 사고 — 0점 행을 남기면 다시 채점되지 않는다
+            # (2026-11-23~26 Gemini 402 때 294건이 그렇게 굳었다). 행을 만들지 않고 다음 실행에 넘긴다.
+            log.warning("리포트 채점 보류(일시 오류) report=%s: %s", report.get("external_id"), exc)
+            return None
         log.warning("리포트 채점 실패(API/네트워크) report=%s: %s", report.get("external_id"), exc)
         axes = report_scoring.zero_axes(f"API 오류: {str(exc)[:80]}")
 
@@ -76,7 +82,10 @@ def run(only_unscored: bool = True, limit: int | None = None) -> int:
     reports = report_db.fetch_reports_to_score(only_unscored=only_unscored, limit=limit)
     log.info("채점 대상: %d reports%s", len(reports), f" (limit={limit})" if limit else "")
 
-    score_rows = [_score_one(r) for r in reports]
+    score_rows = [row for row in (_score_one(r) for r in reports) if row is not None]
+    if len(score_rows) < len(reports):
+        log.warning("리포트 채점 보류 %d/%d건(일시 오류) — 다음 실행이 다시 채점한다",
+                    len(reports) - len(score_rows), len(reports))
     report_db.upsert_report_scores(score_rows)
 
     # report_daily_batch 는 그날의 전체 report_scores 기준으로 재생성(멱등).

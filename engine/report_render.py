@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import sys
 import tempfile
 from typing import Any
@@ -77,6 +78,64 @@ def _explainer_layout(version_type: str):
         config.LAYOUT_MODE = prev
 
 
+def _clean_title(t: str) -> str:
+    """수집기가 제목을 두세 번 이어 붙인 행이 있다(실측: 유안타 삼성전자 '…장기화!…장기화!…장기화!').
+    문장부호로 나눠 앞 조각에 이미 들어 있는 조각은 버리고, 끝 카드가 넘치지 않게 자른다."""
+    kept: list[str] = []
+    for seg in (x.strip() for x in re.split(r"(?<=[!?.])", t or "") if x.strip()):
+        if not any(seg in k for k in kept):
+            kept.append(seg)
+    out = " ".join(kept)
+    cap = config.MOTION_END_CARD_TITLE_MAX
+    return out if len(out) <= cap else out[:cap - 1] + "…"
+
+
+def motion_meta(directive: dict[str, Any]) -> dict[str, str]:
+    """모션 끝 출처 카드 재료 — 리포트 행·Fact Sheet 의 source 에서만(LLM 이 못 바꾼다)."""
+    rid = str(directive.get("report_id") or "")
+    report = (report_db.get_report(rid) or {}) if rid else {}
+    fs = ((report_db.get_report_draft(rid) or {}).get("fact_sheet") or {}) if rid else {}
+    raw = fs.get("source")
+    # source 는 문자열("증권사 · 애널리스트 · 날짜")일 때도, {broker, analyst, url…} 레코드일 때도 있다(실측).
+    src = str(raw or "").strip() if isinstance(raw, str) else ""
+    rec = raw if isinstance(raw, dict) else {}
+    return {"title": _clean_title(str(report.get("title") or "")),
+            "date": src,
+            "broker": "" if src else str(rec.get("broker") or report.get("broker")
+                                         or (directive.get("header") or {}).get("broker") or ""),
+            "analyst": "" if src else str(rec.get("analyst") or report.get("analyst") or "")}
+
+
+def _process_motion_job(job_id: str, directive_id: str, directive: dict[str, Any], lang: str) -> str:
+    """모션그래픽: HyperFrames 렌더 → QA(기록) → 업로드. 그림·영상 API 호출 0회 · 비용 0."""
+    from .motion import build as motion_build
+    work_dir = tempfile.mkdtemp(prefix=f"report_motion_{job_id}_")
+    report_db.update_report_render_job(job_id, status="assets", progress=20, cost_estimate=0.0)
+    metrics: dict[str, Any] = {}
+    with sm.stage(metrics, "render"):
+        res = motion_build.render(directive, work_dir, motion_meta(directive), lang=lang)
+    report_db.update_report_render_job(job_id, status="assembling", progress=80, cost_estimate=0.0)
+    try:
+        with sm.stage(metrics, "qa"):
+            qa = render_qa.run_qa(res["mp4"])
+    except Exception as exc:  # noqa: BLE001 — QA 는 기록 전용(위 process_job 과 같은 이유)
+        log.warning("모션 렌더 QA 실패 — 기록만 건너뛴다: %s", exc)
+        qa = {"passed": None, "hard_fail": [], "warnings": [], "qa_error": f"{type(exc).__name__}: {exc}"[:200]}
+    qa["cut_map"] = res["cut_map"]
+    qa["motion_warnings"] = res["warnings"]
+    with sm.stage(metrics, "upload"):
+        url = report_db.upload_render(res["mp4"], f"report/{directive_id}/{job_id}_{lang}.mp4")
+    metrics["total_ms"] = sm.total_ms(metrics)
+    qa["stage_ms"] = metrics
+    verdict = "failed" if qa.get("hard_fail") else "done"   # (status 이름은 그림 경로 순서 검사가 찾는다)
+    reasons = [str(x) for x in (qa.get("hard_fail") or [])]
+    report_db.update_report_render_job(job_id, status=verdict, progress=100, output_url=url, cost_estimate=0.0,
+                                       qa=qa, error_log="; ".join(reasons)[:1000] or None, finished=True)
+    report_db.update_report_directive_status(directive_id, "rendered" if verdict == "done" else "failed")
+    log.info("모션 렌더 완료: job=%s url=%s 판정=%s", job_id, url, verdict)
+    return url
+
+
 def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
     """report_render_jobs 1건 처리: 에셋→조립(면책 footer)→Storage 업로드→done. 반환: output_url."""
     directive = report_db.get_report_directive(directive_id)
@@ -86,6 +145,8 @@ def process_job(job_id: str, directive_id: str, lang: str = "ko") -> str:
 
     version_type = str((directive.get("header") or {}).get("version_type")
                        or directive.get("version_type") or "")
+    if version_type == config.MOTION_VERSION:
+        return _process_motion_job(job_id, directive_id, directive, lang)
     # ★ §21 K5 — 설명판형은 편당 $0.25 다(코드 렌더가 주역이라 더 낮다). 그동안 이 상수를
     #   읽는 곳이 없어 실제 캡은 $1.2 하나였다. 캡은 잡을 죽이므로 닿기 전에 경고를 남긴다.
     cap = config.render_budget_cap(version_type)

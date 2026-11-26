@@ -16,10 +16,10 @@ on:
         default: "150"
       score_model:
         description: "채점 모델(gemini-* 면 Gemini 사용)"
-        default: "gemini-2.5-flash"
+        default: "claude-haiku-5-5"
       draft_model:
         description: "초안(Fact Sheet/대본) 모델. 2026-09-28 기본 gemini-3.8-flash. 자기검증은 2.5-flash 고정"
-        default: "gemini-3.8-flash"
+        default: "claude-haiku-5-5"
       run_draft:
         description: "초안 큐(draft_requests) 처리 여부"
         type: boolean
@@ -59,16 +59,16 @@ jobs:
       JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
       JEV_ENABLED: "1"
       # inputs 는 스케줄 실행 때 비므로 `|| 기본값` 으로 무인 실행에서도 동일하게 동작.
-      MODEL_FACTSHEET: ${{ inputs.draft_model || 'gemini-3.8-flash' }}
-      MODEL_SCRIPT: ${{ inputs.draft_model || 'gemini-3.8-flash' }}
-      MODEL_SELFCHECK: 'gemini-2.5-flash'   # 판정용 — 2026-09-28 결정으로 싼 모델 고정
+      MODEL_FACTSHEET: ${{ inputs.draft_model || 'claude-haiku-5-5' }}
+      MODEL_SCRIPT: ${{ inputs.draft_model || 'claude-haiku-5-5' }}
+      MODEL_SELFCHECK: 'claude-haiku-5-5'   # 판정용 — 2026-09-28 결정으로 싼 모델 고정
       OPENALEX_MAILTO: ${{ secrets.OPENALEX_MAILTO }}
       ARXIV_CONTACT: ${{ secrets.OPENALEX_MAILTO }}
       REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
       REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
       COLLECT_WINDOW_DAYS: ${{ inputs.window_days || '10' }}
       SCORE_LIMIT: ${{ inputs.score_limit || '150' }}
-      MODEL_SCORING: ${{ inputs.score_model || 'gemini-2.5-flash' }}
+      MODEL_SCORING: ${{ inputs.score_model || 'claude-haiku-5-5' }}
       PEER_REVIEWED_ONLY: "true"
       TIMEZONE: "Asia/Seoul"
     steps:

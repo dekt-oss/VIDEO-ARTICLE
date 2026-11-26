@@ -30,6 +30,8 @@
     전에는 운영에 쓰지 않는다.** `RENDER_BUDGET_CAP_USD` 는 잡 단위라 여러 버전·언어 총액은 ⑤ 확인 모달만 본다.
     — `docs/수정명세서_웹툰버전_v1.md`
   - **폐기됨:** `editorial`(2026-07-28), **설명판형 `explainer`(2026-08-28)** — `docs/deviation-drop-explainer-webtoon.md`.
+  - **모션그래픽 `motion`(리포트 전용, 2026-11-24)** — HyperFrames 템플릿 렌더, 그림 API 0원. LLM 은 템플릿·칸만 고르고
+    칸 숫자는 Fact Sheet 단위째 검문(`engine/motion/`). 실렌더 확인: `python -m scripts.motion_preview tests/fixtures/motion_usedcar.json`. — `docs/deviation-motion-graphics.md`
   - 대시보드 작업 콘솔: ④⑤⑥ 이 **한 화면**(`web/components/WorkspaceClient.tsx`, 두 공장 공용).
     **돈이 나가거나 외부로 발행되는 라우트는 운영자 키 게이트**(`web/lib/apiGuard.ts`)를 거친다.
     **로그인은 없다**(0007 결정 유지). 큐 테이블은 anon 쓰기가 막혀 있어 Next 라우트가 service key 로 쓴다(`web/lib/supabase/admin.ts`).
