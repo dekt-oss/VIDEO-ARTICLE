@@ -25,7 +25,6 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # 2026-11-26 텍스트 LLM 기본 = claude-haiku-5-5
       TIMEZONE: "Asia/Seoul"
       WORKER_ID: ${{ github.run_id }}
       DRINKS_STORAGE: supabase

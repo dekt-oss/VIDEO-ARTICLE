@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sys
 
+import anthropic
 import httpx
 
 from . import batch, config, db, dedup, scoring, translate
@@ -33,7 +34,9 @@ class TransientScoringError(RuntimeError):
 #: 논문 내용과 무관한 사고. 이 중 하나면 저장하지 않고 다음 실행에 넘긴다.
 #: (429·5xx 는 `llm._gemini_create` 가 TransportError 로 바꿔 던지고, tenacity 가
 #:  HTTP_MAX_RETRIES 회 백오프한 뒤에도 실패한 것만 여기 온다.)
-_TRANSIENT = (httpx.TimeoutException, httpx.TransportError, TimeoutError, ConnectionError)
+# ★ 2026-11-26 Anthropic 기본 전환: SDK 의 429·5xx·타임아웃·연결 오류도 사고다(독립 검사 ❌ — 빠지면 0점 저장).
+_TRANSIENT = (httpx.TimeoutException, httpx.TransportError, TimeoutError, ConnectionError,
+              anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APIConnectionError)
 
 
 def _score_one(paper: dict) -> dict:

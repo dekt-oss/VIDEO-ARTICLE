@@ -91,3 +91,31 @@ def test_the_run_skips_accidents_and_stores_the_rest():
     assert n == 2
     assert [r["paper_id"] for r in stored["rows"]] == ["a", "c"], \
         "사고 난 b 는 행을 만들지 않아야 다음 실행이 다시 집어 간다"
+
+
+# ── 2026-11-26 Anthropic(Haiku 5.5) 기본 전환: SDK 예외도 사고다(독립 검사 ❌) ──
+def _anthropic_errors():
+    import anthropic
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return [
+        anthropic.RateLimitError("429", response=httpx.Response(429, request=req), body=None),
+        anthropic.InternalServerError("529", response=httpx.Response(529, request=req), body=None),
+        anthropic.APITimeoutError(request=req),
+        anthropic.APIConnectionError(request=req),
+    ]
+
+
+@pytest.mark.parametrize("exc", _anthropic_errors())
+def test_anthropic_accidents_are_not_written_down(exc):
+    with mock.patch.object(score, "call_json", _raise(exc)):
+        with pytest.raises(score.TransientScoringError):
+            score._score_one(PAPER)
+
+
+@pytest.mark.parametrize("exc", [httpx.TransportError("402 from gemini"), *_anthropic_errors()])
+def test_report_scoring_accident_makes_no_row(exc):
+    """리포트 라인: 2026-11-23~26 Gemini 사고로 294건이 0점으로 굳었다."""
+    from engine import report_score
+    rep = {"id": "r1", "external_id": "aria:1", "title": "t"}
+    with mock.patch.object(report_score, "call_json", _raise(exc)):
+        assert report_score._score_one(rep) is None

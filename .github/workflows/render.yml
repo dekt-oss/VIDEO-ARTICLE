@@ -138,7 +138,6 @@ jobs:
         continue-on-error: true
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # 2026-11-26 텍스트 LLM 기본 = claude-haiku-5-5
           IMAGE_PROVIDER: ${{ vars.IMAGE_PROVIDER || 'gemini' }}
           IMAGE_GENERATION_MODE: ${{ vars.IMAGE_GENERATION_MODE || 'batch' }}
         run: python -m engine.image_batch
@@ -149,7 +148,6 @@ jobs:
         if: ${{ !cancelled() && env.MODE == 'poll' && steps.check.outputs.has_work == 'true' }}
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # 2026-11-26 텍스트 LLM 기본 = claude-haiku-5-5
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           # 이미지=Gemini(nano banana, 기존 GEMINI_API_KEY 재사용), TTS=무료 Edge TTS(러너는 프록시 없음).
           # 버전3 지시서는 ANIMATION_ENGINE=manim(기본)으로 자동 Manim 도해 렌더.
