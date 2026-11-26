@@ -202,6 +202,14 @@ def verify_output(probe: dict[str, Any], expected_sec: float) -> None:
         raise HfRenderError(f"길이가 계획({expected_sec:.2f}초)과 다릅니다: {probe.get('duration_sec')}초")
 
 
+def _stream_durations(path: str) -> str:
+    """진단용: 영상·소리 스트림 각각의 길이(어느 쪽이 길어졌는지)."""
+    try:
+        return _run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,duration", "-of", "csv=p=0", path]).strip().replace(chr(10), " / ")
+    except HfRenderError as e:
+        return f"(읽기 실패: {e})"
+
+
 def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
                 track_key: str = "sooljjerigo-groove-117", template: str = "meme-beat") -> dict[str, Any]:
     """밈 박자 영상 1편. 반환: 계획(칸·박자)·결과 정보. 실패는 HfRenderError."""
@@ -210,6 +218,8 @@ def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
     track = load_track(track_key)
     grid = beat_grid(track)
     slots, duration = plan_slots(items, grid, track.beat_period_sec)
+    # 프레임 경계로 올림 — 영상(프레임 단위)과 음악 길이를 같게(러너에서 5.49 계획 → 5.6초 결과 실측, 2026-11-27)
+    duration = math.ceil(duration * config.RENDER_FPS - 1e-6) / config.RENDER_FPS
     src = os.path.join(TEMPLATE_DIR, template)
     with tempfile.TemporaryDirectory(prefix="hf-") as work:
         proj = os.path.join(work, "p")
@@ -238,7 +248,10 @@ def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
                 probe = _probe(part)
             except subprocess.CalledProcessError as e:
                 raise HfRenderError(f"결과 파일을 읽을 수 없습니다(깨진 mp4): {e}") from e
-            verify_output(probe, duration)
+            try:
+                verify_output(probe, duration)
+            except HfRenderError as e:
+                raise HfRenderError(f"{e} · 스트림별 길이 {_stream_durations(part)}") from e
             os.replace(part, out_path)
         finally:
             if os.path.exists(part):
