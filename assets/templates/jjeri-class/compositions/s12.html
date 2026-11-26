@@ -1,0 +1,75 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #1F2A44; }
+    .art { position: absolute; left: 60px; top: 410px; width: 960px; height: 580px; overflow: visible; }
+    .capbox { position: absolute; left: 296px; width: 720px; top: 1052px; height: 176px; }
+    .captext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 42px; line-height: 1.42; letter-spacing: -0.02em; color: #1F2A44; opacity: 0; }
+    .src { position: absolute; left: 84px; width: 912px; top: 996px; text-align: right; }
+    .src span { display: inline-block; background: #FDE68A; color: #1F2A44; font-weight: 600; font-size: 28px; padding: 2px 16px; border-radius: 8px; }
+    .chipbox { position: absolute; width: 600px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .chip { display: inline-block; font-weight: 700; font-size: 34px; padding: 6px 20px; border-radius: 14px; border: 3px solid #0E1525; white-space: nowrap; }
+    .c-yel { background: #FDE68A; color: #1F2A44; }
+    .c-cream { background: #FFF8EE; color: #1F2A44; }
+    .c-amber { background: #F0A93B; color: #1F2A44; }
+    .c-maho { background: #8E2A14; color: #fff; }
+    .c-tom { background: #C2410C; color: #fff; }
+    .tagbox { position: absolute; left: 70px; top: 418px; }
+    .tag { display: inline-block; font-weight: 700; font-size: 32px; padding: 4px 18px; border-radius: 12px; border: 3px solid #0E1525; }
+    .t-yel { background: #FDE68A; color: #1F2A44; }
+    .t-grey { background: #E5E7EB; color: #1F2A44; }
+    .t-tom { background: #C2410C; color: #fff; }
+    .t-amber { background: #F0A93B; color: #1F2A44; }
+    .t-maho { background: #8E2A14; color: #fff; }
+
+    .captext b { font-weight: 800; }
+    .search { position: absolute; left: 400px; top: 640px; width: 620px; height: 104px; background: #fff; border: 6px solid #C2410C; border-radius: 52px; display: flex; align-items: center; padding: 0 30px; gap: 18px; }
+    .search .q { font-weight: 800; font-size: 44px; color: #1F2A44; letter-spacing: -0.02em; }
+    .search .q span { opacity: 0; }
+    .search .cur { width: 4px; height: 48px; background: #C2410C; }
+    .search .hint { position: absolute; left: 0; right: 0; top: -54px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; }
+    .cbox { position: absolute; left: 170px; width: 740px; top: 880px; height: 120px; background: #fff; border: 4px solid #0E1525; border-radius: 22px; padding: 14px 28px; }
+    .cbox .lab { font-weight: 600; font-size: 30px; color: #6B7583; }
+    .cbox .q { font-weight: 800; font-size: 44px; color: #1F2A44; }
+    .cbox .q span { opacity: 0; }
+
+    .stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 540px 410px; transform: translate(0px, 30px) scale(0.95); }
+
+  </style>
+  <div id="root" data-composition-id="s12" data-width="1080" data-height="1920">
+    <div class="stage"><svg id="s12-art" class="art" viewBox="0 0 960 580" xmlns="http://www.w3.org/2000/svg"><g transform="translate(205 60) scale(1.2)"><g id="s12-gA">
+      <clipPath id="s12-gA-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s12-gA-liq" x="0" y="147" width="200" height="103" fill="#F0A93B" clip-path="url(#s12-gA-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g><g transform="translate(515 60) scale(1.2)"><g id="s12-gB">
+      <clipPath id="s12-gB-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s12-gB-liq" x="0" y="147" width="200" height="103" fill="#8E2A14" clip-path="url(#s12-gB-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g></svg><div class="chipbox" style="left:85px; top:420px;"><span id="s12-nA" class="chip c-amber">버번파</span></div><div class="chipbox" style="left:395px; top:420px;"><span id="s12-nB" class="chip c-maho">셰리파</span></div><div class="cbox" id="s12-box"><div class="lab">댓글</div><div class="q"><span id="s12-k0">저</span><span id="s12-k1">는</span><span id="s12-k2">&nbsp;</span><span id="s12-k3">○</span><span id="s12-k4">○</span><span id="s12-k5">파</span><span id="s12-k6">예</span><span id="s12-k7">요</span></div></div></div><div class="capbox"><div id="s12-cap0" class="captext"><span>여러분은 <b style="color:#B45309">버번</b>파? <b style="color:#A61B1B">셰리</b>파?<br>댓글로 알려 주세요!</span></div></div>
+    
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#s12-art", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0);
+    tl.fromTo("#s12-nA", { scale: 0.5, opacity: 0, rotation: -10 }, { scale: 1, opacity: 1, rotation: -4, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.5);
+    tl.fromTo("#s12-nB", { scale: 0.5, opacity: 0, rotation: -2 }, { scale: 1, opacity: 1, rotation: 4, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 1.0);
+    tl.fromTo("#s12-box", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "expo.out" }, 1.9);
+    tl.set("#s12-k0", { opacity: 1 }, 2.4);
+    tl.set("#s12-k1", { opacity: 1 }, 2.52);
+    tl.set("#s12-k2", { opacity: 1 }, 2.64);
+    tl.set("#s12-k3", { opacity: 1 }, 2.76);
+    tl.set("#s12-k4", { opacity: 1 }, 2.88);
+    tl.set("#s12-k5", { opacity: 1 }, 3.0);
+    tl.set("#s12-k6", { opacity: 1 }, 3.12);
+    tl.set("#s12-k7", { opacity: 1 }, 3.24);
+    tl.fromTo("#s12-cap0", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.15);
+    window.__timelines["s12"] = tl;
+  </script>
+</template>

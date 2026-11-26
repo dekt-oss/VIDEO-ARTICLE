@@ -1,0 +1,78 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #1F2A44; }
+    .art { position: absolute; left: 60px; top: 410px; width: 960px; height: 580px; overflow: visible; }
+    .capbox { position: absolute; left: 296px; width: 720px; top: 1052px; height: 176px; }
+    .captext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 42px; line-height: 1.42; letter-spacing: -0.02em; color: #1F2A44; opacity: 0; }
+    .src { position: absolute; left: 84px; width: 912px; top: 996px; text-align: right; }
+    .src span { display: inline-block; background: #FDE68A; color: #1F2A44; font-weight: 600; font-size: 28px; padding: 2px 16px; border-radius: 8px; }
+    .chipbox { position: absolute; width: 600px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .chip { display: inline-block; font-weight: 700; font-size: 34px; padding: 6px 20px; border-radius: 14px; border: 3px solid #0E1525; white-space: nowrap; }
+    .c-yel { background: #FDE68A; color: #1F2A44; }
+    .c-cream { background: #FFF8EE; color: #1F2A44; }
+    .c-amber { background: #F0A93B; color: #1F2A44; }
+    .c-maho { background: #8E2A14; color: #fff; }
+    .c-tom { background: #C2410C; color: #fff; }
+    .tagbox { position: absolute; left: 70px; top: 418px; }
+    .tag { display: inline-block; font-weight: 700; font-size: 32px; padding: 4px 18px; border-radius: 12px; border: 3px solid #0E1525; }
+    .t-yel { background: #FDE68A; color: #1F2A44; }
+    .t-grey { background: #E5E7EB; color: #1F2A44; }
+    .t-tom { background: #C2410C; color: #fff; }
+    .t-amber { background: #F0A93B; color: #1F2A44; }
+    .t-maho { background: #8E2A14; color: #fff; }
+
+    .captext b { font-weight: 800; }
+    .search { position: absolute; left: 400px; top: 640px; width: 620px; height: 104px; background: #fff; border: 6px solid #C2410C; border-radius: 52px; display: flex; align-items: center; padding: 0 30px; gap: 18px; }
+    .search .q { font-weight: 800; font-size: 44px; color: #1F2A44; letter-spacing: -0.02em; }
+    .search .q span { opacity: 0; }
+    .search .cur { width: 4px; height: 48px; background: #C2410C; }
+    .search .hint { position: absolute; left: 0; right: 0; top: -54px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; }
+    .cbox { position: absolute; left: 170px; width: 740px; top: 880px; height: 120px; background: #fff; border: 4px solid #0E1525; border-radius: 22px; padding: 14px 28px; }
+    .cbox .lab { font-weight: 600; font-size: 30px; color: #6B7583; }
+    .cbox .q { font-weight: 800; font-size: 44px; color: #1F2A44; }
+    .cbox .q span { opacity: 0; }
+
+    .stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 540px 410px; transform: translate(0px, 30px) scale(0.95); }
+
+  </style>
+  <div id="root" data-composition-id="s5" data-width="1080" data-height="1920">
+    <div class="stage"><svg id="s5-art" class="art" viewBox="0 0 960 580" xmlns="http://www.w3.org/2000/svg"><rect x="100" y="330" width="760" height="140" rx="12" fill="#C68A4E" stroke="#3B2412" stroke-width="6"/><path d="M100 395 C300 381 500 409 860 391" fill="none" stroke="#9A6334" stroke-width="4"/><path d="M100 420 C300 406 500 434 860 416" fill="none" stroke="#9A6334" stroke-width="4"/><path d="M100 445 C300 431 500 459 860 441" fill="none" stroke="#9A6334" stroke-width="4"/><rect x="103" y="333" width="754" height="40" fill="#1B1310"/><path d="M130 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M176 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M222 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M268 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M314 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M360 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M406 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M452 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M498 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M544 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M590 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M636 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M682 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M728 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M774 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><path d="M820 334 l10 12 l-8 10 l12 14" fill="none" stroke="#4A3A32" stroke-width="3"/><rect id="s5-ember" x="103" y="370" width="754" height="6" fill="#F97316"/><g transform="translate(210 215) scale(0.9)"><g id="s5-i1">
+      <g transform="rotate(-14)"><path d="M-84 0 C-44 -16 44 -16 84 0 C44 12 -44 12 -84 0 Z" fill="#3B2412" stroke="#1E120A" stroke-width="4"/><path d="M-70 0 L70 0" stroke="#6B4423" stroke-width="3"/></g><g transform="rotate(12) translate(0 18)"><path d="M-84 0 C-44 -16 44 -16 84 0 C44 12 -44 12 -84 0 Z" fill="#3B2412" stroke="#1E120A" stroke-width="4"/><path d="M-70 0 L70 0" stroke="#6B4423" stroke-width="3"/></g>
+      <circle cx="-70" cy="-18" r="16" fill="#FFF1C9" stroke="#D9A066" stroke-width="3"/><circle cx="-70" cy="-18" r="6" fill="#F0A93B"/>
+    </g></g><g transform="translate(400 205) scale(1.0)"><g id="s5-i2">
+      <rect x="-48" y="-44" width="96" height="88" rx="18" fill="#D98A2B" stroke="#7A4A14" stroke-width="5"/>
+      <path d="M-30 -26 L10 -26" stroke="#F6C77A" stroke-width="9" stroke-linecap="round"/>
+      <path d="M-12 44 C-12 64 4 66 4 50 C4 66 18 64 18 44" fill="#D98A2B" stroke="#7A4A14" stroke-width="4"/>
+    </g></g><g transform="translate(590 215) scale(1.0)"><g id="s5-i3"><path class="s5-i3-w" d="M-40 60 C-70 20 -10 0 -40 -40 C-60 -66 -30 -80 -36 -96" fill="none" stroke="#CBD5E1" stroke-opacity="0.9" stroke-width="11" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0"/><path class="s5-i3-w" d="M0 60 C-30 20 30 0 0 -40 C-20 -66 10 -80 4 -100" fill="none" stroke="#CBD5E1" stroke-opacity="0.9" stroke-width="11" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0"/><path class="s5-i3-w" d="M40 60 C10 20 70 0 40 -40 C20 -66 50 -80 44 -92" fill="none" stroke="#CBD5E1" stroke-opacity="0.9" stroke-width="11" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0"/></g></g><g transform="translate(770 210) scale(1.0)"><g id="s5-i4">
+      <polygon points="0.0,-58.0 7.7,-18.5 41.0,-41.0 18.5,-7.7 58.0,0.0 18.5,7.7 41.0,41.0 7.7,18.5 0.0,58.0 -7.7,18.5 -41.0,41.0 -18.5,7.7 -58.0,0.0 -18.5,-7.7 -41.0,-41.0 -7.7,-18.5" fill="#6B3A1E" stroke="#3B2412" stroke-width="5" stroke-linejoin="round"/>
+      <circle cx="0.0" cy="-38.0" r="7" fill="#D9A066"/><circle cx="26.9" cy="-26.9" r="7" fill="#D9A066"/><circle cx="38.0" cy="0.0" r="7" fill="#D9A066"/><circle cx="26.9" cy="26.9" r="7" fill="#D9A066"/><circle cx="0.0" cy="38.0" r="7" fill="#D9A066"/><circle cx="-26.9" cy="26.9" r="7" fill="#D9A066"/><circle cx="-38.0" cy="0.0" r="7" fill="#D9A066"/><circle cx="-26.9" cy="-26.9" r="7" fill="#D9A066"/><circle r="10" fill="#3B2412"/>
+    </g></g></svg><div class="chipbox" style="left:240px; top:892px;"><span id="s5-c0" class="chip c-cream">속을 그을린 새 미국산 오크</span></div><div class="chipbox" style="left:-30px; top:672px;"><span id="s5-l1" class="chip c-amber">바닐라</span></div><div class="chipbox" style="left:160px; top:672px;"><span id="s5-l2" class="chip c-amber">캐러멜</span></div><div class="chipbox" style="left:350px; top:672px;"><span id="s5-l3" class="chip c-amber">스모크</span></div><div class="chipbox" style="left:530px; top:672px;"><span id="s5-l4" class="chip c-amber">스파이스</span></div></div><div class="capbox"><div id="s5-cap0" class="captext"><span>속을 그을린 미국산 오크는<br>바닐라와 캐러멜 향을,</span></div><div id="s5-cap1" class="captext"><span>여기에 은은한 스모크와<br>톡 쏘는 스파이스를 더해요.</span></div></div>
+    <div class="src"><span id="s5-src">Whisky Advocate · Frontiers in Chemistry(2018)</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#s5-art", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0);
+    tl.set(["#s5-i1", "#s5-i2", "#s5-i3", "#s5-i4"], { opacity: 0 }, 0);
+    tl.fromTo("#s5-ember", { opacity: 0.3 }, { opacity: 1, duration: 0.4, ease: "power1.inOut", yoyo: true, repeat: 7 }, 0.2);
+    tl.fromTo("#s5-c0", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.3);
+    tl.fromTo("#s5-i1", { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "expo.out" }, 1.6);
+    tl.fromTo("#s5-l1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 1.85);
+    tl.fromTo("#s5-i2", { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "expo.out" }, 2.4);
+    tl.fromTo("#s5-l2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 2.65);
+    tl.fromTo("#s5-i3", { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "expo.out" }, 4.693);
+    tl.fromTo(".s5-i3-w", { attr: { "stroke-dashoffset": 1 } }, { attr: { "stroke-dashoffset": 0 }, duration: 0.9, ease: "power2.out", stagger: 0.12 }, 4.693);
+    tl.fromTo("#s5-l3", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 4.943);
+    tl.fromTo("#s5-i4", { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "expo.out" }, 5.693);
+    tl.fromTo("#s5-l4", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 5.943);
+    tl.fromTo("#s5-i4", { rotation: -40 }, { rotation: 0, duration: 0.6, ease: "expo.out", transformOrigin: "50% 50%" }, 5.693);
+    tl.fromTo("#s5-cap0", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.15);
+    tl.to("#s5-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.12, ease: "power2.in" }, 3.573);
+    tl.fromTo("#s5-cap1", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 3.693);
+    tl.to(["#s5-art", "#s5-c0", "#s5-l1", "#s5-l2", "#s5-l3", "#s5-l4", "#s5-src", "#s5-cap0", "#s5-cap1"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }, 7.06);
+    window.__timelines["s5"] = tl;
+  </script>
+</template>

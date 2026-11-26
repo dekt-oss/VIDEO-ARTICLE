@@ -1,0 +1,104 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #1F2A44; }
+    .art { position: absolute; left: 60px; top: 410px; width: 960px; height: 580px; overflow: visible; }
+    .capbox { position: absolute; left: 296px; width: 720px; top: 1052px; height: 176px; }
+    .captext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 42px; line-height: 1.42; letter-spacing: -0.02em; color: #1F2A44; opacity: 0; }
+    .src { position: absolute; left: 84px; width: 912px; top: 996px; text-align: right; }
+    .src span { display: inline-block; background: #FDE68A; color: #1F2A44; font-weight: 600; font-size: 28px; padding: 2px 16px; border-radius: 8px; }
+    .chipbox { position: absolute; width: 600px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .chip { display: inline-block; font-weight: 700; font-size: 34px; padding: 6px 20px; border-radius: 14px; border: 3px solid #0E1525; white-space: nowrap; }
+    .c-yel { background: #FDE68A; color: #1F2A44; }
+    .c-cream { background: #FFF8EE; color: #1F2A44; }
+    .c-amber { background: #F0A93B; color: #1F2A44; }
+    .c-maho { background: #8E2A14; color: #fff; }
+    .c-tom { background: #C2410C; color: #fff; }
+    .tagbox { position: absolute; left: 70px; top: 418px; }
+    .tag { display: inline-block; font-weight: 700; font-size: 32px; padding: 4px 18px; border-radius: 12px; border: 3px solid #0E1525; }
+    .t-yel { background: #FDE68A; color: #1F2A44; }
+    .t-grey { background: #E5E7EB; color: #1F2A44; }
+    .t-tom { background: #C2410C; color: #fff; }
+    .t-amber { background: #F0A93B; color: #1F2A44; }
+    .t-maho { background: #8E2A14; color: #fff; }
+
+    .captext b { font-weight: 800; }
+    .search { position: absolute; left: 400px; top: 640px; width: 620px; height: 104px; background: #fff; border: 6px solid #C2410C; border-radius: 52px; display: flex; align-items: center; padding: 0 30px; gap: 18px; }
+    .search .q { font-weight: 800; font-size: 44px; color: #1F2A44; letter-spacing: -0.02em; }
+    .search .q span { opacity: 0; }
+    .search .cur { width: 4px; height: 48px; background: #C2410C; }
+    .search .hint { position: absolute; left: 0; right: 0; top: -54px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; }
+    .cbox { position: absolute; left: 170px; width: 740px; top: 880px; height: 120px; background: #fff; border: 4px solid #0E1525; border-radius: 22px; padding: 14px 28px; }
+    .cbox .lab { font-weight: 600; font-size: 30px; color: #6B7583; }
+    .cbox .q { font-weight: 800; font-size: 44px; color: #1F2A44; }
+    .cbox .q span { opacity: 0; }
+
+    .stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 540px 410px; transform: translate(0px, 30px) scale(0.95); }
+
+  </style>
+  <div id="root" data-composition-id="s9" data-width="1080" data-height="1920">
+    <div class="stage"><div class="tagbox"><span id="s9-tag" class="tag t-yel">블렌더의 방법</span></div><svg id="s9-art" class="art" viewBox="0 0 960 580" xmlns="http://www.w3.org/2000/svg"><g transform="translate(280 70) scale(0.75)"><g id="s9-a1">
+      <clipPath id="s9-a1-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s9-a1-liq" x="0" y="140" width="200" height="110" fill="#F0A93B" clip-path="url(#s9-a1-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g><text id="s9-plus" x="480" y="215" font-family="Wanted Sans" font-weight="800" font-size="72" fill="#FFF8EE" text-anchor="middle">+</text><g transform="translate(520 135) scale(0.45)"><g id="s9-a2">
+      <clipPath id="s9-a2-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s9-a2-liq" x="0" y="140" width="200" height="110" fill="#8E2A14" clip-path="url(#s9-a2-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g><g id="s9-ar1"><path d="M625 195 L672 195" stroke="#FFF8EE" stroke-width="8" stroke-linecap="round"/><path d="M660 177 L690 195 L660 213" fill="none" stroke="#FFF8EE" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></g><g transform="translate(710 70) scale(0.75)"><g id="s9-a3">
+      <clipPath id="s9-a3-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s9-a3-liq" x="0" y="128" width="200" height="122" fill="#C0612A" clip-path="url(#s9-a3-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g><g transform="translate(280 330) scale(0.75)"><g id="s9-b1">
+      <clipPath id="s9-b1-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s9-b1-liq" x="0" y="140" width="200" height="110" fill="#F0A93B" clip-path="url(#s9-b1-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g><g id="s9-ar2"><path d="M445 450 L487 450" stroke="#FFF8EE" stroke-width="8" stroke-linecap="round"/><path d="M475 432 L505 450 L475 468" fill="none" stroke="#FFF8EE" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></g><g transform="translate(520 360) scale(0.6)"><g id="s9-bb">
+      <path d="M40 0 L200 0 Q240 150 200 300 L40 300 Q0 150 40 0 Z" fill="#8A4A26" stroke="#3B2412" stroke-width="6" stroke-linejoin="round"/>
+      
+      <path d="M80 0 Q64 150 80 300 M120 0 L120 300 M160 0 Q176 150 160 300" fill="none" stroke="#63331A" stroke-width="4"/>
+      <path d="M31 40 Q120 52 209 40" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 100 Q120 112 218 100" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M22 200 Q120 212 218 200" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/><path d="M31 260 Q120 272 209 260" fill="none" stroke="#2B2B33" stroke-width="13" stroke-linecap="round"/>
+      <ellipse cx="120" cy="0" rx="80" ry="13" fill="#63331A" stroke="#3B2412" stroke-width="5"/>
+      <circle cx="120" cy="150" r="9" fill="#3B2412"/>
+    </g></g><g id="s9-ar3"><path d="M675 450 L712 450" stroke="#FFF8EE" stroke-width="8" stroke-linecap="round"/><path d="M700 432 L730 450 L700 468" fill="none" stroke="#FFF8EE" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></g><g transform="translate(745 330) scale(0.75)"><g id="s9-b2">
+      <clipPath id="s9-b2-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s9-b2-liq" x="0" y="128" width="200" height="122" fill="#A8461B" clip-path="url(#s9-b2-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g></svg><div class="chipbox" style="left:-110px; top:575px;"><span id="s9-l1" class="chip c-cream">① 섞기</span></div><div class="chipbox" style="left:-110px; top:830px;"><span id="s9-l2" class="chip c-cream">② 추가 숙성</span></div></div><div class="capbox"><div id="s9-cap0" class="captext"><span>그래서 조금만 섞거나,<br>마지막에 <b style="color:#A61B1B">셰리</b> 통에서 더 익혀요.</span></div></div>
+    
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#s9-art", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0);
+    tl.fromTo("#s9-tag", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.05);
+    tl.set(["#s9-a1","#s9-plus","#s9-a2","#s9-ar1","#s9-a3","#s9-b1","#s9-ar2","#s9-bb","#s9-ar3","#s9-b2"], { opacity: 0 }, 0);
+    tl.fromTo("#s9-l1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.2);
+    tl.fromTo("#s9-a1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.35);
+    tl.fromTo("#s9-plus", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.6);
+    tl.fromTo("#s9-a2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.8);
+    tl.fromTo("#s9-ar1", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" }, 1.1);
+    tl.fromTo("#s9-a3", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 1.3);
+    tl.fromTo("#s9-l2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 2.2);
+    tl.fromTo("#s9-b1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 2.35);
+    tl.fromTo("#s9-ar2", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" }, 2.6);
+    tl.fromTo("#s9-bb", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 2.8);
+    tl.fromTo("#s9-ar3", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" }, 3.1);
+    tl.fromTo("#s9-b2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 3.3);
+    tl.fromTo("#s9-cap0", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.15);
+    tl.to(["#s9-art", "#s9-tag", "#s9-l1", "#s9-l2", "#s9-cap0"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }, 4.25);
+    window.__timelines["s9"] = tl;
+  </script>
+</template>
