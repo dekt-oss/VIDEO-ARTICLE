@@ -154,11 +154,11 @@ def resolve_facts(keys: list[str], fact_sheet: dict | None) -> tuple[list[Any], 
     return found, missing
 
 
-def source_line(facts: list[Any], broker: str) -> str:
+def source_line(facts: list[Any], broker: str, source_label: str = "") -> str:
     pages = sorted({int(f["source_page"]) for f in facts
                     if isinstance(f, dict) and isinstance(f.get("source_page"), (int, float))
                     and not isinstance(f.get("source_page"), bool)})
-    who = broker or "증권사 리포트"
+    who = source_label or broker or "증권사 리포트"
     return f"자료: {who}" + (" " + "·".join(f"p{p}" for p in pages) if pages else "")
 
 
@@ -210,11 +210,11 @@ def scrub_narration(narr: str, facts: list[Any]) -> tuple[str, list[str]]:
     return " ".join(keep), sorted(set(bad))
 
 
-def _fallback_slots(narr: str) -> dict:
+def _fallback_slots(narr: str, title: str = "리포트 요약") -> dict:
     first = _sentences(narr)[0] if narr else ""
     # 폴백 카드에도 숫자를 싣지 않는다 — 검문을 통과 못 한 숫자가 문장째 되살아나면 안 된다.
     body = re.sub(r"\d", "", first)
-    return {"title": "리포트 요약", "body": body[:60]}
+    return {"title": title, "body": body[:60]}
 
 
 def _icon_counts(slots: dict, max_icons: int) -> bool:
@@ -270,9 +270,11 @@ def screen_summary(tpl: str, slots: dict) -> str:
     return f"[{TEMPLATE_LABEL_KO.get(tpl, tpl)}] " + " · ".join(words)[:200]
 
 
-def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str = "") -> dict[str, Any]:
+def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str = "",
+                               meta: dict | None = None) -> dict[str, Any]:
     """LLM 출력 → 저장 모양 지시서. 경고는 header.mode_warnings(승인 화면이 이미 보는 자리)."""
     header_in = obj.get("header") if isinstance(obj.get("header"), dict) else {}
+    meta = meta or {}
     warns: list[str] = []
     cuts: list[dict[str, Any]] = []
     all_facts: list[Any] = []
@@ -289,6 +291,7 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
         slots = m.get("slots") if isinstance(m.get("slots"), dict) else {}
         keys = [str(k) for k in (c.get("source_facts") or []) if str(k).strip()]
         facts, missing = resolve_facts(keys, fact_sheet)
+        fallback_title = _scrub_title(str(meta.get("fallback_title") or "리포트 요약"), facts, warns)
         all_facts += facts
         if missing:
             warns.append(f"motion_fact_key_unresolved:{i}:{','.join(missing)[:60]}")
@@ -300,17 +303,17 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
             continue
         if tpl not in templates.TEMPLATES:
             warns.append(f"motion_unknown_template:{i}:{tpl[:20]}")
-            tpl, slots = "text_card", _fallback_slots(narr)
+            tpl, slots = "text_card", _fallback_slots(narr, fallback_title)
         bad = number_gate(slots, facts)
         if bad:
             warns.append(f"motion_number_ungrounded:{i}:{','.join(bad)[:60]}")
-            tpl, slots = "text_card", _fallback_slots(narr)
+            tpl, slots = "text_card", _fallback_slots(narr, fallback_title)
         if tpl == "icon_ratio" and not _icon_counts(slots, config.MOTION_MAX_ICONS):
             warns.append(f"motion_icon_ratio_without_values:{i}")
-            tpl, slots = "text_card", _fallback_slots(narr)
+            tpl, slots = "text_card", _fallback_slots(narr, fallback_title)
         if tpl == "bar_compare" and not _bar_units_match(slots):
             warns.append(f"motion_bar_needs_same_unit_values:{i}")
-            tpl, slots = "text_card", _fallback_slots(narr)
+            tpl, slots = "text_card", _fallback_slots(narr, fallback_title)
         cue_words = [str(w) for w in (m.get("cue_words") or []) if str(w).strip()]
         lost = [w for w in cue_words if w not in narr]
         if lost:
@@ -328,8 +331,13 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
             "source_facts": keys, "render_notes": str(c.get("render_notes") or ""),
             "motion_source": "still",
             "motion": {"template": tpl, "slots": slots, "cue_words": cue_words,
-                       "source": source_line(facts, broker)},
+                       "source": source_line(facts, broker, str(meta.get("source_label") or ""))},
         })
+    # 출처 메타 문구도 화면에 나간다 — 근거 없는 숫자는 경고(fail-open, 독립 검사 ⚠️).
+    for k in ("source_label", "end_note", "end_badge"):
+        bad = number_gate(str(meta.get(k) or ""), all_facts)
+        if bad:
+            warns.append(f"motion_meta_number_ungrounded:{k}:{','.join(bad)[:40]}")
     # 상단 제목 띠는 영상 내내 떠 있다 — 숫자 검문을 거친다(독립 검사: '999조 시장' 통과).
     #   근거는 모든 컷이 가리킨 사실의 합. 어긋난 숫자 토큰은 지우고 경고한다.
     title = [_scrub_title(str(x), all_facts, warns) for x in (header_in.get("title_lines") or []) if str(x).strip()][:2]
@@ -339,7 +347,7 @@ def normalize_motion_directive(obj: dict, fact_sheet: dict | None, broker: str =
         "aspect_ratio": "9:16",
         "hook_ko": hook or (title[0] if title else ""),
         "hook_en": str(header_in.get("hook_en") or ""),
-        "title_lines": title or [hook or "오늘의 리포트"],
+        "title_lines": title or [hook or _scrub_title(str(meta.get("default_title") or "오늘의 리포트"), all_facts, warns)],
         "cta_ko": str(header_in.get("cta_ko") or ""), "cta_en": str(header_in.get("cta_en") or ""),
         "total_estimated_sec": int(sum(c["estimated_sec"] for c in cuts)),
         "version_type": config.MOTION_VERSION, "broker": broker,

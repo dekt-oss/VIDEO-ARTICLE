@@ -16,6 +16,88 @@ from engine import config
 from engine.motion import build, schema, templates
 
 FX = json.loads((pathlib.Path(__file__).parent / "fixtures" / "motion_usedcar.json").read_text(encoding="utf-8"))
+NEWS = json.loads((pathlib.Path(__file__).parent / "fixtures" / "motion_news_ktb.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("fixture", [NEWS, FX], ids=["news", "report"])
+def test_source_metadata_reaches_built_html(fixture, monkeypatch, tmp_path):
+    # 시간 측정·TTS만 대체하고 실제 정규화와 HTML 빌드를 검증한다.
+    monkeypatch.setattr(build, "_tts", lambda *a: 7.0)
+    monkeypatch.setattr(build, "speech_spans", lambda *a: [(0.0, 7.0)])
+    monkeypatch.setattr(build, "_dur", lambda *a: 0.5)
+    d = schema.normalize_motion_directive(fixture["directive"], fixture["fact_sheet"],
+                                          fixture["broker"], meta=fixture["meta"])
+    assert d["header"]["mode_warnings"] == []
+    info = build.build_project(d, tmp_path, fixture["meta"])
+    assert info["warnings"] == []
+    html = "\n".join(p.read_text(encoding="utf-8") for p in tmp_path.rglob("*.html"))
+    report_words = ["증권사 리포트", "투자 권유 아님", "리포트 원문"]
+    if fixture is NEWS:
+        assert all(s not in html for s in report_words)
+        assert "출처 · 공정위 발표 · 언론 보도" in html
+        assert "자료: 공정위 발표 · 언론 보도" in html
+        assert "업체 측 불복 예정 · 법원 판단 전" in html
+        assert "공정위 판단 기준" in html
+    else:
+        assert all(s in html for s in report_words)
+
+
+@pytest.mark.parametrize("fixture, expected", [(NEWS, "뉴스 요약"), (FX, "리포트 요약")])
+def test_source_metadata_controls_fallbacks(fixture, expected):
+    raw = copy.deepcopy(fixture["directive"])
+    raw["header"] = {}
+    raw["cuts"][0]["motion"]["template"] = "unknown"
+    d = schema.normalize_motion_directive(raw, fixture["fact_sheet"], fixture["broker"],
+                                          meta=fixture["meta"])
+    assert d["cuts"][0]["motion"]["slots"]["title"] == expected
+    assert d["header"]["title_lines"] == ["오늘의 뉴스" if fixture is NEWS else "오늘의 리포트"]
+
+
+def test_source_metadata_numbers_are_warned():
+    meta = {**NEWS["meta"], "end_badge": "손실 50%", "source_label": "과징금 99조"}
+    d = schema.normalize_motion_directive(NEWS["directive"], NEWS["fact_sheet"], meta=meta)
+    w = d["header"]["mode_warnings"]
+    assert any(x.startswith("motion_meta_number_ungrounded:end_badge") for x in w)
+    assert any(x.startswith("motion_meta_number_ungrounded:source_label") for x in w)
+
+
+def test_source_metadata_is_escaped_and_keeps_fact_pages():
+    meta = {"source_label": "<b>뉴스</b>", "end_note": "<script>x</script>", "end_badge": "<i>판단</i>"}
+    html = templates.end_card("s9", meta)
+    assert "<b>뉴스</b>" not in html and "&lt;b&gt;뉴스&lt;/b&gt;" in html
+    assert "<script>x</script>" not in html and "<i>판단</i>" not in html
+    assert schema.source_line([{"source_page": 9}], "증권사", meta["source_label"]) == "자료: <b>뉴스</b> p9"
+
+
+def test_empty_metadata_preserves_report_defaults():
+    for meta in (None, {}, {"source_label": "", "end_note": None, "end_badge": ""}):
+        d = schema.normalize_motion_directive(FX["directive"], FX["fact_sheet"], meta=meta)
+        assert d["cuts"][0]["motion"]["source"] == "자료: 증권사 리포트"
+        html = templates.end_card("s9", meta or {})
+        assert "출처 · 증권사 리포트" in html
+        assert "투자 권유 아님" in html and "리포트 원문" in html
+
+
+def test_news_preview_cli_passes_metadata(monkeypatch, tmp_path, capsys):
+    import sys
+    from scripts import motion_preview
+
+    fixture_path = pathlib.Path(__file__).parent / "fixtures" / "motion_news_ktb.json"
+    monkeypatch.setattr(sys, "argv", ["motion_preview", str(fixture_path.resolve()), "--build-only"])
+    monkeypatch.chdir(tmp_path)
+    # pytest의 캡처 스트림에는 reconfigure가 없으므로 실제 CLI 출력용 스트림 모양만 맞춘다.
+    monkeypatch.setattr(sys.stdout, "reconfigure", lambda **kw: None, raising=False)
+
+    def inspect_build(d, proj, meta):
+        assert meta == NEWS["meta"]
+        assert d["header"]["mode_warnings"] == []
+        assert all(c["motion"]["source"] == "자료: 공정위 발표 · 언론 보도" for c in d["cuts"])
+        return {"total_sec": 70.0, "warnings": []}
+
+    monkeypatch.setattr(build, "build_project", inspect_build)
+    monkeypatch.setattr(build, "render", lambda *a: pytest.fail("build-only가 렌더를 호출했다"))
+    motion_preview.main()
+    assert "경고: 없음" in capsys.readouterr().out
 
 
 def _norm(directive=None, fs=None):
