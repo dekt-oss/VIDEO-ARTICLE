@@ -177,18 +177,25 @@ BATCH_MAX_AGE_DAYS: int = _get_int("BATCH_MAX_AGE_DAYS", 21)
 # ─────────────────────────────────────────────────────────────
 # 기본은 품질 우선(sonnet/opus)이지만, 비용 절감을 위해 env 로 모델을 교체할 수 있다.
 # 예: MODEL_SCORING=claude-haiku-4-5-20251001 로 채점 비용 1/5~1/10.
-MODEL_SCORING: str = os.getenv("MODEL_SCORING", "gemini-2.5-flash")       # 5축 채점
+# ★★★ 2026-11-26 운영자 결정 "Claude Haiku 5.5 로 작업합시다" — 텍스트 LLM 전부의 기본값.
+#   계기: Gemini 키가 11/23 부터 402(결제 필요), DeepSeek 대체는 키가 없어 리포트 채점 54건이 전부 실패했다.
+#   저가 3사 비교(Haiku 5.5 · GPT-6 Luna · Gemini 3.1 Flash-Lite): Haiku 가 같은 가격대($0.10/$0.50 /M)에서
+#   종합 점수가 가장 높고, 엔진에 연결 코드와 운영 키가 이미 있다. DeepSeek 은 운영자 지시로 쓰지 않는다.
+#   그림·영상 판정(CONTINUITY_QA_MODEL)·Gemini 전용 기능(웹 검색·영상 분석)은 Gemini 그대로다.
+#   ★ 주류 라인(DRINKS_*_MODEL)은 이번에 바꾸지 않았다 — 비용 예상이 DB 함수에 묶여 있어 마이그레이션이 따른다.
+MODEL_TEXT_DEFAULT: str = os.getenv("MODEL_TEXT_DEFAULT", "claude-haiku-5-5")
+MODEL_SCORING: str = os.getenv("MODEL_SCORING", MODEL_TEXT_DEFAULT)       # 5축 채점
 # ★★ 2026-09-28 운영자 결정 — Fact Sheet·대본은 **gemini-3.8-flash**(입력 $1.50/출력 $7.50 /M, 2.5-flash 의 5배).
 #   4막 대본이 이제 화면을 정하므로 편당 +$0.10 이 값어치가 있다. 채점·자기검증은 2.5-flash 유지 —
 #   채점은 하루 수백 편이라 5배가 곧바로 돈이고, 자기검증은 판정(문장 생성 아님)이라 싼 모델로 충분하다.
-MODEL_FACTSHEET: str = os.getenv("MODEL_FACTSHEET", "gemini-3.8-flash")    # Fact Sheet 추출
-MODEL_SELFCHECK: str = os.getenv("MODEL_SELFCHECK", "gemini-2.5-flash")    # 자기검증
+MODEL_FACTSHEET: str = os.getenv("MODEL_FACTSHEET", MODEL_TEXT_DEFAULT)    # Fact Sheet 추출
+MODEL_SELFCHECK: str = os.getenv("MODEL_SELFCHECK", MODEL_TEXT_DEFAULT)    # 자기검증
 # ★ Explanation Engine v2 Phase 3 "생각하는 단계"(작업지시서 §5, §17 "Explanation Reasoning → quality-tier model").
 #   2026-10-05 전체 재검토: 종전 Phase 3 은 Fact Sheet 주장에 이름표만 붙였다(생각이 없었다). 콘텐츠마다 한 번
 #   모델이 질문·관심 이유·반전·이야기 틀·단계별 질문과 답을 짠다. 기본은 deepseek-v4-pro — 운영자가 2026-09-19 지시서용으로
 #   승인한 품질 모델이다. Anthropic 은 ANTHROPIC_DISABLED(운영자 결정)로 막혀 있어 쓰지 않는다. Gold Set 비교 뒤
 #   다른 후보와 A/B 한다(§17 "현재 기본 모델을 즉시 교체하지 말고 비교한다").
-MODEL_EXPLANATION_REASONING: str = os.getenv("MODEL_EXPLANATION_REASONING", "deepseek-v4-pro")
+MODEL_EXPLANATION_REASONING: str = os.getenv("MODEL_EXPLANATION_REASONING", MODEL_TEXT_DEFAULT)
 #   V2 생각 단계를 켜고 끈다. 끄면 옛 경로(Fact Sheet 주장 재분류)로 돈다. 모델을 안 부르는 실행(dry)은 늘 옛 경로다.
 V2_EXPLANATION_REASONING: bool = _get_bool("V2_EXPLANATION_REASONING", True)
 #   V2 영상 길이 범위(2026-10-06 운영자: "완성도와 이해를 위해서라면 100초에서 120초까지도 갈 수 있다. 억지로 늘릴
@@ -206,16 +213,19 @@ V2_NARRATION_RETRY: bool = _get_bool("V2_NARRATION_RETRY", True)
 #   대본 합성이 그날 텍스트 비용의 큰 몫을 먹었다(논문 16편 × 3안 = 48벌).
 #   품질이 필요한 편은 MODEL_SCRIPT 를 **명시로** 올려 쓴다 — 비싼 것이 기본값이면
 #   아무도 모르는 사이에 돈이 나간다.
-MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", "gemini-3.8-flash")            # 대본 합성 (2026-09-28 ↑, 위 주석)
+MODEL_SCRIPT: str = os.getenv("MODEL_SCRIPT", MODEL_TEXT_DEFAULT)            # 대본 합성 (2026-09-28 ↑, 위 주석)
 #   V2 대본·다듬기·검증관 모델. 기본은 운영 대본·자기검증과 같은 모델(바꾸지 않는다). 검증관은 작성 모델과 달라야 한다(§9.4).
 MODEL_V2_NARRATION: str = os.getenv("MODEL_V2_NARRATION", MODEL_SCRIPT)
 MODEL_V2_CRITIC: str = os.getenv("MODEL_V2_CRITIC", MODEL_SELFCHECK)
 #   Gemini 가 402(결제 필요)로 거절하면 텍스트 호출을 이 모델로 대신한다(2026-10-08 운영자 지시). 비우면 대체 없음.
 #   그림·영상 생성은 대체가 없다(deepseek 는 텍스트 전용) — 그쪽 402 는 그대로 실패한다.
+# ★ 2026-11-26: 리포트·논문 라인은 Haiku 기본이라 이 대체를 타지 않는다. 주류 라인(Gemini/DeepSeek 기본)만 탄다 —
+#   주류의 비용 예상이 DB 함수(마이그레이션 0072·0081)에 같은 값으로 묶여 있어, 주류 전환은 마이그레이션과 함께 따로 한다.
 LLM_PAYMENT_FALLBACK_MODEL: str = os.getenv("LLM_PAYMENT_FALLBACK_MODEL", "deepseek-v4-pro")
 #   반대 방향(2026-11-10 운영자 "딥시크 멈췄으면 제미나이로 이어지도록"): deepseek 가 402 면 이 Gemini 모델로 대신한다.
 #   주류 초안 대본이 DeepSeek 잔액 부족으로 30초 만에 멈춘 실측이 계기. 비우면 대체 없음.
-LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL: str = os.getenv("LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL", MODEL_SCRIPT)
+# Gemini 엔드포인트로 보내는 값이라 Gemini ID 여야 한다(MODEL_SCRIPT 를 따르면 claude ID 가 Gemini 로 간다 — 독립 검사 ❌).
+LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL: str = os.getenv("LLM_DEEPSEEK_PAYMENT_FALLBACK_MODEL", "gemini-3.8-flash")
 LLM_PAYMENT_FALLBACK_TOKEN_SCALE: float = _get_float("LLM_PAYMENT_FALLBACK_TOKEN_SCALE", 2.4)
 #   V2 검증관 백엔드(2026-10-07 운영자 "검증을 더 저렴한 모델로 — jev 쓰면 되잖아"). jev = 문장마다 Jev 근거 판정
 #   (Fact Sheet + 논문/리포트 메타와 대조, 한 편 1센트 안팎). llm = MODEL_V2_CRITIC(Gemini 2.5 Pro 한 편 약 $0.1).
@@ -373,7 +383,10 @@ LLM_ANTHROPIC_FALLBACK_MODEL: str = os.getenv("LLM_ANTHROPIC_FALLBACK_MODEL", ""
 #   그래서 판정을 코드로 옮긴다: 이 값이 참이면 engine/llm.py 가 Anthropic 클라이언트를
 #   아예 만들지 않고 즉시 에러를 낸다. 모델 ID 가 claude 로 시작해도, 폴백이 켜져 있어도,
 #   환경변수에 키가 있어도 나가지 않는다. 쓰려면 명시로 꺼야 한다.
-ANTHROPIC_DISABLED: bool = _get_bool("ANTHROPIC_DISABLED", True)
+# ★★ 2026-11-26 운영자 결정("Claude Haiku 5.5 로 작업합시다")으로 기본을 연다. 08-29 차단의 이유는
+#   "잔액 0인 Anthropic 으로 몰래 새는 것"이었다 — 이제 Anthropic 이 기본 경로이고 잔액은 호출 1회로 확인했다.
+#   스위치는 남긴다: 다시 막아야 하면 ANTHROPIC_DISABLED=true.
+ANTHROPIC_DISABLED: bool = _get_bool("ANTHROPIC_DISABLED", False)
 # ★ 폴백이 있을 때 gemini 를 몇 번까지 시도할까. HTTP_MAX_RETRIES(4)를 그대로 쓰면 과부하가
 #   *지연*으로 나타날 때 4 × LLM_HTTP_TIMEOUT_SEC(180초) + 백오프 ≈ 12분을 쓴다 —
 #   report-draft.yml 잡 상한이 15분이라 폴백에 닿기 전에 잡이 죽는다. 갈아탈 곳이 있으면
@@ -525,7 +538,7 @@ VERSION_VISUAL_TYPE: dict[str, str] = {
 #     ⚠ 위 A/B 는 2.5-pro 와의 비교였고 **3.8-flash 는 논문 지시서로 잰 적이 없다.** 리포트에서는
 #       품질이 구간으로 겹쳤다(MODEL_REPORT_DIRECTIVE 주석). 초반 몇 편은 승인 화면의 차단·경고
 #       수를 deepseek 때와 비교해 본다 — 나빠지면 draft.yml 의 directive_model 입력으로 되돌린다.
-MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", "gemini-3.8-flash")
+MODEL_DIRECTIVE: str = os.getenv("MODEL_DIRECTIVE", MODEL_TEXT_DEFAULT)
 
 # 총길이 예산(DV6). 1분 기준이되 내용에 따라 유연(실제 길이는 나레이션 실측을 따른다).
 TARGET_TOTAL_SEC: int = _get_int("TARGET_TOTAL_SEC", 60)
@@ -2504,6 +2517,8 @@ TEXT_PRICING: dict[str, dict[str, float]] = {
     #   원장이 호출을 0원으로 적고, 그건 "안 불렀다"와 구별되지 않는다.
     "jev-latest":       {"text_input_per_token": 0.042 / 1e6, "text_output_per_token": 0.0},
     "jev-1.13.0":       {"text_input_per_token": 0.042 / 1e6, "text_output_per_token": 0.0},
+    # 2026-11-26 제3자 가격표 기준(공식 페이지 미확인) — 프롬프트 100K 토큰 초과분은 $0.50/$2.50 로 더 비싸다.
+    "claude-haiku-5-5": {"text_input_per_token": 0.10 / 1e6, "text_output_per_token": 0.50 / 1e6},
     "claude-opus-4-8":  {"text_input_per_token": 15.00 / 1e6, "text_output_per_token": 75.00 / 1e6},
     "claude-sonnet-4-6": {"text_input_per_token": 3.00 / 1e6, "text_output_per_token": 15.00 / 1e6},
     # ★ DeepSeek 은 **시간대별로 단가가 다르다**(UTC 01–04·06–10 평일이 peak, off-peak 는 절반).
@@ -3354,7 +3369,7 @@ YOUTUBE_ANALYTICS_DAILY_METRICS: tuple[str, ...] = (
     "likes", "comments", "shares", "subscribersGained",
 )
 # 성과 리포트 문장화(하이브리드의 LLM 단계) 모델 — 비용·품질 균형(리포트 팩토리와 동일 기본).
-MODEL_PERF_REPORT: str = os.getenv("MODEL_PERF_REPORT", "gemini-2.5-flash")
+MODEL_PERF_REPORT: str = os.getenv("MODEL_PERF_REPORT", MODEL_TEXT_DEFAULT)
 # 규칙 단계 임계값(facts 계산용). 시청지속률 이 값 미만이면 '개선 필요' 후보.
 PERF_LOW_RETENTION_PCT: float = float(os.getenv("PERF_LOW_RETENTION_PCT", "40"))
 # 리포트 상/하위 영상 개수(best/worst).
@@ -3650,13 +3665,13 @@ REPORT_DAILY_BATCH_SIZE: int = _get_int("REPORT_DAILY_BATCH_SIZE", 15)
 REPORT_BATCH_EXCLUDE_PRIOR: bool = _get_bool("REPORT_BATCH_EXCLUDE_PRIOR", True)
 # ARIA 신호 강도(total_score)는 LLM 채점과 분리해 정렬 동점 보정에만 쓴다(명세 3-1).
 # 리포트 채점 모델(기본 sonnet — 비용·품질 균형). env 로 교체 가능.
-MODEL_REPORT_SCORING: str = os.getenv("MODEL_REPORT_SCORING", "gemini-2.5-flash")
+MODEL_REPORT_SCORING: str = os.getenv("MODEL_REPORT_SCORING", MODEL_TEXT_DEFAULT)
 
 # ─ PF1 초안 파이프라인 모델 (논문 MODEL_FACTSHEET/SCRIPT/SELFCHECK 대응) ─
 # ★ 2026-09-28 운영자 결정: Fact Sheet 2.5-flash → 3.8-flash, 대본 2.5-pro($1.25/$10) → 3.8-flash($1.50/$7.50) —
 #   더 새 모델이 출력 단가는 더 싸다. 자기검증·컴플라이언스·논증은 2.5-flash 유지(판정용).
-MODEL_REPORT_FACTSHEET: str = os.getenv("MODEL_REPORT_FACTSHEET", "gemini-3.8-flash")
-MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-3.8-flash")     # 대본 합성
+MODEL_REPORT_FACTSHEET: str = os.getenv("MODEL_REPORT_FACTSHEET", MODEL_TEXT_DEFAULT)
+MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", MODEL_TEXT_DEFAULT)     # 대본 합성
 # ★★ 리포트 지시서 모델 — **재지 않은 자리에 밀지 않는다**(2026-09-19).
 #   종전에 `report_directive._generate_once` 는 `MODEL_DIRECTIVE` 를 그대로 썼다. 그래서
 #   논문 지시서를 DeepSeek 으로 바꾸면 **리포트 지시서까지 같이 딸려 간다** — 내가 재지
@@ -3680,9 +3695,9 @@ MODEL_REPORT_SCRIPT: str = os.getenv("MODEL_REPORT_SCRIPT", "gemini-3.8-flash") 
 #       가장 민감한 축이다 — 초반 몇 편은 승인 화면의 근거 경고를 눈으로 본다.
 #     ★ **논문 지시서(MODEL_DIRECTIVE)는 건드리지 않는다.** 3.8-flash 를 그 자리에서 잰 적이
 #       없다. 재지 않은 자리에 측정 결과를 미는 것이 바로 이 상수가 생긴 이유다.
-MODEL_REPORT_DIRECTIVE: str = os.getenv("MODEL_REPORT_DIRECTIVE", "gemini-3.8-flash")
-MODEL_REPORT_SELFCHECK: str = os.getenv("MODEL_REPORT_SELFCHECK", "gemini-2.5-flash")
-MODEL_REPORT_COMPLIANCE: str = os.getenv("MODEL_REPORT_COMPLIANCE", "gemini-2.5-flash")
+MODEL_REPORT_DIRECTIVE: str = os.getenv("MODEL_REPORT_DIRECTIVE", MODEL_TEXT_DEFAULT)
+MODEL_REPORT_SELFCHECK: str = os.getenv("MODEL_REPORT_SELFCHECK", MODEL_TEXT_DEFAULT)
+MODEL_REPORT_COMPLIANCE: str = os.getenv("MODEL_REPORT_COMPLIANCE", MODEL_TEXT_DEFAULT)
 
 # ─ Financial Reasoning Model (작업명세서_설명엔진_v2 §7 Phase 5) ─
 # ★ 왜 논문 스키마와 합치지 않는가(D1): 논문은 "왜 그렇게 되는가"(MECHANISM/STRUCTURE…)를
@@ -3696,7 +3711,7 @@ REPORT_REASONING_ENABLED: bool = _get_bool("REPORT_REASONING_ENABLED", True)
 # report-draft.yml 의 MODEL_REPORT_* 가 전부 gemini-2.5-*). 여기만 Anthropic 으로 두면
 # 같은 파이프라인 안에서 이 단계만 조용히 다른 공급자를 쓰고, ANTHROPIC_API_KEY 가 없는
 # 잡에서는 그냥 실패한다. 형제 상수(MODEL_REPORT_FACTSHEET)와 같은 값을 기본으로 둔다.
-MODEL_REPORT_REASONING: str = os.getenv("MODEL_REPORT_REASONING", "gemini-2.5-flash")
+MODEL_REPORT_REASONING: str = os.getenv("MODEL_REPORT_REASONING", MODEL_TEXT_DEFAULT)
 REASONING_UNIT_TYPES: tuple[str, ...] = (
     "DRIVER_CHAIN",      # 수요·가격·점유율 같은 동인이 실적으로 이어지는 사슬
     "EARNINGS_BRIDGE",   # 전기→당기 실적 변화를 항목별로 잇는 다리
