@@ -35,8 +35,21 @@ class TransientScoringError(RuntimeError):
 #: (429·5xx 는 `llm._gemini_create` 가 TransportError 로 바꿔 던지고, tenacity 가
 #:  HTTP_MAX_RETRIES 회 백오프한 뒤에도 실패한 것만 여기 온다.)
 # ★ 2026-11-26 Anthropic 기본 전환: SDK 의 429·5xx·타임아웃·연결 오류도 사고다(독립 검사 ❌ — 빠지면 0점 저장).
-_TRANSIENT = (httpx.TimeoutException, httpx.TransportError, TimeoutError, ConnectionError,
-              anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APIConnectionError)
+_TRANSIENT_TYPES = (httpx.TimeoutException, httpx.TransportError, TimeoutError, ConnectionError,
+                    anthropic.APIConnectionError)
+
+
+def is_transient(exc: BaseException) -> bool:
+    """논문·리포트와 무관한 사고인가. Anthropic 은 상태코드로 가른다 — 529(과부하)는
+    InternalServerError 의 자식이 아니라 클래스로 나열하면 샌다(독립 재검사 ❌).
+    402(결제 필요)도 사고다: 결제가 살아나면 다시 채점해야 한다(11/23~26 294건이 0점으로 굳었다).
+    400·401·403·404 같은 설정 오류는 사고가 아니다 — 0점으로 남겨 눈에 띄게 한다."""
+    if isinstance(exc, _TRANSIENT_TYPES):
+        return True
+    code = getattr(exc, "status_code", None)
+    if code is None and isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        code = exc.response.status_code
+    return isinstance(code, int) and (code in (402, 408, 409, 429) or code >= 500)
 
 
 def _score_one(paper: dict) -> dict:
@@ -53,9 +66,9 @@ def _score_one(paper: dict) -> dict:
     except JSONParseError as exc:
         log.warning("채점 실패(JSON 파싱) paper=%s: %s", paper.get("external_id"), exc)
         axes = scoring.zero_axes("JSON 파싱 불가")
-    except _TRANSIENT as exc:
-        raise TransientScoringError(f"{type(exc).__name__}: {str(exc)[:80]}") from exc
     except Exception as exc:  # noqa: BLE001 — 설정 오류(401/404 등)는 0점으로 남겨 눈에 띄게 한다
+        if is_transient(exc):
+            raise TransientScoringError(f"{type(exc).__name__}: {str(exc)[:80]}") from exc
         log.warning("채점 실패(API/네트워크) paper=%s: %s", paper.get("external_id"), exc)
         axes = scoring.zero_axes(f"API 오류: {str(exc)[:80]}")
 

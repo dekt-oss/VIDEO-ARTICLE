@@ -99,7 +99,11 @@ def _anthropic_errors():
     req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
     return [
         anthropic.RateLimitError("429", response=httpx.Response(429, request=req), body=None),
-        anthropic.InternalServerError("529", response=httpx.Response(529, request=req), body=None),
+        # SDK 가 실제로 던지는 클래스로 만든다(529 는 OverloadedError — InternalServerError 가 아니다).
+        anthropic.Anthropic(api_key="x")._make_status_error("overloaded", body=None,
+                                                             response=httpx.Response(529, request=req)),
+        anthropic.Anthropic(api_key="x")._make_status_error("server", body=None,
+                                                             response=httpx.Response(500, request=req)),
         anthropic.APITimeoutError(request=req),
         anthropic.APIConnectionError(request=req),
     ]
@@ -112,10 +116,24 @@ def test_anthropic_accidents_are_not_written_down(exc):
             score._score_one(PAPER)
 
 
-@pytest.mark.parametrize("exc", [httpx.TransportError("402 from gemini"), *_anthropic_errors()])
+def _gemini_402():
+    req = httpx.Request("POST", "https://generativelanguage.googleapis.com/x")
+    return httpx.HTTPStatusError("402", request=req, response=httpx.Response(402, request=req))
+
+
+@pytest.mark.parametrize("exc", [_gemini_402(), httpx.TransportError("429 from gemini"), *_anthropic_errors()])
 def test_report_scoring_accident_makes_no_row(exc):
     """리포트 라인: 2026-11-23~26 Gemini 사고로 294건이 0점으로 굳었다."""
     from engine import report_score
     rep = {"id": "r1", "external_id": "aria:1", "title": "t"}
     with mock.patch.object(report_score, "call_json", _raise(exc)):
         assert report_score._score_one(rep) is None
+
+
+def test_misconfiguration_from_anthropic_still_stays_zero():
+    import anthropic
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    for code in (400, 401, 404):
+        exc = anthropic.Anthropic(api_key="x")._make_status_error("bad", body=None,
+                                                                  response=httpx.Response(code, request=req))
+        assert not score.is_transient(exc), code
