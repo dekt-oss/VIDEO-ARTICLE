@@ -1,0 +1,246 @@
+{
+ "total": 71.34,
+ "gap": 0.27,
+ "lead": {
+  "s1": 0.2
+ },
+ "tail": {
+  "s11": 1.3,
+  "s12": 2.0
+ },
+ "min": {
+  "s6": 4.6,
+  "s7": 4.3,
+  "s8": 3.8,
+  "s9": 4.4
+ },
+ "scenes": [
+  {
+   "id": "s1",
+   "start": 0.0,
+   "dur": 4.11,
+   "beats": [
+    {
+     "k": 0,
+     "start_local": 0.2,
+     "speech": 3.536,
+     "media_start": 0.109
+    }
+   ]
+  },
+  {
+   "id": "s2",
+   "start": 4.11,
+   "dur": 3.61,
+   "beats": [
+    {
+     "k": 1,
+     "start_local": 0.15,
+     "speech": 3.092,
+     "media_start": 0.177
+    }
+   ]
+  },
+  {
+   "id": "s3",
+   "start": 7.72,
+   "dur": 6.46,
+   "beats": [
+    {
+     "k": 2,
+     "start_local": 0.15,
+     "speech": 2.733,
+     "media_start": 0.108
+    },
+    {
+     "k": 3,
+     "start_local": 3.153,
+     "speech": 2.933,
+     "media_start": 0.11
+    }
+   ]
+  },
+  {
+   "id": "s4",
+   "start": 14.18,
+   "dur": 10.22,
+   "beats": [
+    {
+     "k": 4,
+     "start_local": 0.15,
+     "speech": 2.315,
+     "media_start": 0.098
+    },
+    {
+     "k": 5,
+     "start_local": 2.735,
+     "speech": 3.002,
+     "media_start": 0.107
+    },
+    {
+     "k": 6,
+     "start_local": 6.007,
+     "speech": 3.841,
+     "media_start": 0.147
+    }
+   ]
+  },
+  {
+   "id": "s5",
+   "start": 24.4,
+   "dur": 7.21,
+   "beats": [
+    {
+     "k": 7,
+     "start_local": 0.15,
+     "speech": 3.273,
+     "media_start": 0.121
+    },
+    {
+     "k": 8,
+     "start_local": 3.693,
+     "speech": 3.149,
+     "media_start": 0.137
+    }
+   ]
+  },
+  {
+   "id": "s6",
+   "start": 31.61,
+   "dur": 4.6,
+   "beats": [
+    {
+     "k": 9,
+     "start_local": 0.15,
+     "speech": 3.253,
+     "media_start": 0.135
+    }
+   ]
+  },
+  {
+   "id": "s7",
+   "start": 36.21,
+   "dur": 4.3,
+   "beats": [
+    {
+     "k": 10,
+     "start_local": 0.15,
+     "speech": 3.328,
+     "media_start": 0.077
+    }
+   ]
+  },
+  {
+   "id": "s8",
+   "start": 40.51,
+   "dur": 3.8,
+   "beats": [
+    {
+     "k": 11,
+     "start_local": 0.15,
+     "speech": 3.036,
+     "media_start": 0.116
+    }
+   ]
+  },
+  {
+   "id": "s9",
+   "start": 44.31,
+   "dur": 4.4,
+   "beats": [
+    {
+     "k": 12,
+     "start_local": 0.15,
+     "speech": 3.752,
+     "media_start": 0.077
+    }
+   ]
+  },
+  {
+   "id": "s10",
+   "start": 48.71,
+   "dur": 8.31,
+   "beats": [
+    {
+     "k": 13,
+     "start_local": 0.15,
+     "speech": 4.444,
+     "media_start": 0.097
+    },
+    {
+     "k": 14,
+     "start_local": 4.864,
+     "speech": 3.071,
+     "media_start": 0.13
+    }
+   ]
+  },
+  {
+   "id": "s11",
+   "start": 57.02,
+   "dur": 7.62,
+   "beats": [
+    {
+     "k": 15,
+     "start_local": 0.15,
+     "speech": 2.59,
+     "media_start": 0.174
+    },
+    {
+     "k": 16,
+     "start_local": 3.01,
+     "speech": 3.044,
+     "media_start": 0.119
+    }
+   ]
+  },
+  {
+   "id": "s12",
+   "start": 64.64,
+   "dur": 6.7,
+   "beats": [
+    {
+     "k": 17,
+     "start_local": 0.15,
+     "speech": 4.28,
+     "media_start": 0.126
+    }
+   ]
+  }
+ ],
+ "chapters": [
+  {
+   "from_scene": "s1",
+   "start": 0.0
+  },
+  {
+   "from_scene": "s2",
+   "start": 4.11
+  },
+  {
+   "from_scene": "s4",
+   "start": 14.18
+  },
+  {
+   "from_scene": "s6",
+   "start": 31.61
+  },
+  {
+   "from_scene": "s8",
+   "start": 40.51
+  },
+  {
+   "from_scene": "s10",
+   "start": 48.71
+  },
+  {
+   "from_scene": "s11",
+   "start": 57.02
+  },
+  {
+   "from_scene": "s12",
+   "start": 64.64
+  }
+ ],
+ "stamp_s3_local": 3.65
+}

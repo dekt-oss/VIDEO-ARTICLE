@@ -1,0 +1,68 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #1F2A44; }
+    .art { position: absolute; left: 60px; top: 410px; width: 960px; height: 580px; overflow: visible; }
+    .capbox { position: absolute; left: 296px; width: 720px; top: 1052px; height: 176px; }
+    .captext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 42px; line-height: 1.42; letter-spacing: -0.02em; color: #1F2A44; opacity: 0; }
+    .src { position: absolute; left: 84px; width: 912px; top: 996px; text-align: right; }
+    .src span { display: inline-block; background: #FDE68A; color: #1F2A44; font-weight: 600; font-size: 28px; padding: 2px 16px; border-radius: 8px; }
+    .chipbox { position: absolute; width: 600px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .chip { display: inline-block; font-weight: 700; font-size: 34px; padding: 6px 20px; border-radius: 14px; border: 3px solid #0E1525; white-space: nowrap; }
+    .c-yel { background: #FDE68A; color: #1F2A44; }
+    .c-cream { background: #FFF8EE; color: #1F2A44; }
+    .c-amber { background: #F0A93B; color: #1F2A44; }
+    .c-maho { background: #8E2A14; color: #fff; }
+    .c-tom { background: #C2410C; color: #fff; }
+    .tagbox { position: absolute; left: 70px; top: 418px; }
+    .tag { display: inline-block; font-weight: 700; font-size: 32px; padding: 4px 18px; border-radius: 12px; border: 3px solid #0E1525; }
+    .t-yel { background: #FDE68A; color: #1F2A44; }
+    .t-grey { background: #E5E7EB; color: #1F2A44; }
+    .t-tom { background: #C2410C; color: #fff; }
+    .t-amber { background: #F0A93B; color: #1F2A44; }
+    .t-maho { background: #8E2A14; color: #fff; }
+
+    .captext b { font-weight: 800; }
+    .search { position: absolute; left: 400px; top: 640px; width: 620px; height: 104px; background: #fff; border: 6px solid #C2410C; border-radius: 52px; display: flex; align-items: center; padding: 0 30px; gap: 18px; }
+    .search .q { font-weight: 800; font-size: 44px; color: #1F2A44; letter-spacing: -0.02em; }
+    .search .q span { opacity: 0; }
+    .search .cur { width: 4px; height: 48px; background: #C2410C; }
+    .search .hint { position: absolute; left: 0; right: 0; top: -54px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; }
+    .cbox { position: absolute; left: 170px; width: 740px; top: 880px; height: 120px; background: #fff; border: 4px solid #0E1525; border-radius: 22px; padding: 14px 28px; }
+    .cbox .lab { font-weight: 600; font-size: 30px; color: #6B7583; }
+    .cbox .q { font-weight: 800; font-size: 44px; color: #1F2A44; }
+    .cbox .q span { opacity: 0; }
+
+    .stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 540px 410px; transform: translate(0px, 30px) scale(0.95); }
+
+  </style>
+  <div id="root" data-composition-id="s1" data-width="1080" data-height="1920">
+    <div class="stage"><svg id="s1-art" class="art" viewBox="0 0 960 580" xmlns="http://www.w3.org/2000/svg"><g transform="translate(165 50) scale(1.45)"><g id="s1-gA">
+      <clipPath id="s1-gA-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s1-gA-liq" x="0" y="147" width="200" height="103" fill="#F0A93B" clip-path="url(#s1-gA-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g><g transform="translate(505 50) scale(1.45)"><g id="s1-gB">
+      <clipPath id="s1-gB-cp"><path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z"/></clipPath>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="rgba(255,255,255,0.10)"/>
+      <rect id="s1-gB-liq" x="0" y="147" width="200" height="103" fill="#8E2A14" clip-path="url(#s1-gB-cp)"/>
+      <path d="M44 10 C40 60 30 100 34 150 C38 205 62 236 88 246 L90 262 C90 270 60 276 52 282 L52 292 L148 292 L148 282 C140 276 110 270 110 262 L112 246 C138 236 162 205 166 150 C170 100 160 60 156 10 Z" fill="none" stroke="#E8EEF8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M58 40 C52 90 50 140 60 190" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="7" stroke-linecap="round"/>
+    </g></g></svg><div class="chipbox" style="left:70px; top:875px;"><span id="s1-nA" class="chip c-amber">버번 캐스크</span></div><div class="chipbox" style="left:410px; top:875px;"><span id="s1-nB" class="chip c-maho">셰리 캐스크</span></div><div class="chipbox" style="left:-40px; top:412px;"><span id="s1-qA" class="chip c-cream">바닐라?</span></div><div class="chipbox" style="left:530px; top:412px;"><span id="s1-qB" class="chip c-cream">진한 과일?</span></div></div><div class="capbox"><div id="s1-cap0" class="captext"><span><b style="color:#B45309">버번</b> 캐스크와 <b style="color:#A61B1B">셰리</b> 캐스크,<br>맛이 어떻게 다를까요?</span></div></div>
+    
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#s1-cap0", { opacity: 1 }, 0);
+    tl.fromTo("#s1-qA", { scale: 0.5, opacity: 0, rotation: -10 }, { scale: 1, opacity: 1, rotation: -4, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 1.0);
+    tl.fromTo("#s1-qB", { scale: 0.5, opacity: 0, rotation: -2 }, { scale: 1, opacity: 1, rotation: 4, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 1.6);
+    tl.fromTo("#s1-gA", { rotation: 0 }, { rotation: -4, duration: 0.3, ease: "power2.out", transformOrigin: "50% 100%" }, 1.0);
+    tl.fromTo("#s1-gB", { rotation: 0 }, { rotation: 4, duration: 0.3, ease: "power2.out", transformOrigin: "50% 100%" }, 1.6);
+    tl.to(["#s1-art", "#s1-qA", "#s1-qB", "#s1-nA", "#s1-nB", "#s1-cap0"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }, 3.9600000000000004);
+    window.__timelines["s1"] = tl;
+  </script>
+</template>

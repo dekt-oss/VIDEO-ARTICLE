@@ -1,0 +1,98 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #1F2A44; }
+    .art { position: absolute; left: 60px; top: 410px; width: 960px; height: 580px; overflow: visible; }
+    .capbox { position: absolute; left: 296px; width: 720px; top: 1052px; height: 176px; }
+    .captext { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 42px; line-height: 1.42; letter-spacing: -0.02em; color: #1F2A44; opacity: 0; }
+    .src { position: absolute; left: 84px; width: 912px; top: 996px; text-align: right; }
+    .src span { display: inline-block; background: #FDE68A; color: #1F2A44; font-weight: 600; font-size: 28px; padding: 2px 16px; border-radius: 8px; }
+    .chipbox { position: absolute; width: 600px; height: 60px; display: flex; align-items: center; justify-content: center; }
+    .chip { display: inline-block; font-weight: 700; font-size: 34px; padding: 6px 20px; border-radius: 14px; border: 3px solid #0E1525; white-space: nowrap; }
+    .c-yel { background: #FDE68A; color: #1F2A44; }
+    .c-cream { background: #FFF8EE; color: #1F2A44; }
+    .c-amber { background: #F0A93B; color: #1F2A44; }
+    .c-maho { background: #8E2A14; color: #fff; }
+    .c-tom { background: #C2410C; color: #fff; }
+    .tagbox { position: absolute; left: 70px; top: 418px; }
+    .tag { display: inline-block; font-weight: 700; font-size: 32px; padding: 4px 18px; border-radius: 12px; border: 3px solid #0E1525; }
+    .t-yel { background: #FDE68A; color: #1F2A44; }
+    .t-grey { background: #E5E7EB; color: #1F2A44; }
+    .t-tom { background: #C2410C; color: #fff; }
+    .t-amber { background: #F0A93B; color: #1F2A44; }
+    .t-maho { background: #8E2A14; color: #fff; }
+
+    .captext b { font-weight: 800; }
+    .search { position: absolute; left: 400px; top: 640px; width: 620px; height: 104px; background: #fff; border: 6px solid #C2410C; border-radius: 52px; display: flex; align-items: center; padding: 0 30px; gap: 18px; }
+    .search .q { font-weight: 800; font-size: 44px; color: #1F2A44; letter-spacing: -0.02em; }
+    .search .q span { opacity: 0; }
+    .search .cur { width: 4px; height: 48px; background: #C2410C; }
+    .search .hint { position: absolute; left: 0; right: 0; top: -54px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; }
+    .cbox { position: absolute; left: 170px; width: 740px; top: 880px; height: 120px; background: #fff; border: 4px solid #0E1525; border-radius: 22px; padding: 14px 28px; }
+    .cbox .lab { font-weight: 600; font-size: 30px; color: #6B7583; }
+    .cbox .q { font-weight: 800; font-size: 44px; color: #1F2A44; }
+    .cbox .q span { opacity: 0; }
+
+    .stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 540px 410px; transform: translate(0px, 30px) scale(0.95); }
+
+    .stampbox { position: absolute; left: 140px; width: 800px; top: 670px; height: 160px; display: flex; align-items: center; justify-content: center; }
+    #s3-stamp { display: inline-block; font-family: 'Wanted Sans'; font-weight: 800; font-size: 76px; color: #C2410C; background: rgba(255,248,238,0.94); border: 7px solid #C2410C; border-radius: 16px; padding: 4px 30px; }
+  </style>
+  <div id="root" data-composition-id="s3" data-width="1080" data-height="1920">
+    <div class="stage"><div class="tagbox"><span id="s3-tag" class="tag t-tom">실제로는</span></div><svg id="s3-art" class="art" viewBox="0 0 960 580" xmlns="http://www.w3.org/2000/svg"><rect x="230" y="50" width="500" height="490" rx="46" fill="#C68A4E" stroke="#3B2412" stroke-width="6"/><path d="M248 70 C240 180 256 300 248 520" fill="none" stroke="#9A6334" stroke-width="4"/><path d="M266 70 C258 180 274 300 266 520" fill="none" stroke="#9A6334" stroke-width="4"/><path d="M694 70 C686 180 702 300 694 520" fill="none" stroke="#9A6334" stroke-width="4"/><path d="M712 70 C704 180 720 300 712 520" fill="none" stroke="#9A6334" stroke-width="4"/><rect id="s3-liq" x="290" y="100" width="380" height="390" rx="24" fill="#DCE7F0"/><rect x="290" y="100" width="380" height="390" rx="24" fill="none" stroke="#1B1310" stroke-width="12"/><circle id="s3-p0" cx="300" cy="130" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p1" cx="660" cy="167" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p2" cx="300" cy="204" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p3" cx="660" cy="241" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p4" cx="300" cy="278" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p5" cx="660" cy="315" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p6" cx="300" cy="352" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p7" cx="660" cy="389" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p8" cx="300" cy="426" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p9" cx="660" cy="463" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p10" cx="300" cy="160" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p11" cx="660" cy="197" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p12" cx="300" cy="234" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p13" cx="660" cy="271" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p14" cx="300" cy="308" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p15" cx="660" cy="345" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p16" cx="300" cy="382" r="8" fill="#F0A93B" opacity="0"/><circle id="s3-p17" cx="660" cy="419" r="8" fill="#F0A93B" opacity="0"/></svg><div class="chipbox" style="left:-120px; top:540px;"><span id="s3-c1" class="chip c-cream">오크 나무</span></div><div class="chipbox" style="left:240px; top:440px;"><span id="s3-c2" class="chip c-cream">원액</span></div><div class="stampbox"><span id="s3-stamp">오크통 = 티백</span></div></div><div class="capbox"><div id="s3-cap0" class="captext"><span>그런데 갓 증류한 원액은<br>사실 투명해요.</span></div><div id="s3-cap1" class="captext"><span>통을 티백처럼 우려내며<br>색과 향을 입는 거예요.</span></div></div>
+    <div class="src"><span id="s3-src">Whisky Advocate</span></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#s3-art", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0);
+    tl.fromTo("#s3-tag", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.05);
+    tl.fromTo("#s3-c1", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.4);
+    tl.fromTo("#s3-c2", { scale: 0.5, opacity: 0, rotation: -6 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.38, ease: "back.out(1.7)", transformOrigin: "50% 50%" }, 0.6);
+    tl.fromTo("#s3-liq", { attr: { fill: "#DCE7F0" } }, { attr: { fill: "#E39B2F" }, duration: 2.6, ease: "power1.inOut" }, 2.553);
+    tl.fromTo("#s3-p0", { x: 0, opacity: 0 }, { x: 111, opacity: 1, duration: 0.5, ease: "power2.out" }, 2.95);
+    tl.to("#s3-p0", { opacity: 0, duration: 0.6, ease: "power1.in" }, 3.45);
+    tl.fromTo("#s3-p1", { x: 0, opacity: 0 }, { x: -89, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.08);
+    tl.to("#s3-p1", { opacity: 0, duration: 0.6, ease: "power1.in" }, 3.58);
+    tl.fromTo("#s3-p2", { x: 0, opacity: 0 }, { x: 120, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.21);
+    tl.to("#s3-p2", { opacity: 0, duration: 0.6, ease: "power1.in" }, 3.71);
+    tl.fromTo("#s3-p3", { x: 0, opacity: 0 }, { x: -76, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.34);
+    tl.to("#s3-p3", { opacity: 0, duration: 0.6, ease: "power1.in" }, 3.84);
+    tl.fromTo("#s3-p4", { x: 0, opacity: 0 }, { x: 79, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.47);
+    tl.to("#s3-p4", { opacity: 0, duration: 0.6, ease: "power1.in" }, 3.97);
+    tl.fromTo("#s3-p5", { x: 0, opacity: 0 }, { x: -138, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.6);
+    tl.to("#s3-p5", { opacity: 0, duration: 0.6, ease: "power1.in" }, 4.1);
+    tl.fromTo("#s3-p6", { x: 0, opacity: 0 }, { x: 82, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.73);
+    tl.to("#s3-p6", { opacity: 0, duration: 0.6, ease: "power1.in" }, 4.23);
+    tl.fromTo("#s3-p7", { x: 0, opacity: 0 }, { x: -116, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.86);
+    tl.to("#s3-p7", { opacity: 0, duration: 0.6, ease: "power1.in" }, 4.359999999999999);
+    tl.fromTo("#s3-p8", { x: 0, opacity: 0 }, { x: 144, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.99);
+    tl.to("#s3-p8", { opacity: 0, duration: 0.6, ease: "power1.in" }, 4.49);
+    tl.fromTo("#s3-p9", { x: 0, opacity: 0 }, { x: -77, opacity: 1, duration: 0.5, ease: "power2.out" }, 4.12);
+    tl.to("#s3-p9", { opacity: 0, duration: 0.6, ease: "power1.in" }, 4.62);
+    tl.fromTo("#s3-p10", { x: 0, opacity: 0 }, { x: 134, opacity: 1, duration: 0.5, ease: "power2.out" }, 4.25);
+    tl.to("#s3-p10", { opacity: 0, duration: 0.6, ease: "power1.in" }, 4.75);
+    tl.fromTo("#s3-p11", { x: 0, opacity: 0 }, { x: -97, opacity: 1, duration: 0.5, ease: "power2.out" }, 4.38);
+    tl.to("#s3-p11", { opacity: 0, duration: 0.6, ease: "power1.in" }, 4.88);
+    tl.fromTo("#s3-p12", { x: 0, opacity: 0 }, { x: 74, opacity: 1, duration: 0.5, ease: "power2.out" }, 4.51);
+    tl.to("#s3-p12", { opacity: 0, duration: 0.6, ease: "power1.in" }, 5.01);
+    tl.fromTo("#s3-p13", { x: 0, opacity: 0 }, { x: -81, opacity: 1, duration: 0.5, ease: "power2.out" }, 4.64);
+    tl.to("#s3-p13", { opacity: 0, duration: 0.6, ease: "power1.in" }, 5.14);
+    tl.fromTo("#s3-p14", { x: 0, opacity: 0 }, { x: 125, opacity: 1, duration: 0.5, ease: "power2.out" }, 4.77);
+    tl.to("#s3-p14", { opacity: 0, duration: 0.6, ease: "power1.in" }, 5.27);
+    tl.fromTo("#s3-p15", { x: 0, opacity: 0 }, { x: -123, opacity: 1, duration: 0.5, ease: "power2.out" }, 4.9);
+    tl.to("#s3-p15", { opacity: 0, duration: 0.6, ease: "power1.in" }, 5.4);
+    tl.fromTo("#s3-p16", { x: 0, opacity: 0 }, { x: 78, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.03);
+    tl.to("#s3-p16", { opacity: 0, duration: 0.6, ease: "power1.in" }, 3.53);
+    tl.fromTo("#s3-p17", { x: 0, opacity: 0 }, { x: -100, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.16);
+    tl.to("#s3-p17", { opacity: 0, duration: 0.6, ease: "power1.in" }, 3.66);
+    tl.fromTo("#s3-stamp", { scale: 2.2, opacity: 0, rotation: -14 }, { scale: 1, opacity: 1, rotation: -8, duration: 0.28, ease: "power4.in" }, 3.65);
+    tl.fromTo("#s3-cap0", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.15);
+    tl.to("#s3-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.12, ease: "power2.in" }, 3.033);
+    tl.fromTo("#s3-cap1", { opacity: 0, scale: 0.96, filter: "blur(8px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 3.153);
+    tl.to(["#s3-art", "#s3-tag", "#s3-c1", "#s3-c2", "#s3-stamp", "#s3-src", "#s3-cap0", "#s3-cap1"], { opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }, 6.31);
+    window.__timelines["s3"] = tl;
+  </script>
+</template>
