@@ -1,0 +1,41 @@
+# 하이퍼프레임 렌더 증명(S2) — 러너에서 데모 1편을 0원으로 렌더해 걸린 시간·용량을 남긴다.
+# docs/plans/2026-11-26-hyperframes-engine.md. 운영 데이터·키를 쓰지 않는다.
+name: hf-render-demo
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - engine/hf_render.py
+      - hf_templates/**
+      - assets/music/**
+      - .github/workflows/hf-render-demo.yml
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install python-dotenv Pillow
+      - name: 박자표 대조
+        run: python -m engine.hf_render --check-beats sooljjerigo-groove-117
+      - name: 데모 렌더
+        run: |
+          start=$(date +%s)
+          python -m engine.hf_render --demo out/hf-demo.mp4
+          echo "렌더 시간: $(( $(date +%s) - start ))초 · 크기: $(stat -c %s out/hf-demo.mp4) 바이트" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hf-demo
+          path: out/hf-demo.mp4

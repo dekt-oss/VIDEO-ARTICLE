@@ -5198,3 +5198,14 @@ DRINKS_CAPTION_BRAND_TAG: str = "술째리고"     # 해시태그의 마지막(�
 DRINKS_CAPTION_SOURCE_NOTE: str = "출처는 마지막 장에 있어요."
 DRINKS_CAPTION_SHARE_DEFAULT: str = "술"       # "{share_target} 좋아하는 친구에게" 의 기본 대상
 DRINKS_CAPTION_CTA_DEFAULT: str = DRINKS_CARD_FOLLOW_LINE1
+
+# ── 하이퍼프레임(HTML→영상) 렌더 + 음악 박자 싱크 — engine/hf_render.py. docs/plans/2026-11-26-hyperframes-engine.md (S1~S2)
+DRINKS_HF_ENABLED: bool = False            # 주류 워커가 이 경로를 쓰는가. S3(별도 승인) 전까지 꺼 둔다 — 지금은 --demo 만
+HF_CLI_VERSION: str = "0.9.19"             # npx 고정 버전. 올리면 같은 데모를 다시 렌더해 프레임·박자를 비교한다
+HF_RENDER_TIMEOUT_SEC: int = 900           # 첫 실행은 CLI·크롬 내려받기로 로컬 4분 실측(2026-11-26)
+HF_CLOSING_HOLD_SEC: float = 2.0           # 마지막 글은 최소 이만큼(하이퍼프레임 motion 규칙 line_unread)
+HF_MUSIC_FADE_OUT_SEC: float = 1.0         # 영상 끝 음악 페이드아웃
+HF_DURATION_TOLERANCE_SEC: float = 0.1     # 렌더 결과 길이 허용 오차(계획 길이 대비)
+HF_BEAT_MATCH_TOLERANCE_SEC: float = 0.033 # 박자표 ↔ 자동 검출 대조 허용(1프레임 @30fps)
+HF_BEAT_MATCH_MIN_RATIO: float = 0.8       # 검출 박자 중 이 비율 이상이 박자표에 1프레임 안으로 맞아야 '일치'
+HF_DEFAULT_ACCENT: str = "#e0a35a"         # 술째리고 호박색
