@@ -1,12 +1,11 @@
-"""Anthropic 경로 차단 (2026-08-29 운영자 지시: "앤트로픽 경로 전부 코드에서 막아").
+"""Anthropic 경로 스위치.
 
-★ 왜 이 파일이 있나 — 실측 사고:
-  세션 초반에 운영자가 "제미나이로 해야지"라고 했는데 나는 **그 실행만** 바꾸고
-  기본값(MODEL_DIRECTIVE·MODEL_SCRIPT)과 폴백은 Anthropic 그대로 뒀다. 그래서 그날
-  지시서 생성이 Anthropic 으로 나갔고, Gemini 가 429 를 낼 때마다 자동으로 그쪽으로
-  넘어갔다. 잔액이 0이라 400 으로 거절돼 과금은 안 됐지만 **막은 것이 아니라 운이 좋았다.**
+2026-08-29 운영자 지시("앤트로픽 경로 전부 코드에서 막아")로 기본 차단했다 — 잔액 0인 Anthropic 으로
+기본값·폴백이 몰래 새던 사고 때문이다. 2026-11-26 운영자 결정("Claude Haiku 5.5 로 작업합시다")으로
+Anthropic 이 **기본 경로**가 됐다. 스위치는 남긴다: 다시 막아야 하면 ANTHROPIC_DISABLED=true.
 
-  "설정 한 곳을 고쳤다"로는 부족하다는 것이 그날의 교훈이다. 그래서 검사한다.
+이제 지킬 것: (1) 스위치를 켜면 여전히 클라이언트 한 지점에서 막힌다, (2) 텍스트 기본값이 한 곳
+(MODEL_TEXT_DEFAULT)을 따른다, (3) DeepSeek 은 운영자 지시로 어떤 기본값에도 없다.
 """
 
 from __future__ import annotations
@@ -21,32 +20,30 @@ from engine import config, llm
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_client_factory_refuses_to_open():
-    """클라이언트를 만드는 **단 하나의 지점**에서 막힌다 — 모델 ID·폴백·키와 무관하게."""
-    assert config.ANTHROPIC_DISABLED is True
+def test_switch_still_blocks_at_the_single_client_factory(monkeypatch):
+    monkeypatch.setattr(config, "ANTHROPIC_DISABLED", True)
     with pytest.raises(llm.AnthropicDisabledError):
         llm._client()
 
 
-def test_fallback_is_not_even_considered_while_blocked():
-    """막혀 있으면 폴백을 후보로 두지 않는다.
+def test_anthropic_is_open_by_default_and_text_default_is_haiku():
+    assert config.ANTHROPIC_DISABLED is False
+    assert config.MODEL_TEXT_DEFAULT == "claude-haiku-5-5"
+    assert "claude-haiku-5-5" in config.TEXT_PRICING   # 단가가 없으면 원장이 0원으로 적는다
 
-    후보로 두면 Gemini 재시도가 GEMINI_ATTEMPTS_WITH_FALLBACK 로 **짧게 끊긴다** —
-    오늘 429 에 폴백이 발동해 Gemini 를 2번만 시도하고 죽은 Anthropic 으로 30분을 버린
-    것이 그 사고다. 진짜 원인(Gemini 크레딧 소진)은 로그 어디에도 남지 않았다.
-    """
+
+def test_fallback_is_not_even_considered_while_blocked():
     import inspect
 
-    src = inspect.getsource(llm._gemini_text)
-    assert "not config.ANTHROPIC_DISABLED" in src
+    assert "not config.ANTHROPIC_DISABLED" in inspect.getsource(llm._gemini_text)
 
 
-def test_no_model_default_points_at_anthropic():
-    """기본값이 하나라도 claude 를 가리키면 아무도 모르는 사이에 그쪽으로 나간다."""
+def test_no_report_or_paper_model_default_points_at_deepseek_or_gemini():
+    """2026-11-26 운영자 "딥식은 이제 쓰지말고" — 리포트·논문 텍스트 기본값은 전부 MODEL_TEXT_DEFAULT.
+    주류(DRINKS_*)는 DB 비용 예상 함수와 묶여 있어 따로 옮긴다."""
     src = (ROOT / "engine" / "config.py").read_text(encoding="utf-8")
-    leaks = re.findall(r'^(MODEL_[A-Z_]+): str = os\.getenv\("[A-Z_]+", "(claude-[^"]+)"\)',
-                       src, re.M)
-    assert leaks == [], f"기본값이 Anthropic 을 가리킨다: {leaks}"
+    leaks = re.findall(r'^(MODEL_[A-Z_]+): str = os\.getenv\("[A-Z_]+", "((?:deepseek|gemini)-[^"]+)"\)', src, re.M)
+    assert leaks == [], f"리포트·논문 기본값이 옛 모델을 가리킨다: {leaks}"
 
 
 def test_fallback_default_is_off():

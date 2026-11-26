@@ -46,6 +46,7 @@ jobs:
       actions: read
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # 2026-11-26 텍스트 LLM 기본 = claude-haiku-5-5
       IMAGE_PROVIDER: gemini
       VIDEO_PROVIDER: veo
       TTS_PROVIDER: edge          # 무료 Edge TTS — 나레이션이 기존 버전과 같아야 하므로 유료 불필요
