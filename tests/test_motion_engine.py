@@ -164,6 +164,17 @@ def test_numbers_after_english_are_always_checked():
     assert schema.number_gate({"v": "30퍼센트"}, [{"display": "30% 증가"}]) == []
 
 
+def test_number_right_after_a_period_is_checked_but_decimals_are_not_split():
+    for s in ("늘었다.999조 시장", "무려...999조", ".8배", "p.999"):
+        assert schema.number_gate({"v": s}, _G), s
+    assert schema.number_gate({"v": "74.5조"}, _G) == []  # 소수 중간 숫자는 따로 잡지 않는다
+
+
+def test_percent_point_is_not_percent():
+    assert schema.number_gate({"v": "15퍼센트포인트"}, [{"display": "15% 증가"}])
+    assert schema.number_gate({"v": "15%포인트"}, [{"display": "15%p 상승"}]) == []
+
+
 def test_title_unknown_unit_number_is_removed_with_its_unit():
     w: list = []
     assert schema._scrub_title("999곳 시장", _G, w) == "시장" and w
