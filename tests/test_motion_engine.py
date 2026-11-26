@@ -150,16 +150,18 @@ def test_amount_glued_to_korean_is_still_a_number():
     assert schema.number_gate("시장은 무려999조다.", _G, strict_sign=False) == ["999조"]
 
 
-def test_model_names_glued_to_english_are_not_numbers():
-    assert schema.number_gate({"v": "EV6·HBM4·Level2+"}, []) == []
-    assert schema.number_gate("EV6 대비 낫다.", [], strict_sign=False) == []  # 띄어 쓴 '대'는 단위 아님
+def test_model_names_pass_when_the_evidence_has_them():
+    ev = [{"display": "EV6·HBM4·LPDDR5X·Level2+ 탑재, EV6대비 30% 증가"}]
+    for s in ("EV6·HBM4·Level2+", "LPDDR5X 양산", "EV6대비 낫다", "EV6 대비 30% 증가"):
+        assert schema.number_gate({"v": s}, ev) == [], s
 
 
-def test_registered_unit_glued_after_english_is_still_a_number():
-    # 독립 재검사 ❌C: 영문 앞 글자로 근거 없는 숫자가 검문을 비켜 갔다.
-    assert schema.number_gate({"v": "PER12배"}, _G) == ["12배"]
-    assert schema.number_gate({"v": "ROE99%"}, _G) == ["99%"]
-    assert schema.number_gate("ROE99%라고 합니다.", _G, strict_sign=False) == ["99%"]
+def test_numbers_after_english_are_always_checked():
+    # 독립 재검사 ❌C(두 번): 영문 앞 글자로 근거 없는 숫자가 검문을 비켜 갔다 → 예외를 없앴다.
+    for s in ("PER12배", "ROE99%", "PER12 배", "PBR0.8", "ROE99퍼센트", "PER12％", "PER12곳"):
+        assert schema.number_gate({"v": s}, _G), s
+    assert schema.number_gate("ROE15.2로 높다.", _G, strict_sign=False)
+    assert schema.number_gate({"v": "30퍼센트"}, [{"display": "30% 증가"}]) == []
 
 
 def test_title_unknown_unit_number_is_removed_with_its_unit():

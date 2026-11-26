@@ -15,7 +15,7 @@ from ..util import log
 from . import schema
 
 MOTION_SYSTEM = f"""너는 증권사 리포트를 1분 안팎 세로 쇼츠로 옮기는 모션그래픽 연출가다. 입력은 대본(script_md)과
-Fact Sheet 다. 컷마다 아래 [템플릿] 중 하나를 고르고 칸(slots)만 채운 지시서를 JSON 으로만 출력한다.
+Fact Sheet 다. 한국어 영상만 만든다(영어 칸 불필요). 컷마다 아래 [템플릿] 중 하나를 고르고 칸(slots)만 채운 지시서를 JSON 으로만 출력한다.
 
 ★ 사실 규칙(어기면 그 컷은 코드가 숫자 없는 카드로 바꾼다):
 - 화면 글자(slots)와 나레이션의 수치·주장은 **Fact Sheet 에 있는 것만**. 새 숫자·계산값 금지.
@@ -49,8 +49,8 @@ Fact Sheet 다. 컷마다 아래 [템플릿] 중 하나를 고르고 칸(slots)�
 칸 글자는 짧게(한 칸 2~14자, card_body 30자 이내).
 
 [출력] JSON only:
-{{"header": {{"title_lines": ["<상단 제목 1줄(14자 내)>", "<2줄, 핵심 질문(14자 내)>"], "hook_ko": "<한 줄 제목>", "hook_en": "<English title>"}},
-  "cuts": [{{"narration_ko": "<한국어>", "narration_en": "<English>", "estimated_sec": <int>,
+{{"header": {{"title_lines": ["<상단 제목 1줄(14자 내)>", "<2줄, 핵심 질문(14자 내)>"], "hook_ko": "<한 줄 제목>"}},
+  "cuts": [{{"narration_ko": "<한국어>", "estimated_sec": <int>,
              "source_facts": ["<키>"], "novelty_event": "<새 정보 한 구절>",
              "motion": {{"template": "<이름>", "cue_words": ["<낱말>"], "slots": {{…}}}}}}]}}"""
 
@@ -59,7 +59,7 @@ def user_prompt(draft_row: dict[str, Any]) -> str:
     fs = draft_row.get("fact_sheet") or {}
     return "\n\n".join([
         f"대본(script_md):\n{draft_row.get('script_md') or ''}",
-        f"Fact Sheet:\n{json.dumps(fs, ensure_ascii=False, indent=1)}",
+        f"Fact Sheet:\n{json.dumps(fs, ensure_ascii=False, separators=(',', ':'))}",
     ])
 
 

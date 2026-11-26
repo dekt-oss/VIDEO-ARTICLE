@@ -215,6 +215,8 @@ def generate(draft_row: dict[str, Any], version_type: str,
         # 자기 정규화(숫자 검문·쪽수)를 쓴다. docs/plans/2026-11-24-motion-graphics-engine.md
         from .motion import directive as motion_directive
         d = motion_directive.generate(draft_row, report)
+        # 숫자 검문은 숫자만 본다 — 낱말 주장은 다른 버전과 같은 Jev 근거 경고(fail-open)로 본다.
+        grounding.attach_report_warning(d, draft_row, report)
         warning_triage.attach(d["header"])
         return d
     d = _generate_with_retry(draft_row, version_type, report)
