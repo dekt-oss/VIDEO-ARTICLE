@@ -31,9 +31,11 @@ TEMPLATE_CUES: dict[str, int] = {
 # 단위는 긴 것부터(조원 > 조). 앞에 숫자·소수점이 붙어 있으면 토큰 중간이라 잡지 않는다.
 _UNITS = ("%p", "%", "bp", "배", "조원", "조", "억원", "억", "만원", "만km", "만명", "만대", "만", "천억원", "천억",
           "천원", "천", "원", "달러", "명", "대", "개", "년", "월", "일", "분기", "x", "X")
-# 영문에 바로 붙은 숫자(EV6·HBM4·Level2+)는 모델명이지 양이 아니다 — 잡지 않는다.
+# 영문에 바로 붙은 숫자(EV6·HBM4·Level2+)는 모델명이지 양이 아니다 — 단, 등록 단위가 바로 붙으면
+# ('PER12배'·'ROE99%') 양이므로 잡는다(독립 재검사 ❌C — 영문 앞 글자로 검문을 비켜 갔다). token_spans 참고.
 # ★ 한글 앞 글자는 막지 않는다: '약999조'·'총999조원' 은 금액이다(독립 재검사 ❌A — 한글까지 막았더니 우회됐다).
-_NUM_RE = re.compile(r"(?<![\d.A-Za-z])([-+−]?)(\d+(?:[.,]\d+)*)")
+_NUM_RE = re.compile(r"(?<![\d.])([-+−]?)(\d+(?:[.,]\d+)*)")
+_ASCII_ALPHA = re.compile(r"[A-Za-z]")
 _UNIT_RE = re.compile(r"\s*(" + "|".join(re.escape(u) for u in _UNITS) + r")")
 
 
@@ -90,6 +92,8 @@ def token_spans(text: str) -> tuple[str, list[tuple[int, int, tuple[str, str, st
             pass
         end, unit = m.end(), ""
         u = _UNIT_RE.match(src, end)
+        if m.start() and _ASCII_ALPHA.match(src[m.start() - 1]) and not (u and u.group(0) == u.group(1)):
+            continue  # 모델명(EV6·HBM4): 단위가 바로 붙지 않은 영문 뒤 숫자
         if u:
             unit, end = u.group(1), u.end()
         else:

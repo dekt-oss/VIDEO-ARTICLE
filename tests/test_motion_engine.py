@@ -152,6 +152,14 @@ def test_amount_glued_to_korean_is_still_a_number():
 
 def test_model_names_glued_to_english_are_not_numbers():
     assert schema.number_gate({"v": "EV6·HBM4·Level2+"}, []) == []
+    assert schema.number_gate("EV6 대비 낫다.", [], strict_sign=False) == []  # 띄어 쓴 '대'는 단위 아님
+
+
+def test_registered_unit_glued_after_english_is_still_a_number():
+    # 독립 재검사 ❌C: 영문 앞 글자로 근거 없는 숫자가 검문을 비켜 갔다.
+    assert schema.number_gate({"v": "PER12배"}, _G) == ["12배"]
+    assert schema.number_gate({"v": "ROE99%"}, _G) == ["99%"]
+    assert schema.number_gate("ROE99%라고 합니다.", _G, strict_sign=False) == ["99%"]
 
 
 def test_title_unknown_unit_number_is_removed_with_its_unit():
