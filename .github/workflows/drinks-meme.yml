@@ -25,6 +25,8 @@ jobs:
       TIMEZONE: "Asia/Seoul"
       WORKER_ID: ${{ github.run_id }}
       DRINKS_STORAGE: supabase
+      # 0091 owned_track 렌더 스위치 — 저장소 변수 DRINKS_HF_ENABLED=0 으로 끈다(그 밈은 멈춘다). 비어 있으면 켜짐
+      DRINKS_HF_ENABLED: ${{ vars.DRINKS_HF_ENABLED || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7

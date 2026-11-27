@@ -157,3 +157,18 @@ def test_template_text_box_matches_config():
     tpl = open(os.path.join(h.TEMPLATE_DIR, "meme-beat", "index.template.html"), encoding="utf-8").read()
     assert f"font-size: {config.HF_MEME_WORD_PX}px" in tpl and f"font-size: {config.HF_MEME_TOP_PX}px" in tpl
     assert "left: 80px; right: 140px" in tpl and config.HF_MEME_TEXT_WIDTH_PX == 1080 - 80 - 140
+
+
+def test_keyword_mark_never_breaks_entities():
+    assert h._mark("'소주 27도'", "27") == '&#x27;소주 <span class="kw">27</span>도&#x27;'
+    assert h._mark("톰 & 제리", "amp") == "톰 &amp; 제리"
+    assert h._mark("톰 & 제리", "제리") == '톰 &amp; <span class="kw">제리</span>'
+
+
+def test_npx_env_drops_secrets(monkeypatch):
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "s")
+    monkeypatch.setenv("SUPABASE_URL", "u")
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    env = h._env()
+    assert not {"SUPABASE_SERVICE_KEY", "SUPABASE_URL", "GITHUB_TOKEN"} & set(env)
+    assert "PATH" in env or "Path" in env

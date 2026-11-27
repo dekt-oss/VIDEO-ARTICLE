@@ -141,8 +141,8 @@ def validate_spec(spec: dict[str, Any]) -> list[Finding]:
         try:
             tr = hf_render.load_track(str(audio["track"]))
             planned = hf_render.planned_duration([{"text": b.get("text"), "ms": b.get("ms")} for b in beats], tr)
-        except hf_render.HfRenderError as exc:
-            bad("meme_invalid", str(exc))
+        except (hf_render.HfRenderError, OSError, ValueError, TypeError) as exc:
+            bad("meme_invalid", f"우리 음원 박자 계획을 만들 수 없습니다: {exc}")
         else:
             if not config.DRINKS_MEME_MIN_SEC <= planned <= config.DRINKS_MEME_MAX_SEC:
                 bad("meme_duration", f"우리 음원 박자에 맞추면 {planned:.1f}초가 됩니다 — {config.DRINKS_MEME_MIN_SEC:g}~{config.DRINKS_MEME_MAX_SEC:g}초 안으로 글을 줄이세요")

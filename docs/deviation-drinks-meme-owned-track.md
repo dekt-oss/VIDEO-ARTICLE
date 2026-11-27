@@ -18,7 +18,7 @@
 
 ## 되돌리기
 
-- 즉시: 워커 환경변수 `DRINKS_HF_ENABLED=0` → `owned_track` 밈은 `hf_disabled` 로 **멈춘다**(옛 무음·분위기 경로로 몰래 바꾸지 않는다). LLM 초안도 옛 앱 부착으로 돌아간다.
+- 즉시: GitHub 저장소 변수(Settings → Variables) `DRINKS_HF_ENABLED=0` — `drinks-meme.yml` 이 읽는다(글 초안·렌더 같은 워크플로) → `owned_track` 밈은 `hf_disabled` 로 **멈춘다**(옛 무음·분위기 경로로 몰래 바꾸지 않는다). LLM 초안도 옛 앱 부착으로 돌아간다.
 - DB: 0066 의 `drinks_meme_blockers` 를 다시 적용(0091 머리말 참고). 만든 파일·게시 기록은 지우지 않는다.
 
 ## 미검증 / 남은 것

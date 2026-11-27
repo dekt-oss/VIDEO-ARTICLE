@@ -10,7 +10,7 @@
   · 음원은 ledger 에 권리가 적힌 곡만. 박자표(bpm·첫 박)는 ledger 가 정본 — 자동 검출(`beats`)은 대조용이다.
   · 실패는 전부 HfRenderError. 빈 파일·짧은 파일·소리 없는 파일을 성공으로 넘기지 않는다.
   · 렌더는 네트워크에 기대지 않는다: gsap 은 템플릿 assets/lib, 글꼴은 저장소 assets/fonts 를 복사해 쓴다.
-  · 돈을 쓰지 않는다. 주류 워커 연결(DRINKS_HF_ENABLED)은 S3 별도 승인 전까지 꺼져 있다.
+  · 돈을 쓰지 않는다. 주류 밈 owned_track 이 이 경로를 쓴다(S3, 0091). 끄기: DRINKS_HF_ENABLED=0 (그 밈은 멈춘다).
 """
 
 from __future__ import annotations
@@ -109,8 +109,11 @@ def plan_slots(items: list[dict[str, Any]], grid: list[float], period: float) ->
 
 def _mark(text: str, keyword: str) -> str:
     """escape 한 글에서 강조 낱말 첫 자리만 <span class="kw"> 로 감싼다. 낱말이 글에 없으면 강조하지 않는다."""
-    t, k = html.escape(text), html.escape(keyword)
-    return t.replace(k, f'<span class="kw">{k}</span>', 1) if k and k in t else t
+    # 원문에서 먼저 자르고 조각마다 escape — escape 뒤에 치환하면 &#x27; 같은 엔티티 안을 감쌀 수 있다(페이블 검사)
+    if not keyword or keyword not in text:
+        return html.escape(text)
+    before, k, after = text.partition(keyword)
+    return f'{html.escape(before)}<span class="kw">{html.escape(k)}</span>{html.escape(after)}'
 
 
 def planned_duration(items: list[dict[str, Any]], track: Track) -> float:
@@ -155,8 +158,13 @@ def beats_command(audio_path: str) -> list[str]:
     return [npx, "--yes", config.HF_HYPERFRAMES_PKG, "beats", audio_path, "--json"]
 
 
+_SECRET_MARKS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "SUPABASE")
+
+
 def _env() -> dict[str, str]:
-    return {**os.environ, "HYPERFRAMES_NO_TELEMETRY": "1"}
+    """npx(외부 패키지)에 넘기는 환경 — 키·토큰·DB 주소는 뺀다(워커에는 서비스 키가 있다)."""
+    env = {k: v for k, v in os.environ.items() if not any(m in k.upper() for m in _SECRET_MARKS)}
+    return {**env, "HYPERFRAMES_NO_TELEMETRY": "1"}
 
 
 def parse_beats_json(stdout: str) -> list[float]:
