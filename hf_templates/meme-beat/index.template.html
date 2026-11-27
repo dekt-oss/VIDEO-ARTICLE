@@ -1,0 +1,61 @@
+<!doctype html>
+<!-- 하이퍼프레임 템플릿: 밈 top_text 틀 + 음악 박자 싱크. engine/hf_render.py 가 밑줄 두 개로 감싼 칸을 채워 index.html 로 쓴다.
+     글은 engine 이 html.escape 해서 넣는다. 여기 직접 문구를 쓰지 않는다. -->
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="assets/lib/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "PretendardHF"; src: url("assets/fonts/Pretendard-Black.otf"); font-weight: 900; }
+      @font-face { font-family: "PretendardHF"; src: url("assets/fonts/Pretendard-Bold.otf"); font-weight: 700; }
+      :root { --ground: #0e0a07; --ink: #f6ead8; --accent: __ACCENT__; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--ground); }
+      #root { position: relative; width: 100%; height: 100%; font-family: "PretendardHF", sans-serif; }
+      #glow {
+        position: absolute; inset: 0; opacity: 0.25;
+        background: radial-gradient(ellipse at 50% 46%, var(--accent) 0%, transparent 62%);
+      }
+      #top {
+        position: absolute; left: 80px; right: 140px; top: 250px; text-align: center;
+        color: var(--ink); font-size: 64px; font-weight: 700; line-height: 1.25; letter-spacing: -0.02em; word-break: keep-all;
+      }
+      .word {
+        position: absolute; left: 80px; right: 140px; top: 760px; text-align: center;
+        color: var(--ink); font-size: 128px; font-weight: 900; line-height: 1.15; letter-spacing: -0.04em; word-break: keep-all;
+        text-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
+      }
+      .word .kw { color: var(--accent); }
+      #brand {
+        position: absolute; left: 0; right: 0; top: 1240px; text-align: center;
+        color: var(--ink); opacity: 0.6; font-size: 40px; font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="__DURATION__" data-width="1080" data-height="1920">
+      <div id="glow" class="clip" data-start="0" data-duration="__DURATION__" data-track-index="0"></div>
+      <p id="top" class="clip" data-start="0" data-duration="__DURATION__" data-track-index="1">__TOP_LINE__</p>
+__WORDS__
+      <p id="brand" class="clip" data-start="0" data-duration="__DURATION__" data-track-index="3">__BRAND__</p>
+      <audio id="bgm" src="assets/music.wav" data-start="0" data-duration="__DURATION__" data-track-index="9" data-volume="1"></audio>
+    </div>
+    <script>
+      const HITS = __HITS__;   // [[선택자, 박자 시각]] — 글자가 박자에 0ms 로 떨어진다
+      const PULSES = __PULSES__; // 배경 맥동 박자 시각
+      const tl = gsap.timeline({ paused: true });
+      HITS.forEach(([id, t]) => {
+        tl.set(id, { scale: 1.14 }, t);
+        tl.to(id, { scale: 1, duration: 0.28, ease: "power3.out" }, t + 0.001);
+      });
+      PULSES.forEach((t) => {
+        tl.set("#glow", { opacity: 0.55 }, t);
+        tl.to("#glow", { opacity: 0.25, duration: 0.36, ease: "power2.in" }, t + 0.001);
+      });
+      tl.to({}, { duration: 0 }, __DURATION__);
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

@@ -5015,7 +5015,8 @@ DRINKS_MEME_BEAT_FLOOR_MS: int = 1800                # 짧은 글도 이만큼�
 DRINKS_MEME_SYNC_REQUIRED_PATTERN: str = r"(필수|맞춰|맞춤|required)"   # 카드의 '음악 동기화' 칸이 이 말이면 박자 맞춤으로 본다(0066 과 같다)
 DRINKS_MEME_FRAMES: tuple[str, ...] = ("top_text", "full_title")     # ① 검은 바탕 위쪽 글 + 가운데 가로 장면 ② 세로 꽉 찬 장면 + 큰 제목
 DRINKS_MEME_SYNC_GRADES: tuple[str, ...] = ("sync_free", "sync_required")
-DRINKS_MEME_AUDIO_MODES: tuple[str, ...] = ("none", "ambient_local", "ig_audio", "app_manual")
+DRINKS_MEME_AUDIO_MODES: tuple[str, ...] = ("none", "ambient_local", "ig_audio", "app_manual", "owned_track")  # owned_track: 0091
+DRINKS_MEME_OWNED_TRACK_DEFAULT: str = "sooljjerigo-groove-117"  # assets/music/ledger.json 키. web/lib/drinks/meme.ts 와 같아야 한다
 # 화면 — 아래 안전 영역은 설명형 값(기획 v2 §2-3, 앱에서 확인 전 [미검증])을 그대로 쓴다. 글은 좌우 대칭으로 둔다.
 DRINKS_MEME_TEXT_SIDE_PX: int = 120
 DRINKS_MEME_LANDSCAPE_H: int = 608                   # ① 가운데 가로 장면 높이(1080 폭의 16:9)
@@ -5241,3 +5242,18 @@ MOTION_MAX_ICONS: int = 10                             # icon_ratio 한쪽 아�
 MOTION_SILENCE_DB: str = "-35dB"                       # 자막 시각 추정용 무음 기준(silencedetect)
 MOTION_SILENCE_MIN_SEC: float = 0.15
 MOTION_END_CARD_TITLE_MAX: int = 70                    # 끝 출처 카드 리포트 제목 최대 글자
+# ── 하이퍼프레임(HTML→영상) 렌더 + 음악 박자 싱크 — engine/hf_render.py. docs/plans/2026-11-26-hyperframes-engine.md (S1~S2)
+DRINKS_HF_ENABLED: bool = _get_bool("DRINKS_HF_ENABLED", True)  # 밈 owned_track 렌더(S3 승인 2026-11-27). 끄면 그 밈은 멈춘다(옛 경로로 몰래 바꾸지 않음)
+HF_HYPERFRAMES_PKG: str = MOTION_HYPERFRAMES_PKG  # 저장소에 하이퍼프레임 고정 버전은 하나(리포트 motion 과 같은 값). 올리면 데모를 다시 렌더해 비교
+HF_RENDER_TIMEOUT_SEC: int = 900           # 첫 실행은 CLI·크롬 내려받기로 로컬 4분 실측(2026-11-26)
+HF_CLOSING_HOLD_SEC: float = 2.0           # 마지막 글은 최소 이만큼(하이퍼프레임 motion 규칙 line_unread)
+HF_MUSIC_FADE_OUT_SEC: float = 1.0         # 영상 끝 음악 페이드아웃
+HF_DURATION_TOLERANCE_SEC: float = 0.1     # 렌더 결과 길이 허용 오차(계획 길이 대비)
+HF_BEAT_MATCH_TOLERANCE_SEC: float = 0.033 # 박자표 ↔ 자동 검출 대조 허용(1프레임 @30fps)
+HF_BEAT_MATCH_MIN_RATIO: float = 0.8       # 검출 박자 중 이 비율 이상이 박자표에 1프레임 안으로 맞아야 '일치'
+HF_DEFAULT_ACCENT: str = "#e0a35a"         # 술째리고 호박색
+# hf_templates/meme-beat 글 상자 — 템플릿 CSS 와 같은 값(tests/test_hf_render.py 가 대조). 렌더 전 글 폭 검사에 쓴다
+HF_MEME_TEXT_WIDTH_PX: int = 860           # 1080 - 왼쪽 80 - 오른쪽 140(인스타 버튼 자리)
+HF_MEME_WORD_PX: int = 128                 # 박자 글 크기(Pretendard Black)
+HF_MEME_TOP_PX: int = 64                   # 윗줄 크기(Pretendard Bold)
+HF_MEME_MAX_LINES: int = 2                 # 글 하나가 넘지 말아야 할 줄 수

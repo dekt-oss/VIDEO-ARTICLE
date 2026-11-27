@@ -62,3 +62,9 @@ test("동작 목록: 화면은 렌더·끝내기·가잡기를 못 부른다", (
     assert.equal(fns.includes(fn), false, fn);
   }
 });
+
+test("제작안: 우리 음원 구움(owned_track)은 박자 무관 등급 + 기본 곡 이름(0091)", () => {
+  const s = buildMemeSpec(form({ sound: "owned_track" }));
+  assert.equal(s.sync_grade, "sync_free");
+  assert.deepEqual(s.audio, { mode: "owned_track", track: "sooljjerigo-groove-117" });
+});

@@ -1,0 +1,17 @@
+{
+  "_doc": "우리 권리 음원 목록 — engine/hf_render.py 가 읽는다. 여기 없는 곡은 렌더에 못 쓴다. 박자표(bpm·first_beat_sec)는 정본이고, 자동 검출은 교차 확인용이다.",
+  "tracks": {
+    "sooljjerigo-groove-117": {
+      "file": "sooljjerigo-groove-117.m4a",
+      "sha256": "22c1311c008ce213a4998e59bb28273e9ed642ecc3e562326515eb7d141d4773",
+      "bpm": 117,
+      "beat_period_sec": 0.5128205128,
+      "first_beat_sec": 0.3598,
+      "duration_sec": 24.0,
+      "rights": "owned_code_synth",
+      "rights_note": "k-vivino 술째리고 발베니 릴스 v2.2 BGM(sound_v22.py). 사인·사각·톱니파·잡음 필터를 코드로 합성 — 외부 음원·샘플·TTS 없음(k-vivino outputs/sooljjerigo-reels/claude-core13-v2-handoff/reels27-v2/audio-cue-and-rights-v2.1.md:6).",
+      "source": "bgm-sfx-v2.2.wav 2.953초부터 끝까지(원본 27초, sha256 74080528395847c8981b5decbfe0ceff0c32c531e30b00d11e35582d507f7f52), AAC 256k",
+      "caveat": "원래 영상의 효과음(상승음·클릭·로고 악센트)이 섞여 있다 — 그 영상의 장면 시각에 맞춘 것이라 다른 영상에서는 장면과 무관하게 들릴 수 있다. 원본 격자: 원점 2.8초, 20/39초 간격."
+    }
+  }
+}

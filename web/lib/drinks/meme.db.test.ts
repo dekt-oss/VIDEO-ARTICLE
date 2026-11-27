@@ -9,7 +9,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { runDrinksAction } from "./actions.ts";
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
-const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d|8\d)_drinks_.*\.sql$/.test(f)).sort();
+const MIGS = readdirSync(DIR).filter((f) => /^00(5\d|6\d|7\d|8\d|9\d)_drinks_.*\.sql$/.test(f)).sort();
 assert.ok(MIGS.includes("0066_drinks_meme_engine.sql"));
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
@@ -118,6 +118,23 @@ test("카드가 박자 맞춤이면 박자 무관으로 승인되지 않는다",
   const saved = await ok("meme_save_draft", { card_id: card, spec: spec() });
   assert.equal(saved.blockers[0].code, "meme_sync_blocked");
   await fails("meme_draft_action", { draft_id: saved.draft_id, action: "approve" }, "meme_sync_blocked");
+});
+
+test("★ 0091 우리 음원 구움(owned_track): 박자 맞춤 카드여도 승인 → 게시 대기. 틀·배경·음원 이름이 없으면 막힌다", async () => {
+  await drain();
+  const OWN = { sync_grade: "sync_free", audio: { mode: "owned_track", track: "sooljjerigo-groove-117" } };
+  const card = await preciseCard("박자에 맞춰야 함(필수)");
+  const saved = await ok("meme_save_draft", { card_id: card, spec: spec(OWN) });
+  assert.deepEqual(saved.blockers, []);
+  await ok("meme_draft_action", { draft_id: saved.draft_id, action: "approve" });
+  const { job } = await rpc("drinks_meme_claim", { worker_id: "w" });
+  assert.equal(job.spec.audio.mode, "owned_track");
+  assert.equal((await rpc("drinks_meme_finish", { draft_id: job.draft_id, lease_token: job.lease_token, outcome: "rendered", files: FILES })).status, "publish_waiting");
+  // 막히는 경우: 음원 이름 없음 / ② 틀 / 앱 부착과 섞기(박자 맞춤 등급)
+  const codes = async (o: Record<string, unknown>) => (await ok("meme_save_draft", { card_id: await preciseCard(), spec: spec(o) })).blockers.map((b: Any) => b.code);
+  assert.ok((await codes({ audio: { mode: "owned_track" } })).includes("meme_invalid"));
+  assert.ok((await codes({ ...OWN, frame: "full_title" })).includes("meme_invalid"));
+  assert.ok((await codes({ sync_grade: "sync_required", audio: { mode: "owned_track", track: "x" } })).includes("meme_sync_blocked"));
 });
 
 test("안전 검사: 조장·미성년·과음은 승인에서 막힌다", async () => {

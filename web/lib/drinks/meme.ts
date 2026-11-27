@@ -8,11 +8,13 @@ export const MEME_BEAT_MS_PER_CHAR = 170;
 export const MEME_BEAT_FLOOR_MS = 1800;
 export const MEME_BEAT_MAX_MS = 8000;
 export const MEME_PALETTES = ["amber", "wine", "night", "moss"] as const;
+/** engine/config.py DRINKS_MEME_OWNED_TRACK_DEFAULT 와 같다(assets/music/ledger.json 키). */
+export const MEME_OWNED_TRACK = "sooljjerigo-groove-117";
 
 export type MemeFrame = "top_text" | "full_title";
 export type MemeStatus = "text_requested" | "text_running" | "draft" | "approved" | "rendering" | "publish_waiting" | "manual_audio"
   | "posted_manual" | "published" | "stopped" | "failed" | "rejected";
-export type MemeSound = "none" | "ambient_local" | "app_manual";
+export type MemeSound = "none" | "ambient_local" | "app_manual" | "owned_track";
 
 export const FRAME_LABEL: Record<MemeFrame, string> = {
   top_text: "① 검은 바탕 + 위쪽 글 한 줄 + 가운데 가로 장면",
@@ -22,6 +24,7 @@ export const SOUND_LABEL: Record<MemeSound, string> = {
   none: "음원 없음",
   ambient_local: "분위기 음원(코드로 합성, 박자 무관)",
   app_manual: "박자 맞춤 — 자동 게시 안 함, 앱에서 붙입니다",
+  owned_track: "우리 음원에 박자 맞춰 구움 — 자동 게시 가능(① 위쪽 글 틀만)",
 };
 export const MEME_STATUS_LABEL: Record<MemeStatus, string> = {
   text_requested: "글 초안 대기",
@@ -47,7 +50,7 @@ export interface MemeSpec {
   caption: string;
   scene: { source: "text_bg"; palette: string };
   sync_grade: "sync_free" | "sync_required";
-  audio: { mode: MemeSound; title?: string; artist?: string; audio_id?: string; start_hint_sec?: number };
+  audio: { mode: MemeSound; title?: string; artist?: string; audio_id?: string; start_hint_sec?: number; track?: string };
   contains_info: boolean;
   claim_ids: string[];
 }
@@ -101,7 +104,7 @@ export function buildMemeSpec(f: MemeFormInput): MemeSpec {
     audio: manual
       ? { mode: "app_manual", title: f.audioTitle.trim(), ...(f.audioId.trim() ? { audio_id: f.audioId.trim() } : {}),
           ...(f.startHintSec.trim() !== "" && Number.isFinite(hint) ? { start_hint_sec: hint } : {}) }
-      : { mode: f.sound },
+      : f.sound === "owned_track" ? { mode: "owned_track", track: MEME_OWNED_TRACK } : { mode: f.sound },
     contains_info: f.containsInfo,
     claim_ids: f.containsInfo ? f.claimIds.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean) : [],
   };
