@@ -52,12 +52,13 @@ def test_plan_failures():
 
 def test_html_escapes_text_and_fills_every_slot():
     tpl = open(os.path.join(h.TEMPLATE_DIR, "meme-beat", "index.template.html"), encoding="utf-8").read()
-    slots, dur = h.plan_slots([{"text": "<b>&위스키"}, {"text": "끝", "key": True}], GRID, P)
+    slots, dur = h.plan_slots([{"text": "<b>&위스키"}, {"text": "가격표만 기억난다", "keyword": "가격표"}], GRID, P)
     page = h.build_html(tpl, top_line='"인용" <script>', slots=slots, duration=dur, pulses=GRID)
     assert "&lt;b&gt;&amp;위스키" in page and "&lt;script&gt;" in page
     assert "__" not in page.replace("__timelines", "")
     assert 'data-start="0.000"' in page  # 첫 글은 0프레임부터 보인다
-    assert 'class="word key clip"' in page
+    assert '<span class="kw">가격표</span>만 기억난다' in page  # 강조 낱말만 칠한다
+    assert h._mark("abc", "z") == "abc" and h._mark("<a>", "<a>") == '<span class="kw">&lt;a&gt;</span>'
     assert "cdn." not in page  # 렌더가 네트워크에 기대지 않는다
     with pytest.raises(h.HfRenderError, match="칸이 없"):
         h.build_html(tpl.replace("__WORDS__", ""), top_line="t", slots=slots, duration=dur, pulses=GRID)
@@ -120,5 +121,21 @@ def test_broken_result_never_reaches_out_path(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_worker_switch_stays_off_until_s3_approval():
-    assert config.DRINKS_HF_ENABLED is False
+def test_worker_switch_is_on_and_env_can_turn_it_off(monkeypatch):
+    """S3 승인(2026-11-27) 뒤 기본 켜짐. 되돌리기는 환경변수 하나."""
+    import importlib
+    monkeypatch.delenv("DRINKS_HF_ENABLED", raising=False)
+    assert importlib.reload(config).DRINKS_HF_ENABLED is True
+    monkeypatch.setenv("DRINKS_HF_ENABLED", "0")
+    assert importlib.reload(config).DRINKS_HF_ENABLED is False
+    monkeypatch.delenv("DRINKS_HF_ENABLED")
+    importlib.reload(config)
+
+
+def test_changed_music_file_is_refused(tmp_path):
+    led = tmp_path / "ledger.json"
+    (tmp_path / "x.m4a").write_bytes(b"other")
+    led.write_text(json.dumps({"tracks": {"x": {"file": "x.m4a", "sha256": "0" * 64, "rights": "owned_code_synth",
+                                                "beat_period_sec": 0.5, "first_beat_sec": 0, "duration_sec": 10}}}), encoding="utf-8")
+    with pytest.raises(h.HfRenderError, match="다릅니다"):
+        h.load_track("x", str(led))

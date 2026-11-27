@@ -129,6 +129,11 @@ def validate_spec(spec: dict[str, Any]) -> list[Finding]:
     if mode == "ig_audio" and not str(audio.get("audio_id") or "").strip():
         bad("meme_invalid", "인스타 음원을 쓰려면 음원 ID 가 있어야 합니다")
     scene = spec.get("scene") or {}
+    # 0091 owned_track: 우리 음원을 박자에 맞춰 구운 영상(engine/hf_render). DB drinks_meme_blockers 와 같은 규칙
+    if mode == "owned_track" and not str(audio.get("track") or "").strip():
+        bad("meme_invalid", "우리 음원 이름(track)이 없습니다")
+    if mode == "owned_track" and (spec.get("frame") != "top_text" or scene.get("source") != "text_bg"):
+        bad("meme_invalid", "우리 음원 박자 영상은 ① 위쪽 글 틀 + 글 배경으로만 만듭니다")
     if scene.get("source") not in ("text_bg", "bought_reaction"):
         bad("meme_invalid", "장면은 글+배경 또는 우리가 산 반응 장면입니다")
     elif scene.get("source") == "text_bg" and scene.get("palette") not in config.DRINKS_MEME_PALETTES:
@@ -162,7 +167,7 @@ def check_safety(spec: dict[str, Any], *, claims: Optional[list[dict[str, Any]]]
             rep.blocks.append(Finding(code, None, f"{label} — '{m.group(0)}' 는 쓰지 않습니다"))
     if re.search(config.DRINKS_MEME_FOREIGN_MEDIA_PATTERN, json.dumps(spec, ensure_ascii=False), re.I):
         rep.blocks.append(Finding("meme_foreign_media", None, "제작안에 남의 영상·게시물 주소가 들어 있습니다"))
-    if spec.get("sync_grade") == "sync_free" and card_requires_sync(card):
+    if spec.get("sync_grade") == "sync_free" and (spec.get("audio") or {}).get("mode") != "owned_track" and card_requires_sync(card):
         rep.blocks.append(Finding("meme_sync_blocked", None, "이 카드는 박자에 맞춰야 성립한다고 적혀 있습니다 — 박자 맞춤으로 두거나 카드 칸을 고치세요"))
     for hook in hooks or []:
         for t in screen_texts(spec):
@@ -489,7 +494,7 @@ def evaluate_qa(spec: dict[str, Any], layers: list[dict[str, Any]], probe: dict[
         blocks.append("duration_out_of_range")
     blocks.extend(reel_spec_warnings(probe, file_bytes, moov_first, cover_mime, cover_bytes))
     blocks.extend(_text_box_problems(layers))
-    if (spec.get("audio") or {}).get("mode") == "ambient_local" and (mean_db is None or mean_db < -60):
+    if (spec.get("audio") or {}).get("mode") in ("ambient_local", "owned_track") and (mean_db is None or mean_db < -60):
         blocks.append("ambient_silent")
     if freeze:
         warns.append("frozen_span")
@@ -509,6 +514,22 @@ class MemeOutput:
     error_message: Optional[str] = None
 
 
+def render_owned_track(spec: dict[str, Any], out_path: str) -> float:
+    """owned_track 밈 → 하이퍼프레임 박자 렌더(engine/hf_render). 반환: 표지로 쓸 첫 글 가운데 시각(초).
+    스위치가 꺼져 있으면 멈춘다 — 옛 경로(무음·분위기 음원)로 몰래 바꾸지 않는다(롤백 계약, 계획서 S3)."""
+    from . import hf_render
+
+    if not config.DRINKS_HF_ENABLED:
+        raise MemeStop("hf_disabled", "우리 음원 박자 렌더가 꺼져 있습니다(DRINKS_HF_ENABLED) — 초안으로 되돌려 소리를 다시 고르세요")
+    items = [{"text": b["text"], "ms": int(b["ms"]), "keyword": str(b.get("keyword") or "")} for b in spec["beats"]]
+    try:
+        info = hf_render.render_meme(top_line=spec["top_line"], items=items, out_path=out_path, track_key=spec["audio"]["track"])
+    except hf_render.HfRenderError as exc:
+        raise MemeStop("hf_render_failed", str(exc)[:1500]) from exc
+    first = info["slots"][0]
+    return (first["start"] + first["end"]) / 2.0
+
+
 def render_meme(spec: dict[str, Any], work_dir: str, *, scene_asset: Optional[SceneAsset] = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """제작안 → final.mp4 + cover.jpg. 돈·네트워크 0. 유료 공급자를 부르는 경로가 없다."""
     os.makedirs(work_dir, exist_ok=True)
@@ -518,23 +539,27 @@ def render_meme(spec: dict[str, Any], work_dir: str, *, scene_asset: Optional[Sc
     missing = glyph_problems(spec)
     if missing:
         raise MemeStop("glyph_missing", f"글꼴에 없는 글자가 있습니다: {' '.join(missing)}")
-    layers = build_layers(spec)
-    problems = _text_box_problems(layers)
-    if "text_overflow" in problems:
-        raise MemeStop("text_overflow", "글이 길어 화면 틀에 안 들어갑니다 — 줄이세요")
-    with open(os.path.join(work_dir, "meme.ass"), "w", encoding="utf-8") as f:
-        f.write(build_ass(spec, layers))
-    scene_name = None
-    if (spec.get("scene") or {}).get("source") == "bought_reaction":
-        if scene_asset is None:
-            raise MemeStop("scene_missing", "반응 장면 파일이 없습니다")
-        validate_scene_asset(scene_asset)
-        scene_name = "scene_input.mp4"
-        shutil.copyfile(scene_asset.path, os.path.join(work_dir, scene_name))
-    _run(build_render_argv(spec, ass_name="meme.ass", out_name="final.mp4", scene_name=scene_name), cwd=work_dir)
     out = os.path.join(work_dir, "final.mp4")
+    if (spec.get("audio") or {}).get("mode") == "owned_track":
+        layers: list[dict[str, Any]] = []   # 글 배치는 하이퍼프레임 템플릿이 한다(글 길이 상한은 validate_spec)
+        first_mid = render_owned_track(spec, out)
+    else:
+        layers = build_layers(spec)
+        problems = _text_box_problems(layers)
+        if "text_overflow" in problems:
+            raise MemeStop("text_overflow", "글이 길어 화면 틀에 안 들어갑니다 — 줄이세요")
+        with open(os.path.join(work_dir, "meme.ass"), "w", encoding="utf-8") as f:
+            f.write(build_ass(spec, layers))
+        scene_name = None
+        if (spec.get("scene") or {}).get("source") == "bought_reaction":
+            if scene_asset is None:
+                raise MemeStop("scene_missing", "반응 장면 파일이 없습니다")
+            validate_scene_asset(scene_asset)
+            scene_name = "scene_input.mp4"
+            shutil.copyfile(scene_asset.path, os.path.join(work_dir, scene_name))
+        _run(build_render_argv(spec, ass_name="meme.ass", out_name="final.mp4", scene_name=scene_name), cwd=work_dir)
+        first_mid = int(spec["beats"][0]["ms"]) / 2000.0
     cover = os.path.join(work_dir, "cover.jpg")
-    first_mid = int(spec["beats"][0]["ms"]) / 2000.0
     _run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{first_mid:.3f}", "-i", "final.mp4", "-frames:v", "1", "-q:v", "3", "cover.jpg"], cwd=work_dir)
     probe = _probe(out)
     try:
@@ -615,6 +640,9 @@ def spec_from_llm(out: dict[str, Any], *, frame: str, palette: str = "amber", ca
     beats = [{"text": str(b.get("text") or ""), "keyword": str(b.get("keyword") or "")} for b in raw if isinstance(b, dict)]
     sync = "sync_required" if card_requires_sync(card) else "sync_free"
     audio = {"mode": "app_manual", "title": str((card or {}).get("name") or ""), "audio_id": (card or {}).get("audio_id")} if sync == "sync_required" else {"mode": "ambient_local"}
+    if sync == "sync_required" and config.DRINKS_HF_ENABLED and frame == "top_text":
+        # 0091: 박자 맞춤 카드도 우리 음원에 박자를 맞춰 구우면 앱 부착 없이 게시 대기로 간다
+        sync, audio = "sync_free", {"mode": "owned_track", "track": config.DRINKS_MEME_OWNED_TRACK_DEFAULT}
     spec = build_spec(frame=frame, top_line=str(out.get("top_line") or ""), beats=beats, caption=str(out.get("caption") or ""), palette=palette,
                       sync_grade=sync, audio=audio)
     wanted = card_beat_ms(card)

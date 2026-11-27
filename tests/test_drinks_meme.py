@@ -237,7 +237,8 @@ def test_keyword_is_colored_with_frame_accent():
 def test_llm_output_is_reduced_to_text_only():
     s = dm.spec_from_llm({"top_line": "제목", "beats": [{"text": "하나", "keyword": "하나", "url": "https://x"}], "caption": "c", "scene": "남의 영상"}, frame="full_title")
     assert s["scene"]["source"] == "text_bg" and "url" not in s["beats"][0] and s["audio"]["mode"] == "ambient_local"
-    assert dm.spec_from_llm({"beats": [{"text": "a"}]}, frame="top_text", card={"name": "n", "fields": {"music_sync": {"value": "필수"}}})["sync_grade"] == "sync_required"
+    # ② 틀은 우리 음원 구움 대상이 아니라 그대로 박자 맞춤(① 틀은 0091 부터 owned_track — test_llm_sync_card_becomes_owned_track_when_enabled)
+    assert dm.spec_from_llm({"beats": [{"text": "a"}]}, frame="full_title", card={"name": "n", "fields": {"music_sync": {"value": "필수"}}})["sync_grade"] == "sync_required"
     with pytest.raises(dm.MemeStop):
         dm.spec_from_llm({"beats": []}, frame="top_text")
 
@@ -425,3 +426,61 @@ def test_migration_is_additive_and_guards_the_gate():
     for fn in ("drinks_meme_claim", "drinks_meme_finish", "drinks_meme_finish_text", "drinks_meme_hold"):
         body = re.search(rf"function {fn}\(p jsonb\).*?end \$\$;", SQL, re.S).group(0)
         assert "'approve'" not in body and "drinks_meme_draft_action" not in body
+
+
+# ── 0091 우리 음원 박자 구움(owned_track) — engine/hf_render ──
+
+OWN = {"sync_grade": "sync_free", "audio": {"mode": "owned_track", "track": config.DRINKS_MEME_OWNED_TRACK_DEFAULT}}
+
+
+def test_owned_track_passes_even_for_sync_card_and_goes_to_publish_waiting():
+    card = {"id": "c", "fields": {"music_sync": {"value": "박자에 맞춰야 함(필수)"}}}
+    assert dm.card_requires_sync(card)
+    s = joke(**OWN)
+    assert dm.check_safety(s, card=card).ok
+    assert dm.publish_gate(s)["next_status"] == "publish_waiting"
+
+
+def test_owned_track_rules_match_db():
+    assert "meme_invalid" in codes(dm.check_safety(joke(sync_grade="sync_free", audio={"mode": "owned_track"})))
+    assert "meme_invalid" in codes(dm.check_safety(joke(frame="full_title", **OWN)))
+    assert "meme_sync_blocked" in codes(dm.check_safety(joke(sync_grade="sync_required", audio={"mode": "owned_track", "track": "x"})))
+    sql91 = (ROOT / "supabase" / "migrations" / "0091_drinks_meme_owned_track.sql").read_text(encoding="utf-8")
+    assert "'owned_track'" in sql91 and "owned_track" in TS and config.DRINKS_MEME_OWNED_TRACK_DEFAULT in TS
+
+
+def test_owned_track_switch_off_stops_instead_of_silent_fallback(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "DRINKS_HF_ENABLED", False)
+    with pytest.raises(dm.MemeStop) as e:
+        dm.render_owned_track(joke(**OWN), str(tmp_path / "o.mp4"))
+    assert e.value.code == "hf_disabled"
+
+
+def test_owned_track_render_failure_is_a_stop(monkeypatch, tmp_path):
+    from engine import hf_render
+
+    def boom(**kw):
+        raise hf_render.HfRenderError("렌더 실패")
+    monkeypatch.setattr(config, "DRINKS_HF_ENABLED", True)
+    monkeypatch.setattr(hf_render, "render_meme", boom)
+    with pytest.raises(dm.MemeStop) as e:
+        dm.render_owned_track(joke(**OWN), str(tmp_path / "o.mp4"))
+    assert e.value.code == "hf_render_failed"
+
+
+def test_owned_track_silent_result_is_blocked():
+    probe = {"width": 1080, "height": 1920, "duration_sec": 8.0, "audio_streams": 1}
+    qa = dm.evaluate_qa(joke(**OWN), [], probe, file_bytes=1000, moov_first=True, cover_mime="image/jpeg", cover_bytes=10, mean_db=None, freeze=[])
+    assert "ambient_silent" in qa["blocks"]
+
+
+def test_llm_sync_card_becomes_owned_track_when_enabled(monkeypatch):
+    card = {"id": "c", "name": "카드", "fields": {"music_sync": {"value": "필수"}}}
+    out = {"top_line": "POV: 와인 고르는 척", "beats": [{"text": "앞면을 본다"}, {"text": "가격표만 기억난다"}], "caption": "다들"}
+    monkeypatch.setattr(config, "DRINKS_HF_ENABLED", True)
+    s = dm.spec_from_llm(out, frame="top_text", card=card)
+    assert s["sync_grade"] == "sync_free" and s["audio"]["mode"] == "owned_track"
+    monkeypatch.setattr(config, "DRINKS_HF_ENABLED", False)
+    assert dm.spec_from_llm(out, frame="top_text", card=card)["audio"]["mode"] == "app_manual"
+    monkeypatch.setattr(config, "DRINKS_HF_ENABLED", True)
+    assert dm.spec_from_llm(out, frame="full_title", card=card)["audio"]["mode"] == "app_manual"

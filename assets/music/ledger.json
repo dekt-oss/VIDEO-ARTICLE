@@ -3,6 +3,7 @@
   "tracks": {
     "sooljjerigo-groove-117": {
       "file": "sooljjerigo-groove-117.m4a",
+      "sha256": "22c1311c008ce213a4998e59bb28273e9ed642ecc3e562326515eb7d141d4773",
       "bpm": 117,
       "beat_period_sec": 0.5128205128,
       "first_beat_sec": 0.3598,

@@ -53,7 +53,7 @@ class Slot:
     text: str
     start: float
     end: float
-    key: bool = False
+    keyword: str = ""  # 글 안에서 강조색으로 칠할 낱말(없으면 강조 없음)
 
 
 def load_track(key: str, ledger_path: Optional[str] = None) -> Track:
@@ -65,7 +65,13 @@ def load_track(key: str, ledger_path: Optional[str] = None) -> Track:
         raise HfRenderError(f"음원 목록에 없는 곡입니다: {key} — assets/music/ledger.json 에 권리와 함께 올려야 씁니다")
     if not str(t.get("rights") or "").startswith("owned"):
         raise HfRenderError(f"권리가 확인되지 않은 곡입니다: {key}")
-    return Track(key, os.path.join(os.path.dirname(ledger_path), t["file"]), float(t["beat_period_sec"]),
+    path = os.path.join(os.path.dirname(ledger_path), t["file"])
+    if t.get("sha256"):
+        import hashlib
+        with open(path, "rb") as f:
+            if hashlib.sha256(f.read()).hexdigest() != t["sha256"]:
+                raise HfRenderError(f"음원 파일이 목록에 적힌 것과 다릅니다: {key} — 바꿨다면 ledger 의 sha256 도 고쳐야 합니다")
+    return Track(key, path, float(t["beat_period_sec"]),
                  float(t["first_beat_sec"]), float(t["duration_sec"]))
 
 
@@ -95,9 +101,15 @@ def plan_slots(items: list[dict[str, Any]], grid: list[float], period: float) ->
             beats = max(beats, math.ceil(config.HF_CLOSING_HOLD_SEC / period - 1e-9))
         if i + beats >= len(grid):
             raise HfRenderError(f"음원이 짧습니다 — 글 {len(items)}개에 박자 {i + beats + 1}개가 필요한데 {len(grid)}개뿐입니다")
-        slots.append(Slot(text, grid[i], grid[i + beats], bool(it.get("key"))))
+        slots.append(Slot(text, grid[i], grid[i + beats], str(it.get("keyword") or "").strip()))
         i += beats
     return slots, slots[-1].end
+
+
+def _mark(text: str, keyword: str) -> str:
+    """escape 한 글에서 강조 낱말 첫 자리만 <span class="kw"> 로 감싼다. 낱말이 글에 없으면 강조하지 않는다."""
+    t, k = html.escape(text), html.escape(keyword)
+    return t.replace(k, f'<span class="kw">{k}</span>', 1) if k and k in t else t
 
 
 def build_html(template: str, *, top_line: str, slots: list[Slot], duration: float, pulses: list[float],
@@ -106,9 +118,8 @@ def build_html(template: str, *, top_line: str, slots: list[Slot], duration: flo
     words, hits = [], []
     for n, s in enumerate(slots):
         start = 0.0 if n == 0 else s.start
-        cls = "word key clip" if s.key else "word clip"
-        words.append(f'      <h1 id="w{n}" class="{cls}" data-start="{start:.3f}" data-duration="{s.end - start:.3f}" '
-                     f'data-track-index="2">{html.escape(s.text)}</h1>')
+        words.append(f'      <h1 id="w{n}" class="word clip" data-start="{start:.3f}" data-duration="{s.end - start:.3f}" '
+                     f'data-track-index="2">{_mark(s.text, s.keyword)}</h1>')
         hits.append([f"#w{n}", round(s.start, 3)])
     fill = {
         "__WORDS__": "\n".join(words),
@@ -243,7 +254,10 @@ def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
         os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
         part = out_path + ".part.mp4"
         try:
-            _run(assemble.build_loudnorm_command(raw, part))
+            cmd = assemble.build_loudnorm_command(raw, part)
+            # 소리를 영상 길이로 자른다 — 러너 ffmpeg 의 AAC 재인코딩이 꼬리를 0.1초 더 붙였다(2026-11-27 실측)
+            cmd[-1:-1] = ["-t", f"{duration:.3f}"]
+            _run(cmd)
             try:
                 probe = _probe(part)
             except subprocess.CalledProcessError as e:
@@ -263,8 +277,8 @@ def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
 DEMO = {
     # 사실 주장 없는 데모 문구(원문 밖 주장 금지 규칙 — 데모도 지킨다)
     "top_line": "하이퍼프레임 박자 싱크 데모",
-    "items": [{"text": "글자가", "ms": 500}, {"text": "박자에", "ms": 500, "key": True}, {"text": "맞춰", "ms": 1000},
-              {"text": "떨어진다", "ms": 1000, "key": True}, {"text": "술째리고", "ms": 2000}],
+    "items": [{"text": "글자가", "ms": 500}, {"text": "박자에", "ms": 500, "keyword": "박자"}, {"text": "맞춰", "ms": 1000},
+              {"text": "떨어진다", "ms": 1000, "keyword": "떨어진다"}, {"text": "술째리고", "ms": 2000}],
 }
 
 
