@@ -66,10 +66,11 @@ def load_track(key: str, ledger_path: Optional[str] = None) -> Track:
     if not str(t.get("rights") or "").startswith("owned"):
         raise HfRenderError(f"권리가 확인되지 않은 곡입니다: {key}")
     path = os.path.join(os.path.dirname(ledger_path), t["file"])
-    if t.get("sha256"):
-        import hashlib
-        with open(path, "rb") as f:
-            if hashlib.sha256(f.read()).hexdigest() != t["sha256"]:
+    if not str(t.get("sha256") or "").strip():
+        raise HfRenderError(f"음원 목록에 sha256 이 없습니다: {key} — 파일 무결성을 확인할 수 없어 쓰지 않습니다")
+    import hashlib
+    with open(path, "rb") as f:
+        if hashlib.sha256(f.read()).hexdigest() != t["sha256"]:
                 raise HfRenderError(f"음원 파일이 목록에 적힌 것과 다릅니다: {key} — 바꿨다면 ledger 의 sha256 도 고쳐야 합니다")
     return Track(key, path, float(t["beat_period_sec"]),
                  float(t["first_beat_sec"]), float(t["duration_sec"]))
@@ -110,6 +111,12 @@ def _mark(text: str, keyword: str) -> str:
     """escape 한 글에서 강조 낱말 첫 자리만 <span class="kw"> 로 감싼다. 낱말이 글에 없으면 강조하지 않는다."""
     t, k = html.escape(text), html.escape(keyword)
     return t.replace(k, f'<span class="kw">{k}</span>', 1) if k and k in t else t
+
+
+def planned_duration(items: list[dict[str, Any]], track: Track) -> float:
+    """렌더될 영상 길이(초) — plan_slots + 프레임 경계 올림. 승인 전 길이 검사도 이것을 쓴다."""
+    _, duration = plan_slots(items, beat_grid(track), track.beat_period_sec)
+    return math.ceil(duration * config.RENDER_FPS - 1e-6) / config.RENDER_FPS
 
 
 def build_html(template: str, *, top_line: str, slots: list[Slot], duration: float, pulses: list[float],
@@ -228,9 +235,9 @@ def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
 
     track = load_track(track_key)
     grid = beat_grid(track)
-    slots, duration = plan_slots(items, grid, track.beat_period_sec)
+    slots, _ = plan_slots(items, grid, track.beat_period_sec)
     # 프레임 경계로 올림 — 영상(프레임 단위)과 음악 길이를 같게(러너에서 5.49 계획 → 5.6초 결과 실측, 2026-11-27)
-    duration = math.ceil(duration * config.RENDER_FPS - 1e-6) / config.RENDER_FPS
+    duration = planned_duration(items, track)
     src = os.path.join(TEMPLATE_DIR, template)
     with tempfile.TemporaryDirectory(prefix="hf-") as work:
         proj = os.path.join(work, "p")

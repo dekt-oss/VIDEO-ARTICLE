@@ -139,3 +139,21 @@ def test_changed_music_file_is_refused(tmp_path):
                                                 "beat_period_sec": 0.5, "first_beat_sec": 0, "duration_sec": 10}}}), encoding="utf-8")
     with pytest.raises(h.HfRenderError, match="다릅니다"):
         h.load_track("x", str(led))
+
+
+def test_ledger_without_sha_is_refused(tmp_path):
+    led = tmp_path / "ledger.json"
+    (tmp_path / "x.m4a").write_bytes(b"a")
+    for sha in (None, ""):
+        entry = {"file": "x.m4a", "rights": "owned_code_synth", "beat_period_sec": 0.5, "first_beat_sec": 0, "duration_sec": 10}
+        if sha is not None:
+            entry["sha256"] = sha
+        led.write_text(json.dumps({"tracks": {"x": entry}}), encoding="utf-8")
+        with pytest.raises(h.HfRenderError, match="sha256"):
+            h.load_track("x", str(led))
+
+
+def test_template_text_box_matches_config():
+    tpl = open(os.path.join(h.TEMPLATE_DIR, "meme-beat", "index.template.html"), encoding="utf-8").read()
+    assert f"font-size: {config.HF_MEME_WORD_PX}px" in tpl and f"font-size: {config.HF_MEME_TOP_PX}px" in tpl
+    assert "left: 80px; right: 140px" in tpl and config.HF_MEME_TEXT_WIDTH_PX == 1080 - 80 - 140

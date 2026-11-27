@@ -484,3 +484,17 @@ def test_llm_sync_card_becomes_owned_track_when_enabled(monkeypatch):
     assert dm.spec_from_llm(out, frame="top_text", card=card)["audio"]["mode"] == "app_manual"
     monkeypatch.setattr(config, "DRINKS_HF_ENABLED", True)
     assert dm.spec_from_llm(out, frame="full_title", card=card)["audio"]["mode"] == "app_manual"
+
+
+def test_owned_track_length_is_checked_after_beat_snapping():
+    """비트 합 15초는 DB 를 통과하지만 박자에 맞추면 15초를 넘는다 → 워커 검사에서 멈춘다(코덱스 S3 리뷰)."""
+    s = joke(beats=[{"text": "앞면을 본다", "ms": 7500}, {"text": "가격표만", "ms": 7500}], **OWN)
+    assert dm.total_ms(s) == 15000
+    assert "meme_duration" in codes(dm.check_safety(s))
+    assert "meme_duration" not in codes(dm.check_safety(joke(**OWN)))
+
+
+def test_owned_track_text_overflow_is_measured_like_the_template():
+    assert dm.hf_text_overflow(joke(**OWN)) is None
+    long = joke(beats=[{"text": "가" * 30, "ms": 3000}, {"text": "끝", "ms": 4000}], **OWN)
+    assert dm.hf_text_overflow(long) == "가" * 30

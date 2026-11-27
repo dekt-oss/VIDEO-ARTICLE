@@ -134,6 +134,18 @@ def validate_spec(spec: dict[str, Any]) -> list[Finding]:
         bad("meme_invalid", "우리 음원 이름(track)이 없습니다")
     if mode == "owned_track" and (spec.get("frame") != "top_text" or scene.get("source") != "text_bg"):
         bad("meme_invalid", "우리 음원 박자 영상은 ① 위쪽 글 틀 + 글 배경으로만 만듭니다")
+    if mode == "owned_track" and str(audio.get("track") or "").strip() and beats:
+        # 박자에 맞추면 길이가 달라진다(첫 박 오프셋·박자 반올림·마지막 글 2초). 그 길이로 다시 잰다.
+        # shortcut: DB(0091)는 박자표를 몰라 비트 합만 잰다 — 경계 근처 글은 승인 뒤 여기서 멈춘다. 곡이 늘면 DB 에 박자표를 둘 것.
+        from . import hf_render
+        try:
+            tr = hf_render.load_track(str(audio["track"]))
+            planned = hf_render.planned_duration([{"text": b.get("text"), "ms": b.get("ms")} for b in beats], tr)
+        except hf_render.HfRenderError as exc:
+            bad("meme_invalid", str(exc))
+        else:
+            if not config.DRINKS_MEME_MIN_SEC <= planned <= config.DRINKS_MEME_MAX_SEC:
+                bad("meme_duration", f"우리 음원 박자에 맞추면 {planned:.1f}초가 됩니다 — {config.DRINKS_MEME_MIN_SEC:g}~{config.DRINKS_MEME_MAX_SEC:g}초 안으로 글을 줄이세요")
     if scene.get("source") not in ("text_bg", "bought_reaction"):
         bad("meme_invalid", "장면은 글+배경 또는 우리가 산 반응 장면입니다")
     elif scene.get("source") == "text_bg" and scene.get("palette") not in config.DRINKS_MEME_PALETTES:
@@ -514,6 +526,18 @@ class MemeOutput:
     error_message: Optional[str] = None
 
 
+def hf_text_overflow(spec: dict[str, Any]) -> Optional[str]:
+    """하이퍼프레임 템플릿과 같은 글꼴·크기·폭으로 재서 두 줄 안에 안 들어가는 첫 글을 돌려준다(어절 단위 줄바꿈 = keep-all)."""
+    from PIL import ImageFont
+
+    word = ImageFont.truetype(os.path.join(FONT_DIR, "Pretendard-Black.otf"), config.HF_MEME_WORD_PX)
+    top = ImageFont.truetype(os.path.join(FONT_DIR, "Pretendard-Bold.otf"), config.HF_MEME_TOP_PX)
+    for text, font in [(str(spec.get("top_line") or ""), top)] + [(str(b.get("text") or ""), word) for b in spec.get("beats") or []]:
+        if text and _pack(text.split(), font, config.HF_MEME_TEXT_WIDTH_PX, config.HF_MEME_MAX_LINES) is None:
+            return text
+    return None
+
+
 def render_owned_track(spec: dict[str, Any], out_path: str) -> float:
     """owned_track 밈 → 하이퍼프레임 박자 렌더(engine/hf_render). 반환: 표지로 쓸 첫 글 가운데 시각(초).
     스위치가 꺼져 있으면 멈춘다 — 옛 경로(무음·분위기 음원)로 몰래 바꾸지 않는다(롤백 계약, 계획서 S3)."""
@@ -521,6 +545,9 @@ def render_owned_track(spec: dict[str, Any], out_path: str) -> float:
 
     if not config.DRINKS_HF_ENABLED:
         raise MemeStop("hf_disabled", "우리 음원 박자 렌더가 꺼져 있습니다(DRINKS_HF_ENABLED) — 초안으로 되돌려 소리를 다시 고르세요")
+    over = hf_text_overflow(spec)
+    if over:
+        raise MemeStop("text_overflow", f"글이 길어 화면 틀에 안 들어갑니다 — 줄이세요: {over}")
     items = [{"text": b["text"], "ms": int(b["ms"]), "keyword": str(b.get("keyword") or "")} for b in spec["beats"]]
     try:
         info = hf_render.render_meme(top_line=spec["top_line"], items=items, out_path=out_path, track_key=spec["audio"]["track"])

@@ -5252,3 +5252,8 @@ HF_DURATION_TOLERANCE_SEC: float = 0.1     # 렌더 결과 길이 허용 오차(
 HF_BEAT_MATCH_TOLERANCE_SEC: float = 0.033 # 박자표 ↔ 자동 검출 대조 허용(1프레임 @30fps)
 HF_BEAT_MATCH_MIN_RATIO: float = 0.8       # 검출 박자 중 이 비율 이상이 박자표에 1프레임 안으로 맞아야 '일치'
 HF_DEFAULT_ACCENT: str = "#e0a35a"         # 술째리고 호박색
+# hf_templates/meme-beat 글 상자 — 템플릿 CSS 와 같은 값(tests/test_hf_render.py 가 대조). 렌더 전 글 폭 검사에 쓴다
+HF_MEME_TEXT_WIDTH_PX: int = 860           # 1080 - 왼쪽 80 - 오른쪽 140(인스타 버튼 자리)
+HF_MEME_WORD_PX: int = 128                 # 박자 글 크기(Pretendard Black)
+HF_MEME_TOP_PX: int = 64                   # 윗줄 크기(Pretendard Bold)
+HF_MEME_MAX_LINES: int = 2                 # 글 하나가 넘지 말아야 할 줄 수
