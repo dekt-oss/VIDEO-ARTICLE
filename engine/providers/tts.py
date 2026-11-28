@@ -187,7 +187,7 @@ def synthesize(cut: dict[str, Any], out_path: str, lang: str = "ko") -> dict[str
     """
     provider = config.TTS_PROVIDER
     est = int(cut.get("estimated_sec") or config.CUT_MIN_SEC)
-    if provider in ("edge", "google", "elevenlabs"):
+    if provider in ("edge", "google", "elevenlabs", "gemini"):
         # ★ 소리로 읽을 문장은 **자막과 다를 수 있다**(engine/speech_text.py): 영문 병기
         #   괄호를 빼고 발음 교정을 적용한다. 2026-09-11 운영자 실측 — "네이처(Nature)" 를
         #   한국어 TTS 가 "네이처 네이처" 로 두 번 읽었다. 화면에는 병기를 남긴다.
@@ -201,6 +201,9 @@ def synthesize(cut: dict[str, Any], out_path: str, lang: str = "ko") -> dict[str
                 sec, words = _edge_synthesize(text, out_path, voice)
             elif provider == "google":
                 sec, words = _google_synthesize(text, out_path, lang)
+            elif provider == "gemini":
+                from . import gemini_tts
+                sec, words = gemini_tts.synthesize(text, out_path), []
             else:
                 sec, words = _elevenlabs_synthesize(text, out_path)
         except Exception as exc:  # noqa: BLE001 — 그 컷만 무음 폴백(전체 중단 금지)

@@ -504,9 +504,15 @@ def test_explainer_path_never_touches_the_old_still_renderer():
 
 
 def test_ci_worker_has_no_switch_and_no_key():
+    """렌더 워커는 그림·영상을 살 키가 없다. 2026-11-28 부터 제미나이 TTS 전용 이름(GEMINI_TTS_API_KEY)만 받는다 —
+    그림·영상 구매 경로는 GEMINI_API_KEY(config.SECRETS)를 읽으므로 이 이름으로는 아무것도 못 산다."""
     wf = (ROOT / ".github" / "workflows" / "drinks-produce.yml").read_text(encoding="utf-8")
-    for key in ("DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED", "GEMINI", "schedule:"):
+    for key in ("DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED", "GEMINI_API_KEY:", "schedule:"):
         assert key not in wf, key
+    assert "GEMINI_TTS_API_KEY: ${{ secrets.GEMINI_API_KEY }}" in wf
+    for path in (ROOT / "engine").rglob("*.py"):
+        if path.name != "gemini_tts.py":
+            assert "GEMINI_TTS_API_KEY" not in path.read_text(encoding="utf-8"), f"{path.name} 가 TTS 전용 키를 읽는다"
 
 
 def test_screen_cannot_reach_worker_functions_or_set_auto_verdict():

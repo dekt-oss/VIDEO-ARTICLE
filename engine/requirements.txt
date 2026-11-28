@@ -15,6 +15,7 @@ pypdf>=5.0.0             # 논문 원문 PDF 텍스트 추출(engine/paper_sourc
                          #   라이브러리가 없어 draft.yml 을 깨뜨리지 않는다(manim 과 다르다).
                          #   미설치여도 HTML/XML 경로는 그대로 돌고 PDF 만 건너뛴다.
 edge-tts>=6.1.0          # 무료 TTS + 단어 타임스탬프(TTS_PROVIDER=edge). 키 불필요.
+numpy>=1.26              # engine/voice_qc.py — 제미나이 TTS 피치 튐 숫자 검사(자기상관 f0)
 # ★ manim 은 여기 넣지 않는다(렌더 전용). 빌드에 시스템 라이브러리 libcairo2-dev·libpango1.0-dev 가
 #   필요해, apt 없이 `-r requirements.txt` 하는 engine.yml/draft.yml(수집·채점·초안) 잡을 깨뜨린다.
 #   버전3 애니 렌더가 필요한 render.yml 이 manim 을 별도 pip 로 설치한다(apt 시스템 라이브러리도 그 잡에서).

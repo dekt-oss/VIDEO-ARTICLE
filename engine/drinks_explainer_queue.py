@@ -252,7 +252,8 @@ def build_clay_directive(plan_id: str, job: dict[str, Any], visual_claims: Optio
     return {"version": 1, "provider": config.DRINKS_CLAY_PROVIDER, "variant": "clay", "resolution": f"{clay.W}x{clay.H}", "price_as_of": config.DRINKS_EXPLAINER_PRICES["as_of"],
             "hook_text": title, "hook_scene": 1, "playback_speed": 1.0, "raw_ms": final_ms, "final_ms": final_ms,
             "edit_cuts": sum(len(s["lines"]) for s in slots), "slots": slots, "warnings": [],
-            "voice": {"name": config.DRINKS_CLAY_TTS_VOICE, "rate": config.DRINKS_CLAY_TTS_RATE},
+            "voice": ({"name": config.GEMINI_TTS_VOICE, "model": config.GEMINI_TTS_MODEL, "speed": config.GEMINI_TTS_SPEED}
+                      if config.DRINKS_TTS_PROVIDER == "gemini" else {"name": config.DRINKS_CLAY_TTS_VOICE, "rate": config.DRINKS_CLAY_TTS_RATE}),
             "estimate": {"images_usd": images_usd, "clips_usd": 0.0, "estimate_usd": round(images_usd, 2), "reserve_usd": round(reserve, 4), "suggested_cap_usd": round(cap, 2)},
             "unverified": ["그림 속 째리 모양", "주인공 얼굴이 장면마다 같은지"]}
 
@@ -287,11 +288,16 @@ def synth_narrations(scenes: list[dict[str, Any]], out_dir: str, tts: str, deps:
 
             p = os.path.join(out_dir, f"{i:02d}.m4a")
             tts_provider._edge_synthesize(text, p, config.EDGE_TTS_VOICE)
+        elif tts == "gemini":
+            from .providers import gemini_tts
+
+            p = os.path.join(out_dir, f"{i:02d}.m4a")
+            gemini_tts.synthesize(text, p)
         elif tts == "placeholder":
             p = os.path.join(out_dir, f"{i:02d}.wav")
             _placeholder_tts(text, p)
         else:
-            raise dx.ExplainerStop("paid_disabled", f"설명형은 무료 TTS 만 씁니다: {tts}")
+            raise dx.ExplainerStop("paid_disabled", f"설명형 TTS 는 edge·gemini·placeholder 만 씁니다: {tts}")
         out[i] = p
     return out
 
@@ -346,16 +352,18 @@ def _run_plan(job: dict[str, Any], rpc: Rpc, work: str, *, tts: str, deps: Deps)
     ctx = _context(job, rpc)
     scenes = (job.get("plan") or {}).get("scenes") or []
     provider = (ctx.get("episode") or {}).get("provider") or config.DRINKS_EXPLAINER_DEFAULT_PROVIDER
+    from .providers import gemini_tts
+    gemini_tts.reset()
     if provider == config.DRINKS_CLAY_PROVIDER:
         d = build_clay_directive(job["plan_revision_id"], job, ctx.get("visual_claims"), _clay_scene_sec(scenes, os.path.join(work, "narration"), deps))
         rpc("drinks_explainer_save_directive", {**_lease(job), "directive": d, "order_hash": directive_hash(d)})
-        rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "tts", "provider": "test" if deps.tts_fn else "edge", "cost_usd": 0, "units": len(scenes), "note": "사진클레이 지시서용 길이 실측"}})
+        rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "tts", "provider": "test" if deps.tts_fn else config.DRINKS_TTS_PROVIDER, "cost_usd": round(gemini_tts.SPENT["usd"], 6), "units": len(scenes), "note": "사진클레이 지시서용 길이 실측"}})
         return {"status_code": "directive_ready", "estimate": d["estimate"]}
     narr = synth_narrations(scenes, os.path.join(work, "narration"), tts, deps)
     tts_ms = {i: dx.media_duration_ms(p) for i, p in narr.items()}
     d = build_directive(job["plan_revision_id"], job, ctx.get("visual_claims"), tts_ms, provider=provider)
     rpc("drinks_explainer_save_directive", {**_lease(job), "directive": d, "order_hash": directive_hash(d)})
-    rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "tts", "provider": "test" if deps.tts_fn else tts, "cost_usd": 0, "units": len(scenes), "note": "지시서용 길이 실측"}})
+    rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "tts", "provider": "test" if deps.tts_fn else tts, "cost_usd": round(gemini_tts.SPENT["usd"], 6), "units": len(scenes), "note": "지시서용 길이 실측"}})
     return {"status_code": "directive_ready", "estimate": d["estimate"]}
 
 
@@ -540,8 +548,19 @@ def _fetch_clay_images(directive: dict[str, Any], rpc: Rpc, storage: Any, out_di
     return out
 
 
+def _tts_spend_reset() -> None:
+    from .providers import gemini_tts
+    gemini_tts.reset()
+
+
+def _record_tts_spend(job: dict[str, Any], rpc: Rpc, tts: str, units: int, note: str, test: bool) -> None:
+    from .providers import gemini_tts
+    rpc("drinks_record_cost", {**_lease(job), "cost": {"kind": "tts", "provider": "test" if test else tts,
+                                                        "cost_usd": round(gemini_tts.SPENT["usd"], 6), "units": units, "note": note}})
+
+
 def _run_render_clay(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, ctx: dict[str, Any], directive: dict[str, Any], deps: Deps) -> dict[str, Any]:
-    """사진클레이 조립(0원). ★ 사는 길이 없다 — 그림은 _fetch_clay_images 로 꺼내기만 한다."""
+    """사진클레이 조립(그림 구매 0원 — 제미나이 TTS 면 내레이션 비용만 _record_tts_spend 로 기록). ★ 그림을 사는 길이 없다 — 그림은 _fetch_clay_images 로 꺼내기만 한다."""
     from .drinks_produce import MIME_EXT
     from .drinks_render import _probe
 
@@ -552,7 +571,9 @@ def _run_render_clay(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, ctx
               for s in sorted(directive["slots"], key=lambda s: int(s["n"]))]
     _heartbeat(job, rpc)
     out = os.path.join(work, "final.mp4")
+    _tts_spend_reset()
     summary_render = clay.render(directive["hook_text"], scenes, out, os.path.join(work, "render"), deps.tts_fn)
+    _record_tts_spend(job, rpc, config.DRINKS_TTS_PROVIDER, len(scenes), "사진클레이 최종 렌더 내레이션", deps.tts_fn is not None)
     qa = clay.auto_qa(out, summary_render)
     if not qa["ok"]:
         raise _Stop("failed", "auto_qa_fail", "자동 검사 불합격: " + ", ".join(qa["blocks"])[:1500], "auto_qa_fail")
@@ -561,7 +582,7 @@ def _run_render_clay(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, ctx
     cover = os.path.join(work, "cover.jpg")
     draw_cover(job.get("topic") or {}, job.get("plan") or {}, cover)
     summary = {"format": "explainer", "variant": "clay", "auto_qa": {"state": "pass", "blocks": [], "warns": qa["warns"], "signals": summary_render},
-               "warnings": qa["warns"], "tts": "test" if deps.tts_fn else "edge", "voice": directive.get("voice"),
+               "warnings": qa["warns"], "tts": "test" if deps.tts_fn else config.DRINKS_TTS_PROVIDER, "voice": directive.get("voice"),
                "visual_source": {"stand_in": [], "card_pages": [], "generated": sorted(pics)},
                "reel_spec": {"moov_first": dx.moov_before_mdat(out), "audio_sample_rate": probe.get("audio_sample_rate"), "video_codec": probe.get("video_codec"), "fps": probe.get("fps"), "cover_mime": "image/jpeg"},
                "probe": probe, "note": "자동 검사 통과는 '돌아간다'일 뿐이다 — 품질 판정은 사람이 한다"}
@@ -595,7 +616,9 @@ def _run_render(job: dict[str, Any], rpc: Rpc, storage: Any, work: str, *, tts: 
         _set_state(job, rpc, "rehearsal")
     assets = _collect_selected(plan_id, directive, rpc, storage, os.path.join(work, "selected"))
     scenes = (job.get("plan") or {}).get("scenes") or []
+    _tts_spend_reset()
     narr = synth_narrations(scenes, os.path.join(work, "narration"), tts, deps)
+    _record_tts_spend(job, rpc, tts, len(scenes), "최종 렌더 내레이션", deps.tts_fn is not None)
     boundaries = {int(s["n"]): s["boundary_in"] for s in directive["slots"]}
     beats = build_beats(scenes, plan_id, {i: dx.media_duration_ms(p) for i, p in narr.items()}, int(directive["hook_scene"]), narration_paths=narr, boundaries=boundaries)
     _heartbeat(job, rpc)
@@ -645,6 +668,7 @@ BUDGET_CODES = {"budget_exceeded"}
 
 def process_explainer_job(job: dict[str, Any], rpc: Rpc, storage: Any, *, tts: str = "edge", deps: Optional[Deps] = None) -> dict[str, Any]:
     deps = deps or Deps()
+    prev_tts, config.DRINKS_TTS_PROVIDER = config.DRINKS_TTS_PROVIDER, tts   # clay.speak 가 이 값을 본다 — --tts edge 면 사진클레이도 Edge. 끝나면 되돌린다
     renderer = job.get("renderer")
     work = tempfile.mkdtemp(prefix=f"drinks_ex_{str(job['job_id'])[:8]}_")
     try:
@@ -686,4 +710,5 @@ def process_explainer_job(job: dict[str, Any], rpc: Rpc, storage: Any, *, tts: s
         except DbError:
             return {"status": "lease_lost"}
     finally:
+        config.DRINKS_TTS_PROVIDER = prev_tts
         shutil.rmtree(work, ignore_errors=True)

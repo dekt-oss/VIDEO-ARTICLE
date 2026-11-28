@@ -391,7 +391,8 @@ class Rendered:
 
 def _guard_free(tts: str) -> None:
     """유료 공급자가 하나라도 켜져 있으면 렌더하지 않는다(예산 미설정 — 유료 생성 비활성)."""
-    if tts not in ("edge", "placeholder"):
+    # gemini 는 소유자 지시(2026-11-28)로 연다 — 편당 1~2센트, 실제 토큰 비용을 costs 에 적는다. 다른 유료 TTS 는 여전히 닫힘.
+    if tts not in ("edge", "gemini", "placeholder"):
         raise RenderError("paid_disabled", f"유료 TTS({tts})는 예산이 정해지지 않아 꺼져 있습니다")
     config.IMAGE_PROVIDER = "reuse"
     config.VIDEO_PROVIDER = "placeholder"
@@ -414,6 +415,8 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
     from . import render as engine_render   # 무거운 엔진 import 는 여기서만
 
     _guard_free(tts)
+    from .providers import gemini_tts
+    gemini_tts.reset()
     plan, topic = job["plan"], job["topic"]
     scenes = plan.get("scenes") or []
     cards = os.path.join(work_dir, "cards")
@@ -477,7 +480,8 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
     warnings.extend(reel_spec_warnings(probe, os.path.getsize(out), moov_first, cover_mime, os.path.getsize(cover)))
     if page_missing:
         warnings.append("card_page_missing")
-    rate = speech_rate([sc.get("narration") or "" for sc in scenes], probe["duration_sec"], config.RENDER_PLAYBACK_SPEED, config.EDGE_TTS_RATE)
+    rate = speech_rate([sc.get("narration") or "" for sc in scenes], probe["duration_sec"], config.RENDER_PLAYBACK_SPEED,
+                       f"x{config.GEMINI_TTS_SPEED}" if tts == "gemini" else config.EDGE_TTS_RATE)
     if rate["syl_per_sec"] > config.DRINKS_SPEECH_RATE_WARN_SYL_PER_SEC:
         warnings.append("speech_rate_fast")
     # 글자 카드(대체 이미지)로 나간 장면 — 정리 카드(text_card)는 원래 글자 카드라 뺀다. 원했던 카드 페이지가 없어 되돌아간 장면은 넣는다.
@@ -495,8 +499,9 @@ def render_video(job: dict[str, Any], work_dir: str, *, tts: str = "edge", image
                    " · ".join(([f"생성 그림 장면 {','.join(map(str, generated))}"] if generated else []) +
                               ([f"카드뉴스 페이지 장면 {','.join(map(str, from_pages))}"] if from_pages else []) +
                               ([f"대체 카드 장면 {','.join(map(str, stand_in))}"] if stand_in else [])))}
-    costs = [{"kind": "tts", "provider": tts, "model": config.EDGE_TTS_VOICE if tts == "edge" else None, "cost_usd": 0,
-              "units": len(scenes), "note": "무료 TTS"},
+    tts_model = {"edge": config.EDGE_TTS_VOICE, "gemini": f"{config.GEMINI_TTS_MODEL}:{config.GEMINI_TTS_VOICE}"}.get(tts)
+    costs = [{"kind": "tts", "provider": tts, "model": tts_model, "cost_usd": round(gemini_tts.SPENT["usd"], 6) if tts == "gemini" else 0,
+              "units": len(scenes), "note": f"제미나이 TTS {gemini_tts.SPENT['calls']}회(다시 받기 포함)" if tts == "gemini" else "무료 TTS"},
              {"kind": "render", "provider": "local_ffmpeg", "cost_usd": 0,
               "note": "장면 카드(Pillow)·조립(ffmpeg)" + (" — 생성 그림은 미리 산 것을 재사용(비용은 그림 기록에)" if generated else "")}]
     files = [{"path": out, "role": "final_video", "position": 1, "mime": "video/mp4", "width": probe["width"],
