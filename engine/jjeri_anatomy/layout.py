@@ -348,7 +348,7 @@ def _glass(w, events, b, D, hud_step, hud_precision, profile_world):
             for k, (dx, dy) in enumerate([(300, 160), (-300, 160), (0, 240)])],
           f'tl.set("#gl-dial", {{ opacity: 1 }}, {b[2]});',
           f'tl.to("#gl-cam", {{ x: {ge["camera_pan"][0]["dx"]}, duration: {ge["camera_pan"][0]["dur"]}, ease: "power2.inOut" }}, {gt("camera_pan")});',
-          f'tl.fromTo("#gl-needle", {{ rotation: 0 }}, {{ rotation: {round(180 * dial_event['value'] / 15, 1)}, duration: 1.0, ease: "back.out(1.4)", transformOrigin: "100% 50%" }}, {gt("dial_needle")});',
+          f'tl.fromTo("#gl-needle", {{ rotation: 0 }}, {{ rotation: {round(180 * dial_event["value"] / 15, 1)}, duration: 1.0, ease: "back.out(1.4)", transformOrigin: "100% 50%" }}, {gt("dial_needle")});',
           f'tl.to("#gl-band", {{ opacity: 1, duration: 0.3 }}, {b[2] + 1.4});',
           pop('#gl-d0', b[2] + 1.5), pop('#gl-d1', b[2] + 2.5),
           f'tl.to("#gl-world-wrap", {{ opacity: 0, filter: "blur(8px)", duration: 0.15, ease: "power2.in" }}, {round(D - 0.15, 2)});']
