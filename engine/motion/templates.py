@@ -391,7 +391,7 @@ def render_scene(sid: str, template: str, slots: dict, cue: Cue, dur: float, src
 
 
 def end_card(sid: str, meta: dict) -> str:
-    """출처 끝 카드 — **LLM 이 못 바꾼다.** 리포트 행(제목·날짜·증권사·애널리스트)에서만 채운다."""
+    """출처 끝 카드 — 운영자 메타로 채우며, 생략하면 기존 리포트 문구를 쓴다."""
     lines = [esc(x) for x in (meta.get("date"), meta.get("broker"), meta.get("analyst")) if x]
     css = f"""
     #{sid}-card {{ position: absolute; top: 300px; left: 80px; right: 80px; padding: 50px 44px; text-align: center; }}
@@ -400,10 +400,10 @@ def end_card(sid: str, meta: dict) -> str:
     #{sid}-card .m {{ font-family: "PretendardB"; font-size: 40px; line-height: 1.45; color: #4a5263; margin-top: 22px; }}
     #{sid}-card .go {{ font-family: "PretendardXB"; font-size: 44px; margin-top: 34px; padding-top: 30px; border-top: 3px solid #c5ccd8; }}
     #{sid}-card .b {{ display: inline-block; margin-top: 30px; font-family: "PretendardBlack"; font-size: 58px; padding: 12px 40px; border-radius: 999px; background: {YELLOW}; color: #0a0f1c; }}"""
-    body = (f'    <div class="card" id="{sid}-card"><div class="h2">출처 · 증권사 리포트</div>'
+    body = (f'    <div class="card" id="{sid}-card"><div class="h2">출처 · {esc(meta.get("source_label") or "증권사 리포트")}</div>'
             f'<div class="t">{esc(meta.get("title"))}</div><div class="m">{"<br>".join(lines)}</div>'
-            f'<div class="go" id="{sid}-go">자세한 내용은 리포트 원문을 확인하세요</div>'
-            f'<div class="b">투자 권유 아님</div></div>\n')
+            f'<div class="go" id="{sid}-go">{esc(meta.get("end_note") or "자세한 내용은 리포트 원문을 확인하세요")}</div>'
+            f'<div class="b">{esc(meta.get("end_badge") or "투자 권유 아님")}</div></div>\n')
     js = (f'    tl.fromTo("#{sid}-card", {{ opacity: 0, y: 30 }}, {{ opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }}, 0.05);\n'
           f'    tl.fromTo("#{sid}-go", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.3 }}, 0.6);\n')
     return page(sid, css, body, js, "")

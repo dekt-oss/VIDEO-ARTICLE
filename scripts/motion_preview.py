@@ -30,14 +30,14 @@ def main() -> None:
         meta, name = motion_meta(d), a.directive[:8]
     else:
         fx = json.loads(Path(a.fixture).read_text(encoding="utf-8"))
-        d = schema.normalize_motion_directive(fx["directive"], fx.get("fact_sheet"), fx.get("broker", ""))
         meta, name = fx.get("meta") or {}, Path(a.fixture).stem
+        d = schema.normalize_motion_directive(fx["directive"], fx.get("fact_sheet"), fx.get("broker", ""), meta=meta)
         print("경고:", d["header"]["mode_warnings"] or "없음")
     out = Path("outputs/motion_preview") / name
     out.mkdir(parents=True, exist_ok=True)
     if a.build_only:
         info = build.build_project(d, out / "motion_proj", meta)
-        print(json.dumps(info, ensure_ascii=False)[:600]); return
+        print(json.dumps(info, ensure_ascii=False)); return
     r = build.render(d, str(out), meta)
     print(json.dumps({k: v for k, v in r.items() if k != "cut_map"}, ensure_ascii=False))
 
