@@ -343,8 +343,9 @@ def run_queue(rpc: Rpc, storage: Storage, *, worker_id: str, tts: str = "edge", 
 
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="주류 공장 제작 워커")
-    ap.add_argument("--tts", default=os.getenv("DRINKS_TTS", "edge"), choices=["edge", "placeholder"])
+    ap.add_argument("--tts", default=config.DRINKS_TTS_PROVIDER, choices=["edge", "gemini", "placeholder"])
     args = ap.parse_args(argv)
+    config.DRINKS_TTS_PROVIDER = args.tts   # 사진클레이 경로가 이 값을 본다 — CLI 선택을 한 곳에서 따르게
     res = run_queue(supabase_rpc(), Storage(), worker_id=config.WORKER_ID, tts=args.tts)
     bad = [r for r in res if r.get("status") in ("failed", "lease_lost")]
     return 1 if bad else 0

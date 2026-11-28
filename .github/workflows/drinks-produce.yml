@@ -1,7 +1,7 @@
 # 주류 공장 C단계 제작 워커 (2026-10-23). docs/deviation-drinks-production.md
 #
 # 대시보드 [렌더 요청] 이 큐에 작업을 넣고 이 워크플로를 깨운다(GITHUB_DISPATCH_TOKEN 이 있으면). 예약 실행은 없다.
-# ★ 유료 호출 없음: 대체 이미지(로컬 장면 카드) + 무료 TTS(edge) + ffmpeg. LLM·이미지·영상 생성 키를 주지 않는다.
+# ★ 유료 호출: 제미나이 TTS 만(소유자 지시 2026-11-28, 편당 1~2센트, costs 에 기록). 그림은 대체 이미지(로컬 장면 카드), 조립은 ffmpeg. 이미지·영상 생성 키는 주지 않는다.
 # ★ 파일은 비공개 버킷 'drinks' 의 drinks/{job}/… 에만 올린다(논문·리포트 정리 경로가 걷지 않는 접두어).
 name: drinks-produce
 
@@ -22,13 +22,14 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      GEMINI_TTS_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # TTS 전용 이름(그림·영상 경로는 이 이름을 안 읽는다)
       TIMEZONE: "Asia/Seoul"
       WORKER_ID: ${{ github.run_id }}
       DRINKS_STORAGE: supabase
-      DRINKS_TTS: edge
+      DRINKS_TTS: gemini   # 소유자 지시 2026-11-28(제미나이 TTS Alnilam). 되돌리려면 edge
       IMAGE_PROVIDER: reuse
       VIDEO_PROVIDER: placeholder
-      TTS_PROVIDER: edge
+      TTS_PROVIDER: gemini
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7

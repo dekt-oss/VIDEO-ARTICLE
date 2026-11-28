@@ -129,7 +129,8 @@ def test_production_migration_and_worker_stay_free_and_apart_from_paper_storage(
         assert bad not in code, bad
     assert "'paid_disabled'" in sql, "유료 생성 요청은 예산 미설정으로 거부"
     wf = (ROOT / ".github" / "workflows" / "drinks-produce.yml").read_text(encoding="utf-8")
-    for key in ["ANTHROPIC", "GEMINI", "DEEPSEEK", "ELEVENLABS", "HIGGSFIELD", "schedule:"]:
+    # GEMINI: TTS 전용 이름(GEMINI_TTS_API_KEY)만 허용(2026-11-28 제미나이 TTS) — 구매 경로용 GEMINI_API_KEY 는 금지 유지
+    for key in ["ANTHROPIC", "GEMINI_API_KEY:", "DEEPSEEK", "ELEVENLABS", "HIGGSFIELD", "schedule:"]:
         assert key not in wf, key
     worker = (ROOT / "engine" / "drinks_produce.py").read_text(encoding="utf-8")
     assert '"upsert": "false"' in worker and 'key.startswith("drinks/")' in worker

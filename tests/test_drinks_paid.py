@@ -217,7 +217,8 @@ def test_spend_migration_is_service_role_only_and_ci_worker_stays_keyless():
         assert f"alter table {t} enable row level security" in low, t
     # 렌더 큐 워커(GitHub Actions)에는 아직 그림 생성 키를 주지 않는다 — 3단계 결재 때 정한다.
     wf = (ROOT / ".github" / "workflows" / "drinks-produce.yml").read_text(encoding="utf-8")
-    assert "GEMINI" not in wf
+    # 2026-11-28 제미나이 TTS 전용 이름만 허용 — 그림·영상 구매 경로가 읽는 GEMINI_API_KEY 는 여전히 없다
+    assert "GEMINI_API_KEY:" not in wf and "GEMINI_TTS_API_KEY: ${{ secrets.GEMINI_API_KEY }}" in wf
     # 화면은 돈을 쓰는 함수를 부르지 못한다
     actions = (ROOT / "web" / "lib" / "drinks" / "actions.ts").read_text(encoding="utf-8")
     for fn in ["drinks_hold_spend", "drinks_settle_spend", "drinks_register_generated"]:

@@ -28,7 +28,7 @@ jobs:
       TIMEZONE: "Asia/Seoul"
       WORKER_ID: ${{ github.run_id }}
       DRINKS_STORAGE: supabase
-      DRINKS_TTS: edge
+      DRINKS_TTS: gemini   # 소유자 지시 2026-11-28(제미나이 TTS Alnilam). 되돌리려면 edge
       DRINKS_EXPLAINER_PROVIDER_SEND_ENABLED: "1"
       DRINKS_EXPLAINER_SEND_PROVIDERS: clay
     steps:

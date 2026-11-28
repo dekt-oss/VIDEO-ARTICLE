@@ -1984,7 +1984,7 @@ EDGE_TTS_RATE: str = os.getenv("EDGE_TTS_RATE", "+10%")
 # ─────────────────────────────────────────────────────────────
 # TTS 제공자 3종 (운영자 지시 2026-09-05: "구글이랑 일래븐랩스 둘 다 써보자")
 # ─────────────────────────────────────────────────────────────
-# TTS_PROVIDER = edge | google | elevenlabs | placeholder
+# TTS_PROVIDER = edge | google | elevenlabs | gemini | placeholder
 #
 # ★ 셋의 성질이 다르다. 고를 때 이 표를 본다:
 #     edge        무료·무제한 · **단어 타임스탬프 있음**(WordBoundary) → 자막 싱크 정밀
@@ -2020,6 +2020,31 @@ ELEVENLABS_MODEL: str = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
 ELEVENLABS_SPEED: float = _get_float("ELEVENLABS_SPEED", 1.1)  # 위와 같은 이유(셋이 같은 속도)
 # 무료 티어 월 상한. 넘으면 API 가 401 을 준다 — 미리 알고 폴백하려고 적어 둔다.
 ELEVENLABS_FREE_CHARS_PER_MONTH: int = 10_000
+
+# 제미나이 TTS — 소유자 지시 2026-11-28("엔진에도 제미나이 TTS 사용하는 걸로"). AI Studio 키(GEMINI_API_KEY, AQ. 형식) 그대로 쓴다.
+# ★ 구글 클라우드 TTS(Chirp 3 HD, 위 google)는 AQ. 키를 안 받는다(401 "API keys are not supported", 2026-11-28 실측).
+#   목소리 이름(Alnilam 등)은 같지만 서비스가 다르다. **단어 타임스탬프 없음** → 자막은 글자 비례로 나뉜다.
+# ★ 문장마다 따로 부르면 톤·높이가 들쭉날쭉하고 가끔 피치가 튄다(사케 1편 실측: 9번 문장 0.44초 튐) →
+#   같은 말투 지시(STYLE)를 붙이고, 숫자 검사(engine/voice_qc.py)에서 튀면 최대 MAX_TRIES 번 다시 받아 가장 나은 것을 쓴다.
+# 가격(2026-11-28 ai.google.dev 가격표 요약): 입력 $0.50 · 출력(음성) $10 /100만 토큰 — 사케 1편(10문장) 약 $0.012.
+GEMINI_TTS_MODEL: str = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+GEMINI_TTS_VOICE: str = os.getenv("GEMINI_TTS_VOICE", "Alnilam")   # 소유자 지정 2026-11-28
+GEMINI_TTS_STYLE: str = "Read this Korean line in a steady, friendly narrator voice, same pitch and energy throughout: "
+GEMINI_TTS_SPEED: float = _get_float("GEMINI_TTS_SPEED", 1.40)    # atempo. 사케 1편에서 소유자 승인 템포에 맞춘 실측값
+GEMINI_TTS_QC_LIMIT: float = 0.3      # voice_qc 점수(튄 최장 초 + 높이 벗어남). 1편 실측 정상 0.05~0.30, 튐 0.58
+GEMINI_TTS_MAX_TRIES: int = 3
+GEMINI_TTS_PRICE_IN_PER_M: float = 0.50
+GEMINI_TTS_PRICE_OUT_PER_M: float = 10.0
+GEMINI_TTS_SAMPLE_RATE: int = 24000   # 응답은 audio/L16 24kHz 모노
+GEMINI_TTS_REF_HZ_FALLBACK: float = 120.0   # 첫 문장에서 높이를 못 재면 쓰는 기준(사케 1편 Alnilam 실측 중앙 114~128Hz)
+# voice_qc(engine/voice_qc.py) 숫자 — 사케 1편 10문장 실측으로 정함(정상 점수 0.05~0.30, 튄 문장 0.58)
+VOICE_QC_SILENCE_RMS: float = 0.02    # 이보다 작은 창은 무음으로 본다
+VOICE_QC_F0_MIN_HZ: int = 70
+VOICE_QC_F0_MAX_HZ: int = 450
+VOICE_QC_VOICED_CORR: float = 0.3     # 자기상관 봉우리가 이보다 낮으면 무성음
+VOICE_QC_HIGH_RATIO: float = 1.5      # 기준 높이의 1.5배를 넘으면 '튐'
+# 주류 공장 TTS(영상 렌더·사진클레이 공통). 소유자 지시 2026-11-28 로 gemini 가 기본, edge 로 되돌리려면 DRINKS_TTS=edge.
+DRINKS_TTS_PROVIDER: str = os.getenv("DRINKS_TTS", "gemini")
 # 나레이션 발음 교정(TTS 입력 치환). Edge TTS 가 영문 약어를 이상하게 읽는 것 방지.
 # 자막도 이 치환된 텍스트(=실제 발음)를 따라간다. 대소문자 무시 치환.
 TTS_PRONUNCIATION: dict[str, str] = {

@@ -302,13 +302,17 @@ def draw_caption(line: str) -> Any:
 
 
 # ─────────────────────────────────────────────────────────────
-# 목소리 (무료 Edge)
+# 목소리 (기본 제미나이 TTS — config.DRINKS_TTS_PROVIDER, edge 로 되돌릴 수 있음)
 # ─────────────────────────────────────────────────────────────
 
 def speak(text: str, path: str, tts_fn: Optional[TtsFn] = None) -> list[tuple[str, float, float]]:
     """장면 하나를 통째로 읽힌다. 반환: 단어별 (글자, 시작초, 끝초). 시험용 tts_fn 은 단어 시각이 없다(빈 목록)."""
     if tts_fn is not None:
         tts_fn(text, path)
+        return []
+    if config.DRINKS_TTS_PROVIDER == "gemini":   # 단어 시각 없음 → 줄 시작은 글자 비례(line_starts)
+        from .providers import gemini_tts
+        gemini_tts.synthesize(text, path)
         return []
     import edge_tts
 
