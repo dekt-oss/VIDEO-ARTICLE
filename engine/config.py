@@ -4712,6 +4712,10 @@ DRINKS_DEVELOP_EXTRACT_MODEL: str = os.getenv("DRINKS_DEVELOP_EXTRACT_MODEL", "g
 DRINKS_DEVELOP_PLAN_MODEL: str = os.getenv("DRINKS_DEVELOP_PLAN_MODEL", "deepseek-v4-pro")
 DRINKS_DEVELOP_EXTRACT_MAX_TOKENS: int = 6_000
 DRINKS_DEVELOP_PLAN_MAX_TOKENS: int = 16_000
+DRINKS_JJERI_GENERATE_ENABLED: bool = _get_bool("DRINKS_JJERI_GENERATE_ENABLED", False)
+DRINKS_JJERI_ANATOMY_GENERATE_ENABLED: bool = _get_bool("DRINKS_JJERI_ANATOMY_GENERATE_ENABLED", False)
+DRINKS_JJERI_MODEL: str = "deepseek-v4-pro"
+DRINKS_JJERI_REQUEST_OVERHEAD_TOKENS: int = 256
 DRINKS_DEVELOP_CHARS_PER_TOKEN: float = 2.0          # 입력 토큰 추정(한국어·영어 섞임, 보수적으로 작게 잡아 비용을 크게 본다)
 # Europe PMC(오픈액세스 논문) — ★ 기본 꺼짐(2026-10-30): 사이트 robots.txt 가 Content-Signal ai-train=no 를 두고 ClaudeBot 을 막으며
 #   API 약관을 확인하지 못했다. 운영자가 약관을 확인한 뒤에만 켠다. 코드·테스트는 있다.
@@ -5242,6 +5246,97 @@ MOTION_MAX_ICONS: int = 10                             # icon_ratio 한쪽 아�
 MOTION_SILENCE_DB: str = "-35dB"                       # 자막 시각 추정용 무음 기준(silencedetect)
 MOTION_SILENCE_MIN_SEC: float = 0.15
 MOTION_END_CARD_TITLE_MAX: int = 70                    # 끝 출처 카드 리포트 제목 최대 글자
+
+# 째리의 술 수업 — voice-driven timeline (separate from report motion).
+JJERI_FIRST_LEAD = 0.2
+JJERI_LEAD = 0.15
+JJERI_GAP = 0.27
+JJERI_TAIL = 0.1
+JJERI_TAILS = {"house_rule_search": 1.3, "vote_comment": 2.0}
+JJERI_MIN_DURATION = {"pour_infuse": 4.6, "fill_and_notes": 4.3, "scarcity_compare": 3.8, "two_methods": 4.4}
+JJERI_SEARCH_DELAY = 0.9
+JJERI_TYPE_INTERVAL = 0.12
+JJERI_READ_BASE = 0.5
+JJERI_READ_PER_WORD = 0.3
+
+JJERI_VOICE = "ko-KR-HyunsuMultilingualNeural"
+JJERI_RATE = "+10%"
+JJERI_ATEMPO = 1.055
+JJERI_TTS_RETRIES = 2
+JJERI_SILENCE_DB = "-40dB"
+JJERI_SILENCE_SEC = 0.05
+JJERI_MIN_RUNTIME = 55
+JJERI_MAX_RUNTIME = 75
+JJERI_BGM_VOLUME = 0.16
+JJERI_BGM_FADE_IN = 0.3
+JJERI_BGM_FADE_OUT = 2.0
+JJERI_LOUDNORM = "loudnorm=I=-15:TP=-1.5:LRA=11"
+
+JJERI_SEARCH_CHIP_DELAY = 0.3
+JJERI_VOTE_INPUT_AT = 2.4
+JJERI_AUDIO_TARGET_RANGE = (-16.0, -14.0)
+JJERI_AUDIO_MAX_TRUE_PEAK = -1.0
+
+
+# Signal peaks measured from the bundled clips with HyperFrames 0.9.72.
+# The duration column intentionally trims the typing sound before the trailing taps.
+# Peak is the center of the strongest 5 ms energy window (430–1600 Hz,
+# 4 kHz mono) within the played portion, not the highest individual sample.
+_JJERI_CLICK = (0.0735, 0.36, 0.5)
+_JJERI_WHOOSH = (0.1615, 0.57, 0.4)
+JJERI_SFX = {
+    "click": _JJERI_CLICK, "click-soft": _JJERI_CLICK,
+    "whoosh": _JJERI_WHOOSH, "whoosh-short": _JJERI_WHOOSH,
+    "pop": (0.1215, 0.72, 0.45), "key-press": (0.0775, 0.2, 0.25),
+    "impact-bass-1": (0.0525, 2.1, 0.35),
+    "riser": (1.4245, 1.5, 0.3), "sparkle": (0.0275, 1.0, 0.35),
+}
+# Historical sound placement for exact replay of the approved golden fixtures.
+JJERI_GOLDEN_CLASS_SFX = {
+    "pop": (0.12, 0.72, 0.45), "click-soft": (0.073, 0.36, 0.5),
+    "impact-bass-1": (0.073, 2.1, 0.35), "whoosh": (0.162, 0.57, 0.4),
+    "whoosh-short": (0.162, 0.57, 0.4), "key-press": (0.076, 0.2, 0.25),
+}
+JJERI_GOLDEN_ANATOMY_SFX = {
+    **JJERI_GOLDEN_CLASS_SFX, "click": (0.05, 0.3, 0.4),
+    "impact-bass-1": (0.073, 2.1, 0.3), "riser": (1.0, 1.5, 0.3),
+    "sparkle": (0.05, 1.0, 0.35),
+}
+JJERI_OWNED_TRACK = DRINKS_MEME_OWNED_TRACK_DEFAULT
+JJERI_OWNED_SEGMENT = (10.103410, 18.308538)
+JJERI_OWNED_RATE, JJERI_OWNED_CHANNELS = 48000, 2
+JJERI_OWNED_LOOP_BEATS = 16
+JJERI_OWNED_SEAM_SECONDS = 0.004
+JJERI_ACCENT_MAX_SHIFT = 0.12
+JJERI_ACCENT_HEADROOM, JJERI_ACCENT_TAILROOM = 0.02, 0.20
+JJERI_BASS_SEARCH = (-0.035, 0.065)
+JJERI_BASS_FILTER = "highpass=f=32,lowpass=f=115"
+JJERI_SFX_FILTER = "highpass=f=430,lowpass=f=1600"
+JJERI_SFX_ANALYSIS_RATE = 4000
+JJERI_ENERGY_WINDOW = 0.005
+JJERI_ENERGY_HOP = 0.001
+JJERI_BOOM_VISIBLE_LAG = {"jar": 0.096, "sieve": 0.064, "glass": 0.073}
+JJERI_STAMP_VISIBLE_LAG = 0.086
+JJERI_STAMP_OFFSET = 0.5
+JJERI_HUD_REPLAY_STEP = 0.35
+JJERI_HUD_FRAME_LEAD = 0.001  # Set before frame seek, after the preceding frame.
+JJERI_ANATOMY_JAR_BEAT_GAP = 0.6
+JJERI_ANATOMY_MIN_WORLD = {"sieve": 5.2}
+JJERI_ANATOMY_QUIZ_TAIL = 2.2
+JJERI_ANATOMY_MIN_RUNTIME = 30
+
+JJERI_SCENE_MIN, JJERI_SCENE_MAX = 8, 14
+JJERI_CHAPTER_MIN, JJERI_CHAPTER_MAX = 5, 8
+JJERI_SUBTITLE_LINES, JJERI_SUBTITLE_CHARS = 2, 17
+JJERI_DIRECTIVE_MAX_BYTES = 65536
+JJERI_CHIP_MAX_CHARS, JJERI_CHIP_TEXT_BUDGET_EM = 52, 31
+JJERI_VIDEO_WIDTH, JJERI_VIDEO_HEIGHT, JJERI_VIDEO_FPS = 1080, 1920, 30
+JJERI_MEDIA_DURATION_TOLERANCE = 0.1
+JJERI_AUDIO_SPAN_TOLERANCE = 0.01
+JJERI_SILENCE_TAIL_TOLERANCE = 0.03
+JJERI_VOICE_HEAD_PAD, JJERI_VOICE_TAIL_PAD = 0.05, 0.08
+JJERI_VOICE_MP3_BITRATE = "96k"
+
 # ── 하이퍼프레임(HTML→영상) 렌더 + 음악 박자 싱크 — engine/hf_render.py. docs/plans/2026-11-26-hyperframes-engine.md (S1~S2)
 DRINKS_HF_ENABLED: bool = _get_bool("DRINKS_HF_ENABLED", True)  # 밈 owned_track 렌더(S3 승인 2026-11-27). 끄면 그 밈은 멈춘다(옛 경로로 몰래 바꾸지 않음)
 HF_HYPERFRAMES_PKG: str = MOTION_HYPERFRAMES_PKG  # 저장소에 하이퍼프레임 고정 버전은 하나(리포트 motion 과 같은 값). 올리면 데모를 다시 렌더해 비교
