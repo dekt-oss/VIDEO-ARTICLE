@@ -1,0 +1,102 @@
+[
+  {
+    "k": 0,
+    "sid": "jar",
+    "file": "assets/vo/b00.mp3",
+    "sec": 3.415,
+    "head": 0.126,
+    "end": 3.065,
+    "text": "막걸리, 그냥 대충 걸러\n마시는 술일까요?",
+    "sha256": "514032e3c44bcbd57dc9fdd13f27f10e2f32692295c00c039ccb076618da1e23"
+  },
+  {
+    "k": 1,
+    "sid": "jar",
+    "file": "assets/vo/b01.mp3",
+    "sec": 4.871,
+    "head": 0.066,
+    "end": 4.616,
+    "text": "재료는 셋, 전분이 든 곡물과\n곰팡이를 피운 누룩, 그리고 물.",
+    "sha256": "21d79f65c42304894928f12ce6135237df18cb8219a6f1a66b67bbbdad58264e"
+  },
+  {
+    "k": 2,
+    "sid": "jar",
+    "file": "assets/vo/b02.mp3",
+    "sec": 4.576,
+    "head": 0.128,
+    "end": 4.251,
+    "text": "누룩이 쌀의 전분을 단맛으로,\n그 단맛이 술과 탄산이 돼요.",
+    "sha256": "fef1ab6424aa597133094db2e3cd727d1f996cc7ecebd4ab72ca16ea25ab88cb"
+  },
+  {
+    "k": 3,
+    "sid": "jar",
+    "file": "assets/vo/b03.mp3",
+    "sec": 4.12,
+    "head": 0.115,
+    "end": 3.843,
+    "text": "다 익으면 위엔 맑은 술,\n아래엔 술밑이 가라앉아요.",
+    "sha256": "7416e184b593c7b3588d2c234ff0df811da954caeb84c4b2fd24527cdadfafae"
+  },
+  {
+    "k": 4,
+    "sid": "jar",
+    "file": "assets/vo/b04.mp3",
+    "sec": 3.825,
+    "head": 0.119,
+    "end": 3.522,
+    "text": "윗술만 떠내면 청주,\n통째로 쓰면 막걸리예요.",
+    "sha256": "57271a74805fa3367c6d5d0b6ef983eefddaab681affb55e29a3623d2045face"
+  },
+  {
+    "k": 5,
+    "sid": "sieve",
+    "file": "assets/vo/b05.mp3",
+    "sec": 4.257,
+    "head": 0.141,
+    "end": 3.838,
+    "text": "체에 붓고 손으로 싹싹 버무리면\n쌀알이 부서져 뽀얘져요.",
+    "sha256": "c85ea3eebd9f3019a0561003b0b6e221005339168f6272815affe7eb2889b552"
+  },
+  {
+    "k": 6,
+    "sid": "glass",
+    "file": "assets/vo/b06.mp3",
+    "sec": 5.077,
+    "head": 0.156,
+    "end": 4.753,
+    "text": "맥주가 보리로 만든 탄산 음료라면\n막걸리는 쌀로 만든 탄산 음료.",
+    "sha256": "fb3a289a58727f20738745617529ed33d255269054693a6c2517999f8b5625aa"
+  },
+  {
+    "k": 7,
+    "sid": "glass",
+    "file": "assets/vo/b07.mp3",
+    "sec": 3.689,
+    "head": 0.107,
+    "end": 3.392,
+    "text": "단맛, 신맛, 떫은맛이\n함께 어우러지고요.",
+    "sha256": "434ec1eee233a0d20501884dcaf137f38f41c333531476be199e4ac0cd2b01e0"
+  },
+  {
+    "k": 8,
+    "sid": "glass",
+    "file": "assets/vo/b08.mp3",
+    "sec": 4.53,
+    "head": 0.119,
+    "end": 4.01,
+    "text": "도수는 6~8도가 흔하지만\n3도부터 12도까지 있어요.",
+    "sha256": "883ff5519f34d10df82e24258c193c4d6b2b4e18d941545ae70a0f31933e273f"
+  },
+  {
+    "k": 9,
+    "sid": "quiz",
+    "file": "assets/vo/b09.mp3",
+    "sec": 5.462,
+    "head": 0.127,
+    "end": 5.102,
+    "text": "퀴즈! 윗술만 떠내면 무슨 술?\n숫자로 댓글 남겨 주세요!",
+    "sha256": "e03fa014c779c3c1896b0c95cc52777c4c2279240ebe3497081333ed6f3931bd"
+  }
+]

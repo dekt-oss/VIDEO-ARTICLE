@@ -29,6 +29,8 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
       JEV_ENABLED: "0"
+      DRINKS_JJERI_GENERATE_ENABLED: ${{ vars.DRINKS_JJERI_GENERATE_ENABLED || '0' }}
+      DRINKS_JJERI_ANATOMY_GENERATE_ENABLED: ${{ vars.DRINKS_JJERI_ANATOMY_GENERATE_ENABLED || '0' }}
       TIMEZONE: "Asia/Seoul"
       WORKER_ID: ${{ github.run_id }}
     steps:

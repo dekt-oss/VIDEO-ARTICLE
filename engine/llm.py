@@ -263,13 +263,7 @@ def _gemini_create(*, model: str, system: str, user: str, max_tokens: int) -> st
         raise JSONParseError(f"Gemini 응답 형식 예상 밖: {exc}") from exc
 
 
-@retry(
-    reraise=True,
-    stop=stop_after_attempt(config.HTTP_MAX_RETRIES),
-    wait=wait_exponential(multiplier=config.HTTP_BACKOFF_BASE_SEC, min=config.HTTP_BACKOFF_BASE_SEC),
-    retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError)),
-)
-def _deepseek_create(*, model: str, system: str, user: str, max_tokens: int) -> str:
+def _deepseek_submit(*, model: str, system: str, user: str, max_tokens: int, retry_statuses: bool = False) -> str:
     """DeepSeek 호출(OpenAI 호환 /chat/completions).
 
     ★ 왜 어댑터가 필요한가: 모델 ID 만 바꿔서는 안 된다. 이 파일의 두 경로는 응답 **형태**에
@@ -299,7 +293,7 @@ def _deepseek_create(*, model: str, system: str, user: str, max_tokens: int) -> 
                "Content-Type": "application/json"}
     with httpx.Client(timeout=config.LLM_HTTP_TIMEOUT_SEC) as client:
         resp = client.post(f"{config.DEEPSEEK_BASE}/chat/completions", headers=headers, json=body)
-        if resp.status_code == 429 or resp.status_code >= 500:
+        if retry_statuses and (resp.status_code == 429 or resp.status_code >= 500):
             raise httpx.TransportError(f"{resp.status_code} from deepseek")
         resp.raise_for_status()
         data = resp.json()
@@ -314,6 +308,16 @@ def _deepseek_create(*, model: str, system: str, user: str, max_tokens: int) -> 
     if not text.strip():
         raise JSONParseError(f"DeepSeek 응답이 비어 있다 (finish_reason={choice.get('finish_reason')})")
     return text
+
+
+@retry(
+    reraise=True,
+    stop=stop_after_attempt(config.HTTP_MAX_RETRIES),
+    wait=wait_exponential(multiplier=config.HTTP_BACKOFF_BASE_SEC, min=config.HTTP_BACKOFF_BASE_SEC),
+    retry=retry_if_exception_type((httpx.TimeoutException, httpx.TransportError)),
+)
+def _deepseek_create(*, model: str, system: str, user: str, max_tokens: int) -> str:
+    return _deepseek_submit(model=model, system=system, user=user, max_tokens=max_tokens, retry_statuses=True)
 
 
 def _gemini_text(*, model: str, system: str, user: str, max_tokens: int,

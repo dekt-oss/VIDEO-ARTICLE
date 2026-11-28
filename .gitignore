@@ -55,3 +55,6 @@ outputs/
 
 # 하이퍼프레임 실험 샘플(로컬 전용, 비비노 음원·대용량 글꼴 포함) — docs/plans/2026-11-26-hyperframes-engine.md
 experiments/
+
+# Local render and verification artifacts
+/renders/

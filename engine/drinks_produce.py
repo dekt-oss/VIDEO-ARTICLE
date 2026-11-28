@@ -228,12 +228,18 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
         return process_explainer_job(job, rpc, storage, tts=tts, deps=explainer_deps)
     lease = {"job_id": job["job_id"], "lease_token": job["lease_token"]}
     work = tempfile.mkdtemp(prefix=f"drinks_{job['job_id'][:8]}_")
+    is_jjeri = job.get("renderer") in ("jjeri_class", "jjeri_anatomy")
     try:
         hb = rpc("drinks_heartbeat_render", lease) or {}
-        if hb.get("cancel_requested") or hb.get("renderable") is False:
+        if (hb.get("cancel_requested") or hb.get("renderable") is False
+                or (is_jjeri and (hb.get("renderable") is not True or hb.get("cancel_requested") is not False))):
             return rpc("drinks_finish_render", {**lease, "outcome": "failed", "error_code": "canceled_before_render",
                                                 "error_message": "렌더 전에 취소됐거나 근거가 무효가 됐습니다"})
-        if job["format"] == "video":
+        if is_jjeri:
+            from .motion.jjeri_class.queue import render_job
+
+            rendered = render_job(job, work, tts=tts)
+        elif job["format"] == "video":
             images: dict[int, str] = {}
             paid_costs: list[dict[str, Any]] = []
             # 대본 검사(0원): 유료 경로는 buy_scene_images 안에서 막히면 아무것도 사기 전에 멈춘다. 무료 경로는 막혀도 멈추지 않고
@@ -261,7 +267,10 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
                 rendered = render_carousel(job, os.path.join(work, "pages"))
             if is_photo_plan(job.get("plan")):
                 add_caption_draft(job, rendered.qa)
-        rpc("drinks_heartbeat_render", lease)
+        if is_jjeri:
+            _assert_jjeri_lease(rpc, lease)
+        else:
+            rpc("drinks_heartbeat_render", lease)
         assets = []
         generated = rendered.qa.get("generated_scenes") or rendered.qa.get("generated_pages")   # 영상 장면·카드 쪽의 산 그림
         for f in rendered.files:
@@ -270,7 +279,11 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
             key = f"drinks/{job['job_id']}/{name}"   # 작업마다 새 폴더 — 옛 묶음 파일을 덮지 않는다
             # ★ 올린 뒤 등록한다. 등록 직전에 임대를 잃으면 비공개 버킷에 DB 행 없는 파일이 남는다(고아) —
             #   덮어쓰지 않는 새 위치라 다른 묶음을 해치지 않고, 정리 규칙이 생기면 그때 회수한다(docs).
+            if is_jjeri:
+                _assert_jjeri_lease(rpc, lease)
             stored = storage.put(f["path"], key, f["mime"])
+            if is_jjeri:
+                _assert_jjeri_lease(rpc, lease)
             reg = rpc("drinks_register_asset", {**lease, "asset": {
                 "storage_key": stored, "sha256": sha256_file(f["path"]), "mime": f["mime"], "bytes": os.path.getsize(f["path"]),
                 "width": f.get("width"), "height": f.get("height"), "duration_ms": f.get("duration_ms"),
@@ -278,8 +291,11 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
                 "rights": "generated_paid" if generated else "generated_local",
                 "provenance": {"renderer": job.get("renderer_version"), "images": _image_provenance(rendered.qa),
                                "spend_approval_id": job.get("spend_approval_id"),
-                               "tts": tts if job["format"] == "video" else None, "brand": rendered.qa.get("brand")}}})
+                               "tts": tts if job["format"] == "video" else None, "brand": rendered.qa.get("brand"),
+                               **({"rights": rendered.qa["rights"]} if is_jjeri else {})}}})
             assets.append({"asset_id": reg["asset_id"], "role": f["role"], "position": f["position"]})
+        if is_jjeri:
+            _assert_jjeri_lease(rpc, lease)
         for c in rendered.costs:
             rpc("drinks_record_cost", {**lease, "cost": c})
         return rpc("drinks_finish_render", {**lease, "outcome": "succeeded", "assets": assets, "qa": rendered.qa})
@@ -293,7 +309,12 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
         except DbError:
             return {"status": "lease_lost"}
     except RenderError as exc:
-        return rpc("drinks_finish_render", {**lease, "outcome": "failed", "error_code": exc.code, "error_message": exc.message})
+        try:
+            return rpc("drinks_finish_render", {**lease, "outcome": "failed", "error_code": exc.code, "error_message": exc.message})
+        except DbError as finish:
+            if finish.code != "lease_lost":
+                raise
+            return {"status": "lease_lost"}
     except Exception as exc:  # noqa: BLE001 — 어떤 예외도 작업을 running 에 남기지 않는다
         log.exception("drinks: 제작 작업 %s 예외", job["job_id"])
         try:
@@ -305,8 +326,16 @@ def process_job(job: dict[str, Any], rpc: Rpc, storage: Storage, *, tts: str = "
         shutil.rmtree(work, ignore_errors=True)   # 이 작업의 임시 폴더만 지운다(저장소 파일은 건드리지 않는다)
 
 
+def _assert_jjeri_lease(rpc: Rpc, lease: dict[str, Any]) -> None:
+    heartbeat = rpc("drinks_heartbeat_render", lease) or {}
+    if heartbeat.get("renderable") is not True or heartbeat.get("cancel_requested") is not False:
+        raise RenderError("jjeri_render_canceled", "작업이 취소됐거나 승인 근거를 지금 쓸 수 없습니다")
+
+
 def _image_provenance(qa: dict[str, Any]) -> str:
     """영상 장면 그림의 출처 표기. 산 그림이 있으면 그것이 우선(generated_paid), 카드 페이지만 썼으면 card_pages."""
+    if qa.get("renderer") in ("jjeri_class", "jjeri_anatomy"):
+        return "jjeri_svg"
     if qa.get("generated_scenes") or qa.get("generated_pages"):   # 영상 장면·사진형 카드 쪽의 산 그림
         return "generated_paid"
     if qa.get("card_page_scenes"):
@@ -330,7 +359,7 @@ def attach_script_check(qa: dict[str, Any], rep: Optional[script_check.Report]) 
 def run_queue(rpc: Rpc, storage: Storage, *, worker_id: str, tts: str = "edge", max_jobs: int = 5, explainer_deps: Any = None) -> list[dict[str, Any]]:
     out = []
     for _ in range(max_jobs):
-        got = rpc("drinks_start_render", {"worker_id": worker_id}) or {}
+        got = rpc("drinks_start_render", {"worker_id": worker_id, "allow_jjeri_class": True, "allow_jjeri_anatomy": True}) or {}
         job = got.get("job")
         if not job:
             break

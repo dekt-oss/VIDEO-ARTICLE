@@ -1,0 +1,182 @@
+[
+  {
+    "k": 0,
+    "sid": "s1",
+    "file": "assets/vo/b00.mp3",
+    "sec": 3.939,
+    "head": 0.109,
+    "end": 3.645,
+    "text": "버번 캐스크와 셰리 캐스크,\n맛이 어떻게 다를까요?",
+    "sha256": "84d47e374c45a7c9433e98d95acc4e20d00864eebfedc7feb9851e3522e10b96"
+  },
+  {
+    "k": 1,
+    "sid": "s2",
+    "file": "assets/vo/b01.mp3",
+    "sec": 3.62,
+    "head": 0.177,
+    "end": 3.269,
+    "text": "흔히 오크통은 그냥\n술을 담는 그릇이라고 생각하죠.",
+    "sha256": "e8be2ee2614ea4c39cb7ebb316941edbb702faf7caa6ad5a8fad59c06106e36f"
+  },
+  {
+    "k": 2,
+    "sid": "s3",
+    "file": "assets/vo/b02.mp3",
+    "sec": 3.211,
+    "head": 0.108,
+    "end": 2.841,
+    "text": "그런데 갓 증류한 원액은\n사실 투명해요.",
+    "sha256": "49a5eaa2bde8c71b9a2a43c2d00ba5080a3953b44836ceeba0950817ffb0c020"
+  },
+  {
+    "k": 3,
+    "sid": "s3",
+    "file": "assets/vo/b03.mp3",
+    "sec": 3.37,
+    "head": 0.11,
+    "end": 3.043,
+    "text": "통을 티백처럼 우려내며\n색과 향을 입는 거예요.",
+    "sha256": "34bcb32f41b21070cc1cbe804bff851b2e111752f1659666041aed34ca0b7256"
+  },
+  {
+    "k": 4,
+    "sid": "s4",
+    "file": "assets/vo/b04.mp3",
+    "sec": 2.732,
+    "head": 0.098,
+    "end": 2.413,
+    "text": "버번은 새 오크통에만\n담아야 해요.",
+    "sha256": "3bcc288293e550aa30f039672494d1ad8d56c6362c3e9d26034f81d609e7ca66"
+  },
+  {
+    "k": 5,
+    "sid": "s4",
+    "file": "assets/vo/b05.mp3",
+    "sec": 3.415,
+    "head": 0.107,
+    "end": 3.109,
+    "text": "그래서 한 번 쓴 통이\n스코틀랜드로 건너오죠.",
+    "sha256": "6ae91a98f5b1eb225d3312822b6600c8338ab3828ca7ecdfaff48ddee5131220"
+  },
+  {
+    "k": 6,
+    "sid": "s4",
+    "file": "assets/vo/b06.mp3",
+    "sec": 4.507,
+    "head": 0.147,
+    "end": 3.988,
+    "text": "구하기 쉽고 비교적 저렴해서\n스카치 대부분이 이 통을 써요.",
+    "sha256": "33357f1a0ae23e5ce1348de7a7d9d4b13166edacfc653188c59a9580eae0d1aa"
+  },
+  {
+    "k": 7,
+    "sid": "s5",
+    "file": "assets/vo/b07.mp3",
+    "sec": 3.666,
+    "head": 0.121,
+    "end": 3.394,
+    "text": "속을 그을린 미국산 오크는\n바닐라와 캐러멜 향을,",
+    "sha256": "6e946e496bd8de60759ae08aa8fa61bef7c7f4f141816607526feeafafe02d63"
+  },
+  {
+    "k": 8,
+    "sid": "s5",
+    "file": "assets/vo/b08.mp3",
+    "sec": 3.62,
+    "head": 0.137,
+    "end": 3.286,
+    "text": "여기에 은은한 스모크와\n톡 쏘는 스파이스를 더해요.",
+    "sha256": "862c5ac09534fad94c019613e911724fe6ff434ae2cdd75ef2765baae4984ac6"
+  },
+  {
+    "k": 9,
+    "sid": "s6",
+    "file": "assets/vo/b09.mp3",
+    "sec": 3.802,
+    "head": 0.135,
+    "end": 3.388,
+    "text": "셰리 캐스크는 강화 와인인\n셰리를 머금었던 통이에요.",
+    "sha256": "4b7a9ceed54684afa25366496f20d0d6150464f80fe9e0c5a1a7b7ca7e37583a"
+  },
+  {
+    "k": 10,
+    "sid": "s7",
+    "file": "assets/vo/b10.mp3",
+    "sec": 3.689,
+    "head": 0.077,
+    "end": 3.405,
+    "text": "그래서 깊고 어두운\n과일 향과 풍부함을 끌어내요.",
+    "sha256": "a951374756fe20d8d1d6ec3423c27ca24ab27dc976155d1822a813381d163f62"
+  },
+  {
+    "k": 11,
+    "sid": "s8",
+    "file": "assets/vo/b11.mp3",
+    "sec": 3.666,
+    "head": 0.116,
+    "end": 3.152,
+    "text": "다만 셰리 캐스크는\n구하기 어렵고 훨씬 비싸요.",
+    "sha256": "1c240520a5b835bea20f03b9d42f51a8b12c348eb28b3ac8f716f6a6a5d41bd3"
+  },
+  {
+    "k": 12,
+    "sid": "s9",
+    "file": "assets/vo/b12.mp3",
+    "sec": 4.303,
+    "head": 0.077,
+    "end": 3.829,
+    "text": "그래서 조금만 섞거나,\n마지막에 셰리 통에서 더 익혀요.",
+    "sha256": "1406d84cd30cfa646cac7256cfb420458b444a62d7b0da5deb91c8ea0242575d"
+  },
+  {
+    "k": 13,
+    "sid": "s10",
+    "file": "assets/vo/b13.mp3",
+    "sec": 4.871,
+    "head": 0.097,
+    "end": 4.541,
+    "text": "정리하면 버번은 바닐라·캐러멜,\n셰리는 어두운 과일이에요.",
+    "sha256": "68ed53aca9eabdffc30c960ec5666cc3cefb8eeedd99219c0356e93b0abd4922"
+  },
+  {
+    "k": 14,
+    "sid": "s10",
+    "file": "assets/vo/b14.mp3",
+    "sec": 3.552,
+    "head": 0.13,
+    "end": 3.201,
+    "text": "물론 증류소와 숙성 기간에 따라\n예외도 많아요.",
+    "sha256": "50dcea543ad90f2398d8f5b5d8929563f75430b46ed4a33e1b4fbfcb540b18d1"
+  },
+  {
+    "k": 15,
+    "sid": "s11",
+    "file": "assets/vo/b15.mp3",
+    "sec": 3.348,
+    "head": 0.174,
+    "end": 2.764,
+    "text": "라벨에서 캐스크 이름을\n먼저 찾아보세요.",
+    "sha256": "c2ec547881008b299e9f1a4c87535dcc56431471cbf2f094dfe452134b196541"
+  },
+  {
+    "k": 16,
+    "sid": "s11",
+    "file": "assets/vo/b16.mp3",
+    "sec": 3.733,
+    "head": 0.119,
+    "end": 3.163,
+    "text": "궁금하면 술째리고에서\n바로 검색해 보세요.",
+    "sha256": "570cac97cb2eee630c02e03ee04c329e50fabe494dfc14675043bb0c77e470f5"
+  },
+  {
+    "k": 17,
+    "sid": "s12",
+    "file": "assets/vo/b17.mp3",
+    "sec": 4.757,
+    "head": 0.126,
+    "end": 4.406,
+    "text": "여러분은 버번파? 셰리파?\n댓글로 알려 주세요!",
+    "sha256": "7b596d7719ae7c3d63caa786482f03ea2e3030e8a2412c32974b2f396e20dc60"
+  }
+]

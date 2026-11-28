@@ -227,7 +227,7 @@ class Ledger:
         self.calls: list[dict[str, Any]] = []
         self.spent = 0.0
 
-    def run(self, model: str, est_usd: float, fn: Callable[[], Any], note: str) -> Any:
+    def run(self, model: str, est_usd: float, fn: Callable[[], Any], note: str, *, single_submission: bool = False) -> Any:
         if not self.budget_id:
             raise DevelopError("budget_missing", "결재(예산)가 없는 요청은 모델을 부를 수 없습니다 — 대시보드에서 개발 결재를 열고 다시 요청하세요")
         try:
@@ -246,11 +246,12 @@ class Ledger:
                     self.rpc("drinks_develop_settle", {"hold_id": hold["hold_id"], "outcome": "settled", "actual_usd": round(box.usd, 4),
                                                        "note": f"{note} — 실패했지만 사용량이 기록됨({type(exc).__name__})"})
                     self.spent += box.usd
-                elif _maybe_billed(exc):
+                elif _maybe_billed(exc) or (single_submission and _provider_server_error(exc)):
                     # 리뷰 R1 곁가지(2026-11-04): 응답 전에 끊긴 호출은 공급자가 처리·청구했을 수 있다. 사용량이 안 잡혔다고 0원으로 풀지 않는다
                     # (지출을 작게 적지 않는다). engine/llm.py 가 타임아웃을 자체 재시도하므로 실제로는 여러 번 보냈을 수도 있다 — 노트에 남긴다.
+                    submissions = 1 if single_submission else config.HTTP_MAX_RETRIES
                     self.rpc("drinks_develop_settle", {"hold_id": hold["hold_id"], "outcome": "settled", "actual_usd": round(est_usd, 4),
-                                                       "note": f"{note} — 결과 불명({type(exc).__name__}), 예상 금액으로 확정(재시도 포함 최대 {config.HTTP_MAX_RETRIES}회 전송 가능)"})
+                                                       "note": f"{note} — 결과 불명({type(exc).__name__}), 예상 금액으로 확정(최대 {submissions}회 전송 가능)"})
                     self.spent += est_usd
                 else:
                     self.rpc("drinks_develop_settle", {"hold_id": hold["hold_id"], "outcome": "released", "note": f"{note} — 실패({type(exc).__name__})"})
@@ -261,6 +262,12 @@ class Ledger:
         self.spent += actual
         self.calls.append({"model": model, "est_usd": est_usd, "actual_usd": round(actual, 4), "note": note})
         return value
+
+
+def _provider_server_error(exc: BaseException) -> bool:
+    import httpx
+
+    return isinstance(exc, httpx.HTTPStatusError) and 500 <= exc.response.status_code < 600
 
 
 # ─────────────────────────────────────────────────────────────
@@ -411,6 +418,15 @@ def _llm_write_card_plan(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return drinks_card_plan.llm_write_card_plan(*args, **kwargs)
 
 
+def llm_write_jjeri(prompt: str, user: str) -> str:
+    """One HTTP submission per held call, without generic JSON retries or provider fallback."""
+    from . import llm
+
+    llm.set_text_purpose("drinks_develop_jjeri")
+    return llm._deepseek_submit(model=config.DRINKS_JJERI_MODEL, system=prompt, user=user,
+                               max_tokens=config.DRINKS_DEVELOP_PLAN_MAX_TOKENS)
+
+
 @dataclass
 class Deps:
     extract_claims: Callable[[str, str], list[dict[str, Any]]] = llm_extract_claims
@@ -424,6 +440,8 @@ class Deps:
     fetcher_factory: Optional[Callable[[list[str]], Any]] = None   # hosts → SafeFetcher 같은 것(get 메서드)
     # question → [{"url","title"}]. None 이면 웹 검색을 하지 않는다(시험 기본). 운영 워커는 llm.gemini_web_search 를 넣는다(main).
     web_search: Optional[Callable[[str], list[dict[str, str]]]] = None
+    jjeri_respond: Optional[Callable[[str, str], str]] = None
+    jjeri_anatomy_enabled: bool = False
 
     def __post_init__(self) -> None:
         if self.factcheck is None:
@@ -1590,6 +1608,52 @@ def run_plan(job: dict[str, Any], rpc: Rpc, lease: dict[str, Any], ledger: Ledge
 # 워커 루프
 # ─────────────────────────────────────────────────────────────
 
+def run_jjeri_episode(rpc, lease, ledger, deps, beat):
+    import httpx
+    from .motion.jjeri_class.directive import generate_episode, project_plan
+    from .motion.jjeri_class.evidence import EvidenceError
+
+    if deps.jjeri_respond is None:
+        raise DevelopError("jjeri_disabled", "째리 생성 워커가 꺼져 있습니다", "failed")
+    ctx = rpc("drinks_jjeri_generation_context", lease)
+
+    def respond(prompt, payload):
+        beat("jjeri:correction" if "correction" in payload else "jjeri:generate")
+        user = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        # One input byte per token plus message overhead makes the existing token estimate conservative.
+        in_tokens = len(prompt.encode("utf-8")) + len(user.encode("utf-8")) + config.DRINKS_JJERI_REQUEST_OVERHEAD_TOKENS
+        est = estimate_usd(config.DRINKS_JJERI_MODEL, in_tokens * config.DRINKS_DEVELOP_CHARS_PER_TOKEN,
+                           config.DRINKS_DEVELOP_PLAN_MAX_TOKENS)
+        try:
+            return ledger.run(config.DRINKS_JJERI_MODEL, est, lambda: deps.jjeri_respond(prompt, user), "째리 지시서",
+                              single_submission=True)
+        except httpx.HTTPStatusError as exc:
+            if payment_required(exc):
+                raise DevelopError("jjeri_provider_payment_required", "째리 생성용 DeepSeek 계정의 결제 상태를 확인하세요", "failed") from exc
+            if exc.response.status_code == 429 or _provider_server_error(exc):
+                raise DevelopError("jjeri_provider_unavailable", "모델이 응답하지 않았습니다. 원장 금액을 확인하고 재시도 여부를 결정하세요", "failed") from exc
+            raise
+
+    try:
+        if ctx.get("format", "jjeri_class") == "jjeri_anatomy":
+            from .jjeri_anatomy.evidence import generate, project_plan as project_anatomy
+            if not deps.jjeri_anatomy_enabled:
+                raise DevelopError("jjeri_disabled", "째리 해부 생성 워커가 꺼져 있습니다", "failed")
+            raw = generate(ctx["evidence"], ctx["topic"], respond, required_claim_ids=ctx["required_claim_ids"])
+            plan = project_anatomy(raw)
+        else:
+            raw = generate_episode(ctx["evidence"], topic=ctx["topic"], lesson=ctx["lesson"], respond=respond,
+                                   required_claim_ids=ctx["required_claim_ids"])
+            plan = project_plan(raw)
+    except EvidenceError as exc:
+        raise DevelopError(exc.code, str(exc), "blocked") from exc
+    except (ValueError, TypeError) as exc:
+        raise DevelopError("jjeri_invalid_response", "검사를 통과한 째리 지시서를 받지 못했습니다", "blocked") from exc
+    beat("jjeri:save_preview")
+    return rpc("drinks_finish_jjeri_episode", {**lease, "plan": plan,
+        "cost": {"spent_usd": round(ledger.spent, 4), "calls": ledger.calls}})
+
+
 def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
     lease = {"request_id": job["request_id"], "lease_token": job["lease_token"]}
     ledger = Ledger(rpc, lease, job.get("budget_id"))
@@ -1606,6 +1670,8 @@ def process_job(job: dict[str, Any], rpc: Rpc, deps: Deps) -> dict[str, Any]:
         if not job.get("budget_id"):
             raise DevelopError("budget_missing", "결재(예산)가 없는 요청입니다 — 대시보드에서 개발 결재를 열고 다시 요청하세요")
         beat("start")
+        if job["kind"] == "jjeri":
+            return run_jjeri_episode(rpc, lease, ledger, deps, beat)
         if job["kind"] == "evidence":
             run = run_evidence
         elif job.get("format_intent") == "card":   # 0077: 확정된 소재의 새 카드 초안(스튜디오 다시 쓰기)도 카드 대본이다 — 형식이 명시된 요청만
@@ -1681,7 +1747,10 @@ def run_queue(rpc: Rpc, deps: Deps, *, worker_id: str, max_jobs: int = 5) -> lis
     out = []
     for _ in range(max_jobs):
         sweep_recoveries(rpc)
-        got = rpc("drinks_start_develop", {"worker_id": worker_id}) or {}
+        capability = {"allow_jjeri": True} if deps.jjeri_respond is not None else {}
+        if capability and deps.jjeri_anatomy_enabled:
+            capability["allow_jjeri_anatomy_generate"] = True
+        got = rpc("drinks_start_develop", {"worker_id": worker_id, **capability}) or {}
         job = got.get("job")
         if not job:
             break
@@ -1698,7 +1767,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = ap.parse_args(argv)
     from .llm import gemini_web_search
 
-    res = run_queue(supabase_rpc(), Deps(web_search=gemini_web_search), worker_id=config.WORKER_ID, max_jobs=args.max_jobs)
+    deps = Deps(web_search=gemini_web_search,
+                jjeri_respond=llm_write_jjeri if config.DRINKS_JJERI_GENERATE_ENABLED else None,
+                jjeri_anatomy_enabled=config.DRINKS_JJERI_ANATOMY_GENERATE_ENABLED)
+    res = run_queue(supabase_rpc(), deps, worker_id=config.WORKER_ID, max_jobs=args.max_jobs)
     return 1 if any(r.get("status") in ("failed", "lease_lost") for r in res) else 0
 
 

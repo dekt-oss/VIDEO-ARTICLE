@@ -356,3 +356,150 @@ def test_late_schedule_pauses_and_caption_without_source_pauses(env):
     assert row["pause_code"] == "caption_check" and "원문" in row["pause_reason"]
     assert b.sql("select provider_container_ids from drink_publication_attempts where request_id = $1", [rid2])[0][
         "provider_container_ids"] == [], "캡션이 막히면 인스타에 아무것도 만들지 않는다"
+
+def test_jjeri_class_queue_and_approval(tmp_path, monkeypatch):
+    """Local SQL candidate through the normal request/claim/storage path."""
+    from engine import config
+    from engine.motion.jjeri_class import queue
+    from engine.motion.jjeri_class import build as jjeri_build
+    from engine.motion.jjeri_class.directive import generate_episode
+    from engine.drinks_render import Rendered
+    from test_jjeri_evidence import mock_episode
+
+    monkeypatch.setenv("DRINKS_BRIDGE_JJERI", "1")
+    b = Bridge()
+    rpc = b.rpc
+    try:
+        tid = rpc("drinks_create_topic", {"title": "캐스크 모의 실험", "question": "어떻게 달라질까?",
+                                        "categories": ["whisky"], "lane": "evergreen"})["topic_id"]
+        scores = {**SCORES, "fit_video": 4}
+        rpc("drinks_triage", {"topic_id": tid, "expected_version": version(b, "drink_topics", tid),
+                              "scores": scores})
+        rpc("drinks_topic_action", {"topic_id": tid, "expected_version": version(b, "drink_topics", tid),
+                                    "action": "start_research"})
+        episode, evidence = mock_episode()
+        quote = evidence["claims"][0]["source_refs"][0]["original_quote"]
+        snapshot = rpc("drinks_add_source", {"topic_id": tid, "source": {
+            "canonical_url": "https://example.org/jjeri-fixture", "body_text": quote,
+            "rights_status": "quote_ok", "title": "Rehearsal source"}})["snapshot_id"]
+        claims = [{"claim_id": "c1", "text": "모의 실험의 결과", "claim_type": "process", "support_review": "supported",
+                   "source_refs": [{"snapshot_id": snapshot, "original_quote": quote}]}]
+        brief = {"audience_question": "어떻게 달라질까?", "core_takeaway": "캐스크 비교",
+                 "selected_claim_ids": ["c1"], "proposed_formats": ["video"], "required_claims": {"video": ["c1"]}}
+        saved = rpc("drinks_save_review", {"topic_id": tid, "expected_topic_version": version(b, "drink_topics", tid),
+                    "scores": scores, "brief": brief, "evidence_pack": {"claims": claims}})
+        rid = saved["review_id"]
+        for action in ("submit", "approve"):
+            rpc("drinks_review_action", {"review_id": rid, "action": action,
+                                         "expected_version": version(b, "drink_topic_reviews", rid)})
+        rv = b.sql("select approved_hash from drink_topic_reviews where id = $1", [rid])[0]
+        rpc("drinks_select", {"topic_id": tid, "expected_version": version(b, "drink_topics", tid), "review_id": rid,
+                             "review_input_hash": rv["approved_hash"], "formats": ["video"], "editorial_week": "2026-11-23"})
+        capability = rpc("drinks_jjeri_render_status", {})
+        assert capability == {"ready": True, "scene_min": config.JJERI_SCENE_MIN, "scene_max": config.JJERI_SCENE_MAX,
+                              "max_bytes": config.JJERI_DIRECTIVE_MAX_BYTES}
+        submitted = b.sql("select evidence_pack, brief from drink_topic_reviews where id = $1", [rid])[0]
+        draft_evidence = {
+            "approved": True,
+            "selected_claim_ids": submitted["brief"]["selected_claim_ids"],
+            "claims": submitted["evidence_pack"]["claims"],
+            "sources": [{"snapshot_id": snapshot, "title": "Rehearsal source", "url": "https://example.org/jjeri-fixture"}],
+        }
+        def mock_response(prompt, payload):
+            assert payload["claims"][0]["quotes"] == [quote]
+            return json.dumps(episode)
+        raw = generate_episode(draft_evidence, topic=episode["topic"], lesson=episode["episode"], respond=mock_response)
+        plan = {"scenes": [{"narration": "캐스크를 비교해요.", "claim_ids": ["c1"]}], "jjeri_class": raw}
+        pid = rpc("drinks_save_plan", {"topic_id": tid, "format": "video", "topic_review_id": rid,
+                                      "plan_json": plan})["revision_id"]
+        request = {"plan_revision_id": pid}
+        with pytest.raises(dc.DbError, match="승인되고"):
+            rpc("drinks_request_jjeri_render", request)
+        for action in ("submit", "approve"):
+            rpc("drinks_plan_action", {"revision_id": pid, "action": action,
+                                       "expected_version": version(b, "drink_plan_revisions", pid)})
+        with pytest.raises(dc.DbError, match="무료 렌더"):
+            rpc("drinks_request_jjeri_render", {**request, "paid": True})
+        # Simulate a future migration reinstalling the pre-Jjeri shared function.
+        legacy = b.sql("select pg_get_functiondef('drinks_request_render_before_jjeri(jsonb)'::regprocedure) as ddl")[0]["ddl"]
+        b.sql(legacy.replace("FUNCTION public.drinks_request_render_before_jjeri(", "FUNCTION public.drinks_request_render(", 1))
+
+        first = rpc("drinks_request_jjeri_render", request)
+        assert first.get("renderer") == "jjeri_class"
+        assert b.sql("select renderer from drink_production_jobs where id = $1", [first["job_id"]]) == [{"renderer": "jjeri_class"}]
+        assert rpc("drinks_request_jjeri_render", request)["job_id"] == first["job_id"]
+        rpc("drinks_cancel_render", {"job_id": first["job_id"]})
+        with pytest.raises(dc.DbError, match="같은 형식"):
+            rpc("drinks_request_render", {**request, "retry_of": first["job_id"]})
+        second = rpc("drinks_request_jjeri_render", {**request, "retry_of": first["job_id"]})
+        assert second["attempt_no"] == 2
+        assert rpc("drinks_start_render", {"worker_id": "legacy"})["job"] is None
+        work = rpc("drinks_start_render", {"worker_id": "jjeri-proof", "allow_jjeri_class": True})["job"]
+        assert work["renderer"] == "jjeri_class" and work["plan"]["jjeri_class"] == episode
+        assert work["sources"][0]["snapshot_id"] == snapshot
+
+        from engine.motion.jjeri_class.evidence import audit_episode
+        approval = {"approved": True, "selected_claim_ids": work["brief"]["selected_claim_ids"],
+                    "claims": work["claims"], "sources": work["sources"]}
+        _, evidence_qa = audit_episode(episode, approval)
+        live_local = os.environ.get("JJERI_LOCAL_REAL_RENDER") == "1"
+        if live_local:
+            fixture = ROOT / "assets/templates/jjeri-class/assets/vo"
+            voice = json.loads((fixture / "vo.json").read_text(encoding="utf-8"))
+            source_text = json.loads((fixture.parent.parent / "episode.example.json").read_text(encoding="utf-8"))
+            source_beats = [beat["text"] for scene in source_text["scenes"] for beat in scene["beats"]]
+            def replay_voice(text, path):
+                k = int(path.stem[1:])
+                assert jjeri_build.spoken(text).rstrip(".") == jjeri_build.spoken(source_beats[k]).rstrip(".")
+                shutil.copyfile(fixture / path.name, path)
+                row = voice[k]
+                return row["sec"], row["head"], row["end"]
+            monkeypatch.setattr(jjeri_build, "_synthesize", replay_voice)
+        else:
+            def substitute_render(_, work_dir, **kwargs):
+                path = pathlib.Path(work_dir) / "mock.mp4"
+                path.write_bytes(b"mock data for the SQL and storage integration test")
+                cover = pathlib.Path(work_dir) / "mock.jpg"
+                cover.write_bytes(b"mock cover for the SQL and storage integration test")
+                return Rendered([{"path": str(path), "role": "final_video", "position": 1, "mime": "video/mp4",
+                                  "width": 1080, "height": 1920, "duration_ms": 71000},
+                                 {"path": str(cover), "role": "cover", "position": 1, "mime": "image/jpeg",
+                                  "width": 1080, "height": 1920}],
+                                {"renderer": "jjeri_class", "rights": {"bgm": "CC BY"}, "evidence": evidence_qa},
+                                [{"kind": "render", "provider": "local_hyperframes", "cost_usd": 0}])
+            monkeypatch.setattr(queue, "render_job", substitute_render)
+
+        storage = drinks_produce.Storage(mode="local", root=str(tmp_path / "storage"))
+        result = drinks_produce.process_job(work, rpc, storage)
+        if result["status"] != "succeeded":
+            status = b.sql("select error_code,error_message from drink_production_jobs where id = $1", [work["job_id"]])
+            pytest.fail(str(status))
+        data = b.sql("select qa_summary from drink_output_reviews where manifest_id = $1", [result["manifest_id"]])[0]["qa_summary"]
+        assert data["renderer"] == "jjeri_class"
+        assert data["evidence"]["source_ids_by_scene"]["s1"] == [snapshot]
+        assert data["rights"]["bgm"] == ("owned_code_synth" if live_local else "CC BY")
+        files = list((pathlib.Path(storage.root) / "drinks" / work["job_id"]).iterdir())
+        assert any(file.suffix == ".mp4" and file.stat().st_size for file in files)
+        cost = b.sql("select sum(cost_usd)::float8 as total, count(*)::int as count from drink_cost_entries where job_id = $1",
+                     [work["job_id"]])[0]
+        assert cost["total"] == 0 and cost["count"] == (2 if live_local else 1)
+        review = b.sql("select id, version from drink_output_reviews where manifest_id = $1", [result["manifest_id"]])[0]
+        if not live_local:
+            # Fake local approval only. Never advance the real rehearsal's output beyond pending QA.
+            checklist = {key: True for key in ("scene_types_labeled", "no_real_product_implied",
+                         "claims_match_evidence", "audio_subtitles_ok", "vertical_ok")}
+            rpc("drinks_output_review_action", {"review_id": review["id"], "expected_version": review["version"],
+                                                "action": "approve", "checklist": checklist})
+            aid = rpc("drinks_register_account", {"external_account_id": "fake_jjeri", "display_name": "모의 계정",
+                      "account_type": "test", "connection": "fake", "capabilities": {"post_types": ["reel"]}})["account_id"]
+            pub = rpc("drinks_create_publication", {"output_review_id": review["id"], "account_id": aid,
+                                                   "caption": "로컬 모의", "publish_at": datetime.now(timezone.utc).isoformat()})
+            assert pub["content_format"] == "jjeri_class"
+            with pytest.raises(RuntimeError, match="jjeri_owner_review_required"):
+                b.sql("update drink_publication_requests set status = 'scheduled' where id = $1", [pub["request_id"]])
+        if live_local:
+            assert {"jjeri_human_source_review_required"} <= set(data["warnings"])
+            print(json.dumps({"local_files": [str(file) for file in files], "qa": data["audio"],
+                              "cost": cost, "job": work["job_id"]}, ensure_ascii=False))
+    finally:
+        b.close()

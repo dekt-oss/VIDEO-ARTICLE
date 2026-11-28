@@ -14,6 +14,8 @@ import ExplainerProduction from "@/components/drinks/ExplainerProduction";
 import LoadProblem from "@/components/drinks/LoadProblem";
 import { MemeDraftActions, MemeDraftForm } from "@/components/drinks/MemeDraftControls";
 import PlanTab from "@/components/drinks/PlanTab";
+import { JjeriRenderOptions } from "@/components/drinks/JjeriRenderOptions";
+import { jjeriJobMessage } from "@/lib/drinks/jjeri";
 import { CancelRender, ExplainerApproveAll, OutputReview, RenderRequest } from "@/components/drinks/ProductionControls";
 import { AudioControl, CreateMemePublication, CreatePublication, RequestActions } from "@/components/drinks/PublishControls";
 import { autoCaption } from "@/lib/drinks/caption";
@@ -205,9 +207,11 @@ export function buildTopicLane(input: TopicLaneInput): SectionView[] {
     nodes.produce = <LoadProblem state={production.state} error={production.state === "failed" ? production.error : undefined} />;
     nodes.output = null;
   } else {
-    const { plan, review: prReview, renderable, jobs, manifests, costs, explainer } = production.data;
+    const { plan, review: prReview, renderable, jobs, manifests, costs, explainer, jjeri, anatomy } = production.data;
     const active = jobs.find((j) => j.status === "queued" || j.status === "running");
-    const lastFailed = jobs.find((j) => j.status === "failed" || j.status === "canceled");
+    const lastFailed = jobs.find((j) => j.renderer !== "jjeri_class" && j.renderer !== "jjeri_anatomy" && (j.status === "failed" || j.status === "canceled"));
+    const jjeriRetry = jobs.find((j) => j.renderer === "jjeri_class" && (j.status === "failed" || j.status === "canceled"));
+    const anatomyRetry = jobs.find((j) => j.renderer === "jjeri_anatomy" && (j.status === "failed" || j.status === "canceled"));
     const total = costs.reduce((s, c) => s + Number(c.cost_usd), 0);
     const legacyVideo = plan.format === "video" && !isExplainer;
     nodes.produce = (
@@ -232,6 +236,9 @@ export function buildTopicLane(input: TopicLaneInput): SectionView[] {
         {isExplainer && !renderable && (
           <ExplainerProduction planId={plan.id} status={explainer} activeJob={active ? { renderer: active.renderer, status: active.status } : null} hidePrimary />
         )}
+        {plan.format === "video" && <JjeriRenderOptions planId={plan.id} availability={jjeri} anatomy={anatomy} anatomyRetry={anatomyRetry?.id}
+          jjeriRetry={jjeriRetry?.id} blocked={Boolean(renderable || active)}
+          allowLocal={false} hasOutput={manifests.length > 0} />}
         <p className="muted">비용 합계(이 제작안): ${total.toFixed(4)} — 공급자·모델별 기록 {costs.length}건</p>
         <details className="dk-sub">
           <summary className="muted">제작 작업 {jobs.length}건</summary>
@@ -240,7 +247,7 @@ export function buildTopicLane(input: TopicLaneInput): SectionView[] {
               <span>
                 <span className={j.status === "failed" ? "pill dk-bad" : j.status === "succeeded" ? "pill dk-ok" : "pill"}>{j.status === "succeeded" ? (JOB_DONE_LABEL[j.renderer] ?? JOB_LABEL[j.status]) : JOB_LABEL[j.status]}</span>{" "}
                 시도 {j.attempt_no} · {j.renderer}({j.renderer_version}) · 요청 {fmtTime(j.created_at)} · 끝 {fmtTime(j.finished_at)}
-                {j.error_code && <span className="muted"> · {j.error_code}: {j.error_message}</span>}
+                {j.error_code && <span className="muted"> · {j.error_code} · {jjeriJobMessage(j.renderer, j.error_code, j.error_message)}</span>}
               </span>
             </div>
           ))}

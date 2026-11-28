@@ -5,6 +5,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CancelRender, CloseSpendApproval, OpenSpendApproval, OutputReview, PaidRenderRequest, RenderRequest } from "@/components/drinks/ProductionControls";
+import { JjeriRenderOptions } from "@/components/drinks/JjeriRenderOptions";
+import { jjeriJobMessage } from "@/lib/drinks/jjeri";
 import ExplainerProduction from "@/components/drinks/ExplainerProduction";
 import QaPanel from "./QaPanel";
 import LoadProblem from "@/components/drinks/LoadProblem";
@@ -40,11 +42,13 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
   if (v.state !== "ok") return <main className="container"><LoadProblem state={v.state} error={v.state === "failed" ? v.error : undefined} /></main>;
   // 2026-11-05 동선 개편: 제작은 작업공간의 제작 칸이 정본이다(기획 v2 §5 동적 조회). `?legacy=1` 이면 이 옛 화면을 그대로 연다.
   if (!sp[LEGACY_BYPASS_PARAM]) redirect(productionRedirect(v.data.plan.topic_id, v.data.plan.format, v.data.plan.id));
-  const { plan, topic, review, renderable, jobs, manifests, costs, spend, explainer } = v.data;
+  const { plan, topic, review, renderable, jobs, manifests, costs, spend, explainer, jjeri, anatomy } = v.data;
   const isExplainer = explainer.is_explainer;
   const f = plan.format as Format;
   const active = jobs.find((j) => j.status === "queued" || j.status === "running");
-  const lastFailed = jobs.find((j) => j.status === "failed" || j.status === "canceled");
+  const lastFailed = jobs.find((j) => j.renderer !== "jjeri_class" && j.renderer !== "jjeri_anatomy" && (j.status === "failed" || j.status === "canceled"));
+  const jjeriRetry = jobs.find((j) => j.renderer === "jjeri_class" && (j.status === "failed" || j.status === "canceled"));
+  const anatomyRetry = jobs.find((j) => j.renderer === "jjeri_anatomy" && (j.status === "failed" || j.status === "canceled"));
   const total = costs.reduce((s, c) => s + Number(c.cost_usd), 0);
   const estimate = Number(spend.estimate.total_usd);
   const scenes = ((plan.plan_json as { scenes?: { visual_role?: string; visual_prompt?: string | null }[] }).scenes ?? []);
@@ -72,12 +76,15 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
         ) : active ? (
           <p className="dk-kv">진행 중: {JOB_LABEL[active.status]} (시도 {active.attempt_no}) <CancelRender jobId={active.id} />
             {active.cancel_requested && <span className="muted"> · 취소 요청됨(워커가 다음 확인 때 멈춥니다)</span>}</p>
-        ) : isExplainer ? null : (
+        ) : isExplainer || f === "video" ? null : (
           <div className="actions">
             <RenderRequest planId={plan.id} label={manifests.length ? "다시 렌더" : "렌더 요청"} />
             {lastFailed && <RenderRequest planId={plan.id} retryOf={lastFailed.id} label="실패한 작업 재시도" />}
           </div>
         )}
+        {f === "video" && <JjeriRenderOptions planId={plan.id} availability={jjeri} anatomy={anatomy} anatomyRetry={anatomyRetry?.id}
+          jjeriRetry={jjeriRetry?.id} localRetry={lastFailed?.id} blocked={Boolean(renderable || active)}
+          allowLocal={!isExplainer} hasOutput={manifests.length > 0} />}
         <p className="muted">비용 합계(이 제작안): ${total.toFixed(4)} — 공급자·모델별 기록 {costs.length}건</p>
       </section>
 
@@ -125,7 +132,7 @@ export default async function PlanProductionPage(props: { params: Promise<{ plan
             <span>
               <span className={j.status === "failed" ? "pill dk-bad" : j.status === "succeeded" ? "pill dk-ok" : "pill"}>{j.status === "succeeded" ? (JOB_DONE_LABEL[j.renderer] ?? JOB_LABEL[j.status]) : JOB_LABEL[j.status]}</span>{" "}
               시도 {j.attempt_no} · {j.renderer}({j.renderer_version}) · 요청 {fmtTime(j.created_at)} · 끝 {fmtTime(j.finished_at)}
-              {j.error_code && <span className="muted"> · {j.error_code}: {j.error_message}</span>}
+              {j.error_code && <span className="muted"> · {j.error_code} · {jjeriJobMessage(j.renderer, j.error_code, j.error_message)}</span>}
             </span>
           </div>
         ))}

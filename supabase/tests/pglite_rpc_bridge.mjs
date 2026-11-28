@@ -9,7 +9,7 @@
 //   로컬 개발 서버(web)를 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:<포트> 로 띄워 이 시험 DB 를 읽게 할 수 있다.
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -22,7 +22,13 @@ const MIGS = ["0050_drinks_factory_phase_a", "0051_drinks_factory_phase_b", "005
 const db = new PGlite();
 await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
   grant usage on schema public to anon, authenticated, service_role;`);
-for (const m of MIGS) await db.exec(readFileSync(join(ROOT, "supabase", "migrations", `${m}.sql`), "utf8"));
+const migrationDir = join(ROOT, "supabase", "migrations");
+const jjeri = process.env.DRINKS_BRIDGE_JJERI === "1";
+const files = jjeri ? readdirSync(migrationDir).filter((f) => /^00(5\d|6\d|7\d|8\d|9[01])_drinks_.*\.sql$/.test(f)).sort()
+  : MIGS.map((name) => name + ".sql");
+for (const file of files) await db.exec(readFileSync(join(migrationDir, file), "utf8"));
+if (jjeri) await db.exec(readFileSync(join(ROOT, "supabase", "local", "jjeri_class.sql"), "utf8"));
+if (jjeri) await db.exec(readFileSync(join(ROOT, "supabase", "local", "jjeri_generation.sql"), "utf8"));
 
 // PGlite 는 연결 하나다 — 요청을 한 줄로 세워 role 전환이 섞이지 않게 한다.
 let chain = Promise.resolve();

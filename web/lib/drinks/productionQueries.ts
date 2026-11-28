@@ -1,3 +1,4 @@
+import { jjeriAvailability, jjeriPreview, type JjeriAvailability } from "./jjeri";
 // 주류 제작(0053) 읽기 — 서버 컴포넌트 전용(service key). 실패를 빈 목록으로 바꾸지 않는다.
 // 미리보기: Supabase 비공개 버킷 'drinks' 의 파일은 서버가 1시간짜리 서명 URL 을 만든다.
 //   로컬 검증 저장(local:…)은 브라우저로 열 수 없다 — 화면이 그 사실을 말한다.
@@ -53,6 +54,8 @@ export interface PlanProduction {
   costs: CostRow[];
   spend: PlanSpend;
   explainer: ExplainerStatus;
+  jjeri: JjeriAvailability;
+  anatomy: JjeriAvailability;
 }
 
 export async function loadPlanProduction(planId: string): Promise<Loaded<PlanProduction> | { state: "not_found" }> {
@@ -63,7 +66,8 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
   if (p.error) return { state: "failed", error: `제작안: ${p.error.message}` };
   if (!p.data) return { state: "not_found" };
   const plan = p.data as PlanRow;
-  const [t, rv, va, ren, spend, ex, jobs, mans] = await Promise.all([
+  const jjeriEnabled = plan.format === "video" && process.env.DRINKS_JJERI_ENABLED !== "0";
+  const [t, rv, va, ren, spend, ex, jobs, mans, jjeriStatus] = await Promise.all([
     db.from("drink_topics").select("id, title, question, status").eq("id", plan.topic_id).maybeSingle(),
     db.from("drink_topic_reviews").select("id, revision_no, status, revoked_at").eq("id", plan.topic_review_id).maybeSingle(),
     db.from("drink_review_validity").select("currently_valid").eq("review_id", plan.topic_review_id).maybeSingle(),
@@ -74,6 +78,7 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
       .order("created_at", { ascending: false }).order("id").range(f, to), "제작 작업"),
     fetchAllPages<ManifestRow>((f, to) => db.from("drink_asset_manifests").select("*", { count: "exact" }).eq("plan_revision_id", planId)
       .order("created_at", { ascending: false }).order("id").range(f, to), "파일 묶음"),
+    jjeriEnabled && (jjeriPreview(plan.plan_json) || jjeriPreview(plan.plan_json, "jjeri_anatomy")) ? db.rpc("drinks_jjeri_render_status", { p: { include_anatomy: true } }) : null,
   ]);
   for (const r of [t, rv, va, ren, spend]) if (r.error) return { state: "failed", error: r.error.message };
   // 0067 적용 전(함수 없음)이면 설명형이 아닌 것으로 보고 화면을 그대로 둔다 — 코드를 먼저 합치고 마이그레이션을 뒤에 적용한다. 다른 오류는 숨기지 않는다.
@@ -136,6 +141,8 @@ export async function loadPlanProduction(planId: string): Promise<Loaded<PlanPro
       renderable: (ren.data as { block: string | null } | null)?.block ?? null, jobs: jobs.rows, manifests, costs: (costs as { ok: true; rows: CostRow[] }).rows,
       spend: spend.data as PlanSpend,
       explainer,
+      jjeri: jjeriAvailability(plan.plan_json, jjeriEnabled, jjeriStatus),
+      anatomy: jjeriAvailability(plan.plan_json, jjeriEnabled, jjeriStatus, "jjeri_anatomy"),
     },
   };
 }

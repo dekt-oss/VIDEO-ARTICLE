@@ -84,3 +84,42 @@ def test_every_paper_directive_path_carries_the_directive_model_key():
     assert not missing, (
         f"DEEPSEEK_API_KEY 가 빠진 논문 지시서 경로: {missing} — "
         "초안은 멀쩡히 돌고 이어지는 지시서 단계만 조용히 죽는다")
+
+@pytest.mark.parametrize("key", [
+    "DRINKS_JJERI_GENERATE_ENABLED",
+    "DRINKS_JJERI_ANATOMY_GENERATE_ENABLED",
+])
+def test_drinks_develop_job_uses_repository_flag_defaulting_to_off(key):
+    doc = yaml.safe_load((WF / "drinks-develop.yml").read_text(encoding="utf-8"))
+    job = doc["jobs"]["develop"]
+    assert job["env"].get(key) == "${{ vars." + key + " || '0' }}"
+    worker = [step for step in job["steps"] if "engine.drinks_develop" in _RUN.findall(step.get("run", ""))]
+    assert len(worker) == 1
+    assert key not in worker[0].get("env", {})
+
+
+@pytest.mark.parametrize(("generate", "anatomy", "expected"), [
+    (False, False, {}),
+    (False, True, {}),
+    (True, False, {"allow_jjeri": True}),
+    (True, True, {"allow_jjeri": True, "allow_jjeri_anatomy_generate": True}),
+])
+def test_drinks_develop_worker_requires_both_flags_for_anatomy(monkeypatch, generate, anatomy, expected):
+    from engine import drinks_develop as worker
+
+    claimed = []
+
+    def rpc(name, payload):
+        if name == "drinks_studio_recover_all":
+            return {"recovered": []}
+        assert name == "drinks_start_develop"
+        claimed.append(payload)
+        return {"job": None}
+
+    monkeypatch.setattr(worker.config, "DRINKS_JJERI_GENERATE_ENABLED", generate)
+    monkeypatch.setattr(worker.config, "DRINKS_JJERI_ANATOMY_GENERATE_ENABLED", anatomy)
+    monkeypatch.setattr(worker.config, "WORKER_ID", "workflow-test")
+    monkeypatch.setattr(worker, "supabase_rpc", lambda: rpc)
+
+    assert worker.main(["--max-jobs", "1"]) == 0
+    assert claimed == [{"worker_id": "workflow-test", **expected}]

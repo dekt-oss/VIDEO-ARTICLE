@@ -149,16 +149,16 @@ def build_html(template: str, *, top_line: str, slots: list[Slot], duration: flo
 
 
 def render_command(out_path: str) -> list[str]:
-    npx = shutil.which("npx") or "npx"
+    npx = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
     return [npx, "--yes", config.HF_HYPERFRAMES_PKG, "render", "--strict", "-o", out_path]
 
 
 def beats_command(audio_path: str) -> list[str]:
-    npx = shutil.which("npx") or "npx"
+    npx = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
     return [npx, "--yes", config.HF_HYPERFRAMES_PKG, "beats", audio_path, "--json"]
 
 
-_SECRET_MARKS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "SUPABASE")
+_SECRET_MARKS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "SUPABASE", "DATABASE_URL", "DSN", "AUTH")
 
 
 def _env() -> dict[str, str]:
@@ -236,11 +236,59 @@ def _stream_durations(path: str) -> str:
         return f"(읽기 실패: {e})"
 
 
+def check_project(project: str) -> str:
+    """Run the safe-zone check separately from encoding."""
+    npx = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
+    return _run([npx, "--yes", config.HF_HYPERFRAMES_PKG, "check", "--safe-zone", "reels"],
+                cwd=os.fspath(project))
+
+
+def render_project(project: str, out_path: str, duration: float, *,
+                   normalize: bool = True, workers: Optional[int] = None,
+                   loudnorm: Optional[str] = None) -> dict[str, Any]:
+    """Encode a prepared project, validate the stream, and publish it atomically."""
+    from .drinks_render import _probe
+
+    out_path = os.path.abspath(out_path)
+    with tempfile.TemporaryDirectory(prefix="hf-encode-") as work:
+        raw = os.path.join(work, "raw.mp4")
+        command = render_command(raw)
+        if workers is not None:
+            command.extend(["--workers", str(workers)])
+        _run(command, cwd=os.fspath(project))
+        if not os.path.exists(raw) or os.path.getsize(raw) == 0:
+            raise HfRenderError("렌더가 끝났다는데 파일이 없습니다")
+        # 같은 폴더의 임시 파일에 쓰고 검증 뒤 os.replace — 중간에 죽어도 깨진 파일이 out_path 에 남지 않는다(2026-11-26 실제 발생)
+        os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+        part = out_path + ".part.mp4"
+        try:
+            if normalize:
+                cmd = assemble.build_loudnorm_command(raw, part)
+                if loudnorm:
+                    cmd[cmd.index("-af") + 1] = loudnorm
+            else:
+                cmd = ["ffmpeg", "-v", "error", "-y", "-i", raw, "-c", "copy", part]
+            # 소리를 영상 길이로 자른다 — 러너 ffmpeg 의 AAC 재인코딩이 꼬리를 0.1초 더 붙였다(2026-11-27 실측)
+            cmd[-1:-1] = ["-t", f"{duration:.3f}"]
+            _run(cmd)
+            try:
+                probe = _probe(part)
+            except subprocess.CalledProcessError as e:
+                raise HfRenderError(f"결과 파일을 읽을 수 없습니다(깨진 mp4): {e}") from e
+            try:
+                verify_output(probe, duration)
+            except HfRenderError as e:
+                raise HfRenderError(f"{e} · 스트림별 길이 {_stream_durations(part)}") from e
+            os.replace(part, out_path)
+        finally:
+            if os.path.exists(part):
+                os.remove(part)
+    return probe
+
+
 def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
                 track_key: str = "sooljjerigo-groove-117", template: str = "meme-beat") -> dict[str, Any]:
     """밈 박자 영상 1편. 반환: 계획(칸·박자)·결과 정보. 실패는 HfRenderError."""
-    from .drinks_render import _probe  # 무거운 Pillow 모듈 — 실제 렌더 때만
-
     track = load_track(track_key)
     grid = beat_grid(track)
     slots, _ = plan_slots(items, grid, track.beat_period_sec)
@@ -261,30 +309,7 @@ def render_meme(*, top_line: str, items: list[dict[str, Any]], out_path: str,
         _run(["ffmpeg", "-v", "error", "-y", "-i", track.path, "-t", f"{duration:.3f}",
               "-af", f"afade=t=out:st={fade_at:.3f}:d={config.HF_MUSIC_FADE_OUT_SEC}",
               os.path.join(proj, "assets", "music.wav")])
-        raw = os.path.join(work, "raw.mp4")
-        _run(render_command(raw), cwd=proj)
-        if not os.path.exists(raw) or os.path.getsize(raw) == 0:
-            raise HfRenderError("렌더가 끝났다는데 파일이 없습니다")
-        # 같은 폴더의 임시 파일에 쓰고 검증 뒤 os.replace — 중간에 죽어도 깨진 파일이 out_path 에 남지 않는다(2026-11-26 실제 발생)
-        os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-        part = out_path + ".part.mp4"
-        try:
-            cmd = assemble.build_loudnorm_command(raw, part)
-            # 소리를 영상 길이로 자른다 — 러너 ffmpeg 의 AAC 재인코딩이 꼬리를 0.1초 더 붙였다(2026-11-27 실측)
-            cmd[-1:-1] = ["-t", f"{duration:.3f}"]
-            _run(cmd)
-            try:
-                probe = _probe(part)
-            except subprocess.CalledProcessError as e:
-                raise HfRenderError(f"결과 파일을 읽을 수 없습니다(깨진 mp4): {e}") from e
-            try:
-                verify_output(probe, duration)
-            except HfRenderError as e:
-                raise HfRenderError(f"{e} · 스트림별 길이 {_stream_durations(part)}") from e
-            os.replace(part, out_path)
-        finally:
-            if os.path.exists(part):
-                os.remove(part)
+        probe = render_project(proj, out_path, duration)
     return {"out": out_path, "duration_sec": duration, "track": track.key,
             "slots": [s.__dict__ for s in slots], "probe": probe}
 

@@ -15,14 +15,15 @@ function note(r: DrinksResult): string | null {
   return "대기열에 넣었습니다. 워커 자동 깨우기가 설정되지 않아 수동 실행(python -m engine.drinks_produce) 때 처리됩니다.";
 }
 
-export function RenderRequest({ planId, retryOf, label, hidePrimary = false }: {
-  planId: string; retryOf?: string; label: string;
+export function RenderRequest({ planId, retryOf, label, renderer, hidePrimary = false }: {
+  planId: string; retryOf?: string; label: string; renderer?: "jjeri_class" | "jjeri_anatomy";
   /** 작업공간 결정 바가 이 버튼을 대신 누른다(primaryBridge). 옛 화면은 false */
   hidePrimary?: boolean;
 }) {
   const { run, busy } = useDrinksAction();
   const [msg, setMsg] = useState<string | null>(null);
-  const submit = async () => setMsg(note(await run("request_render",
+  const submit = async () => setMsg(note(await run(renderer === "jjeri_anatomy" ? "request_jjeri_anatomy_render"
+    : renderer === "jjeri_class" ? "request_jjeri_render" : "request_render",
     { plan_revision_id: planId, ...(retryOf ? { retry_of: retryOf } : {}) }, "렌더를 요청했습니다(로컬·무료)", "렌더 요청")));
   const claimed = useRegisterPrimary("request_render", { submit, disabled: busy }, hidePrimary && !retryOf);
   return (

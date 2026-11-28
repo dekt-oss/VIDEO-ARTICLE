@@ -119,6 +119,9 @@ def format_gate(req: dict[str, Any]) -> Optional[tuple[str, str]]:
     content_format 이 없는 옛 DB(0068 전)에서는 카드로 보고 아무것도 막지 않는다."""
     fmt = req.get("content_format") or "card"
     caption = req.get("caption") or ""
+    if fmt in ("jjeri_class", "jjeri_anatomy"):
+        label = "술 해부 영상" if fmt == "jjeri_anatomy" else "술 수업"
+        return "jjeri_owner_review_required", f"째리의 {label}은 소유자 최종 판정 대기 중입니다"
     if fmt == "meme":
         from .drinks_meme import MemeStop, assert_auto_publishable   # 렌더 의존성이 무거워 밈 요청에서만 읽는다
 

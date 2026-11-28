@@ -578,6 +578,8 @@ export const DRINKS_REEL_SPEC = {
 
 /** 기계 검사 경고 코드 → 쉬운 한국어 한 줄. 모르는 코드는 코드 그대로 보인다(qaWarningLabel). */
 export const QA_WARNING_KO: Record<string, string> = {
+  jjeri_human_source_review_required: "화면과 음성의 주장을 사람이 원문과 대조해야 함",
+  recap_exception_missing: "요약 장면에 예외 안내가 없음",
   not_vertical_1080x1920: "화면이 세로 1080×1920 이 아님",
   narration_silent: "나레이션 소리가 거의 없음",
   narration_silent_scenes: "나레이션이 비어 있는 장면이 있음",
@@ -600,7 +602,8 @@ export const QA_WARNING_KO: Record<string, string> = {
 };
 
 export function qaWarningLabel(code: string): string {
-  return QA_WARNING_KO[code] ?? code;
+  const recap = /^([a-z][a-z0-9-]*): recap_exception_missing$/.exec(code);
+  return recap ? recap[1] + " · " + QA_WARNING_KO.recap_exception_missing : QA_WARNING_KO[code] ?? code;
 }
 
 export interface QaRow { label: string; value: string; ok: boolean | null }
