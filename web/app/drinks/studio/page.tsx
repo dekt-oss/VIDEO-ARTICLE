@@ -6,6 +6,7 @@ import "./studio.css";
 import StudioClient, { type StudioCollectItem, type StudioProduction, type StudioPublish, type StudioResultFile } from "@/components/drinks/studio/StudioClient";
 import { HeldTab, MineSection, STUDIO_TABS, StudioTabNav, type StudioTab } from "@/components/drinks/studio/StudioTabs";
 import ManualEntry from "@/components/drinks/topics/ManualEntry";
+import { JjeriEpisodePanel, type JjeriGeneration } from "@/components/drinks/JjeriEpisodePanel";
 import MemeCardsTab from "@/components/drinks/topics/MemeCardsTab";
 import WeeklyBudgetCard from "@/components/drinks/topics/WeeklyBudgetCard";
 import { seoulDateOf, todayInSeoul } from "@/lib/date";
@@ -63,7 +64,7 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
   const mineIds = mineRows.map((t) => t.id);
   const [cands, lastRes, planRes, statusRes] = await Promise.all([
     loadStudioCandidates(knownRows.filter((t) => !isTest(t.title)).map((t) => ({ id: t.id, text: `${t.title} ${t.question}`, categories: t.categories ?? [] }))),
-    mineIds.length ? db.from("drink_develop_requests").select("topic_id, status, error_code, created_at").in("topic_id", mineIds).order("created_at", { ascending: false }).range(0, 999) : Promise.resolve({ data: [], error: null }),
+    mineIds.length ? db.from("drink_develop_requests").select("topic_id, status, error_code, created_at").in("topic_id", mineIds).neq("kind", "jjeri").order("created_at", { ascending: false }).range(0, 999) : Promise.resolve({ data: [], error: null }),
     mineIds.length ? db.from("drink_plan_revisions").select("topic_id, format, plan_status").in("topic_id", mineIds).in("plan_status", ["draft", "approved"]).is("blocked_at", null).range(0, 999) : Promise.resolve({ data: [], error: null }),
     topicId ? db.rpc("drinks_studio_status", { p: { topic_id: topicId } }) : Promise.resolve(null),
   ]);
@@ -157,8 +158,14 @@ export default async function StudioPage(props: { searchParams: Promise<{ topic?
     }
   }
 
+  const jjeri = topicId && lane !== "card" && process.env.DRINKS_JJERI_GENERATE_ENABLED === "1"
+    ? await db.rpc("drinks_jjeri_generation_status", { p: { topic_id: topicId } }) : null;
+  const generation = jjeri?.data as JjeriGeneration | null;
   return (
     <main className="container container--dw">
+      {jjeri?.error && <p className="banner-warn">째리 지시서 상태를 조회하지 못했습니다. 생성용 DB 적용 상태를 확인하세요.</p>}
+      {topicId && generation && <JjeriEpisodePanel key={`${topicId}-${generation.request?.request_id ?? "new"}`} topicId={topicId} generation={generation}
+        anatomyEnabled={process.env.DRINKS_JJERI_ANATOMY_GENERATE_ENABLED === "1"} />}
       <StudioClient items={items} problems={problems} status={status} statusProblem={statusProblem} files={files} resultProblem={resultProblem}
         selectedTopicId={topicId} today={todayInSeoul()} lane={lane} production={production} publish={publish} summary={summary}
         pickContext={{ week: weekOptions(todayInSeoul(), 1)[0].value, budgetId: wb.state === "ok" ? wb.data?.budget_id ?? null : null }}

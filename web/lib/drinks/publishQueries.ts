@@ -27,8 +27,8 @@ export interface AccountView {
 }
 
 /** 0068: 콘텐츠 형식. 카드뉴스(캐러셀·카드 릴스)·설명형·밈형. 성과·전략이 이 값으로 묶인다. */
-export type ContentFormat = "card" | "explainer" | "meme";
-export const CONTENT_FORMAT_LABEL: Record<ContentFormat, string> = { card: "카드뉴스", explainer: "설명형", meme: "밈형" };
+export type ContentFormat = "card" | "explainer" | "meme" | "jjeri_class" | "jjeri_anatomy";
+export const CONTENT_FORMAT_LABEL: Record<ContentFormat, string> = { card: "카드뉴스", explainer: "설명형", meme: "밈형", jjeri_class: "째리의 술 수업", jjeri_anatomy: "째리의 술 해부" };
 
 export interface RequestView {
   id: string; topic_id: string | null; topic_title: string; categories: string[]; plan_revision_id: string | null; post_type: "carousel" | "reel";

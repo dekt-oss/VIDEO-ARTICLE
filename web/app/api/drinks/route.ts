@@ -25,6 +25,19 @@ export async function POST(request: Request) {
     );
   }
   const body = await request.json().catch(() => null);
+  const action = (body as { action?: unknown } | null)?.action;
+  if ((action === "request_jjeri_episode" || action === "approve_jjeri_episode")
+      && process.env.DRINKS_JJERI_GENERATE_ENABLED !== "1") {
+    return NextResponse.json({ error: "째리 지시서 생성이 꺼져 있습니다.", code: "jjeri_generation_disabled" }, { status: 503 });
+  }
+  if (action === "request_jjeri_episode"
+      && (body as { payload?: { format?: unknown } } | null)?.payload?.format === "jjeri_anatomy"
+      && process.env.DRINKS_JJERI_ANATOMY_GENERATE_ENABLED !== "1") {
+    return NextResponse.json({ error: "째리 해부 지시서 생성이 꺼져 있습니다.", code: "jjeri_anatomy_generation_disabled" }, { status: 503 });
+  }
+  if ((action === "request_jjeri_render" || action === "request_jjeri_anatomy_render") && process.env.DRINKS_JJERI_ENABLED === "0") {
+    return NextResponse.json({ error: "째리의 술 수업 렌더가 꺼져 있습니다.", code: "jjeri_disabled" }, { status: 503 });
+  }
   const res = await runDrinksAction((fn, p) => admin.rpc(fn, { p }), body);
   if (res.status === 200 && (body as { action?: unknown } | null)?.action === "request_run") {
     // 실행은 큐에 들어갔다. 토큰이 없으면 다음 일일 실행(KST 06:30)이 가져간다 — 화면이 그 사실을 보여준다.
@@ -32,7 +45,7 @@ export async function POST(request: Request) {
   }
   // 설명형 지시서·조립도 0원 작업이라 같은 제작 워커를 깨운다. 구매(explainer_request_buy)는 깨우지 않는다 — 실호출 스위치를 켠 워커만 처리할 수 있다.
   const renderAction = (body as { action?: unknown } | null)?.action;
-  if (res.status === 200 && (renderAction === "request_render" || renderAction === "explainer_request_plan" || renderAction === "explainer_request_assemble"
+  if (res.status === 200 && (renderAction === "request_render" || renderAction === "request_jjeri_render" || renderAction === "request_jjeri_anatomy_render" || renderAction === "explainer_request_plan" || renderAction === "explainer_request_assemble"
       || renderAction === "studio_generate")
       && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
     res.body.dispatch = await triggerWorkflow("drinks-produce.yml", null);
@@ -42,7 +55,6 @@ export async function POST(request: Request) {
       && (res.body.result as { existing?: boolean } | undefined)?.existing !== true) {
     res.body.dispatch = await triggerWorkflow("drinks-explainer-buy.yml", null);
   }
-  const action = (body as { action?: unknown } | null)?.action;
   const go = res.body.result as { due_now?: boolean; publish_at?: string } | undefined;
   if (res.status === 200 && action === "publication_go" && go?.due_now === true) {
     // [게시](지금): 예약 크론이 꺼져 있어도 바로 올라가게 발행 워커를 깨운다. 실제 게시 여부는 워커가 DB 조건(계정·승인·시각)으로 다시 잰다.
@@ -69,7 +81,7 @@ export async function POST(request: Request) {
     // [이걸로]: 이어 만들기 요청이 새로 들어갔을 때만 깨운다(밈·이미 있는 초안은 큐에 안 들어간다).
     ? (res.body.result as { chain?: { queued?: boolean; existing?: boolean } } | undefined)?.chain
     : action === "apply_rescue" ? { queued: true, existing: (res.body.result as { existing?: boolean } | undefined)?.existing }
-    : action === "request_develop" ? { queued: true, existing: (res.body.result as { existing?: boolean } | undefined)?.existing } : null;
+    : action === "request_develop" || action === "request_jjeri_episode" ? { queued: true, existing: studio?.existing } : null;
   if (res.status === 200 && queued?.queued && queued.existing !== true) {
     // 소재 개발 워커(근거 초안·대본 초안). 토큰이 없으면 큐에만 남고 화면이 그 사실을 보여준다. 돈은 워커가 결재 안에서만 쓴다.
     res.body.dispatch = await triggerWorkflow("drinks-develop.yml", null);

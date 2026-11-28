@@ -35,6 +35,10 @@ export const DRINKS_ACTIONS = {
   set_discovery_origin: "drinks_set_discovery_origin",
   // C단계(0053): 제작 요청·취소·최종 파일 검수. 렌더·파일 등록·끝내기(워커 전용)는 여기 없다.
   request_render: "drinks_request_render",
+  request_jjeri_render: "drinks_request_jjeri_render",
+  request_jjeri_anatomy_render: "drinks_request_jjeri_anatomy_render",
+  request_jjeri_episode: "drinks_request_jjeri_episode",
+  approve_jjeri_episode: "drinks_approve_jjeri_episode",
   cancel_render: "drinks_cancel_render",
   output_review_action: "drinks_output_review_action",
   // 유료 생성 결재(0054): 결재 열기·닫기. 가잡기·확정·파일 등록(워커 전용)은 여기 없다 — 화면은 돈을 쓰지 못한다.
@@ -355,6 +359,22 @@ export async function runDrinksAction(exec: RpcExec, body: unknown): Promise<Act
   }
   const fn = DRINKS_ACTIONS[action as DrinksAction];
   const p: Record<string, unknown> = isRecord(body.payload) ? { ...body.payload } : {};
+
+  if (action === "request_render" && p.renderer !== undefined) {
+    return { status: 400, body: { error: "제작 형식에 맞는 렌더 요청을 사용하세요", code: "invalid_input" } };
+  }
+  if ((action === "request_jjeri_render" || action === "request_jjeri_anatomy_render") && (p.paid || p.spend_approval_id || p.renderer !== undefined)) {
+    return { status: 400, body: { error: "째리 형식은 무료 렌더 요청만 받습니다", code: "invalid_input" } };
+  }
+  if (action === "request_jjeri_episode" && p.format !== undefined && p.format !== "jjeri_class" && p.format !== "jjeri_anatomy") {
+    return { status: 400, body: { error: "지원하는 째리 지시서 형식을 선택하세요.", code: "invalid_input" } };
+  }
+  if (action === "request_jjeri_episode" && p.spend_confirmed !== true) {
+    return { status: 400, body: { error: "모델 호출 횟수와 금액 상한을 확인해 주세요", code: "jjeri_budget_confirmation" } };
+  }
+  if (action === "approve_jjeri_episode" && p.review_confirmed !== true) {
+    return { status: 400, body: { error: "원문과 지시서를 직접 대조해 주세요", code: "jjeri_human_review_required" } };
+  }
 
   if (action === "create_topic" || action === "add_source") {
     if (p.source !== undefined && p.source !== null) {

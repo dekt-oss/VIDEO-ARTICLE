@@ -1,16 +1,24 @@
 // 파일 묶음의 기계 검사 한 장 — 경고 · 릴스 규격 · 대본 검사 · 말 속도 · 화면 출처. 판정이 아니라 참고다.
 // 데이터가 있는 구역만 그린다(옛 행에는 새 키가 없다).
+import { jjeriQa } from "@/lib/drinks/jjeri";
 import { qaView, qaWarningLabel } from "@/lib/drinks/model";
 
 const nums = (a: number[]) => (a.length ? a.map((n) => `${n}번`).join(", ") : "없음");
 
 export default function QaPanel({ qa }: { qa: unknown }) {
   const v = qaView(qa);
+  const jjeri = jjeriQa(qa);
   const script = v.script && (v.script.blocks.length > 0 || v.script.warns.length > 0 || v.script.ok != null) ? v.script : null;
-  if (!v.warnings.length && !v.reel.length && !script && !v.speech && !v.visual) return null;
+  if (!jjeri && !v.warnings.length && !v.reel.length && !script && !v.speech && !v.visual) return null;
   return (
     <div className="dk-sub">
       <b>기계 검사</b> <span className="muted">(참고용 — 판정은 사람이 합니다)</span>
+      {jjeri && <div className="dk-kv">
+        째리의 술 수업 · 출처 연결 {jjeri.reviewedScenes}장면
+        {jjeri.lufs !== null && <> · {jjeri.lufs} LUFS</>}
+        {jjeri.peak !== null && <> · {jjeri.peak} dBTP</>}
+        {jjeri.humanReview && <p className="banner-warn">화면과 음성의 주장에 대해 사람이 원문을 대조해야 합니다.</p>}
+      </div>}
       {v.warnings.length > 0 && (
         <ul className="banner-warn" style={{ margin: "6px 0", paddingLeft: 20 }}>
           {v.warnings.map((c) => <li key={c}>{qaWarningLabel(c)}{qaWarningLabel(c) !== c && <span className="muted"> ({c})</span>}</li>)}
