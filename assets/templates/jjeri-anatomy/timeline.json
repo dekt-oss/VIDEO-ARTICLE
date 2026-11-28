@@ -1,0 +1,132 @@
+{
+ "total": 46.62,
+ "gap": 0.27,
+ "lead": {
+  "jar": 0.2
+ },
+ "tail": {
+  "quiz": 2.2
+ },
+ "min": {
+  "sieve": 5.2
+ },
+ "extra": {
+  "jar:2": 0.6
+ },
+ "worlds": [
+  {
+   "id": "jar",
+   "start": 0.0,
+   "dur": 20.99,
+   "beats": [
+    {
+     "k": 0,
+     "start_local": 0.2,
+     "speech": 2.939,
+     "media_start": 0.126
+    },
+    {
+     "k": 1,
+     "start_local": 3.409,
+     "speech": 4.55,
+     "media_start": 0.066
+    },
+    {
+     "k": 2,
+     "start_local": 8.229,
+     "speech": 4.123,
+     "media_start": 0.128
+    },
+    {
+     "k": 3,
+     "start_local": 13.222,
+     "speech": 3.728,
+     "media_start": 0.115
+    },
+    {
+     "k": 4,
+     "start_local": 17.22,
+     "speech": 3.403,
+     "media_start": 0.119
+    }
+   ]
+  },
+  {
+   "id": "sieve",
+   "start": 20.99,
+   "dur": 5.2,
+   "beats": [
+    {
+     "k": 5,
+     "start_local": 0.15,
+     "speech": 3.697,
+     "media_start": 0.141
+    }
+   ]
+  },
+  {
+   "id": "glass",
+   "start": 26.19,
+   "dur": 12.83,
+   "beats": [
+    {
+     "k": 6,
+     "start_local": 0.15,
+     "speech": 4.597,
+     "media_start": 0.156
+    },
+    {
+     "k": 7,
+     "start_local": 5.017,
+     "speech": 3.285,
+     "media_start": 0.107
+    },
+    {
+     "k": 8,
+     "start_local": 8.572,
+     "speech": 3.891,
+     "media_start": 0.119
+    }
+   ]
+  },
+  {
+   "id": "quiz",
+   "start": 39.02,
+   "dur": 7.6,
+   "beats": [
+    {
+     "k": 9,
+     "start_local": 0.15,
+     "speech": 4.975,
+     "media_start": 0.127
+    }
+   ]
+  }
+ ],
+ "chapters": [
+  {
+   "start": 0.0,
+   "title": "막걸리 해부"
+  },
+  {
+   "start": 8.23,
+   "title": "항아리 속 발효"
+  },
+  {
+   "start": 17.22,
+   "title": "떠내기 vs 통째로"
+  },
+  {
+   "start": 20.99,
+   "title": "통째로 거르기"
+  },
+  {
+   "start": 26.19,
+   "title": "한 잔에 담긴 것"
+  },
+  {
+   "start": 39.02,
+   "title": "퀴즈 타임"
+  }
+ ]
+}

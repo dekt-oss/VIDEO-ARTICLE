@@ -1,0 +1,475 @@
+{
+ "format": "jjeri_anatomy",
+ "version": 1,
+ "series": "째리의 술 해부",
+ "topic": "막걸리",
+ "voice": {
+  "provider": "edge",
+  "voice": "ko-KR-HyunsuMultilingualNeural",
+  "rate": "+10%",
+  "atempo": 1.055
+ },
+ "keywords": [
+  {
+   "word": "막걸리",
+   "color": "#C2410C"
+  },
+  {
+   "word": "청주",
+   "color": "#B45309"
+  },
+  {
+   "word": "누룩",
+   "color": "#8A5A35"
+  },
+  {
+   "word": "탄산",
+   "color": "#2563EB"
+  }
+ ],
+ "chapters": [
+  {
+   "world": "jar",
+   "beat": 0,
+   "title": "막걸리 해부"
+  },
+  {
+   "world": "jar",
+   "beat": 2,
+   "title": "항아리 속 발효"
+  },
+  {
+   "world": "jar",
+   "beat": 4,
+   "title": "떠내기 vs 통째로"
+  },
+  {
+   "world": "sieve",
+   "beat": 0,
+   "title": "통째로 거르기"
+  },
+  {
+   "world": "glass",
+   "beat": 0,
+   "title": "한 잔에 담긴 것"
+  },
+  {
+   "world": "quiz",
+   "beat": 0,
+   "title": "퀴즈 타임"
+  }
+ ],
+ "window": {
+  "clip_top": 424,
+  "clip_bottom": 1036,
+  "note": "그림 칸 = 창문. 카메라가 밀어도 제목·말풍선을 덮지 않는다"
+ },
+ "art": "tools/art25.py 규칙 — 빛 왼쪽 위, 윗면 타원 ×0.17, 회전체는 profile(y) 하나, 단면 = 앞 절반 제거",
+ "worlds": [
+  {
+   "id": "jar",
+   "world": "vessel_cutaway",
+   "vessel": "onggi",
+   "parts": [
+    "plate",
+    "shell(닫힌 바깥)",
+    "cutaway(안쪽 벽·잘린 벽 두께)",
+    "lid",
+    "ladle",
+    "cup"
+   ],
+   "layers": [
+    {
+     "id": "water",
+     "top": 740,
+     "fill": "water"
+    },
+    {
+     "id": "mash",
+     "top": 740,
+     "fill": "mash"
+    },
+    {
+     "id": "top",
+     "top": 740,
+     "bottom": 815,
+     "fill": "clear",
+     "label": "맑은 윗술"
+    },
+    {
+     "id": "lees",
+     "top": 815,
+     "fill": "lees",
+     "label": "술밑"
+    }
+   ],
+   "tokens": {
+    "chain": [
+     "grain:전분",
+     "sugar:단맛",
+     "drop:술",
+     "bubble:탄산"
+    ],
+    "count": 22,
+    "zone": "lees"
+   },
+   "hud": {
+    "kind": "time_control",
+    "steps": [
+     "▶ 실제 시간",
+     "⏩ 빨리 감기 ×10",
+     "⏩ 빨리 감기 ×1,000",
+     "⏩ 빨리 감기 ×20,000",
+     "⏸ 다 익음"
+    ],
+    "gauge": "발효"
+   },
+   "events": [
+    {
+     "beat": 0,
+     "at": 1.1,
+     "do": "lid_off"
+    },
+    {
+     "beat": 0,
+     "at": 1.6,
+     "do": "shell_away",
+     "note": "앞 절반이 떨어져 단면"
+    },
+    {
+     "beat": 1,
+     "at": 0.1,
+     "do": "drop_tokens",
+     "token": "grain",
+     "label": "전분 든 곡물"
+    },
+    {
+     "beat": 1,
+     "at": 1.4,
+     "do": "drop_part",
+     "part": "nuruk",
+     "label": "누룩(곰팡이)"
+    },
+    {
+     "beat": 1,
+     "at": 2.6,
+     "do": "pour",
+     "into": "water",
+     "label": "물"
+    },
+    {
+     "beat": 2,
+     "at": 0.0,
+     "do": "hud_ramp",
+     "step_sec": 0.35
+    },
+    {
+     "beat": 2,
+     "at": 0.4,
+     "do": "camera",
+     "focus": [
+      540,
+      880
+     ],
+     "scale": 2.2,
+     "dur": 1.0
+    },
+    {
+     "beat": 2,
+     "at": 1.0,
+     "do": "legend",
+     "chain": true
+    },
+    {
+     "beat": 2,
+     "at": 1.5,
+     "do": "token_morph",
+     "from": "grain",
+     "to": "sugar"
+    },
+    {
+     "beat": 2,
+     "at": 2.7,
+     "do": "token_morph",
+     "from": "sugar",
+     "to": "drop"
+    },
+    {
+     "beat": 2,
+     "at": 2.8,
+     "do": "bubbles_rise"
+    },
+    {
+     "beat": 2,
+     "at": 3.0,
+     "do": "boom",
+     "text": "보글보글"
+    },
+    {
+     "beat": 3,
+     "at": 0.0,
+     "do": "hud",
+     "step": "⏸ 다 익음"
+    },
+    {
+     "beat": 3,
+     "at": 0.0,
+     "do": "camera",
+     "scale": 1,
+     "dur": 0.8
+    },
+    {
+     "beat": 3,
+     "at": 0.4,
+     "do": "settle",
+     "show_layers": [
+      "top",
+      "lees"
+     ]
+    },
+    {
+     "beat": 4,
+     "at": 0.1,
+     "do": "ladle_scoop",
+     "from": "top",
+     "to": "cup",
+     "label": "청주 = 윗술만"
+    },
+    {
+     "beat": 4,
+     "at": 1.9,
+     "do": "brace",
+     "span": [
+      "top",
+      "lees"
+     ],
+     "label": "막걸리 = 통째로"
+    },
+    {
+     "beat": 4,
+     "at": -0.9,
+     "from_end": true,
+     "do": "camera",
+     "focus": [
+      640,
+      820
+     ],
+     "scale": 1.15,
+     "dur": 0.8
+    }
+   ],
+   "beats": [
+    {
+     "text": "막걸리, 그냥 대충 걸러\n마시는 술일까요?",
+     "claim_ids": []
+    },
+    {
+     "text": "재료는 셋, 전분이 든 곡물과\n곰팡이를 피운 누룩, 그리고 물.",
+     "claim_ids": []
+    },
+    {
+     "text": "누룩이 쌀의 전분을 단맛으로,\n그 단맛이 술과 탄산이 돼요.",
+     "claim_ids": []
+    },
+    {
+     "text": "다 익으면 위엔 맑은 술,\n아래엔 술밑이 가라앉아요.",
+     "claim_ids": []
+    },
+    {
+     "text": "윗술만 떠내면 청주,\n통째로 쓰면 막걸리예요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "sieve",
+   "world": "strain",
+   "parts": [
+    "plate",
+    "bowl(흰 사발)",
+    "sieve(대나무 체)",
+    "small_jar(기운 옹기)",
+    "hands"
+   ],
+   "events": [
+    {
+     "beat": 0,
+     "at": 0.0,
+     "do": "camera",
+     "focus": [
+      560,
+      690
+     ],
+     "scale": 1.45,
+     "dur": 0.01
+    },
+    {
+     "beat": 0,
+     "at": 0.2,
+     "do": "pour",
+     "into": "sieve"
+    },
+    {
+     "beat": 0,
+     "at": 1.3,
+     "do": "hands_rub",
+     "times": 10
+    },
+    {
+     "beat": 0,
+     "at": 1.4,
+     "do": "boom",
+     "text": "싹싹"
+    },
+    {
+     "beat": 0,
+     "at": 1.6,
+     "do": "token_break",
+     "token": "grain",
+     "through": "mesh"
+    },
+    {
+     "beat": 0,
+     "at": 2.1,
+     "do": "camera",
+     "focus": [
+      540,
+      800
+     ],
+     "scale": 1.2,
+     "dur": 0.9
+    },
+    {
+     "beat": 0,
+     "at": 2.3,
+     "do": "fill",
+     "target": "bowl",
+     "with": "milk",
+     "label": "뽀얀 술"
+    }
+   ],
+   "beats": [
+    {
+     "text": "체에 붓고 손으로 싹싹 버무리면\n쌀알이 부서져 뽀얘져요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "glass",
+   "world": "serve",
+   "parts": [
+    "plate",
+    "tumbler(뽀얀 술·거품·기포)",
+    "dial(도수 0~15)"
+   ],
+   "events": [
+    {
+     "beat": 0,
+     "at": 0.2,
+     "do": "bubbles_rise",
+     "repeat": 3
+    },
+    {
+     "beat": 0,
+     "at": 0.6,
+     "do": "boom",
+     "text": "톡톡"
+    },
+    {
+     "beat": 0,
+     "at": 0.6,
+     "do": "chips",
+     "items": [
+      "맥주 = 보리 + 탄산",
+      "막걸리 = 쌀 + 탄산"
+     ]
+    },
+    {
+     "beat": 1,
+     "at": 0.2,
+     "do": "tokens_merge",
+     "items": [
+      "단맛",
+      "신맛",
+      "떫은맛"
+     ],
+     "into": "tumbler"
+    },
+    {
+     "beat": 2,
+     "at": 0.0,
+     "do": "camera_pan",
+     "to": "dial",
+     "dx": -1080,
+     "dur": 0.8
+    },
+    {
+     "beat": 2,
+     "at": 0.6,
+     "do": "dial_needle",
+     "value": 7,
+     "band": [
+      6,
+      8
+     ],
+     "range": [
+      3,
+      12
+     ],
+     "chips": [
+      "6~8도 흔함",
+      "3~12도까지"
+     ]
+    }
+   ],
+   "beats": [
+    {
+     "text": "맥주가 보리로 만든 탄산 음료라면\n막걸리는 쌀로 만든 탄산 음료.",
+     "claim_ids": []
+    },
+    {
+     "text": "단맛, 신맛, 떫은맛이\n함께 어우러지고요.",
+     "claim_ids": []
+    },
+    {
+     "text": "도수는 6~8도가 흔하지만\n3도부터 12도까지 있어요.",
+     "claim_ids": []
+    }
+   ]
+  },
+  {
+   "id": "quiz",
+   "world": "vessel_closed",
+   "quiz": {
+    "question": "퀴즈! 윗술만 떠내면?",
+    "options": [
+     "1 막걸리",
+     "2 청주",
+     "3 소주"
+    ],
+    "answer": 2
+   },
+   "events": [
+    {
+     "beat": 0,
+     "at": 0.3,
+     "do": "quiz"
+    },
+    {
+     "beat": 0,
+     "at": -0.9,
+     "from_end": true,
+     "do": "loop_return",
+     "note": "첫 프레임과 같은 닫힌 항아리로"
+    }
+   ],
+   "beats": [
+    {
+     "text": "퀴즈! 윗술만 떠내면 무슨 술?\n숫자로 댓글 남겨 주세요!",
+     "claim_ids": []
+    }
+   ]
+  }
+ ]
+}

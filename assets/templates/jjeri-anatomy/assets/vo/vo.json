@@ -1,0 +1,82 @@
+[
+ {
+  "k": 0,
+  "sid": "jar",
+  "file": "assets/vo/b00.mp3",
+  "sec": 3.415,
+  "head": 0.126,
+  "end": 3.065
+ },
+ {
+  "k": 1,
+  "sid": "jar",
+  "file": "assets/vo/b01.mp3",
+  "sec": 4.871,
+  "head": 0.066,
+  "end": 4.616
+ },
+ {
+  "k": 2,
+  "sid": "jar",
+  "file": "assets/vo/b02.mp3",
+  "sec": 4.576,
+  "head": 0.128,
+  "end": 4.251
+ },
+ {
+  "k": 3,
+  "sid": "jar",
+  "file": "assets/vo/b03.mp3",
+  "sec": 4.12,
+  "head": 0.115,
+  "end": 3.843
+ },
+ {
+  "k": 4,
+  "sid": "jar",
+  "file": "assets/vo/b04.mp3",
+  "sec": 3.825,
+  "head": 0.119,
+  "end": 3.522
+ },
+ {
+  "k": 5,
+  "sid": "sieve",
+  "file": "assets/vo/b05.mp3",
+  "sec": 4.257,
+  "head": 0.141,
+  "end": 3.838
+ },
+ {
+  "k": 6,
+  "sid": "glass",
+  "file": "assets/vo/b06.mp3",
+  "sec": 5.077,
+  "head": 0.156,
+  "end": 4.753
+ },
+ {
+  "k": 7,
+  "sid": "glass",
+  "file": "assets/vo/b07.mp3",
+  "sec": 3.689,
+  "head": 0.107,
+  "end": 3.392
+ },
+ {
+  "k": 8,
+  "sid": "glass",
+  "file": "assets/vo/b08.mp3",
+  "sec": 4.53,
+  "head": 0.119,
+  "end": 4.01
+ },
+ {
+  "k": 9,
+  "sid": "quiz",
+  "file": "assets/vo/b09.mp3",
+  "sec": 5.462,
+  "head": 0.127,
+  "end": 5.102
+ }
+]

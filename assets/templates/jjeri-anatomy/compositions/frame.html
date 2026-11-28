@@ -1,0 +1,56 @@
+<template>
+  <style>
+    @font-face { font-family: 'Wanted Sans'; src: url('assets/fonts/WantedSans-ExtraBold.otf'); font-weight: 800; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-Bold.woff2'); font-weight: 700; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-SemiBold.woff2'); font-weight: 600; }
+    @font-face { font-family: 'Pretendard'; src: url('assets/fonts/Pretendard-ExtraBold.woff2'); font-weight: 800; }
+    #root { position: absolute; inset: 0; overflow: hidden; font-family: 'Pretendard'; color: #FFF8EE;
+             background: radial-gradient(circle at 50% 45%, #33456D 0%, #1F2A44 55%, #141C30 100%); }
+    #fr-badgebox { position: absolute; left: 0; right: 0; top: 274px; text-align: center; }
+    #fr-badge { display: inline-block; font-weight: 700; font-size: 30px; color: #fff; background: #C2410C; border-radius: 999px; padding: 6px 24px; }
+    .ch { position: absolute; left: 0; right: 0; top: 326px; text-align: center; font-family: 'Wanted Sans'; font-weight: 800; font-size: 80px; line-height: 1.1; letter-spacing: -0.035em; color: #FFF8EE; opacity: 0; }
+    #fr-ch0 { opacity: 1; }
+    #fr-jjeri { position: absolute; left: 34px; top: 1084px; width: 218px; }
+    #fr-bubble { position: absolute; left: 262px; top: 1040px; width: 754px; height: 200px; background: #FFF8EE; border: 5px solid #0E1525; border-radius: 30px; box-shadow: 0 8px 0 rgba(0,0,0,0.25); }
+    #fr-tail { position: absolute; left: 224px; top: 1114px; width: 44px; height: 52px; }
+    #fr-counter { position: absolute; left: 0; top: 1330px; width: 1080px; height: 590px; }
+    #fr-handle { position: absolute; left: 0; right: 0; top: 1376px; text-align: center; font-weight: 700; font-size: 32px; color: #F6D9B8; opacity: 0.85; }
+  </style>
+  <div id="root" data-composition-id="frame" data-width="1080" data-height="1920">
+    <div id="fr-badgebox"><span id="fr-badge">째리의 술 해부 · 막걸리</span></div>
+    <div id="fr-ch0" class="ch">막걸리 해부</div><div id="fr-ch1" class="ch">항아리 속 발효</div><div id="fr-ch2" class="ch">떠내기 vs 통째로</div><div id="fr-ch3" class="ch">통째로 거르기</div><div id="fr-ch4" class="ch">한 잔에 담긴 것</div><div id="fr-ch5" class="ch">퀴즈 타임</div>
+    <img id="fr-jjeri" src="assets/img/jjeri.svg" alt="째리">
+    <svg id="fr-counter" viewBox="0 0 1080 590" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="1080" height="590" fill="#8A4A26"/><rect x="0" y="0" width="1080" height="30" fill="#A8693A"/><rect x="0" y="30" width="1080" height="8" fill="#5A2E14"/><path d="M0 90 C300 80 700 102 1080 86" fill="none" stroke="#6E3A1C" stroke-width="5"/><path d="M0 170 C300 160 700 182 1080 166" fill="none" stroke="#6E3A1C" stroke-width="5"/><path d="M0 260 C300 250 700 272 1080 256" fill="none" stroke="#6E3A1C" stroke-width="5"/><path d="M0 360 C300 350 700 372 1080 356" fill="none" stroke="#6E3A1C" stroke-width="5"/><path d="M0 470 C300 460 700 482 1080 466" fill="none" stroke="#6E3A1C" stroke-width="5"/>
+    </svg>
+    <div id="fr-handle" data-layout-ignore>술째리고 &nbsp;@sooljjerigo</div>
+    <div id="fr-bubble"></div>
+    <svg id="fr-tail" viewBox="0 0 44 52" xmlns="http://www.w3.org/2000/svg"><polygon points="44,4 4,26 44,48" fill="#FFF8EE"/><polyline points="40,6 4,26 40,46" fill="none" stroke="#0E1525" stroke-width="5" stroke-linejoin="round"/></svg>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#fr-jjeri", { y: 0 }, 0);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 0.30);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 3.41);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 8.23);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 13.22);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 17.22);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 21.14);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 26.34);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 31.21);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 34.76);
+    tl.to("#fr-jjeri", { keyframes: [{ y: -22, duration: 0.14, ease: "power2.out" }, { y: 0, duration: 0.2, ease: "power2.in" }] }, 39.17);
+        tl.to("#fr-ch0", { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" }, 8.09);
+    tl.fromTo("#fr-ch1", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 8.28);
+    tl.to("#fr-ch1", { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" }, 17.08);
+    tl.fromTo("#fr-ch2", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 17.27);
+    tl.to("#fr-ch2", { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" }, 20.85);
+    tl.fromTo("#fr-ch3", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 21.04);
+    tl.to("#fr-ch3", { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" }, 26.05);
+    tl.fromTo("#fr-ch4", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 26.24);
+    tl.to("#fr-ch4", { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" }, 38.88);
+    tl.fromTo("#fr-ch5", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 39.07);
+    tl.set({}, {}, 46.62);
+    window.__timelines["frame"] = tl;
+  </script>
+</template>
